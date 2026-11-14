@@ -238,10 +238,10 @@ func TestTRC20PaymentAmountsAreUniqueAndMatchOnlyActiveOrderWindow(t *testing.T)
 	if err != nil { t.Fatal(err) }
 	if first.PaymentAmountAtomic == second.PaymentAmountAtomic { t.Fatal("concurrent invoices must have distinct atomic payment amounts") }
 	if first.PaymentAmountAtomic < 25000000 || first.PaymentAmountAtomic > 25009999 { t.Fatalf("unexpected six-decimal quote: %d", first.PaymentAmountAtomic) }
-	matched, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic, time.Now().UTC().UnixMilli())
+	matched, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic, time.Now().UTC().Add(time.Second).UnixMilli())
 	if err != nil { t.Fatal(err) }
 	if matched.ID != first.ID { t.Fatalf("matched order %s, want %s", matched.ID, first.ID) }
-	if _, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic+1, time.Now().UTC().UnixMilli()); err == nil { t.Fatal("wrong transfer amount must not match") }
+	if _, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic+1, time.Now().UTC().Add(time.Second).UnixMilli()); err == nil { t.Fatal("wrong transfer amount must not match") }
 	tooEarly := time.Now().UTC().Add(-time.Minute).UnixMilli()
 	if _, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic, tooEarly); err == nil { t.Fatal("transfer before order creation must not match") }
 }
