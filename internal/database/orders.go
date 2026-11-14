@@ -249,6 +249,7 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 	}
 	if err := rows.Err(); err != nil { rows.Close(); return nil, err }
 	if err := rows.Close(); err != nil { return nil, err }
+	claimedIDs := make([]string, 0, len(ids))
 	for _, id := range ids {
 		updateDueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
 		if driver == "postgres" { updateDueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
@@ -259,9 +260,10 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 		affected, err := result.RowsAffected()
 		if err != nil { return nil, err }
 		if affected != 1 { continue }
+		claimedIDs = append(claimedIDs, id)
 	}
 	if err := tx.Commit(); err != nil { return nil, err }
-	return ids, nil
+	return claimedIDs, nil
 }
 
 // GetOrderDelivery recovers a paid card for retry after a process interruption.
