@@ -156,3 +156,92 @@ func ExpirePendingOrders(ctx context.Context, db *sql.DB, driver string, limit i
 	if err := tx.Commit(); err != nil { return 0, err }
 	return expired, nil
 }
+
+type OrderDelivery struct {
+	Order Order
+	PaymentMethod string
+	PaymentReference string
+	SecretCiphertext string
+	AlreadyPaid bool
+}
+
+// ConfirmOrderPayment records a payment only after a trusted adapter has verified it.
+// It atomically changes the order to paid and consumes its reserved key. Repeated
+// callbacks with the same reference are idempotent; a different reference is rejected.
+func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, paymentMethod, paymentReference string) (OrderDelivery, error) {
+	if orderID == "" || paymentMethod == "" || paymentReference == "" || len(paymentMethod) > 40 || len(paymentReference) > 200 {
+		return OrderDelivery{}, fmt.Errorf("invalid payment confirmation")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return OrderDelivery{}, err }
+	defer tx.Rollback()
+	query := "SELECT status, expires_at, COALESCE(payment_reference,''), COALESCE(payment_method,'') FROM orders WHERE id=" + placeholder(driver, 1)
+	if driver == "postgres" { query += " FOR UPDATE" }
+	var status, expiresAt, existingReference, existingMethod string
+	if err := tx.QueryRowContext(ctx, query, orderID).Scan(&status, &expiresAt, &existingReference, &existingMethod); err != nil { return OrderDelivery{}, err }
+	now := time.Now().UTC()
+	alreadyPaid := status == "paid" || status == "delivering" || status == "delivery_failed" || status == "delivered"
+	if alreadyPaid {
+		if existingReference != paymentReference || existingMethod != paymentMethod { return OrderDelivery{}, fmt.Errorf("order already has a different payment") }
+	} else {
+		if status != "pending_payment" { return OrderDelivery{}, fmt.Errorf("order is not awaiting payment: %s", status) }
+		expires, parseErr := time.Parse(time.RFC3339Nano, expiresAt)
+		if parseErr != nil { return OrderDelivery{}, fmt.Errorf("invalid order expiry: %w", parseErr) }
+		if !now.Before(expires) { return OrderDelivery{}, fmt.Errorf("order has expired; payment requires manual reconciliation") }
+		stamp := now.Format(time.RFC3339Nano)
+		update := "UPDATE orders SET status='paid', payment_method=" + placeholder(driver, 1) + ", payment_reference=" + placeholder(driver, 2) + ", paid_at=" + placeholder(driver, 3) + ", updated_at=" + placeholder(driver, 4) + " WHERE id=" + placeholder(driver, 5) + " AND status='pending_payment'"
+		result, err := tx.ExecContext(ctx, update, paymentMethod, paymentReference, stamp, stamp, orderID)
+		if err != nil { return OrderDelivery{}, err }
+		affected, err := result.RowsAffected()
+		if err != nil { return OrderDelivery{}, err }
+		if affected != 1 { return OrderDelivery{}, fmt.Errorf("order payment state changed concurrently") }
+		sell := "UPDATE product_keys SET status=2, sold_at=" + placeholder(driver, 1) + " WHERE order_id=" + placeholder(driver, 2) + " AND status=1"
+		result, err = tx.ExecContext(ctx, sell, stamp, orderID)
+		if err != nil { return OrderDelivery{}, err }
+		affected, err = result.RowsAffected()
+		if err != nil { return OrderDelivery{}, err }
+		if affected != 1 { return OrderDelivery{}, fmt.Errorf("reserved stock missing; payment requires reconciliation") }
+	}
+	var delivery OrderDelivery
+	delivery.AlreadyPaid = alreadyPaid
+	delivery.PaymentMethod = paymentMethod
+	delivery.PaymentReference = paymentReference
+	keyQuery := "SELECT k.secret_ciphertext FROM product_keys k WHERE k.order_id=" + placeholder(driver, 1) + " AND k.status=2 LIMIT 1"
+	if err := tx.QueryRowContext(ctx, keyQuery, orderID).Scan(&delivery.SecretCiphertext); err != nil { return OrderDelivery{}, fmt.Errorf("load paid card key: %w", err) }
+	orderQuery := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver, 1)
+	if err := tx.QueryRowContext(ctx, orderQuery, orderID).Scan(&delivery.Order.ID,&delivery.Order.OrderNo,&delivery.Order.BotID,&delivery.Order.TelegramUserID,&delivery.Order.TelegramChatID,&delivery.Order.ProductID,&delivery.Order.ProductName,&delivery.Order.UnitPriceMinor,&delivery.Order.Quantity,&delivery.Order.AmountMinor,&delivery.Order.Currency,&delivery.Order.Status,&delivery.Order.ExpiresAt,&delivery.Order.CreatedAt,&delivery.Order.UpdatedAt,&delivery.Order.PaidAt,&delivery.Order.DeliveredAt); err != nil { return OrderDelivery{}, err }
+	if err := tx.Commit(); err != nil { return OrderDelivery{}, err }
+	return delivery, nil
+}
+
+// GetOrderDelivery recovers a paid card for retry after a process interruption.
+func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, error) {
+	var item OrderDelivery
+	query := "SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.payment_method,COALESCE(o.payment_reference,''),k.secret_ciphertext FROM orders o JOIN product_keys k ON k.order_id=o.id AND k.status=2 WHERE o.id=" + placeholder(driver, 1) + " AND o.status IN ('paid','delivery_failed') LIMIT 1"
+	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.PaymentMethod,&item.PaymentReference,&item.SecretCiphertext)
+	return item, err
+}
+
+// MarkOrderDelivered finalizes a successful Telegram delivery.
+func MarkOrderDelivered(ctx context.Context, db *sql.DB, driver, orderID string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE orders SET status='delivered', delivered_at=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + ", delivery_error='', delivery_lease_until=NULL WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed')"
+	result, err := db.ExecContext(ctx, query, now, now, orderID)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return fmt.Errorf("order is not in a deliverable state") }
+	return nil
+}
+
+// MarkOrderDeliveryFailed records a retryable delivery failure without losing the paid key.
+func MarkOrderDeliveryFailed(ctx context.Context, db *sql.DB, driver, orderID, reason string) error {
+	if len(reason) > 1000 { reason = reason[:1000] }
+	query := "UPDATE orders SET status='delivery_failed', delivery_attempts=delivery_attempts+1, delivery_error=" + placeholder(driver, 1) + ", delivery_lease_until=NULL, updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed')"
+	result, err := db.ExecContext(ctx, query, reason, time.Now().UTC().Format(time.RFC3339Nano), orderID)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return fmt.Errorf("order is not in a deliverable state") }
+	return nil
+}
