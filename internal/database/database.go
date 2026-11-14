@@ -356,12 +356,9 @@ func ImportProductKeys(ctx context.Context, db *sql.DB, driver, productID string
 	inserted:=0
 	for _,item:=range secrets {
 		id,err:=randomID();if err!=nil{return inserted,err}
-		query:="INSERT INTO product_keys(id,product_id,secret_ciphertext,secret_fingerprint,status,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",0,"+placeholder(driver,5)+")"
+		query:="INSERT INTO product_keys(id,product_id,secret_ciphertext,secret_fingerprint,status,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",0,"+placeholder(driver,5)+") ON CONFLICT(product_id,secret_fingerprint) DO NOTHING"
 		result,err:=tx.ExecContext(ctx,query,id,productID,item.Ciphertext,item.Fingerprint,time.Now().UTC().Format(time.RFC3339Nano))
-		if err!=nil {
-			if strings.Contains(strings.ToLower(err.Error()),"unique") || strings.Contains(strings.ToLower(err.Error()),"duplicate") { continue }
-			return inserted,err
-		}
+		if err!=nil { return inserted,err }
 		n,_:=result.RowsAffected();inserted+=int(n)
 	}
 	if err:=tx.Commit();err!=nil{return inserted,err};return inserted,nil
