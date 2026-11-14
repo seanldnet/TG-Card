@@ -15,6 +15,8 @@ interface Order {
   quantity: number;
   amountMinor: number;
   paymentAmount: string;
+  paymentMethod?: string;
+  paymentReference?: string;
   currency: string;
   status: string;
   expiresAt: string;
@@ -52,6 +54,10 @@ function statusColor(status: string) {
   if (status === 'pending_payment') return 'warning';
   if (status === 'expired' || status === 'cancelled' || status === 'failed') return 'default';
   return 'blue';
+}
+function paymentMethodLabel(value?: string) {
+  if (value === 'trc20-usdt') return 'TRC20 USDT';
+  return value || '-';
 }
 function formatTime(value: string) {
   if (!value) return '-';
@@ -123,6 +129,17 @@ onMounted(loadOrders);
         <a-table-column title="链上应付金额" key="paymentAmount" :width="150">
           <template #default="{ record }">{{ record.paymentAmount === '0.000000' ? '-' : record.paymentAmount + ' USDT' }}</template>
         </a-table-column>
+        <a-table-column title="支付方式" key="paymentMethod" :width="120">
+          <template #default="{ record }">{{ paymentMethodLabel(record.paymentMethod) }}</template>
+        </a-table-column>
+        <a-table-column title="链上交易" key="paymentReference" :width="190">
+          <template #default="{ record }">
+            <a v-if="record.paymentReference" :href="`https://tronscan.org/#/transaction/${record.paymentReference}`" target="_blank" rel="noreferrer">
+              {{ record.paymentReference.slice(0, 12) }}…
+            </a>
+            <span v-else class="text-gray-400">-</span>
+          </template>
+        </a-table-column>
         <a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="150" />
         <a-table-column title="订单状态" key="status" :width="110">
           <template #default="{ record }"><a-tag :color="statusColor(record.status)">{{ statusLabel(record.status) }}</a-tag></template>
@@ -153,7 +170,7 @@ onMounted(loadOrders);
           <template #default="{ record }">{{ formatTime(record.expiresAt) }}</template>
         </a-table-column>
       </a-table>
-      <a-alert class="mt-3" type="info" show-icon message="当前尚未接入 TRC20 链上收款确认；仅经过可信支付适配器确认的订单才可发货。发货失败的已付款订单可在此重试。" />
+      <a-alert class="mt-3" type="info" show-icon message="TRC20 USDT 通过 TronGrid 已确认交易自动核验；请按 Bot 提供的六位小数金额转账。付款后进入带租约的自动发货队列，失败时可在此重试。" />
     </a-card>
   </div>
 </template>
