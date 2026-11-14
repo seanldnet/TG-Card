@@ -1,7 +1,13 @@
 <script lang="ts" setup>
 import { useRouter } from 'vue-router';
 
-import { Button as AButton, Card as ACard, Col as ACol, Row as ARow, Tag as ATag } from 'ant-design-vue';
+import {
+  Button as AButton,
+  Card as ACard,
+  Col as ACol,
+  Row as ARow,
+  Tag as ATag,
+} from 'ant-design-vue';
 
 defineOptions({ name: 'ProductIntro' });
 
