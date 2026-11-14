@@ -10,9 +10,6 @@ services:
       PORT: "38647"
       DB_DRIVER: postgres
       DATABASE_URL: postgres://tgcard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/tgcard?sslmode=disable
-      TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
-      TRON_RECEIVE_ADDRESS: ${TRON_RECEIVE_ADDRESS:-}
-      TRON_USDT_CONTRACT: ${TRON_USDT_CONTRACT:-TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t}
     volumes:
       - tg_card_data:/app/data
     depends_on:
