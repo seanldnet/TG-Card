@@ -45,7 +45,7 @@ The watcher starts only when both TRONGRID_API_KEY and TRON_RECEIVE_ADDRESS are 
 
 Each new order receives a distinct six-decimal USDT invoice amount: the product two-decimal price plus a small random atomic-unit suffix. The database enforces uniqueness among active pending orders. The bot displays the exact amount and receiving address only when the watcher is enabled. Matching requires the exact amount and a block timestamp within the order creation/expiry window. The watcher then calls the idempotent payment transition and automatic Telegram delivery. Existing pending orders created before migration 0007 have no invoice amount and must be recreated; the bot warns users not to pay those legacy orders.
 
-The watcher polls every 15 seconds and scans confirmed transfers from a fixed two-hour lookback window, using the same min_timestamp across all pages in one scan. It currently caps a scan at 25 pages (5,000 records). TronGrid only_confirmed=true is the confirmation gate; this implementation does not configure a separate N-confirmation threshold. Production API quotas and rate limits depend on the TronGrid key and plan.
+The watcher polls every 15 seconds and scans confirmed transfers from a fixed two-hour lookback window, newest first, using the same min_timestamp and max_timestamp across all pages in one scan. It currently caps a scan at 25 pages (5,000 records); reaching that cap is logged so operators know older records may need a deeper reconciliation scan. TronGrid only_confirmed=true is the confirmation gate; this implementation does not configure a separate N-confirmation threshold. Production API quotas and rate limits depend on the TronGrid key and plan.
 
 Important operational limits:
 
