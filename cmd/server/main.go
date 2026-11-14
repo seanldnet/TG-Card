@@ -95,6 +95,14 @@ func main() {
 	api.HandleFunc("POST /api/bots", app.createBot)
 	api.HandleFunc("PUT /api/bots/{id}", app.updateBot)
 	api.HandleFunc("DELETE /api/bots/{id}", app.deleteBot)
+	api.HandleFunc("GET /api/catalog/categories", app.listCategories)
+	api.HandleFunc("POST /api/catalog/categories", app.createCategory)
+	api.HandleFunc("DELETE /api/catalog/categories/{id}", app.deleteCategory)
+	api.HandleFunc("GET /api/catalog/products", app.listProducts)
+	api.HandleFunc("POST /api/catalog/products", app.createProduct)
+	api.HandleFunc("PUT /api/catalog/products/{id}", app.updateProduct)
+	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
+	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
@@ -411,4 +419,85 @@ func (a *application) syncBots(ctx context.Context) error {
 	}
 	a.botManager.Reconcile(configs)
 	return nil
+}
+
+type categoryInput struct { Name string `json:"name"`; SortOrder int `json:"sortOrder"` }
+type productInput struct {
+	CategoryID string `json:"categoryId"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	PriceMinor int64 `json:"priceMinor"`
+	Currency string `json:"currency"`
+	DeliveryType string `json:"deliveryType"`
+	Status int `json:"status"`
+}
+type keyImportInput struct { Content string `json:"content"` }
+
+func (a *application) listCategories(w http.ResponseWriter,r *http.Request) {
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	items,err:=database.ListCategories(r.Context(),a.db);if err!=nil{writeError(w,500,"Unable to load categories");return}
+	writeSuccess(w,200,items)
+}
+func (a *application) createCategory(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var in categoryInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
+	in.Name=strings.TrimSpace(in.Name);if in.Name==""||len(in.Name)>80{writeError(w,400,"Category name is required (max 80 characters)");return}
+	item,err:=database.CreateCategory(r.Context(),a.db,a.driver,in.Name,in.SortOrder);if err!=nil{writeError(w,409,"Category already exists or could not be saved");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"category.create","category:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
+	writeSuccess(w,201,item)
+}
+func (a *application) deleteCategory(w http.ResponseWriter,r *http.Request) {
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	if err:=database.DeleteCategory(r.Context(),a.db,a.driver,r.PathValue("id"));err!=nil{writeError(w,404,"Category not found");return}
+	writeSuccess(w,200,map[string]bool{"deleted":true})
+}
+func (a *application) listProducts(w http.ResponseWriter,r *http.Request) {
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	items,err:=database.ListProducts(r.Context(),a.db);if err!=nil{writeError(w,500,"Unable to load products");return}
+	writeSuccess(w,200,items)
+}
+func (a *application) createProduct(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var in productInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
+	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency))
+	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||in.PriceMinor>9_000_000_000_000||len(in.Description)>4000||(in.Status!=0&&in.Status!=1){writeError(w,400,"Invalid product fields");return}
+	if in.Currency==""{in.Currency="USDT"};if in.Currency!="USDT"{writeError(w,400,"Only USDT pricing is currently supported");return}
+	if in.DeliveryType==""{in.DeliveryType="card"};if in.DeliveryType!="card"{writeError(w,400,"Unsupported delivery type");return}
+	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status})
+	if err!=nil{writeError(w,400,"Unable to save product; check the category");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.create","product:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
+	writeSuccess(w,201,item)
+}
+func (a *application) updateProduct(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var in productInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
+	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency));if in.Currency==""{in.Currency="USDT"};if in.DeliveryType==""{in.DeliveryType="card"}
+	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||len(in.Description)>4000||(in.Status!=0&&in.Status!=1)||in.Currency!="USDT"||in.DeliveryType!="card"{writeError(w,400,"Invalid product fields");return}
+	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status})
+	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,400,"Unable to update product");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.update","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),"settings updated")
+	writeSuccess(w,200,map[string]bool{"updated":true})
+}
+func (a *application) deleteProduct(w http.ResponseWriter,r *http.Request) {
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	if err:=database.DeleteProduct(r.Context(),a.db,a.driver,r.PathValue("id"));err!=nil{writeError(w,404,"Product not found");return}
+	writeSuccess(w,200,map[string]bool{"deleted":true})
+}
+func (a *application) importProductKeys(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var in keyImportInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,2<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
+	if len(in.Content)>1<<20{writeError(w,413,"Key import is limited to 1 MB per batch");return}
+	lines:=strings.Split(strings.ReplaceAll(in.Content,"\r\n","\n"),"\n")
+	items:=make([]database.StockSecret,0,len(lines));seen:=make(map[string]bool)
+	for _,line:=range lines{
+		value:=strings.TrimSpace(line);if value==""{continue};if len(value)>4000{writeError(w,400,"Each card key must be at most 4000 characters");return}
+		fingerprint:=secret.Fingerprint(value);if seen[fingerprint]{continue};seen[fingerprint]=true
+		encrypted,err:=a.secrets.Encrypt(value);if err!=nil{writeError(w,500,"Unable to encrypt card keys");return}
+		items=append(items,database.StockSecret{Ciphertext:encrypted,Fingerprint:fingerprint})
+	}
+	if len(items)==0{writeError(w,400,"Paste at least one card key");return}
+	inserted,err:=database.ImportProductKeys(r.Context(),a.db,a.driver,r.PathValue("id"),items)
+	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,500,"Unable to import card keys");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.keys.import","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),fmt.Sprintf("submitted=%d inserted=%d",len(items),inserted))
+	writeSuccess(w,200,map[string]int{"submitted":len(items),"inserted":inserted,"duplicates":len(items)-inserted})
 }
