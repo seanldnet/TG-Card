@@ -66,3 +66,12 @@ TRON_USDT_CONTRACT=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
 
 Keep the API key on the server only. Do not put it in frontend code, Telegram messages, or a public repository.
 
+
+
+## Administrator-managed TRC20 configuration
+
+TronGrid API credentials and the receiving address are managed from **Admin → 支付设置**. The API key is encrypted with the application's persistent AES-256-GCM secret key before it is stored in the database. The API never returns the plaintext key; the page only reports whether one is configured. Leaving the API-key field empty preserves the existing key, while the explicit clear option removes it.
+
+Saving the page updates the live payment watcher and Telegram bot checkout details without restarting the service. The settings are stored in the same SQLite/PostgreSQL database as orders and survive container recreation and image upgrades. .env is no longer required for payment setup. Existing installations that already set TRONGRID_API_KEY and TRON_RECEIVE_ADDRESS are imported into the database on first startup after this migration; after that, the database settings are authoritative.
+
+The payment settings page exposes the TRON receiving address, optional USDT contract override, enable/disable switch, and API-key replacement. Enabling collection is rejected unless a valid TronGrid key and valid TRON Base58Check address are present.
