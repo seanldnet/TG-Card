@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import { useRouter } from 'vue-router';
 
+import { Button as AButton, Card as ACard, Col as ACol, Row as ARow, Tag as ATag } from 'ant-design-vue';
+
 defineOptions({ name: 'ProductIntro' });
 
 const router = useRouter();
@@ -66,20 +68,20 @@ function scrollToFeatures() {
         <a href="#workflow">使用流程</a>
         <a href="#security">安全与稳定</a>
       </nav>
-      <a-button type="primary" @click="goLogin">进入管理后台</a-button>
+      <AButton type="primary" @click="goLogin">进入管理后台</AButton>
     </header>
 
     <section class="hero">
       <div class="hero-copy">
-        <a-tag color="processing" class="hero-tag">Telegram 自动发卡商城系统</a-tag>
+        <ATag color="processing" class="hero-tag">Telegram 自动发卡商城系统</ATag>
         <h1>让 Telegram Bot<br /><span>成为你的自动发卡商城</span></h1>
         <p class="hero-description">
           TG-Card 是面向单商户的多机器人自动发卡平台。通过一个网页后台管理多个 Telegram Bot，
           统一运营商品、卡密库存、订单、支付与售后，让用户在 Telegram 内完成自助购买。
         </p>
         <div class="hero-actions">
-          <a-button type="primary" size="large" @click="goLogin">进入管理后台</a-button>
-          <a-button size="large" @click="scrollToFeatures">了解系统功能</a-button>
+          <AButton type="primary" size="large" @click="goLogin">进入管理后台</AButton>
+          <AButton size="large" @click="scrollToFeatures">了解系统功能</AButton>
         </div>
         <div class="hero-points">
           <span>✓ 多 Bot 统一管理</span>
@@ -118,24 +120,24 @@ function scrollToFeatures() {
 
     <section id="features" class="section features-section">
       <div class="section-heading">
-        <a-tag color="blue">CORE FEATURES</a-tag>
+        <ATag color="blue">CORE FEATURES</ATag>
         <h2>发卡商城运营所需的核心能力</h2>
         <p>从机器人接入到商品交付、售后与营销，集中在同一套管理后台。</p>
       </div>
-      <a-row :gutter="[20, 20]">
-        <a-col v-for="feature in features" :key="feature.title" :xs="24" :sm="12" :lg="8">
-          <a-card class="feature-card" :bordered="false" hoverable>
+      <ARow :gutter="[20, 20]">
+        <ACol v-for="feature in features" :key="feature.title" :xs="24" :sm="12" :lg="8">
+          <ACard class="feature-card" :bordered="false" hoverable>
             <div class="feature-icon">{{ feature.icon }}</div>
             <h3>{{ feature.title }}</h3>
             <p>{{ feature.description }}</p>
-          </a-card>
-        </a-col>
-      </a-row>
+          </ACard>
+        </ACol>
+      </ARow>
     </section>
 
     <section id="workflow" class="section workflow-section">
       <div class="section-heading">
-        <a-tag color="blue">HOW IT WORKS</a-tag>
+        <ATag color="blue">HOW IT WORKS</ATag>
         <h2>四步启动你的自动发卡业务</h2>
         <p>日常商品、菜单和运营内容都在网页后台完成配置。</p>
       </div>
@@ -150,7 +152,7 @@ function scrollToFeatures() {
 
     <section id="security" class="security-section">
       <div class="security-copy">
-        <a-tag color="success">BUILT FOR OPERATIONS</a-tag>
+        <ATag color="success">BUILT FOR OPERATIONS</ATag>
         <h2>关键业务流程，清晰可控</h2>
         <p>平台围绕订单、库存和资金安全设计。支付结果以服务端确认或链上确认结果为准，避免仅凭前端页面或用户截图确认到账。</p>
       </div>
@@ -165,7 +167,7 @@ function scrollToFeatures() {
     <section class="closing-cta">
       <h2>从一个后台，管理你的 Telegram 商城</h2>
       <p>连接机器人，配置商品与库存，让用户通过 Telegram 自助完成购买。</p>
-      <a-button type="primary" size="large" @click="goLogin">进入管理后台</a-button>
+      <AButton type="primary" size="large" @click="goLogin">进入管理后台</AButton>
     </section>
 
     <footer class="intro-footer">
