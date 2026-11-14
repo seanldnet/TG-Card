@@ -19,6 +19,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/config"
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/secret"
+	"github.com/seanldnet/TG-Card/internal/telegrambot"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -27,6 +28,7 @@ type application struct {
 	driver string
 	tokens *auth.Manager
 	secrets *secret.Manager
+	botManager *telegrambot.Manager
 }
 
 type apiEnvelope struct {
@@ -79,7 +81,10 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	secrets, err := secret.New(cfg.DataDir)
 	if err != nil { log.Fatal(err) }
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets}
+	botManager := telegrambot.NewManager()
+	defer botManager.Stop()
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager}
+	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
@@ -346,6 +351,7 @@ func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
 	item, err := database.CreateBot(r.Context(),a.db,a.driver,input.Name,info.Result.Username,encrypted,secret.Fingerprint(input.Token),input.WelcomeText)
 	if err != nil { log.Printf("create bot: %v",err); writeError(w,http.StatusConflict,"Bot already exists or could not be saved"); return }
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.create","bot:"+item.ID,clientIP(r),r.UserAgent(),"telegram_username=@"+item.Username)
+	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after create: %v", err) }
 	writeSuccess(w,http.StatusCreated,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt})
 }
 
@@ -357,6 +363,7 @@ func (a *application) updateBot(w http.ResponseWriter, r *http.Request) {
 	if input.Name=="" || len(input.Name)>100 || len(input.WelcomeText)>4000 || (input.Status!=0 && input.Status!=1) { writeError(w,http.StatusBadRequest,"Invalid Bot settings"); return }
 	id:=r.PathValue("id")
 	if err:=database.UpdateBot(r.Context(),a.db,a.driver,id,input.Name,input.WelcomeText,input.Status); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to update Bot") }; return }
+	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after update: %v", err) }
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.update","bot:"+id,clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,http.StatusOK,map[string]bool{"updated":true})
 }
@@ -365,6 +372,7 @@ func (a *application) deleteBot(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w,r); if !ok { return }
 	id:=r.PathValue("id")
 	if err:=database.DeleteBot(r.Context(),a.db,a.driver,id); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to delete Bot") }; return }
+	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after delete: %v", err) }
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.delete","bot:"+id,clientIP(r),r.UserAgent(),"deleted")
 	writeSuccess(w,http.StatusOK,map[string]bool{"deleted":true})
 }
@@ -379,4 +387,28 @@ func telegramGetMe(ctx context.Context, token string) (telegramGetMeResponse,err
 	if err:=json.NewDecoder(io.LimitReader(response.Body,1<<20)).Decode(&result); err!=nil { return result,fmt.Errorf("invalid Telegram response") }
 	if !result.OK || result.Result.Username=="" { if result.Description!="" { return result,fmt.Errorf("%s",result.Description) }; return result,fmt.Errorf("Telegram rejected this token") }
 	return result,nil
+}
+
+func (a *application) syncBots(ctx context.Context) error {
+	items, err := database.ListBots(ctx, a.db)
+	if err != nil {
+		return err
+	}
+	configs := make([]telegrambot.Config, 0, len(items))
+	for _, item := range items {
+		if item.Status != 1 {
+			continue
+		}
+		token, err := a.secrets.Decrypt(item.TokenCiphertext)
+		if err != nil {
+			log.Printf("decrypt Telegram Bot Token failed: bot_id=%s username=@%s error=%v", item.ID, item.Username, err)
+			continue
+		}
+		configs = append(configs, telegrambot.Config{
+			ID: item.ID, Name: item.Name, Username: item.Username, Token: token,
+			Fingerprint: item.TokenFingerprint, WelcomeText: item.WelcomeText,
+		})
+	}
+	a.botManager.Reconcile(configs)
+	return nil
 }
