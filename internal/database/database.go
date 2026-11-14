@@ -258,3 +258,111 @@ func DeleteBot(ctx context.Context, db *sql.DB, driver, id string) error {
 	if count != 1 { return sql.ErrNoRows }
 	return nil
 }
+
+type Category struct {
+	ID string
+	Name string
+	SortOrder int
+	Status int
+	CreatedAt string
+	UpdatedAt string
+}
+
+type Product struct {
+	ID string
+	CategoryID string
+	CategoryName string
+	Name string
+	Description string
+	PriceMinor int64
+	Currency string
+	DeliveryType string
+	Status int
+	StockCount int
+	CreatedAt string
+	UpdatedAt string
+}
+
+type StockSecret struct {
+	Ciphertext string
+	Fingerprint string
+}
+
+func ListCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id,name,sort_order,status,created_at,updated_at FROM product_categories ORDER BY sort_order,name")
+	if err != nil { return nil, err }
+	defer rows.Close()
+	items := make([]Category, 0)
+	for rows.Next() {
+		var item Category
+		if err := rows.Scan(&item.ID,&item.Name,&item.SortOrder,&item.Status,&item.CreatedAt,&item.UpdatedAt); err != nil { return nil, err }
+		items = append(items,item)
+	}
+	return items, rows.Err()
+}
+
+func CreateCategory(ctx context.Context, db *sql.DB, driver, name string, sortOrder int) (Category, error) {
+	id, err := randomID()
+	if err != nil { return Category{}, err }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	item := Category{ID:id,Name:name,SortOrder:sortOrder,Status:1,CreatedAt:now,UpdatedAt:now}
+	query := "INSERT INTO product_categories(id,name,sort_order,status,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
+	_, err = db.ExecContext(ctx,query,item.ID,item.Name,item.SortOrder,item.Status,item.CreatedAt,item.UpdatedAt)
+	return item,err
+}
+
+func DeleteCategory(ctx context.Context, db *sql.DB, driver, id string) error {
+	result,err:=db.ExecContext(ctx,"DELETE FROM product_categories WHERE id="+placeholder(driver,1),id)
+	if err!=nil{return err}
+	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
+}
+
+func ListProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
+	rows,err:=db.QueryContext(ctx,`SELECT p.id,COALESCE(p.category_id,''),COALESCE(c.name,''),p.name,p.description,p.price_minor,p.currency,p.delivery_type,p.status,
+	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),p.created_at,p.updated_at
+	FROM products p LEFT JOIN product_categories c ON c.id=p.category_id ORDER BY p.created_at DESC`)
+	if err!=nil{return nil,err};defer rows.Close()
+	items:=make([]Product,0)
+	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.StockCount,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
+	return items,rows.Err()
+}
+
+func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (Product,error) {
+	id,err:=randomID();if err!=nil{return Product{},err};now:=time.Now().UTC().Format(time.RFC3339Nano)
+	p.ID=id;p.CreatedAt=now;p.UpdatedAt=now;if p.Currency==""{p.Currency="USDT"};if p.DeliveryType==""{p.DeliveryType="card"};if p.Status==0{p.Status=1}
+	var category any;if p.CategoryID!=""{category=p.CategoryID}
+	query:="INSERT INTO products(id,category_id,name,description,price_minor,currency,delivery_type,status,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")"
+	_,err=db.ExecContext(ctx,query,p.ID,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.CreatedAt,p.UpdatedAt)
+	return p,err
+}
+
+func UpdateProduct(ctx context.Context, db *sql.DB, driver string, p Product) error {
+	now:=time.Now().UTC().Format(time.RFC3339Nano);var category any;if p.CategoryID!=""{category=p.CategoryID}
+	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",updated_at="+placeholder(driver,8)+" WHERE id="+placeholder(driver,9)
+	result,err:=db.ExecContext(ctx,query,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,now,p.ID);if err!=nil{return err}
+	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
+}
+
+func DeleteProduct(ctx context.Context, db *sql.DB, driver, id string) error {
+	result,err:=db.ExecContext(ctx,"DELETE FROM products WHERE id="+placeholder(driver,1),id);if err!=nil{return err}
+	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
+}
+
+func ImportProductKeys(ctx context.Context, db *sql.DB, driver, productID string, secrets []StockSecret) (int,error) {
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return 0,err};defer tx.Rollback()
+	var exists int
+	if err:=tx.QueryRowContext(ctx,"SELECT COUNT(1) FROM products WHERE id="+placeholder(driver,1),productID).Scan(&exists);err!=nil{return 0,err}
+	if exists==0{return 0,sql.ErrNoRows}
+	inserted:=0
+	for _,item:=range secrets {
+		id,err:=randomID();if err!=nil{return inserted,err}
+		query:="INSERT INTO product_keys(id,product_id,secret_ciphertext,secret_fingerprint,status,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",0,"+placeholder(driver,5)+")"
+		result,err:=tx.ExecContext(ctx,query,id,productID,item.Ciphertext,item.Fingerprint,time.Now().UTC().Format(time.RFC3339Nano))
+		if err!=nil {
+			if strings.Contains(strings.ToLower(err.Error()),"unique") || strings.Contains(strings.ToLower(err.Error()),"duplicate") { continue }
+			return inserted,err
+		}
+		n,_:=result.RowsAffected();inserted+=int(n)
+	}
+	if err:=tx.Commit();err!=nil{return inserted,err};return inserted,nil
+}
