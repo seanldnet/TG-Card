@@ -15,7 +15,7 @@ import (
 
 	"github.com/seanldnet/TG-Card/internal/auth"
 	"github.com/seanldnet/TG-Card/internal/config"
-	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/database"\n\t"github.com/seanldnet/TG-Card/internal/secret"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -73,13 +73,13 @@ func main() {
 
 	tokens, err := auth.NewManager(cfg.JWTSecret, cfg.DataDir)
 	if err != nil { log.Fatal(err) }
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens}
+	secrets, err := secret.New(cfg.DataDir)\n\tif err != nil { log.Fatal(err) }\n\tapp := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets}
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
 	api.HandleFunc("POST /api/auth/login", app.login)
 	api.HandleFunc("POST /api/auth/logout", app.logout)
-	api.HandleFunc("POST /api/admin/password", app.changePassword)
+	api.HandleFunc("POST /api/admin/password", app.changePassword)\n\tapi.HandleFunc("GET /api/bots", app.listBots)\n\tapi.HandleFunc("POST /api/bots", app.createBot)\n\tapi.HandleFunc("PUT /api/bots/{id}", app.updateBot)\n\tapi.HandleFunc("DELETE /api/bots/{id}", app.deleteBot)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("GET /api/menu/all", app.menus)

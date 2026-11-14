@@ -202,3 +202,58 @@ func RecordAdminAudit(ctx context.Context, db *sql.DB, driver, adminID, action, 
 		placeholder(driver,5)+", "+placeholder(driver,6)+", "+placeholder(driver,7)+", "+placeholder(driver,8)+")"
 	_, _ = db.ExecContext(ctx, query, id, adminID, action, resource, ip, userAgent, details, time.Now().UTC().Format(time.RFC3339Nano))
 }
+
+type Bot struct {
+	ID string
+	Name string
+	Username string
+	TokenCiphertext string
+	TokenFingerprint string
+	Status int
+	WelcomeText string
+	MenuConfig string
+	CreatedAt string
+	UpdatedAt string
+}
+
+func ListBots(ctx context.Context, db *sql.DB) ([]Bot, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id, name, username, token_ciphertext, token_fingerprint, status, welcome_text, menu_config, created_at, updated_at FROM bots ORDER BY created_at DESC")
+	if err != nil { return nil, err }
+	defer rows.Close()
+	items := make([]Bot, 0)
+	for rows.Next() {
+		var item Bot
+		if err := rows.Scan(&item.ID, &item.Name, &item.Username, &item.TokenCiphertext, &item.TokenFingerprint, &item.Status, &item.WelcomeText, &item.MenuConfig, &item.CreatedAt, &item.UpdatedAt); err != nil { return nil, err }
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func CreateBot(ctx context.Context, db *sql.DB, name, username, encryptedToken, fingerprint, welcome string) (Bot, error) {
+	id, err := randomID()
+	if err != nil { return Bot{}, err }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	item := Bot{ID:id, Name:name, Username:username, TokenCiphertext:encryptedToken, TokenFingerprint:fingerprint, Status:1, WelcomeText:welcome, MenuConfig:"[]", CreatedAt:now, UpdatedAt:now}
+	_, err = db.ExecContext(ctx, "INSERT INTO bots(id,name,username,token_ciphertext,token_fingerprint,status,welcome_text,menu_config,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+		item.ID,item.Name,item.Username,item.TokenCiphertext,item.TokenFingerprint,item.Status,item.WelcomeText,item.MenuConfig,item.CreatedAt,item.UpdatedAt)
+	return item, err
+}
+
+func UpdateBot(ctx context.Context, db *sql.DB, id, name, welcome string, status int) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := db.ExecContext(ctx, "UPDATE bots SET name=?, welcome_text=?, status=?, updated_at=? WHERE id=?", name,welcome,status,now,id)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return sql.ErrNoRows }
+	return nil
+}
+
+func DeleteBot(ctx context.Context, db *sql.DB, id string) error {
+	result, err := db.ExecContext(ctx, "DELETE FROM bots WHERE id=?", id)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return sql.ErrNoRows }
+	return nil
+}
