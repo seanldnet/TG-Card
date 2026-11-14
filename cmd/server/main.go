@@ -169,17 +169,21 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 	menus := []map[string]any{
 		{
 			"name": "Dashboard", "path": "/dashboard", "redirect": "/dashboard/analytics",
-			"meta": map[string]any{"icon": "lucide:layout-dashboard", "order": -1, "title": "page.dashboard.title"},
+			"meta": map[string]any{"icon": "lucide:layout-dashboard", "order": -1, "title": "仪表盘"},
 			"children": []map[string]any{
 				{
 					"name": "Analytics", "path": "analytics", "component": "/dashboard/analytics/index",
-					"meta": map[string]any{"affixTab": true, "icon": "lucide:area-chart", "title": "page.dashboard.analytics"},
+					"meta": map[string]any{"affixTab": true, "icon": "lucide:area-chart", "title": "经营概览"},
 				},
 				{
 					"name": "Workspace", "path": "workspace", "component": "/dashboard/workspace/index",
-					"meta": map[string]any{"icon": "carbon:workspace", "title": "page.dashboard.workspace"},
+					"meta": map[string]any{"icon": "carbon:workspace", "title": "工作台"},
 				},
 			},
+		},
+		{
+			"name": "BotManagement", "path": "/bots", "component": "/bots/index",
+			"meta": map[string]any{"icon": "lucide:bot", "order": 1, "title": "机器人管理"},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
