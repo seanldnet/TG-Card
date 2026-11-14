@@ -529,6 +529,7 @@ type orderView struct {
 	UnitPriceMinor int64 `json:"unitPriceMinor"`
 	Quantity int `json:"quantity"`
 	AmountMinor int64 `json:"amountMinor"`
+	PaymentAmountAtomic int64 `json:"paymentAmountAtomic"`
 	Currency string `json:"currency"`
 	Status string `json:"status"`
 	ExpiresAt string `json:"expiresAt"`
@@ -570,7 +571,7 @@ func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 			ID:item.ID, OrderNo:item.OrderNo, BotID:item.BotID,
 			TelegramUserID:item.TelegramUserID, TelegramChatID:item.TelegramChatID,
 			ProductName:item.ProductName, UnitPriceMinor:item.UnitPriceMinor,
-			Quantity:item.Quantity, AmountMinor:item.AmountMinor, Currency:item.Currency,
+			Quantity:item.Quantity, AmountMinor:item.AmountMinor, PaymentAmountAtomic:item.PaymentAmountAtomic, Currency:item.Currency,
 			Status:item.Status, ExpiresAt:item.ExpiresAt, CreatedAt:item.CreatedAt,
 			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, DeliveryAttempts:item.DeliveryAttempts, DeliveryError:item.DeliveryError, StockReserved:item.StockReserved,
 		})
