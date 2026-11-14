@@ -1,0 +1,45 @@
+name: Admin frontend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/admin-ci.yml"
+      - "web/**"
+      - "scripts/**"
+      - "README.md"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/admin-ci.yml"
+      - "web/**"
+      - "scripts/**"
+      - "README.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout TG-Card and Vben submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+          cache-dependency-path: web/vben-admin/pnpm-lock.yaml
+
+      - name: Enable Corepack and install pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.16.0 --activate
+          pnpm --version
+
+      - name: Build Vben Ant Design application
+        run: ./scripts/build-admin.sh
