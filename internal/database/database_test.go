@@ -186,3 +186,34 @@ func TestConfirmOrderPaymentRejectsExpiredOrder(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if len(items) != 1 || items[0].Status != "pending_payment" { t.Fatalf("expired payment attempt changed order unexpectedly: %+v", items) }
 }
+
+
+func TestClaimOrderDeliveriesLeasesAndRecoversExpiredLease(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Lease card", PriceMinor: 700, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{{Ciphertext: "leased-cipher", Fingerprint: "lease-fp"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-lease", "user-lease", "chat-lease", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := ConfirmOrderPayment(ctx, db, cfg.DBDriver, order.ID, "test-adapter", "lease-payment-ref"); err != nil { t.Fatal(err) }
+
+	claimed, err := ClaimOrderDeliveries(ctx, db, cfg.DBDriver, 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(claimed) != 1 || claimed[0] != order.ID { t.Fatalf("unexpected claimed orders: %v", claimed) }
+	item, err := GetOrderDelivery(ctx, db, cfg.DBDriver, order.ID)
+	if err != nil { t.Fatal(err) }
+	if item.Order.Status != "delivering" || item.SecretCiphertext != "leased-cipher" { t.Fatalf("claimed order not recoverable: %+v", item) }
+
+	claimed, err = ClaimOrderDeliveries(ctx, db, cfg.DBDriver, 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(claimed) != 0 { t.Fatalf("active lease was claimed twice: %v", claimed) }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET delivery_lease_until=? WHERE id=?", time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano), order.ID); err != nil { t.Fatal(err) }
+	claimed, err = ClaimOrderDeliveries(ctx, db, cfg.DBDriver, 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(claimed) != 1 || claimed[0] != order.ID { t.Fatalf("expired lease was not recovered: %v", claimed) }
+}
