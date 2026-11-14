@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/config"
@@ -16,28 +17,40 @@ import (
 type Manager struct {
 	db *sql.DB
 	driver string
-	chain *tron.Client
 	bots *telegrambot.Manager
+	mu sync.RWMutex
+	chain *tron.Client
 }
 
 func NewManager(cfg config.Config, db *sql.DB, driver string, bots *telegrambot.Manager) (*Manager, error) {
-	if cfg.TronGridAPIKey == "" && cfg.TronReceiveAddress == "" {
-		return nil, nil
-	}
-	chain, err := tron.NewClient(cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract)
-	if err != nil {
-		return nil, err
-	}
 	if db == nil || bots == nil {
 		return nil, errors.New("TRC20 payment manager requires database and Telegram bot manager")
 	}
-	return &Manager{db: db, driver: driver, chain: chain, bots: bots}, nil
+	m := &Manager{db: db, driver: driver, bots: bots}
+	if cfg.TronGridAPIKey != "" && cfg.TronReceiveAddress != "" {
+		if err := m.SetConfig(cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract, true); err != nil { return nil, err }
+	}
+	return m, nil
+}
+
+// SetConfig applies an administrator-saved payment configuration without restarting the process.
+func (m *Manager) SetConfig(apiKey, receiveAddress, contract string, enabled bool) error {
+	var chain *tron.Client
+	if enabled {
+		var err error
+		chain, err = tron.NewClient(apiKey, receiveAddress, contract)
+		if err != nil { return err }
+	}
+	m.mu.Lock()
+	m.chain = chain
+	m.mu.Unlock()
+	return nil
 }
 
 // Run polls confirmed TronGrid transfers. Errors use exponential backoff so a
 // provider rate limit does not cause a permanent 15-second request loop.
 func (m *Manager) Run(ctx context.Context) {
-	log.Printf("TRC20 payment watcher started: source=TronGrid confirmed_transfers=true")
+	log.Printf("TRC20 payment watcher started: source=TronGrid; configuration is managed in the admin payment settings")
 	delay := 15 * time.Second
 	for {
 		err := m.scan(ctx)
@@ -64,6 +77,10 @@ func (m *Manager) Run(ctx context.Context) {
 }
 
 func (m *Manager) scan(ctx context.Context) error {
+	m.mu.RLock()
+	chain := m.chain
+	m.mu.RUnlock()
+	if chain == nil { return nil }
 	scanCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	fingerprint := ""
@@ -71,7 +88,7 @@ func (m *Manager) scan(ctx context.Context) error {
 	minTimestampMS := time.UnixMilli(maxTimestampMS).Add(-2 * time.Hour).UnixMilli()
 	confirmed := 0
 	for page := 0; page < 25; page++ {
-		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS, maxTimestampMS)
+		transfers, next, err := chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS, maxTimestampMS)
 		if err != nil {
 			return err
 		}
