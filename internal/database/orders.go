@@ -250,7 +250,9 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 	if err := rows.Err(); err != nil { rows.Close(); return nil, err }
 	if err := rows.Close(); err != nil { return nil, err }
 	for _, id := range ids {
-		update := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
+		updateDueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
+		if driver == "postgres" { updateDueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
+		update := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + updateDueExpr + ")))"
 		args := []any{leaseText, nowText, id, nowText}
 		result, err := tx.ExecContext(ctx, update, args...)
 		if err != nil { return nil, err }
