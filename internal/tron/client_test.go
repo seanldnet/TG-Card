@@ -46,6 +46,7 @@ func TestFetchConfirmedIncomingFiltersAndParsesUSDTTransfers(t *testing.T) {
 func TestNewClientRequiresProductionCredentials(t *testing.T) {
 	if _, err := NewClient("", "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM", ""); err == nil { t.Fatal("expected missing API key error") }
 	if _, err := NewClient("key", "", ""); err == nil { t.Fatal("expected missing receiving address error") }
+	if _, err := NewClient("key", "TInvalidAddress", ""); err == nil { t.Fatal("expected invalid Base58Check address error") }
 	client, err := NewClient("key", "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM", "")
 	if err != nil { t.Fatal(err) }
 	if client.contract != MainnetUSDTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t { t.Fatalf("unexpected default USDT contract: %s", client.contract) }
