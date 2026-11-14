@@ -14,6 +14,7 @@ interface Order {
   unitPriceMinor: number;
   quantity: number;
   amountMinor: number;
+  paymentAmountAtomic: number;
   currency: string;
   status: string;
   expiresAt: string;
@@ -116,8 +117,11 @@ onMounted(loadOrders);
       <a-table :data-source="orders" :loading="loading" row-key="id" :scroll="{ x: 1100 }">
         <a-table-column title="订单号" data-index="orderNo" key="orderNo" :width="190" />
         <a-table-column title="商品" data-index="productName" key="productName" />
-        <a-table-column title="金额" key="amount" :width="130">
+        <a-table-column title="商品金额" key="amount" :width="130">
           <template #default="{ record }">{{ (record.amountMinor / 100).toFixed(2) }} {{ record.currency }}</template>
+        </a-table-column>
+        <a-table-column title="链上应付金额" key="paymentAmount" :width="150">
+          <template #default="{ record }">{{ (record.paymentAmountAtomic / 1000000).toFixed(6) }} USDT</template>
         </a-table-column>
         <a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="150" />
         <a-table-column title="订单状态" key="status" :width="110">
