@@ -360,13 +360,24 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 	if len(orders) == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, "你还没有订单。"); return }
 	var b strings.Builder
 	b.WriteString("最近订单：")
-	for _, order := range orders {
-		b.WriteString(`
+		for _, order := range orders {
+		details := `
 
 订单号：`+order.OrderNo+`
 商品：`+order.ProductName+`
-金额：`+formatPrice(order.AmountMinor, order.Currency)+`
-状态：`+order.Status)
+商品金额：`+formatPrice(order.AmountMinor, order.Currency)+`
+状态：`+order.Status
+		if order.Status == "pending_payment" {
+			if m.paymentEnabled && m.paymentAddress != "" {
+				details += `
+网络：TRON（TRC20）
+收款地址：`+m.paymentAddress+`
+应付：`+formatUSDTAtomic(order.PaymentAmountAtomic)+` USDT`
+			} else {
+				details += "\n支付尚未启用，请勿转账。"
+			}
+		}
+		b.WriteString(details)
 	}
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, b.String(), map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
 }
