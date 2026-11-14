@@ -25,6 +25,8 @@ type Order struct {
 	UpdatedAt string `json:"updatedAt"`
 	PaidAt string `json:"paidAt,omitempty"`
 	DeliveredAt string `json:"deliveredAt,omitempty"`
+	DeliveryAttempts int `json:"deliveryAttempts"`
+	DeliveryError string `json:"deliveryError,omitempty"`
 }
 
 type OrderListItem struct {
@@ -88,7 +90,7 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 }
 
 func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
-	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),
+	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.delivery_attempts,o.delivery_error,
 	EXISTS(SELECT 1 FROM product_keys k WHERE k.order_id=o.id AND k.status=1)
 	FROM orders o ORDER BY o.created_at DESC LIMIT 500`)
 	if err != nil { return nil, err }
@@ -96,7 +98,7 @@ func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
 	items := make([]OrderListItem,0)
 	for rows.Next() {
 		var item OrderListItem
-		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.StockReserved); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.StockReserved); err != nil { return nil, err }
 		items = append(items,item)
 	}
 	return items, rows.Err()
