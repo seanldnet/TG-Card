@@ -314,3 +314,31 @@ func MarkOrderDeliveryFailed(ctx context.Context, db *sql.DB, driver, orderID, r
 	if count != 1 { return fmt.Errorf("order is not in a deliverable state") }
 	return nil
 }
+
+// MatchPendingTRC20Order matches a confirmed incoming transfer by its exact six-decimal
+// amount and block time. A transfer predating an order or arriving after expiry cannot pay it.
+func MatchPendingTRC20Order(ctx context.Context, db *sql.DB, driver string, amountAtomic int64, blockTimestampMS int64) (Order, error) {
+	if amountAtomic <= 0 || blockTimestampMS <= 0 { return Order{}, fmt.Errorf("invalid TRC20 transfer amount or timestamp") }
+	blockTime := time.UnixMilli(blockTimestampMS).UTC().Format(time.RFC3339Nano)
+	timeExpr := "julianday(created_at) <= julianday(" + placeholder(driver, 2) + ") AND julianday(expires_at) >= julianday(" + placeholder(driver, 3) + ")"
+	if driver == "postgres" {
+		timeExpr = "CAST(created_at AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 2) + " AS TIMESTAMPTZ) AND CAST(expires_at AS TIMESTAMPTZ) >= CAST(" + placeholder(driver, 3) + " AS TIMESTAMPTZ)"
+	}
+	query := "SELECT id FROM orders WHERE status='pending_payment' AND payment_amount_atomic=" + placeholder(driver, 1) + " AND " + timeExpr + " LIMIT 2"
+	rows, err := db.QueryContext(ctx, query, amountAtomic, blockTime, blockTime)
+	if err != nil { return Order{}, err }
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil { return Order{}, err }
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil { return Order{}, err }
+	if len(ids) == 0 { return Order{}, sql.ErrNoRows }
+	if len(ids) != 1 { return Order{}, fmt.Errorf("ambiguous TRC20 payment amount; manual reconciliation required") }
+	var item Order
+	load := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,payment_amount_atomic,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver, 1)
+	err = db.QueryRowContext(ctx, load, ids[0]).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.PaymentAmountAtomic,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt)
+	return item, err
+}
