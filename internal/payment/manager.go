@@ -52,7 +52,7 @@ func (m *Manager) Run(ctx context.Context) {
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() { <-timer.C }
+			timer.Stop()
 			return
 		case <-timer.C:
 		}
