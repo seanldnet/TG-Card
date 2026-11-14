@@ -142,6 +142,7 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
@@ -706,6 +707,17 @@ func (a *application) updateSupportTicket(w http.ResponseWriter, r *http.Request
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.ticket.update","support_ticket:"+id,clientIP(r),r.UserAgent(),"status="+item.Status)
 	writeSuccess(w,http.StatusOK,map[string]any{"ticket":item,"notificationSent":notificationSent})
 }
+func (a *application) listPaymentTransactions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w, r); !ok { return }
+	items, err := database.ListPaymentTransactions(r.Context(), a.db, 500)
+	if err != nil {
+		log.Printf("list payment transactions: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to load payment transactions")
+		return
+	}
+	writeSuccess(w, http.StatusOK, items)
+}
+
 func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w, r); !ok { return }
 	items, err := database.ListOrders(r.Context(), a.db)
