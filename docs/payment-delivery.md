@@ -32,7 +32,37 @@ A background recovery loop also scans for due deliveries every 15 seconds. It cl
 
 Telegram `sendMessage` does not provide an idempotency key. If Telegram accepts a message but the network response is lost, a later retry can send the card again. The current delivery guarantee is therefore at-least-once, not exactly-once. The order number is included so duplicate messages can be recognized.
 
-## Not yet connected
+## TRC20 USDT watcher
 
-This repository state provides the payment confirmation and card-delivery contract, but does not yet include a live TRC20 chain watcher, wallet/address allocation, provider webhook signature verification, GMpay, or EPUSDT adapters. No order should be marked paid until one of those trusted adapters is implemented and verifies the settlement.
+The first live read-only payment rail is TRON mainnet USDT through the official TronGrid V1 account TRC-20 history endpoint:
+
+- GET /v1/accounts/{address}/transactions/trc20
+- only_confirmed=true and only_to=true
+- Filtered by the configured USDT contract and paginated with TronGrid meta.fingerprint
+- Requests authenticate with the backend-only TRON-PRO-API-KEY header
+
+The watcher starts only when both TRONGRID_API_KEY and TRON_RECEIVE_ADDRESS are configured. TRON_USDT_CONTRACT defaults to the canonical TRON USDT contract TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t. The application never needs the receiving wallet private key because this integration only reads deposits.
+
+Each new order receives a distinct six-decimal USDT invoice amount: the product two-decimal price plus a small random atomic-unit suffix. The database enforces uniqueness among active pending orders. The bot displays the exact amount and receiving address only when the watcher is enabled. Matching requires the exact amount and a block timestamp within the order creation/expiry window. The watcher then calls the idempotent payment transition and automatic Telegram delivery. Existing pending orders created before migration 0007 have no invoice amount and must be recreated; the bot warns users not to pay those legacy orders.
+
+The watcher polls every 15 seconds and scans confirmed transfers from a fixed two-hour lookback window, using the same min_timestamp across all pages in one scan. It currently caps a scan at 25 pages (5,000 records). TronGrid only_confirmed=true is the confirmation gate; this implementation does not configure a separate N-confirmation threshold. Production API quotas and rate limits depend on the TronGrid key and plan.
+
+Important operational limits:
+
+- This is a single receiving-address / unique-amount design, not per-order wallet allocation.
+- A transfer detected only after order expiry is not automatically credited, even if its block timestamp is close to expiry; it requires manual reconciliation.
+- Unmatched, underpaid, overpaid, expired, or ambiguous transfers are not automatically refunded or credited. A dedicated transaction ledger and reconciliation UI are still future work.
+- No wallet signing, sweeping, withdrawals, or refunds are implemented.
+- GMpay and EPUSDT adapters are not implemented.
+
+Configure the following in the server .env before enabling real payments:
+
+~~~dotenv
+TRONGRID_API_KEY=your-production-trongrid-key
+TRON_RECEIVE_ADDRESS=your-merchant-tron-address
+# Optional; defaults to the canonical TRON mainnet USDT contract.
+TRON_USDT_CONTRACT=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
+~~~
+
+Keep the API key on the server only. Do not put it in frontend code, Telegram messages, or a public repository.
 
