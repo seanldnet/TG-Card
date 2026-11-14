@@ -19,6 +19,11 @@ permissions:
   contents: read
   packages: write
 
+# Keep the mutable :latest tag aligned with the newest main commit.
+concurrency:
+  group: tg-card-publish-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
