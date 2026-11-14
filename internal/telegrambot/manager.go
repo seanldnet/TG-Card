@@ -332,7 +332,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 商品金额：` + formatPrice(order.AmountMinor, order.Currency) + `
 状态：待付款
 有效期至：` + order.ExpiresAt
-		if m.paymentEnabled && m.paymentAddress != "" {
+		if m.paymentEnabled && m.paymentAddress != "" && order.PaymentAmountAtomic > 0 {
 			text += `
 
 支付网络：TRON（TRC20）
@@ -374,7 +374,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 收款地址：`+m.paymentAddress+`
 应付：`+formatUSDTAtomic(order.PaymentAmountAtomic)+` USDT`
 			} else {
-				details += "\n支付尚未启用，请勿转账。"
+				details += "\n此订单没有有效的链上付款金额，请重新下单，切勿转账。"
 			}
 		}
 		b.WriteString(details)
