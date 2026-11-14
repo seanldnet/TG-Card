@@ -112,3 +112,29 @@ func TestCreateOrderReservesStockAtomically(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if len(orders) != 1 || !orders[0].StockReserved { t.Fatalf("expected one order with reserved stock: %+v", orders) }
 }
+func TestExpirePendingOrdersReleasesReservedStock(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Expiring card", PriceMinor: 500, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{{Ciphertext: "encrypted", Fingerprint: "expiry-key"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-expiry", "user-expiry", "chat-expiry", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET expires_at=? WHERE id=?", time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), order.ID); err != nil { t.Fatal(err) }
+	expired, err := ExpirePendingOrders(ctx, db, cfg.DBDriver, 100)
+	if err != nil { t.Fatal(err) }
+	if expired != 1 { t.Fatalf("expired %d orders, want 1", expired) }
+	items, err := ListOrders(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(items) != 1 || items[0].Status != "expired" || items[0].StockReserved { t.Fatalf("order or stock state incorrect after expiry: %+v", items) }
+	products, err := ListProducts(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(products) != 1 || products[0].StockCount != 1 { t.Fatalf("reserved key was not released: %+v", products) }
+	expired, err = ExpirePendingOrders(ctx, db, cfg.DBDriver, 100)
+	if err != nil { t.Fatal(err) }
+	if expired != 0 { t.Fatalf("second expiry pass changed %d orders; want 0", expired) }
+}
