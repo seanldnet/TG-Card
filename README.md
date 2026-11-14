@@ -33,3 +33,7 @@ docker compose up -d
 ## 当前状态
 
 项目正在初始化。后续提交会逐步交付 Go API、Vben 管理界面、Telegram Bot 多实例运行时、支付和自动发卡流程，以及 GHCR 自动构建发布。
+
+## 功能范围
+
+完整功能清单与实施优先级见 [`docs/product-scope.md`](docs/product-scope.md)，覆盖商品与卡密、Bot 欢迎页和动态菜单、订单支付自动交付、售后工单、签到奖励、余额积分、优惠券活动、USDT 链上收款、GMpay、EPUSDT，以及后台运营与安全管理。
