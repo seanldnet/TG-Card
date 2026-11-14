@@ -234,14 +234,15 @@ func CreateBot(ctx context.Context, db *sql.DB, driver, name, username, encrypte
 	if err != nil { return Bot{}, err }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item := Bot{ID:id, Name:name, Username:username, TokenCiphertext:encryptedToken, TokenFingerprint:fingerprint, Status:1, WelcomeText:welcome, MenuConfig:"[]", CreatedAt:now, UpdatedAt:now}
-	_, err = db.ExecContext(ctx, "INSERT INTO bots(id,name,username,token_ciphertext,token_fingerprint,status,welcome_text,menu_config,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-		item.ID,item.Name,item.Username,item.TokenCiphertext,item.TokenFingerprint,item.Status,item.WelcomeText,item.MenuConfig,item.CreatedAt,item.UpdatedAt)
+	query := "INSERT INTO bots(id,name,username,token_ciphertext,token_fingerprint,status,welcome_text,menu_config,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")"
+	_, err = db.ExecContext(ctx, query, item.ID,item.Name,item.Username,item.TokenCiphertext,item.TokenFingerprint,item.Status,item.WelcomeText,item.MenuConfig,item.CreatedAt,item.UpdatedAt)
 	return item, err
 }
 
 func UpdateBot(ctx context.Context, db *sql.DB, driver, id, name, welcome string, status int) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE bots SET name="+placeholder(driver,1)+", welcome_text="+placeholder(driver,2)+", status="+placeholder(driver,3)+", updated_at="+placeholder(driver,4)+" WHERE id="+placeholder(driver,5)\n\tresult, err := db.ExecContext(ctx, query, name,welcome,status,now,id)
+	query := "UPDATE bots SET name="+placeholder(driver,1)+", welcome_text="+placeholder(driver,2)+", status="+placeholder(driver,3)+", updated_at="+placeholder(driver,4)+" WHERE id="+placeholder(driver,5)
+	result, err := db.ExecContext(ctx, query, name,welcome,status,now,id)
 	if err != nil { return err }
 	count, err := result.RowsAffected()
 	if err != nil { return err }
@@ -249,8 +250,8 @@ func UpdateBot(ctx context.Context, db *sql.DB, driver, id, name, welcome string
 	return nil
 }
 
-func DeleteBot(ctx context.Context, db *sql.DB, id string) error {
-	result, err := db.ExecContext(ctx, "DELETE FROM bots WHERE id=?", id)
+func DeleteBot(ctx context.Context, db *sql.DB, driver, id string) error {
+	result, err := db.ExecContext(ctx, "DELETE FROM bots WHERE id="+placeholder(driver,1), id)
 	if err != nil { return err }
 	count, err := result.RowsAffected()
 	if err != nil { return err }

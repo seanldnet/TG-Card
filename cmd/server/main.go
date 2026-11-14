@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"\n\t"fmt"
+	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -15,7 +17,8 @@ import (
 
 	"github.com/seanldnet/TG-Card/internal/auth"
 	"github.com/seanldnet/TG-Card/internal/config"
-	"github.com/seanldnet/TG-Card/internal/database"\n\t"github.com/seanldnet/TG-Card/internal/secret"
+	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/secret"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -23,6 +26,7 @@ type application struct {
 	db *sql.DB
 	driver string
 	tokens *auth.Manager
+	secrets *secret.Manager
 }
 
 type apiEnvelope struct {
@@ -73,13 +77,19 @@ func main() {
 
 	tokens, err := auth.NewManager(cfg.JWTSecret, cfg.DataDir)
 	if err != nil { log.Fatal(err) }
-	secrets, err := secret.New(cfg.DataDir)\n\tif err != nil { log.Fatal(err) }\n\tapp := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets}
+	secrets, err := secret.New(cfg.DataDir)
+	if err != nil { log.Fatal(err) }
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets}
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
 	api.HandleFunc("POST /api/auth/login", app.login)
 	api.HandleFunc("POST /api/auth/logout", app.logout)
-	api.HandleFunc("POST /api/admin/password", app.changePassword)\n\tapi.HandleFunc("GET /api/bots", app.listBots)\n\tapi.HandleFunc("POST /api/bots", app.createBot)\n\tapi.HandleFunc("PUT /api/bots/{id}", app.updateBot)\n\tapi.HandleFunc("DELETE /api/bots/{id}", app.deleteBot)
+	api.HandleFunc("POST /api/admin/password", app.changePassword)
+	api.HandleFunc("GET /api/bots", app.listBots)
+	api.HandleFunc("POST /api/bots", app.createBot)
+	api.HandleFunc("PUT /api/bots/{id}", app.updateBot)
+	api.HandleFunc("DELETE /api/bots/{id}", app.deleteBot)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
@@ -362,7 +372,7 @@ func telegramGetMe(ctx context.Context, token string) (telegramGetMeResponse,err
 	if err!=nil { return result,err }
 	response,err:=http.DefaultClient.Do(request); if err!=nil { return result,fmt.Errorf("cannot reach Telegram API: %w",err) }; defer response.Body.Close()
 	if response.StatusCode!=http.StatusOK { return result,fmt.Errorf("Telegram API returned HTTP %d",response.StatusCode) }
-	if err:=json.NewDecoder(http.MaxBytesReader(nil,response.Body,1<<20)).Decode(&result); err!=nil { return result,fmt.Errorf("invalid Telegram response") }
+	if err:=json.NewDecoder(io.LimitReader(response.Body,1<<20)).Decode(&result); err!=nil { return result,fmt.Errorf("invalid Telegram response") }
 	if !result.OK || result.Result.Username=="" { if result.Description!="" { return result,fmt.Errorf("%s",result.Description) }; return result,fmt.Errorf("Telegram rejected this token") }
 	return result,nil
 }
