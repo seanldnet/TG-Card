@@ -150,7 +150,7 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 	for _, p := range products {
 		if p.ID != productID || p.Status != 1 { continue }
 		if p.StockCount < 1 { _ = m.sendMessage(ctx, cfg.Token, chatID, "该商品库存不足，请返回商城选择其他商品。"); return }
-		text := "请确认订单信息：\\n商品：" + p.Name + "\\n金额：" + formatPrice(p.PriceMinor, p.Currency) + "\\n数量：1\\n库存：" + strconv.Itoa(p.StockCount) + "\\n\\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。当前支付功能尚未开通，请勿转账。"
+		text := "请确认订单信息：\n商品：" + p.Name + "\n金额：" + formatPrice(p.PriceMinor, p.Currency) + "\n数量：1\n库存：" + strconv.Itoa(p.StockCount) + "\n\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。当前支付功能尚未开通，请勿转账。"
 		markup := map[string]any{"inline_keyboard": [][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, markup)
 		return
@@ -339,7 +339,11 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
 		return err
 	}
-	if m.decrypt == nil { return fmt.Errorf("card-key decryptor is not configured") }
+	if m.decrypt == nil {
+		err := fmt.Errorf("card-key decryptor is not configured")
+		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
+		return err
+	}
 	cardKey, err := m.decrypt(item.SecretCiphertext)
 	if err != nil {
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "decrypt card key: "+err.Error())
@@ -350,7 +354,7 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "invalid Telegram chat ID")
 		return fmt.Errorf("invalid Telegram chat ID: %w", err)
 	}
-	message := "付款已确认，商品已发放。\\n订单号：" + item.Order.OrderNo + "\\n商品：" + item.Order.ProductName + "\\n卡密：\\n" + cardKey + "\\n\\n请妥善保存，不要转发给他人。"
+	message := "付款已确认，商品已发放。\n订单号：" + item.Order.OrderNo + "\n商品：" + item.Order.ProductName + "\n卡密：\n" + cardKey + "\n\n请妥善保存，不要转发给他人。"
 	if err := m.sendMessage(ctx, current.config.Token, chatID, message); err != nil {
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
 		return fmt.Errorf("send paid order delivery: %w", err)
