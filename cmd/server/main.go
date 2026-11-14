@@ -122,7 +122,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, err := a.tokens.Issue(auth.Claims{
-		AdminID: admin.ID, Username: admin.Username, RealName: admin.RealName, Role: admin.Role,
+		AdminID: admin.ID, Username: admin.Username, RealName: admin.RealName, Role: admin.Role, TokenVersion: admin.TokenVersion,
 	}, 24*time.Hour)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Unable to create login session")
