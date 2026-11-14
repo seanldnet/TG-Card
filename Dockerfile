@@ -8,7 +8,7 @@ COPY scripts/ ./scripts/
 COPY web/overrides/ ./web/overrides/
 RUN ./scripts/apply-vben-overrides.sh
 WORKDIR /src/web/vben-admin
-RUN pnpm install --frozen-lockfile
+RUN CI=true pnpm install --frozen-lockfile
 RUN pnpm --filter @vben/web-antd build
 
 FROM golang:1.23-alpine AS go-builder
