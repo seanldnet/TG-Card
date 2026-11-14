@@ -354,7 +354,7 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "invalid Telegram chat ID")
 		return fmt.Errorf("invalid Telegram chat ID: %w", err)
 	}
-	message := "付款已确认，商品已发放。\n订单号：" + item.Order.OrderNo + "\n商品：" + item.Order.ProductName + "\n卡密：\n" + cardKey + "\n\n请妥善保存，不要转发给他人。"
+	message := "订单：" + item.Order.OrderNo + "\n卡密：\n" + cardKey + "\n请妥善保存，不要转发给他人。"
 	if err := m.sendMessage(ctx, current.config.Token, chatID, message); err != nil {
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
 		return fmt.Errorf("send paid order delivery: %w", err)
