@@ -529,7 +529,7 @@ type orderView struct {
 	UnitPriceMinor int64 `json:"unitPriceMinor"`
 	Quantity int `json:"quantity"`
 	AmountMinor int64 `json:"amountMinor"`
-	PaymentAmountAtomic int64 `json:"paymentAmountAtomic"`
+	PaymentAmount string `json:"paymentAmount"`
 	Currency string `json:"currency"`
 	Status string `json:"status"`
 	ExpiresAt string `json:"expiresAt"`
@@ -571,10 +571,15 @@ func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 			ID:item.ID, OrderNo:item.OrderNo, BotID:item.BotID,
 			TelegramUserID:item.TelegramUserID, TelegramChatID:item.TelegramChatID,
 			ProductName:item.ProductName, UnitPriceMinor:item.UnitPriceMinor,
-			Quantity:item.Quantity, AmountMinor:item.AmountMinor, PaymentAmountAtomic:item.PaymentAmountAtomic, Currency:item.Currency,
+			Quantity:item.Quantity, AmountMinor:item.AmountMinor, PaymentAmount:formatUSDTAtomic(item.PaymentAmountAtomic), Currency:item.Currency,
 			Status:item.Status, ExpiresAt:item.ExpiresAt, CreatedAt:item.CreatedAt,
 			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, DeliveryAttempts:item.DeliveryAttempts, DeliveryError:item.DeliveryError, StockReserved:item.StockReserved,
 		})
 	}
 	writeSuccess(w, http.StatusOK, result)
+}
+
+func formatUSDTAtomic(value int64) string {
+	if value < 0 { value = 0 }
+	return fmt.Sprintf("%d.%06d", value/1_000_000, value%1_000_000)
 }
