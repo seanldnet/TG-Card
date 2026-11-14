@@ -272,7 +272,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
-		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\\n工单号："+ticket.TicketNo+"\\n订单号："+ticket.OrderNo+"\\n状态：待受理。管理员回复后会通过本机器人通知你。")
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。")
 	}
 }
 
@@ -508,7 +508,7 @@ func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportT
 	m.mu.Unlock()
 	if !ok { return fmt.Errorf("Telegram bot for this support ticket is not running") }
 	chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64);if err!=nil{return fmt.Errorf("invalid support ticket chat ID: %w",err)}
-	text:="售后工单更新\\n工单号："+ticket.TicketNo+"\\n订单号："+ticket.OrderNo+"\\n当前状态："+ticket.Status
-	if ticket.AdminReply!="" { text+="\\n管理员回复：\\n"+ticket.AdminReply }
+	text:="售后工单更新\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n当前状态："+ticket.Status
+	if ticket.AdminReply!="" { text+="\n管理员回复：\n"+ticket.AdminReply }
 	return m.sendMessage(ctx,cfg.Token,chatID,text)
 }

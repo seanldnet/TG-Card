@@ -35,7 +35,7 @@ func CreateSupportTicket(ctx context.Context, db *sql.DB, driver, botID, telegra
 	if err := db.QueryRowContext(ctx, query, orderNo, botID, telegramUserID).Scan(&orderID, &orderStatus); err != nil { if err == sql.ErrNoRows { return SupportTicket{}, fmt.Errorf("order not found for this Telegram account") }; return SupportTicket{}, err }
 	switch orderStatus { case "paid", "delivering", "delivery_failed", "delivered", "expired": default: return SupportTicket{}, fmt.Errorf("this order is not eligible for after-sales support") }
 	var active int
-	activeQuery := "SELECT COUNT(1) FROM support_tickets WHERE order_id=" + placeholder(driver, 1) + " AND status IN ('open','in_progress','waiting_user')
+	activeQuery := "SELECT COUNT(1) FROM support_tickets WHERE order_id=" + placeholder(driver, 1) + " AND status IN ('open','in_progress','waiting_user')"
 	if err := db.QueryRowContext(ctx, activeQuery, orderID).Scan(&active); err != nil { return SupportTicket{}, err }
 	if active > 0 { return SupportTicket{}, fmt.Errorf("this order already has an active support ticket") }
 	id, err := randomID(); if err != nil { return SupportTicket{}, err }
