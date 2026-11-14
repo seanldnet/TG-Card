@@ -327,14 +327,14 @@ func MatchPendingTRC20Order(ctx context.Context, db *sql.DB, driver string, amou
 	query := "SELECT id FROM orders WHERE status='pending_payment' AND payment_amount_atomic=" + placeholder(driver, 1) + " AND " + timeExpr + " LIMIT 2"
 	rows, err := db.QueryContext(ctx, query, amountAtomic, blockTime, blockTime)
 	if err != nil { return Order{}, err }
-	defer rows.Close()
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil { return Order{}, err }
 		ids = append(ids, id)
 	}
-	if err := rows.Err(); err != nil { return Order{}, err }
+	if err := rows.Err(); err != nil { _ = rows.Close(); return Order{}, err }
+	if err := rows.Close(); err != nil { return Order{}, err }
 	if len(ids) == 0 { return Order{}, sql.ErrNoRows }
 	if len(ids) != 1 { return Order{}, fmt.Errorf("ambiguous TRC20 payment amount; manual reconciliation required") }
 	var item Order
