@@ -185,6 +185,11 @@ func (a *application) authenticate(w http.ResponseWriter, r *http.Request) (auth
 		writeError(w, http.StatusUnauthorized, "Unauthorized")
 		return auth.Claims{}, false
 	}
+	admin, err := database.FindAdminByID(r.Context(), a.db, a.driver, claims.AdminID)
+	if err != nil || admin.Status != 1 || admin.TokenVersion != claims.TokenVersion {
+		writeError(w, http.StatusUnauthorized, "Session expired; please sign in again")
+		return auth.Claims{}, false
+	}
 	return claims, true
 }
 
