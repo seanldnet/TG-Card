@@ -2,8 +2,10 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"time"
 )
 
@@ -18,6 +20,7 @@ type Order struct {
 	UnitPriceMinor int64 `json:"unitPriceMinor"`
 	Quantity int `json:"quantity"`
 	AmountMinor int64 `json:"amountMinor"`
+	PaymentAmountAtomic int64 `json:"paymentAmountAtomic"`
 	Currency string `json:"currency"`
 	Status string `json:"status"`
 	ExpiresAt string `json:"expiresAt"`
@@ -65,11 +68,25 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 	if err != nil { return Order{}, err }
 	now := time.Now().UTC()
 	expires := now.Add(ttl)
+	// USDT TRC20 uses six decimal places. Product prices use two decimal places;
+	// a small random atomic-unit suffix uniquely identifies concurrent invoices.
+	baseAtomic := price * 10000
+	var paymentAmountAtomic int64
+	for attempt := 0; attempt < 20; attempt++ {
+		suffix, err := rand.Int(rand.Reader, big.NewInt(9999))
+		if err != nil { return Order{}, fmt.Errorf("generate unique payment amount: %w", err) }
+		candidate := baseAtomic + suffix.Int64() + 1
+		var exists int
+		check := "SELECT COUNT(1) FROM orders WHERE status='pending_payment' AND payment_amount_atomic=" + placeholder(driver, 1)
+		if err := tx.QueryRowContext(ctx, check, candidate).Scan(&exists); err != nil { return Order{}, err }
+		if exists == 0 { paymentAmountAtomic = candidate; break }
+	}
+	if paymentAmountAtomic == 0 { return Order{}, fmt.Errorf("unable to allocate unique payment amount") }
 	order := Order{
 		ID:id, OrderNo:"TC"+now.Format("20060102150405")+orderSuffix[:6],
 		BotID:botID, TelegramUserID:telegramUserID, TelegramChatID:telegramChatID,
 		ProductID:productID, ProductName:productName, UnitPriceMinor:price, Quantity:1,
-		AmountMinor:price, Currency:currency, Status:"pending_payment",
+		AmountMinor:price, PaymentAmountAtomic:paymentAmountAtomic, Currency:currency, Status:"pending_payment",
 		ExpiresAt:expires.Format(time.RFC3339Nano), CreatedAt:now.Format(time.RFC3339Nano),
 		UpdatedAt:now.Format(time.RFC3339Nano),
 	}
@@ -80,17 +97,17 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 	if err != nil { return Order{}, err }
 	if affected != 1 { return Order{}, fmt.Errorf("stock reservation conflict") }
 
-	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at) VALUES("
-	for i:=1;i<=15;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
+	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic) VALUES("
+	for i:=1;i<=16;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
 	insert += ")"
-	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt)
+	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic)
 	if err != nil { return Order{}, err }
 	if err := tx.Commit(); err != nil { return Order{}, err }
 	return order, nil
 }
 
 func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
-	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.delivery_attempts,o.delivery_error,
+	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.delivery_attempts,o.delivery_error,o.payment_amount_atomic,
 	EXISTS(SELECT 1 FROM product_keys k WHERE k.order_id=o.id AND k.status=1)
 	FROM orders o ORDER BY o.created_at DESC LIMIT 500`)
 	if err != nil { return nil, err }
@@ -98,7 +115,7 @@ func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
 	items := make([]OrderListItem,0)
 	for rows.Next() {
 		var item OrderListItem
-		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.StockReserved); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.PaymentAmountAtomic,&item.StockReserved); err != nil { return nil, err }
 		items = append(items,item)
 	}
 	return items, rows.Err()
@@ -107,7 +124,7 @@ func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
 
 // ListOrdersByTelegramUser returns a user's recent orders for one Bot only.
 func ListOrdersByTelegramUser(ctx context.Context, db *sql.DB, driver, telegramUserID, botID string) ([]Order, error) {
-	query := `SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'')
+	query := `SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic
 		FROM orders WHERE telegram_user_id=` + placeholder(driver, 1) + " AND bot_id=" + placeholder(driver, 2) + " ORDER BY created_at DESC LIMIT 20"
 	rows, err := db.QueryContext(ctx, query, telegramUserID, botID)
 	if err != nil { return nil, err }
@@ -115,7 +132,7 @@ func ListOrdersByTelegramUser(ctx context.Context, db *sql.DB, driver, telegramU
 	items := make([]Order, 0)
 	for rows.Next() {
 		var item Order
-		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic); err != nil { return nil, err }
 		items = append(items, item)
 	}
 	return items, rows.Err()
