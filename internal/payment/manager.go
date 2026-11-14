@@ -25,42 +25,57 @@ func NewManager(cfg config.Config, db *sql.DB, driver string, bots *telegrambot.
 		return nil, nil
 	}
 	chain, err := tron.NewClient(cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract)
-	if err != nil { return nil, err }
-	if db == nil || bots == nil { return nil, errors.New("TRC20 payment manager requires database and Telegram bot manager") }
-	return &Manager{db:db, driver:driver, chain:chain, bots:bots}, nil
+	if err != nil {
+		return nil, err
+	}
+	if db == nil || bots == nil {
+		return nil, errors.New("TRC20 payment manager requires database and Telegram bot manager")
+	}
+	return &Manager{db: db, driver: driver, chain: chain, bots: bots}, nil
 }
 
-// Run polls the confirmed-only TronGrid index. No transfer can mark an order paid
-// until its recipient, USDT contract, six-decimal amount, and order time window match.
+// Run polls confirmed TronGrid transfers. Errors use exponential backoff so a
+// provider rate limit does not cause a permanent 15-second request loop.
 func (m *Manager) Run(ctx context.Context) {
 	log.Printf("TRC20 payment watcher started: source=TronGrid confirmed_transfers=true")
-	m.scan(ctx)
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+	delay := 15 * time.Second
 	for {
+		err := m.scan(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			log.Printf("TRC20 payment scan failed; retrying in %s: %v", delay, err)
+		} else {
+			delay = 15 * time.Second
+		}
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() { <-timer.C }
 			return
-		case <-ticker.C:
-			m.scan(ctx)
+		case <-timer.C:
+		}
+		if err != nil && delay < 5*time.Minute {
+			delay *= 2
+			if delay > 5*time.Minute { delay = 5*time.Minute }
 		}
 	}
 }
 
-func (m *Manager) scan(ctx context.Context) {
+func (m *Manager) scan(ctx context.Context) error {
 	scanCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	fingerprint := ""
-	minTimestampMS := time.Now().Add(-2*time.Hour).UnixMilli()
+	minTimestampMS := time.Now().Add(-2 * time.Hour).UnixMilli()
 	processed := 0
 	for page := 0; page < 25; page++ {
 		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS)
 		if err != nil {
-			if scanCtx.Err() == nil { log.Printf("TRC20 confirmed transfer scan failed: %v", err) }
-			return
+			return err
 		}
 		for _, transfer := range transfers {
-			if scanCtx.Err() != nil { return }
+			if scanCtx.Err() != nil { return scanCtx.Err() }
 			order, err := database.MatchPendingTRC20Order(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
 			if errors.Is(err, sql.ErrNoRows) { continue }
 			if err != nil {
@@ -79,8 +94,15 @@ func (m *Manager) scan(ctx context.Context) {
 			processed++
 			log.Printf("TRC20 payment confirmed and order delivered: order_id=%s tx=%s", order.ID, transfer.TransactionID)
 		}
-		if next == "" || next == fingerprint { break }
+		if next == "" || next == fingerprint {
+			if processed > 0 { log.Printf("TRC20 payment scan completed: delivered=%d", processed) }
+			return nil
+		}
 		fingerprint = next
+		if page == 24 {
+			log.Printf("TRC20 scan reached pagination safety cap: pages=25; additional confirmed transfers may remain")
+		}
 	}
 	if processed > 0 { log.Printf("TRC20 payment scan completed: delivered=%d", processed) }
+	return nil
 }
