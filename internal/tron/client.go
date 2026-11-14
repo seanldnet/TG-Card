@@ -83,6 +83,9 @@ func (c *Client) FetchConfirmedIncoming(ctx context.Context, fingerprint string)
 	q.Set("only_to", "true")
 	q.Set("limit", "200")
 	q.Set("order_by", "block_timestamp,asc")
+	// All active order invoices expire within minutes; a bounded lookback avoids
+	// rescanning the merchant's entire historical account on every poll.
+	q.Set("min_timestamp", strconv.FormatInt(time.Now().Add(-2*time.Hour).UnixMilli(), 10))
 	q.Set("contract_address", c.contract)
 	if fingerprint != "" { q.Set("fingerprint", fingerprint) }
 	u.RawQuery = q.Encode()
