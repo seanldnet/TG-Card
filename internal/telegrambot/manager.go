@@ -32,6 +32,7 @@ type Manager struct {
 	client *http.Client
 	db *sql.DB
 	driver string
+	decrypt func(string) (string, error)
 	expiryCancel context.CancelFunc
 }
 
@@ -84,12 +85,13 @@ type apiResult struct {
 	Description string `json:"description"`
 }
 
-func NewManager(db *sql.DB, driver string) *Manager {
+func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error)) *Manager {
 	return &Manager{
 		workers: make(map[string]*worker),
 		client: &http.Client{Timeout: 40 * time.Second},
 		db: db,
 		driver: driver,
+		decrypt: decrypt,
 	}
 }
 
@@ -321,6 +323,44 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 状态：`+order.Status)
 	}
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, b.String(), map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
+}
+
+
+// DeliverPaidOrder sends the card associated with a verified, paid order.
+// Payment adapters must call this only after independently verifying settlement.
+func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
+	if item.Order.Status == "delivered" { return nil }
+	if item.SecretCiphertext == "" { return fmt.Errorf("paid order has no recoverable card key") }
+	m.mu.Lock()
+	current := m.workers[item.Order.BotID]
+	m.mu.Unlock()
+	if current == nil {
+		err := fmt.Errorf("Telegram bot for paid order is not running")
+		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
+		return err
+	}
+	if m.decrypt == nil { return fmt.Errorf("card-key decryptor is not configured") }
+	cardKey, err := m.decrypt(item.SecretCiphertext)
+	if err != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "decrypt card key: "+err.Error())
+		return err
+	}
+	chatID, err := strconv.ParseInt(item.Order.TelegramChatID, 10, 64)
+	if err != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "invalid Telegram chat ID")
+		return fmt.Errorf("invalid Telegram chat ID: %w", err)
+	}
+	message := "付款已确认，商品已发放。\\n订单号：" + item.Order.OrderNo + "\\n商品：" + item.Order.ProductName + "\\n卡密：\\n" + cardKey + "\\n\\n请妥善保存，不要转发给他人。"
+	if err := m.sendMessage(ctx, current.config.Token, chatID, message); err != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
+		return fmt.Errorf("send paid order delivery: %w", err)
+	}
+	if err := database.MarkOrderDelivered(ctx, m.db, m.driver, item.Order.ID); err != nil {
+		log.Printf("Telegram card sent but order delivery state update failed: order_id=%s error=%v", item.Order.ID, err)
+		return err
+	}
+	log.Printf("Telegram order delivered: bot_id=%s order_id=%s", item.Order.BotID, item.Order.ID)
+	return nil
 }
 
 func (m *Manager) answerCallback(ctx context.Context, token, callbackID, text string) error {
