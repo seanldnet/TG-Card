@@ -121,7 +121,7 @@ onMounted(loadOrders);
           <template #default="{ record }">{{ (record.amountMinor / 100).toFixed(2) }} {{ record.currency }}</template>
         </a-table-column>
         <a-table-column title="链上应付金额" key="paymentAmount" :width="150">
-          <template #default="{ record }">{{ record.paymentAmount }} USDT</template>
+          <template #default="{ record }">{{ record.paymentAmount === '0.000000' ? '-' : record.paymentAmount + ' USDT' }}</template>
         </a-table-column>
         <a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="150" />
         <a-table-column title="订单状态" key="status" :width="110">
