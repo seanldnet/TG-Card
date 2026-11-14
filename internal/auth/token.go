@@ -15,11 +15,11 @@ import (
 )
 
 type Claims struct {
-	AdminID string \`json:"sub"\`
-	Username string \`json:"username"\`
-	RealName string \`json:"realName"\`
-	Role string \`json:"role"\`
-	Expires int64 \`json:"exp"\`
+	AdminID string `json:"sub"`
+	Username string `json:"username"`
+	RealName string `json:"realName"`
+	Role string `json:"role"`
+	Expires int64 `json:"exp"`
 }
 
 type Manager struct { secret []byte }

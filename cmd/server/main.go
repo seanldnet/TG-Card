@@ -26,23 +26,23 @@ type application struct {
 }
 
 type apiEnvelope struct {
-	Code int \`json:"code"\`
-	Data any \`json:"data"\`
-	Error any \`json:"error"\`
-	Message string \`json:"message"\`
+	Code int `json:"code"`
+	Data any `json:"data"`
+	Error any `json:"error"`
+	Message string `json:"message"`
 }
 
 type loginRequest struct {
-	Username string \`json:"username"\`
-	Password string \`json:"password"\`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type userInfo struct {
-	ID string \`json:"id"\`
-	Username string \`json:"username"\`
-	RealName string \`json:"realName"\`
-	Roles []string \`json:"roles"\`
-	HomePath string \`json:"homePath"\`
+	ID string `json:"id"`
+	Username string `json:"username"`
+	RealName string `json:"realName"`
+	Roles []string `json:"roles"`
+	HomePath string `json:"homePath"`
 }
 
 func main() {
