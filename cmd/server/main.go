@@ -111,6 +111,8 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
+	api.HandleFunc("PUT /api/support/tickets/{id}", app.updateSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
@@ -214,6 +216,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
 			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
+		},
+		{
+			"name": "Support", "path": "/support", "component": "/support/index",
+			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 4, "title": "售后工单"},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
@@ -519,6 +525,11 @@ func (a *application) importProductKeys(w http.ResponseWriter,r *http.Request) {
 	writeSuccess(w,200,map[string]int{"submitted":len(items),"inserted":inserted,"duplicates":len(items)-inserted})
 }
 
+type supportTicketUpdateRequest struct {
+	Status string `json:"status"`
+	AdminReply string `json:"adminReply"`
+}
+
 type orderView struct {
 	ID string `json:"id"`
 	OrderNo string `json:"orderNo"`
@@ -562,6 +573,30 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 	writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true})
 }
 
+func (a *application) listSupportTickets(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w,r); !ok { return }
+	items,err:=database.ListSupportTickets(r.Context(),a.db,a.driver)
+	if err!=nil { log.Printf("list support tickets: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load support tickets"); return }
+	writeSuccess(w,http.StatusOK,items)
+}
+
+func (a *application) updateSupportTicket(w http.ResponseWriter, r *http.Request) {
+	claims,ok:=a.authenticate(w,r); if !ok { return }
+	id:=r.PathValue("id")
+	var input supportTicketUpdateRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
+	before,err:=database.GetSupportTicket(r.Context(),a.db,a.driver,id)
+	if errors.Is(err,sql.ErrNoRows){writeError(w,http.StatusNotFound,"Support ticket not found");return}
+	if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to load support ticket");return}
+	item,err:=database.UpdateSupportTicket(r.Context(),a.db,a.driver,id,input.Status,input.AdminReply)
+	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	notificationSent:=false
+	if item.AdminReply!="" && item.AdminReply!=before.AdminReply {
+		if err:=a.botManager.SendSupportReply(r.Context(),item);err!=nil{log.Printf("send support ticket reply failed: ticket_id=%s error=%v",id,err)}else{notificationSent=true}
+	}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.ticket.update","support_ticket:"+id,clientIP(r),r.UserAgent(),"status="+item.Status)
+	writeSuccess(w,http.StatusOK,map[string]any{"ticket":item,"notificationSent":notificationSent})
+}
 func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w, r); !ok { return }
 	items, err := database.ListOrders(r.Context(), a.db)
