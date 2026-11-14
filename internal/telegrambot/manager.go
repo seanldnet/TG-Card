@@ -186,7 +186,12 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 	for _, p := range products {
 		if p.ID != productID || p.Status != 1 { continue }
 		if p.StockCount < 1 { _ = m.sendMessage(ctx, cfg.Token, chatID, "该商品库存不足，请返回商城选择其他商品。"); return }
-		text := "请确认订单信息：\n商品：" + p.Name + "\n金额：" + formatPrice(p.PriceMinor, p.Currency) + "\n数量：1\n库存：" + strconv.Itoa(p.StockCount) + "\n\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。当前支付功能尚未开通，请勿转账。"
+		text := "请确认订单信息：\n商品：" + p.Name + "\n商品金额：" + formatPrice(p.PriceMinor, p.Currency) + "\n数量：1\n库存：" + strconv.Itoa(p.StockCount) + "\n\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。"
+		if m.paymentEnabled && m.paymentAddress != "" {
+			text += "\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"
+		} else {
+			text += "\n支付尚未启用，请勿转账。"
+		}
 		markup := map[string]any{"inline_keyboard": [][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, markup)
 		return
