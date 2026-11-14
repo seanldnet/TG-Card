@@ -19,6 +19,7 @@ type Claims struct {
 	Username string `json:"username"`
 	RealName string `json:"realName"`
 	Role string `json:"role"`
+	TokenVersion int `json:"ver"`
 	Expires int64 `json:"exp"`
 }
 

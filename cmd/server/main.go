@@ -32,7 +32,12 @@ type apiEnvelope struct {
 	Message string `json:"message"`
 }
 
-type passwordChangeRequest struct {\n\tCurrentPassword string `json:"currentPassword"`\n\tNewPassword string `json:"newPassword"`\n}\n\ntype loginRequest struct {
+type passwordChangeRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword string `json:"newPassword"`
+}
+
+type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
