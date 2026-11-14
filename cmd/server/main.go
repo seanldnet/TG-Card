@@ -21,6 +21,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/payment"
 	"github.com/seanldnet/TG-Card/internal/secret"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
+	"github.com/seanldnet/TG-Card/internal/tron"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -30,6 +31,7 @@ type application struct {
 	tokens *auth.Manager
 	secrets *secret.Manager
 	botManager *telegrambot.Manager
+	paymentManager *payment.Manager
 }
 
 type apiEnvelope struct {
@@ -42,6 +44,14 @@ type apiEnvelope struct {
 type passwordChangeRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword string `json:"newPassword"`
+}
+
+type paymentSettingsRequest struct {
+	APIKey string `json:"apiKey"`
+	ClearAPIKey bool `json:"clearApiKey"`
+	ReceiveAddress string `json:"receiveAddress"`
+	USDTContract string `json:"usdtContract"`
+	Enabled bool `json:"enabled"`
 }
 
 type loginRequest struct {
@@ -82,15 +92,36 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	secrets, err := secret.New(cfg.DataDir)
 	if err != nil { log.Fatal(err) }
-	paymentsEnabled := cfg.TronGridAPIKey != "" && cfg.TronReceiveAddress != ""
-	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, cfg.TronReceiveAddress, paymentsEnabled)
+	paymentSettings, settingsErr := database.GetPaymentSettings(ctx, db, cfg.DBDriver)
+	if errors.Is(settingsErr, sql.ErrNoRows) {
+		paymentSettings = database.PaymentSettings{TronUSDTContract: tron.MainnetUSDTContract}
+		if cfg.TronGridAPIKey != "" && cfg.TronReceiveAddress != "" {
+			encrypted, encryptErr := secrets.Encrypt(cfg.TronGridAPIKey)
+			if encryptErr != nil { log.Fatalf("encrypt bootstrap TronGrid key: %v", encryptErr) }
+			paymentSettings.TronAPIKeyCiphertext = encrypted
+			paymentSettings.TronReceiveAddress = cfg.TronReceiveAddress
+			paymentSettings.TronUSDTContract = cfg.TronUSDTContract
+			paymentSettings.TronEnabled = true
+		}
+		if err := database.SavePaymentSettings(ctx, db, cfg.DBDriver, paymentSettings); err != nil { log.Fatalf("initialize payment settings: %v", err) }
+	} else if settingsErr != nil { log.Fatalf("load payment settings: %v", settingsErr) }
+	if paymentSettings.TronUSDTContract == "" { paymentSettings.TronUSDTContract = tron.MainnetUSDTContract }
+	apiKey := ""
+	if paymentSettings.TronAPIKeyCiphertext != "" {
+		apiKey, err = secrets.Decrypt(paymentSettings.TronAPIKeyCiphertext)
+		if err != nil { log.Fatalf("decrypt saved TronGrid API key: %v", err) }
+	}
+	paymentsEnabled := paymentSettings.TronEnabled && apiKey != "" && paymentSettings.TronReceiveAddress != ""
+	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
 	defer botManager.Stop()
+	cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract = "", "", paymentSettings.TronUSDTContract
+	if paymentsEnabled { cfg.TronGridAPIKey, cfg.TronReceiveAddress = apiKey, paymentSettings.TronReceiveAddress }
 	paymentManager, err := payment.NewManager(cfg, db, cfg.DBDriver, botManager)
 	if err != nil { log.Fatalf("initialize TRC20 payment watcher: %v", err) }
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
-	if paymentManager != nil { go paymentManager.Run(paymentCtx) }
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager}
+	go paymentManager.Run(paymentCtx)
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager}
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 
 	api := http.NewServeMux()
@@ -111,6 +142,8 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
+	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
 	api.HandleFunc("PUT /api/support/tickets/{id}", app.updateSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
@@ -129,6 +162,78 @@ func main() {
 	}
 	log.Printf("TG-Card server listening on %s (database=%s, web_dist=%s)", addr, cfg.DBDriver, cfg.WebDistDir)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) { log.Fatal(err) }
+}
+
+type paymentSettingsView struct {
+	APIKeyConfigured bool `json:"apiKeyConfigured"`
+	ReceiveAddress string `json:"receiveAddress"`
+	USDTContract string `json:"usdtContract"`
+	Enabled bool `json:"enabled"`
+}
+
+func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w, r); !ok { return }
+	s, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
+	if err != nil { log.Printf("load payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load payment settings"); return }
+	writeSuccess(w, http.StatusOK, paymentSettingsView{
+		APIKeyConfigured: s.TronAPIKeyCiphertext != "",
+		ReceiveAddress: s.TronReceiveAddress,
+		USDTContract: s.TronUSDTContract,
+		Enabled: s.TronEnabled,
+	})
+}
+
+func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	var input paymentSettingsRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body"); return
+	}
+	input.ReceiveAddress = strings.TrimSpace(input.ReceiveAddress)
+	input.USDTContract = strings.TrimSpace(input.USDTContract)
+	input.APIKey = strings.TrimSpace(input.APIKey)
+	if input.USDTContract == "" { input.USDTContract = tron.MainnetUSDTContract }
+	current, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
+	if err != nil { log.Printf("load existing payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load current payment settings"); return }
+	apiKeyCiphertext := current.TronAPIKeyCiphertext
+	if input.ClearAPIKey { apiKeyCiphertext = "" } else if input.APIKey != "" {
+		apiKeyCiphertext, err = a.secrets.Encrypt(input.APIKey)
+		if err != nil { writeError(w, http.StatusInternalServerError, "Unable to encrypt API key"); return }
+	}
+	apiKey := ""
+	if apiKeyCiphertext != "" {
+		apiKey, err = a.secrets.Decrypt(apiKeyCiphertext)
+		if err != nil { writeError(w, http.StatusInternalServerError, "Unable to read saved API key"); return }
+	}
+	if input.Enabled {
+		if apiKey == "" || input.ReceiveAddress == "" {
+			writeError(w, http.StatusBadRequest, "启用收款前必须配置 TronGrid API Key 和 TRON 收款地址"); return
+		}
+		if _, err := tron.NewClient(apiKey, input.ReceiveAddress, input.USDTContract); err != nil {
+			writeError(w, http.StatusBadRequest, "TRON 配置校验失败："+err.Error()); return
+		}
+	}
+	next := database.PaymentSettings{
+		TronAPIKeyCiphertext: apiKeyCiphertext,
+		TronReceiveAddress: input.ReceiveAddress,
+		TronUSDTContract: input.USDTContract,
+		TronEnabled: input.Enabled,
+	}
+	if err := database.SavePaymentSettings(r.Context(), a.db, a.driver, next); err != nil {
+		log.Printf("save payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to save payment settings"); return
+	}
+	if err := a.paymentManager.SetConfig(apiKey, input.ReceiveAddress, input.USDTContract, input.Enabled); err != nil {
+		writeError(w, http.StatusBadRequest, "TRON 配置校验失败："+err.Error()); return
+	}
+	a.botManager.SetPaymentConfig(input.ReceiveAddress, input.Enabled)
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
+	writeSuccess(w, http.StatusOK, paymentSettingsView{
+		APIKeyConfigured: apiKeyCiphertext != "",
+		ReceiveAddress: input.ReceiveAddress,
+		USDTContract: input.USDTContract,
+		Enabled: input.Enabled,
+	})
 }
 
 func (a *application) health(w http.ResponseWriter, r *http.Request) {
