@@ -32,8 +32,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.18.0"
-          cache: pnpm
-          cache-dependency-path: web/vben-admin/pnpm-lock.yaml
 
       - name: Enable Corepack and install pnpm
         run: |
