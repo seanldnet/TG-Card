@@ -127,7 +127,10 @@ func ExpirePendingOrders(ctx context.Context, db *sql.DB, driver string, limit i
 	if err != nil { return 0, err }
 	defer tx.Rollback()
 
-	query := "SELECT id FROM orders WHERE status='pending_payment' AND expires_at <= " + placeholder(driver, 1) + " ORDER BY expires_at LIMIT " + fmt.Sprint(limit)
+		expiryExpr := "julianday(expires_at) <= julianday(" + placeholder(driver, 1) + ")"
+	orderExpr := "julianday(expires_at)"
+	if driver == "postgres" { expiryExpr = "CAST(expires_at AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 1) + " AS TIMESTAMPTZ)"; orderExpr = "CAST(expires_at AS TIMESTAMPTZ)" }
+	query := "SELECT id FROM orders WHERE status='pending_payment' AND " + expiryExpr + " ORDER BY " + orderExpr + " LIMIT " + fmt.Sprint(limit)
 	if driver == "postgres" { query += " FOR UPDATE SKIP LOCKED" }
 	rows, err := tx.QueryContext(ctx, query, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil { return 0, err }
@@ -206,8 +209,10 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 	delivery.AlreadyPaid = alreadyPaid
 	delivery.PaymentMethod = paymentMethod
 	delivery.PaymentReference = paymentReference
-	keyQuery := "SELECT k.secret_ciphertext FROM product_keys k WHERE k.order_id=" + placeholder(driver, 1) + " AND k.status=2 LIMIT 1"
-	if err := tx.QueryRowContext(ctx, keyQuery, orderID).Scan(&delivery.SecretCiphertext); err != nil { return OrderDelivery{}, fmt.Errorf("load paid card key: %w", err) }
+	if status != "delivered" {
+		keyQuery := "SELECT k.secret_ciphertext FROM product_keys k WHERE k.order_id=" + placeholder(driver, 1) + " AND k.status=2 LIMIT 1"
+		if err := tx.QueryRowContext(ctx, keyQuery, orderID).Scan(&delivery.SecretCiphertext); err != nil { return OrderDelivery{}, fmt.Errorf("load paid card key: %w", err) }
+	}
 	orderQuery := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver, 1)
 	if err := tx.QueryRowContext(ctx, orderQuery, orderID).Scan(&delivery.Order.ID,&delivery.Order.OrderNo,&delivery.Order.BotID,&delivery.Order.TelegramUserID,&delivery.Order.TelegramChatID,&delivery.Order.ProductID,&delivery.Order.ProductName,&delivery.Order.UnitPriceMinor,&delivery.Order.Quantity,&delivery.Order.AmountMinor,&delivery.Order.Currency,&delivery.Order.Status,&delivery.Order.ExpiresAt,&delivery.Order.CreatedAt,&delivery.Order.UpdatedAt,&delivery.Order.PaidAt,&delivery.Order.DeliveredAt); err != nil { return OrderDelivery{}, err }
 	if err := tx.Commit(); err != nil { return OrderDelivery{}, err }
