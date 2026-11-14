@@ -34,6 +34,8 @@ type Manager struct {
 	driver string
 	decrypt func(string) (string, error)
 	expiryCancel context.CancelFunc
+	paymentAddress string
+	paymentEnabled bool
 }
 
 type worker struct {
@@ -85,13 +87,15 @@ type apiResult struct {
 	Description string `json:"description"`
 }
 
-func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error)) *Manager {
+func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error), paymentAddress string, paymentEnabled bool) *Manager {
 	return &Manager{
 		workers: make(map[string]*worker),
 		client: &http.Client{Timeout: 40 * time.Second},
 		db: db,
 		driver: driver,
 		decrypt: decrypt,
+		paymentAddress: paymentAddress,
+		paymentEnabled: paymentEnabled,
 	}
 }
 
@@ -325,11 +329,21 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		text := `订单创建成功！
 订单号：` + order.OrderNo + `
 商品：` + order.ProductName + `
-金额：` + formatPrice(order.AmountMinor, order.Currency) + `
+商品金额：` + formatPrice(order.AmountMinor, order.Currency) + `
 状态：待付款
-有效期至：` + order.ExpiresAt + `
+有效期至：` + order.ExpiresAt
+		if m.paymentEnabled && m.paymentAddress != "" {
+			text += `
 
-支付功能尚未开通，请暂勿转账。`
+支付网络：TRON（TRC20）
+USDT 收款地址：` + m.paymentAddress + `
+请准确转账：` + formatUSDTAtomic(order.PaymentAmountAtomic) + ` USDT
+请勿使用其他网络或转账其他金额。系统仅在链上交易确认后自动发货。`
+		} else {
+			text += `
+
+支付功能尚未启用，请暂勿转账。`
+		}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"继续购物","callback_data":"shop:home"}}}})
 	default:
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "未知操作")
@@ -453,4 +467,10 @@ func wait(ctx context.Context, duration time.Duration) bool {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	select { case <-ctx.Done(): return false; case <-timer.C: return true }
+}
+
+
+func formatUSDTAtomic(value int64) string {
+	if value < 0 { value = 0 }
+	return fmt.Sprintf("%d.%06d", value/1_000_000, value%1_000_000)
 }
