@@ -6,7 +6,7 @@
 
 - Admin UI: Vue Vben Admin 5.x（Vue 3 + TypeScript + Vite）
 - Backend: Go
-- Database: PostgreSQL
+- Database: Docker 默认 PostgreSQL；独立二进制支持 SQLite / PostgreSQL
 - Deployment: Docker Compose（预构建镜像，无需在服务器编译）
 
 ## 产品边界
@@ -28,7 +28,7 @@
 docker compose up -d
 ```
 
-然后访问 `http://服务器IP:8080`。数据库迁移、初始管理员创建和静态前端资源由容器自动完成。正式发布前会提供安全的首次初始化流程，不使用公开固定密码。
+然后访问 `http://服务器IP:38647`。数据库迁移、初始管理员创建和静态前端资源由容器自动完成。正式发布前会提供安全的首次初始化流程，不使用公开固定密码。
 
 ## 当前状态
 
