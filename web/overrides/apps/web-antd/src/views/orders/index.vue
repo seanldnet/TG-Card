@@ -20,19 +20,24 @@ interface Order {
   createdAt: string;
   paidAt?: string;
   deliveredAt?: string;
+  deliveryAttempts: number;
+  deliveryError?: string;
   stockReserved: boolean;
 }
 const loading = ref(false);
 const orders = ref<Order[]>([]);
 const pendingCount = computed(() => orders.value.filter((item) => item.status === 'pending_payment').length);
 const reservedCount = computed(() => orders.value.filter((item) => item.stockReserved).length);
-const paidCount = computed(() => orders.value.filter((item) => item.status === 'paid' || item.status === 'delivered').length);
+const failedCount = computed(() => orders.value.filter((item) => item.status === 'delivery_failed').length);
+const retryingId = ref('');
 
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     pending_payment: '待付款',
     paid: '已付款',
     delivered: '已发货',
+    delivering: '发货中',
+    delivery_failed: '发货失败',
     expired: '已过期',
     cancelled: '已取消',
     failed: '异常',
@@ -41,7 +46,8 @@ function statusLabel(status: string) {
 }
 function statusColor(status: string) {
   if (status === 'delivered') return 'success';
-  if (status === 'paid') return 'processing';
+  if (status === 'paid' || status === 'delivering') return 'processing';
+  if (status === 'delivery_failed') return 'error';
   if (status === 'pending_payment') return 'warning';
   if (status === 'expired' || status === 'cancelled' || status === 'failed') return 'default';
   return 'blue';
@@ -61,12 +67,25 @@ async function loadOrders() {
     loading.value = false;
   }
 }
+async function retryDelivery(order: Order) {
+  retryingId.value = order.id;
+  try {
+    await requestClient.post('/orders/' + order.id + '/retry-delivery');
+    message.success('订单 ' + order.orderNo + ' 已发货');
+    await loadOrders();
+  } catch {
+    message.error('发货重试失败，请检查机器人状态及错误信息');
+    await loadOrders();
+  } finally {
+    retryingId.value = '';
+  }
+}
 onMounted(loadOrders);
 </script>
 
 <template>
   <div class="p-5">
-    <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+    <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
       <a-card :bordered="false">
         <div class="text-sm text-gray-500">订单总数（最近 500 笔）</div>
         <div class="mt-2 text-2xl font-semibold">{{ orders.length }}</div>
@@ -78,6 +97,10 @@ onMounted(loadOrders);
       <a-card :bordered="false">
         <div class="text-sm text-gray-500">当前占用库存</div>
         <div class="mt-2 text-2xl font-semibold">{{ reservedCount }}</div>
+      </a-card>
+      <a-card :bordered="false">
+        <div class="text-sm text-gray-500">发货异常</div>
+        <div class="mt-2 text-2xl font-semibold">{{ failedCount }}</div>
       </a-card>
     </div>
     <a-card :bordered="false">
@@ -103,6 +126,19 @@ onMounted(loadOrders);
         <a-table-column title="库存预留" key="stockReserved" :width="100">
           <template #default="{ record }"><a-tag :color="record.stockReserved ? 'processing' : 'default'">{{ record.stockReserved ? '已预留' : '未预留' }}</a-tag></template>
         </a-table-column>
+        <a-table-column title="发货重试" key="delivery" :width="120">
+          <template #default="{ record }">
+            <a-button
+              v-if="record.status === 'paid' || record.status === 'delivery_failed'"
+              type="link"
+              size="small"
+              :loading="retryingId === record.id"
+              @click="retryDelivery(record)"
+            >重试发货</a-button>
+            <span v-else class="text-gray-400">-</span>
+          </template>
+        </a-table-column>
+        <a-table-column title="最近发货错误" data-index="deliveryError" key="deliveryError" :width="220" ellipsis />
         <a-table-column title="创建时间" key="createdAt" :width="190">
           <template #default="{ record }">{{ formatTime(record.createdAt) }}</template>
         </a-table-column>
@@ -110,7 +146,7 @@ onMounted(loadOrders);
           <template #default="{ record }">{{ formatTime(record.expiresAt) }}</template>
         </a-table-column>
       </a-table>
-      <a-alert class="mt-3" type="info" show-icon message="当前阶段仅创建待付款订单并预留卡密库存；尚未接入链上收款确认与自动发货，不会将订单误标为已付款。" />
+      <a-alert class="mt-3" type="info" show-icon message="当前尚未接入 TRC20 链上收款确认；仅经过可信支付适配器确认的订单才可发货。发货失败的已付款订单可在此重试。" />
     </a-card>
   </div>
 </template>
