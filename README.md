@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-- Admin UI: Vue Vben Admin 5.x（Vue 3 + TypeScript + Vite）
+- Admin UI: 官方 Vue Vben Admin 5.x（Vue 3 + TypeScript + Vite + Ant Design Vue），源码以 Git Submodule 固定版本引入
 - Backend: Go
 - Database: Docker 默认 PostgreSQL；独立二进制支持 SQLite / PostgreSQL
 - Deployment: Docker Compose（预构建镜像，无需在服务器编译）
@@ -15,6 +15,14 @@
 - 多个 Bot 共用商品、卡密库存、订单和支付业务核心。
 - 每个 Bot 可单独配置 Token、名称、欢迎语、菜单和商品展示。
 - 不包含多商户、代理商或分销体系。
+
+## 产品介绍首页
+
+- 公开产品介绍页：访问 `/` 或 `/intro`，介绍多 Bot 管理、商品卡密、自动发货、支付、售后、签到与营销能力。
+- 管理后台登录：`/auth/login`。
+- 前端基于官方 Vben `apps/web-antd` 应用，TG-Card 定制页面和路由覆盖文件保存在 `web/overrides/`，不直接修改上游子模块。
+- 首次拉取需要执行 `git clone --recurse-submodules https://github.com/seanldnet/TG-Card.git`；已有仓库执行 `git submodule update --init --recursive`。
+- 本地应用定制并构建：`scripts/build-admin.sh`（需要 Node.js 与 pnpm，构建产物后续再接入 Go 静态资源服务）。
 
 ## 计划模块
 
