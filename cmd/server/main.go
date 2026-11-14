@@ -32,7 +32,7 @@ type apiEnvelope struct {
 	Message string `json:"message"`
 }
 
-type loginRequest struct {
+type passwordChangeRequest struct {\n\tCurrentPassword string `json:"currentPassword"`\n\tNewPassword string `json:"newPassword"`\n}\n\ntype loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -73,7 +73,7 @@ func main() {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
 	api.HandleFunc("POST /api/auth/login", app.login)
-	api.HandleFunc("POST /api/auth/logout", app.logout)
+	api.HandleFunc("POST /api/auth/logout", app.logout)\n\tapi.HandleFunc("POST /api/admin/password", app.changePassword)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
@@ -233,4 +233,40 @@ func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil { return host }
 	return r.RemoteAddr
+}
+
+
+func (a *application) changePassword(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	var input passwordChangeRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(input.CurrentPassword) == 0 || len(input.NewPassword) < 12 || len(input.NewPassword) > 256 {
+		writeError(w, http.StatusBadRequest, "Current password is required; new password must contain 12 to 256 characters")
+		return
+	}
+	admin, err := database.FindAdminByID(r.Context(), a.db, a.driver, claims.AdminID)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.CurrentPassword)) != nil {
+		writeError(w, http.StatusBadRequest, "Current password is incorrect")
+		return
+	}
+	if input.CurrentPassword == input.NewPassword {
+		writeError(w, http.StatusBadRequest, "New password must be different from the current password")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Unable to update password")
+		return
+	}
+	if err := database.UpdateAdminPassword(r.Context(), a.db, a.driver, claims.AdminID, string(hash)); err != nil {
+		log.Printf("update administrator password: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to update password")
+		return
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.password.change", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "success; all existing sessions revoked")
+	writeSuccess(w, http.StatusOK, map[string]string{"message": "Password updated; please sign in again"})
 }

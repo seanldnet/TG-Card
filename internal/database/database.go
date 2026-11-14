@@ -30,6 +30,7 @@ type Admin struct {
 	RealName string
 	Role string
 	Status int
+	TokenVersion int
 }
 
 type BootstrapResult struct {
@@ -128,9 +129,9 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, driver, username, password str
 }
 
 func FindAdminByUsername(ctx context.Context, db *sql.DB, driver, username string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, role, status FROM admins WHERE username = "+placeholder(driver,1)
+	query := "SELECT id, username, password_hash, real_name, role, status, token_version FROM admins WHERE username = "+placeholder(driver,1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.Role, &admin.Status)
+	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.Role, &admin.Status, &admin.TokenVersion)
 	return admin, err
 }
 
@@ -172,4 +173,32 @@ func randomPassword() (string, error) {
 func nullableString(value string) any {
 	if value == "" { return nil }
 	return value
+}
+
+
+func FindAdminByID(ctx context.Context, db *sql.DB, driver, adminID string) (Admin, error) {
+	query := "SELECT id, username, password_hash, real_name, role, status, token_version FROM admins WHERE id = " + placeholder(driver, 1)
+	var admin Admin
+	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.Role, &admin.Status, &admin.TokenVersion)
+	return admin, err
+}
+
+func UpdateAdminPassword(ctx context.Context, db *sql.DB, driver, adminID, passwordHash string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE admins SET password_hash = " + placeholder(driver, 1) + ", token_version = token_version + 1, updated_at = " + placeholder(driver, 2) + " WHERE id = " + placeholder(driver, 3)
+	result, err := db.ExecContext(ctx, query, passwordHash, now, adminID)
+	if err != nil { return err }
+	affected, err := result.RowsAffected()
+	if err != nil { return err }
+	if affected != 1 { return fmt.Errorf("administrator not found") }
+	return nil
+}
+
+func RecordAdminAudit(ctx context.Context, db *sql.DB, driver, adminID, action, resource, ip, userAgent, details string) {
+	id, err := randomID()
+	if err != nil { return }
+	query := "INSERT INTO audit_logs(id, admin_id, action, resource, ip_address, user_agent, details, created_at) VALUES ("+
+		placeholder(driver,1)+", "+placeholder(driver,2)+", "+placeholder(driver,3)+", "+placeholder(driver,4)+", "+
+		placeholder(driver,5)+", "+placeholder(driver,6)+", "+placeholder(driver,7)+", "+placeholder(driver,8)+")"
+	_, _ = db.ExecContext(ctx, query, id, adminID, action, resource, ip, userAgent, details, time.Now().UTC().Format(time.RFC3339Nano))
 }
