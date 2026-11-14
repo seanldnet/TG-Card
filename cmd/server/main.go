@@ -103,6 +103,7 @@ func main() {
 	api.HandleFunc("PUT /api/catalog/products/{id}", app.updateProduct)
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
+	api.HandleFunc("GET /api/orders", app.listOrders)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
@@ -197,6 +198,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "BotManagement", "path": "/bots", "component": "/bots/index",
 			"meta": map[string]any{"icon": "lucide:bot", "order": 1, "title": "机器人管理"},
+		},
+		{
+			"name": "Orders", "path": "/orders", "component": "/orders/index",
+			"meta": map[string]any{"icon": "lucide:receipt-text", "order": 3, "title": "订单管理"},
 		},
 		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
@@ -504,4 +509,45 @@ func (a *application) importProductKeys(w http.ResponseWriter,r *http.Request) {
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,500,"Unable to import card keys");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.keys.import","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),fmt.Sprintf("submitted=%d inserted=%d",len(items),inserted))
 	writeSuccess(w,200,map[string]int{"submitted":len(items),"inserted":inserted,"duplicates":len(items)-inserted})
+}
+
+type orderView struct {
+	ID string `json:"id"`
+	OrderNo string `json:"orderNo"`
+	BotID string `json:"botId"`
+	TelegramUserID string `json:"telegramUserId"`
+	TelegramChatID string `json:"telegramChatId"`
+	ProductName string `json:"productName"`
+	UnitPriceMinor int64 `json:"unitPriceMinor"`
+	Quantity int `json:"quantity"`
+	AmountMinor int64 `json:"amountMinor"`
+	Currency string `json:"currency"`
+	Status string `json:"status"`
+	ExpiresAt string `json:"expiresAt"`
+	CreatedAt string `json:"createdAt"`
+	PaidAt string `json:"paidAt,omitempty"`
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	StockReserved bool `json:"stockReserved"`
+}
+
+func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w, r); !ok { return }
+	items, err := database.ListOrders(r.Context(), a.db)
+	if err != nil {
+		log.Printf("list orders: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to load orders")
+		return
+	}
+	result := make([]orderView, 0, len(items))
+	for _, item := range items {
+		result = append(result, orderView{
+			ID:item.ID, OrderNo:item.OrderNo, BotID:item.BotID,
+			TelegramUserID:item.TelegramUserID, TelegramChatID:item.TelegramChatID,
+			ProductName:item.ProductName, UnitPriceMinor:item.UnitPriceMinor,
+			Quantity:item.Quantity, AmountMinor:item.AmountMinor, Currency:item.Currency,
+			Status:item.Status, ExpiresAt:item.ExpiresAt, CreatedAt:item.CreatedAt,
+			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, StockReserved:item.StockReserved,
+		})
+	}
+	writeSuccess(w, http.StatusOK, result)
 }
