@@ -2,6 +2,7 @@ package tron
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -115,7 +116,8 @@ func (c *Client) FetchConfirmedIncoming(ctx context.Context, fingerprint string,
 	if !payload.Success { return nil, "", fmt.Errorf("TronGrid returned success=false") }
 	items := make([]Transfer, 0, len(payload.Data))
 	for _, row := range payload.Data {
-		if row.Type != "Transfer" || row.TransactionID == "" || row.To != c.address { continue }
+		if row.Type != "Transfer" || row.To != c.address || len(row.TransactionID) != 64 { continue }
+		if _, err := hex.DecodeString(row.TransactionID); err != nil { continue }
 		if row.TokenInfo.Address != "" && !strings.EqualFold(row.TokenInfo.Address, c.contract) { continue }
 		if row.TokenInfo.Symbol != "" && !strings.EqualFold(row.TokenInfo.Symbol, "USDT") { continue }
 		if row.TokenInfo.Decimals != 6 { continue }
