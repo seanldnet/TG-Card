@@ -32,6 +32,7 @@ type Manager struct {
 	client *http.Client
 	db *sql.DB
 	driver string
+	expiryCancel context.CancelFunc
 }
 
 type worker struct {
@@ -93,6 +94,7 @@ func NewManager(db *sql.DB, driver string) *Manager {
 }
 
 func (m *Manager) Reconcile(configs []Config) {
+	m.startExpiryLoop()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	desired := make(map[string]Config, len(configs))
@@ -118,8 +120,40 @@ func (m *Manager) Reconcile(configs []Config) {
 
 func (m *Manager) Stop() {
 	m.mu.Lock()
+	if m.expiryCancel != nil { m.expiryCancel(); m.expiryCancel = nil }
 	defer m.mu.Unlock()
 	for id, current := range m.workers { current.cancel(); delete(m.workers, id) }
+}
+
+func (m *Manager) startExpiryLoop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.expiryCancel != nil || m.db == nil { return }
+	ctx, cancel := context.WithCancel(context.Background())
+	m.expiryCancel = cancel
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			expired, err := database.ExpirePendingOrders(ctx, m.db, m.driver, 100)
+			if err != nil && ctx.Err() == nil { log.Printf("expire pending Telegram orders failed: %v", err) } else if expired > 0 { log.Printf("expired pending Telegram orders: count=%d", expired) }
+			select { case <-ctx.Done(): return; case <-ticker.C: }
+		}
+	}()
+}
+
+func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chatID int64, productID string) {
+	products, err := database.ListProducts(ctx, m.db)
+	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
+	for _, p := range products {
+		if p.ID != productID || p.Status != 1 { continue }
+		if p.StockCount < 1 { _ = m.sendMessage(ctx, cfg.Token, chatID, "该商品库存不足，请返回商城选择其他商品。"); return }
+		text := "请确认订单信息：\\n商品：" + p.Name + "\\n金额：" + formatPrice(p.PriceMinor, p.Currency) + "\\n数量：1\\n库存：" + strconv.Itoa(p.StockCount) + "\\n\\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。当前支付功能尚未开通，请勿转账。"
+		markup := map[string]any{"inline_keyboard": [][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, markup)
+		return
+	}
+	_ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在或已下架。")
 }
 
 func (m *Manager) run(ctx context.Context, cfg Config) {
@@ -224,7 +258,7 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 
 价格：` + formatPrice(p.PriceMinor, p.Currency) + `
 库存：` + strconv.Itoa(p.StockCount)
-		buttons := [][]map[string]string{{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
+		buttons := [][]map[string]string{{{"text":"确认购买","callback_data":"shop:confirm:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
 		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"暂时缺货","callback_data":"shop:home"}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
 		return
@@ -242,6 +276,9 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		m.showOrders(ctx, cfg, chatID, query.From)
 	case strings.HasPrefix(query.Data, "shop:product:"):
 		m.showProduct(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:product:"))
+	case strings.HasPrefix(query.Data, "shop:confirm:"):
+		m.showPurchaseConfirmation(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:confirm:"))
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请核对订单信息")
 	case strings.HasPrefix(query.Data, "shop:buy:"):
 		productID := strings.TrimPrefix(query.Data, "shop:buy:")
 		order, err := database.CreateOrder(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID, 10), strconv.FormatInt(chatID, 10), productID, 20*time.Minute)
