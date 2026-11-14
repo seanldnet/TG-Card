@@ -217,3 +217,31 @@ func TestClaimOrderDeliveriesLeasesAndRecoversExpiredLease(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if len(claimed) != 1 || claimed[0] != order.ID { t.Fatalf("expired lease was not recovered: %v", claimed) }
 }
+
+
+func TestTRC20PaymentAmountsAreUniqueAndMatchOnlyActiveOrderWindow(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "TRC20 card", PriceMinor: 2500, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{
+		{Ciphertext: "trc20-card-one", Fingerprint: "trc20-fp-one"},
+		{Ciphertext: "trc20-card-two", Fingerprint: "trc20-fp-two"},
+	}); err != nil { t.Fatal(err) }
+	first, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-trc", "user-one", "chat-one", product.ID, 5*time.Minute)
+	if err != nil { t.Fatal(err) }
+	second, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-trc", "user-two", "chat-two", product.ID, 5*time.Minute)
+	if err != nil { t.Fatal(err) }
+	if first.PaymentAmountAtomic == second.PaymentAmountAtomic { t.Fatal("concurrent invoices must have distinct atomic payment amounts") }
+	if first.PaymentAmountAtomic < 25000000 || first.PaymentAmountAtomic > 25009999 { t.Fatalf("unexpected six-decimal quote: %d", first.PaymentAmountAtomic) }
+	matched, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic, time.Now().UTC().UnixMilli())
+	if err != nil { t.Fatal(err) }
+	if matched.ID != first.ID { t.Fatalf("matched order %s, want %s", matched.ID, first.ID) }
+	if _, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic+1, time.Now().UTC().UnixMilli()); err == nil { t.Fatal("wrong transfer amount must not match") }
+	tooEarly := time.Now().UTC().Add(-time.Minute).UnixMilli()
+	if _, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic, tooEarly); err == nil { t.Fatal("transfer before order creation must not match") }
+}
