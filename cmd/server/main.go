@@ -18,6 +18,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/auth"
 	"github.com/seanldnet/TG-Card/internal/config"
 	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/payment"
 	"github.com/seanldnet/TG-Card/internal/secret"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
 	"golang.org/x/crypto/bcrypt"
@@ -81,8 +82,14 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	secrets, err := secret.New(cfg.DataDir)
 	if err != nil { log.Fatal(err) }
-	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt)
+	paymentsEnabled := cfg.TronGridAPIKey != "" && cfg.TronReceiveAddress != ""
+	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, cfg.TronReceiveAddress, paymentsEnabled)
 	defer botManager.Stop()
+	paymentManager, err := payment.NewManager(cfg, db, cfg.DBDriver, botManager)
+	if err != nil { log.Fatalf("initialize TRC20 payment watcher: %v", err) }
+	paymentCtx, stopPayments := context.WithCancel(ctx)
+	defer stopPayments()
+	if paymentManager != nil { go paymentManager.Run(paymentCtx) }
 	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager}
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 
