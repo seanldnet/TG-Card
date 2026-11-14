@@ -31,14 +31,14 @@ func TestFetchConfirmedIncomingFiltersAndParsesUSDTTransfers(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{baseURL:server.URL, apiKey:"test-key", address:"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM", contract:"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", http:server.Client()}
-	items, fingerprint, err := client.FetchConfirmedIncoming(context.Background(), "", 1700000000000)
+	items, fingerprint, err := client.FetchConfirmedIncoming(context.Background(), "", 1700000000000, 1700003600000)
 	if err != nil { t.Fatal(err) }
 	if len(items) != 1 { t.Fatalf("expected one eligible transfer, got %d", len(items)) }
 	if items[0].TransactionID != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" || items[0].AmountAtomic != 1234567 || items[0].Decimals != 6 {
 		t.Fatalf("unexpected transfer: %+v", items[0])
 	}
 	if fingerprint != "next-page" { t.Fatalf("unexpected fingerprint: %q", fingerprint) }
-	for _, required := range []string{"contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "limit=200", "order_by=block_timestamp%2Casc", "min_timestamp=1700000000000"} {
+	for _, required := range []string{"contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "limit=200", "order_by=block_timestamp%2Cdesc", "min_timestamp=1700000000000", "max_timestamp=1700003600000"} {
 		if !strings.Contains(gotPath, required) { t.Errorf("request missing %q: %s", required, gotPath) }
 	}
 }
