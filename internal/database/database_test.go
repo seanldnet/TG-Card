@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/seanldnet/TG-Card/internal/config"
 )
@@ -81,4 +82,33 @@ func TestCatalogCategoriesProductsAndStock(t *testing.T) {
 	if products[0].CategoryID != "" || products[0].StockCount != 2 {
 		t.Fatalf("category delete should preserve product and stock: %+v", products[0])
 	}
+}
+
+func TestCreateOrderReservesStockAtomically(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{
+		Name: "Test card", PriceMinor: 1250, Currency: "USDT", DeliveryType: "card", Status: 1,
+	})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{
+		{Ciphertext:"encrypted-card", Fingerprint:"unique-card"},
+	}); err != nil { t.Fatal(err) }
+
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-1", "telegram-user-1", "telegram-chat-1", product.ID, 20*time.Minute)
+	if err != nil { t.Fatal(err) }
+	if order.Status != "pending_payment" || order.AmountMinor != 1250 || order.OrderNo == "" {
+		t.Fatalf("unexpected order: %+v", order)
+	}
+	if _, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-1", "telegram-user-2", "telegram-chat-2", product.ID, 20*time.Minute); err == nil {
+		t.Fatal("second order should fail because the only stock item is reserved")
+	}
+	orders, err := ListOrders(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(orders) != 1 || !orders[0].StockReserved { t.Fatalf("expected one order with reserved stock: %+v", orders) }
 }
