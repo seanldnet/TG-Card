@@ -20,17 +20,17 @@ func TestFetchConfirmedIncomingFiltersAndParsesUSDTTransfers(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"success":true,
 			"data":[
-				{"transaction_id":"ABCDEF","from":"TFrom","to":"TReceive","type":"Transfer","value":"1234567","block_timestamp":1700000000000,"token_info":{"address":"TContract","decimals":6,"symbol":"USDT"}},
-				{"transaction_id":"OUT","from":"TReceive","to":"TOther","type":"Transfer","value":"9000000","block_timestamp":1700000000001,"token_info":{"address":"TContract","decimals":6,"symbol":"USDT"}},
-				{"transaction_id":"WRONG","from":"TFrom","to":"TReceive","type":"Transfer","value":"100","block_timestamp":1700000000002,"token_info":{"address":"TContract","decimals":18,"symbol":"USDT"}},
-				{"transaction_id":"APPROVE","from":"TFrom","to":"TReceive","type":"Approval","value":"100","block_timestamp":1700000000003,"token_info":{"address":"TContract","decimals":6,"symbol":"USDT"}}
+				{"transaction_id":"ABCDEF","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Transfer","value":"1234567","block_timestamp":1700000000000,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}},
+				{"transaction_id":"OUT","from":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","to":"TOther","type":"Transfer","value":"9000000","block_timestamp":1700000000001,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}},
+				{"transaction_id":"WRONG","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Transfer","value":"100","block_timestamp":1700000000002,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":18,"symbol":"USDT"}},
+				{"transaction_id":"APPROVE","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Approval","value":"100","block_timestamp":1700000000003,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}}
 			],
 			"meta":{"fingerprint":"next-page"}
 		}`))
 	}))
 	defer server.Close()
 
-	client := &Client{baseURL:server.URL, apiKey:"test-key", address:"TReceive", contract:"TContract", http:server.Client()}
+	client := &Client{baseURL:server.URL, apiKey:"test-key", address:"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM", contract:"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", http:server.Client()}
 	items, fingerprint, err := client.FetchConfirmedIncoming(context.Background(), "", 1700000000000)
 	if err != nil { t.Fatal(err) }
 	if len(items) != 1 { t.Fatalf("expected one eligible transfer, got %d", len(items)) }
@@ -38,15 +38,15 @@ func TestFetchConfirmedIncomingFiltersAndParsesUSDTTransfers(t *testing.T) {
 		t.Fatalf("unexpected transfer: %+v", items[0])
 	}
 	if fingerprint != "next-page" { t.Fatalf("unexpected fingerprint: %q", fingerprint) }
-	for _, required := range []string{"contract_address=TContract", "limit=200", "order_by=block_timestamp%2Casc", "min_timestamp=1700000000000"} {
+	for _, required := range []string{"contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "limit=200", "order_by=block_timestamp%2Casc", "min_timestamp=1700000000000"} {
 		if !strings.Contains(gotPath, required) { t.Errorf("request missing %q: %s", required, gotPath) }
 	}
 }
 
 func TestNewClientRequiresProductionCredentials(t *testing.T) {
-	if _, err := NewClient("", "TReceive", ""); err == nil { t.Fatal("expected missing API key error") }
+	if _, err := NewClient("", "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM", ""); err == nil { t.Fatal("expected missing API key error") }
 	if _, err := NewClient("key", "", ""); err == nil { t.Fatal("expected missing receiving address error") }
-	client, err := NewClient("key", "TReceive", "")
+	client, err := NewClient("key", "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM", "")
 	if err != nil { t.Fatal(err) }
-	if client.contract != MainnetUSDTContract { t.Fatalf("unexpected default USDT contract: %s", client.contract) }
+	if client.contract != MainnetUSDTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t { t.Fatalf("unexpected default USDT contract: %s", client.contract) }
 }
