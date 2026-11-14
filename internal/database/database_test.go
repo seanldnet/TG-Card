@@ -138,3 +138,51 @@ func TestExpirePendingOrdersReleasesReservedStock(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if expired != 0 { t.Fatalf("second expiry pass changed %d orders; want 0", expired) }
 }
+
+func TestConfirmOrderPaymentIsIdempotentAndDeliveryCanRetry(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Paid card", PriceMinor: 1500, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{{Ciphertext: "encrypted-paid-card", Fingerprint: "paid-card-fp"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-paid", "user-paid", "chat-paid", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	paid, err := ConfirmOrderPayment(ctx, db, cfg.DBDriver, order.ID, "trc20", "txid-unique-123")
+	if err != nil { t.Fatal(err) }
+	if paid.Order.Status != "paid" || paid.SecretCiphertext != "encrypted-paid-card" || paid.AlreadyPaid { t.Fatalf("unexpected payment result: %+v", paid) }
+	duplicate, err := ConfirmOrderPayment(ctx, db, cfg.DBDriver, order.ID, "trc20", "txid-unique-123")
+	if err != nil { t.Fatal(err) }
+	if !duplicate.AlreadyPaid || duplicate.SecretCiphertext != paid.SecretCiphertext { t.Fatalf("duplicate callback was not idempotent: %+v", duplicate) }
+	if _, err := ConfirmOrderPayment(ctx, db, cfg.DBDriver, order.ID, "trc20", "different-txid"); err == nil { t.Fatal("different payment reference must not be accepted") }
+	if err := MarkOrderDeliveryFailed(ctx, db, cfg.DBDriver, order.ID, "Telegram send timeout"); err != nil { t.Fatal(err) }
+	retry, err := GetOrderDelivery(ctx, db, cfg.DBDriver, order.ID)
+	if err != nil { t.Fatal(err) }
+	if retry.Order.Status != "delivery_failed" || retry.SecretCiphertext != "encrypted-paid-card" { t.Fatalf("paid delivery could not be recovered: %+v", retry) }
+	if err := MarkOrderDelivered(ctx, db, cfg.DBDriver, order.ID); err != nil { t.Fatal(err) }
+	items, err := ListOrders(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(items) != 1 || items[0].Status != "delivered" || items[0].StockReserved { t.Fatalf("unexpected final order state: %+v", items) }
+}
+
+func TestConfirmOrderPaymentRejectsExpiredOrder(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Expired card", PriceMinor: 500, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{{Ciphertext: "encrypted-expired", Fingerprint: "expired-fp"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-expired", "user-expired", "chat-expired", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET expires_at=? WHERE id=?", time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), order.ID); err != nil { t.Fatal(err) }
+	if _, err := ConfirmOrderPayment(ctx, db, cfg.DBDriver, order.ID, "trc20", "late-txid"); err == nil { t.Fatal("payment for expired order must require reconciliation") }
+	items, err := ListOrders(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(items) != 1 || items[0].Status != "pending_payment" { t.Fatalf("expired payment attempt changed order unexpectedly: %+v", items) }
+}
