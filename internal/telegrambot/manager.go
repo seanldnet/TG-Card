@@ -138,10 +138,42 @@ func (m *Manager) startExpiryLoop() {
 		defer ticker.Stop()
 		for {
 			expired, err := database.ExpirePendingOrders(ctx, m.db, m.driver, 100)
-			if err != nil && ctx.Err() == nil { log.Printf("expire pending Telegram orders failed: %v", err) } else if expired > 0 { log.Printf("expired pending Telegram orders: count=%d", expired) }
-			select { case <-ctx.Done(): return; case <-ticker.C: }
+			if err != nil && ctx.Err() == nil {
+				log.Printf("expire pending Telegram orders failed: %v", err)
+			} else if expired > 0 {
+				log.Printf("expired pending Telegram orders: count=%d", expired)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			m.retryDueDeliveries(ctx)
 		}
 	}()
+}
+
+// retryDueDeliveries leases paid orders and recovers deliveries interrupted by a restart.
+func (m *Manager) retryDueDeliveries(ctx context.Context) {
+	ids, err := database.ClaimOrderDeliveries(ctx, m.db, m.driver, 50, 2*time.Minute)
+	if err != nil {
+		if ctx.Err() == nil { log.Printf("claim paid Telegram order deliveries failed: %v", err) }
+		return
+	}
+	for _, id := range ids {
+		if ctx.Err() != nil { return }
+		item, err := database.GetOrderDelivery(ctx, m.db, m.driver, id)
+		if err != nil {
+			log.Printf("load leased Telegram order delivery failed: order_id=%s error=%v", id, err)
+			continue
+		}
+		deliveryCtx, cancel := context.WithTimeout(ctx, 70*time.Second)
+		err = m.DeliverPaidOrder(deliveryCtx, item)
+		cancel()
+		if err != nil {
+			log.Printf("automatic Telegram order delivery failed: order_id=%s error=%v", id, err)
+		}
+	}
 }
 
 func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chatID int64, productID string) {
