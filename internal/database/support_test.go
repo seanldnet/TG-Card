@@ -44,3 +44,41 @@ func TestCreateSupportTicketRejectsExpiredUnpaidOrder(t *testing.T) {
 		t.Fatal("an unpaid expired order must not be eligible for after-sales support")
 	}
 }
+
+func TestCreateSupportTicketAllowsOnlyOneActiveTicketPerOrder(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil {
+		t.Fatal(err)
+	}
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{
+		Name: "Active support test", PriceMinor: 500, Currency: "USDT",
+		DeliveryType: "card", Status: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{
+		{Ciphertext: "active-support-cipher", Fingerprint: "active-support-fp"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "support-bot", "support-user", "support-chat", product.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='paid' WHERE id=?", order.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateSupportTicket(ctx, db, cfg.DBDriver, "support-bot", "support-user", "support-chat", order.OrderNo, "other", "First request"); err != nil {
+		t.Fatalf("create first ticket: %v", err)
+	}
+	if _, err := CreateSupportTicket(ctx, db, cfg.DBDriver, "support-bot", "support-user", "support-chat", order.OrderNo, "other", "Duplicate request"); err == nil {
+		t.Fatal("a second active ticket for the same order must be rejected")
+	}
+}
