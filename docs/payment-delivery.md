@@ -28,6 +28,8 @@ After `ConfirmOrderPayment` succeeds, pass the returned `database.OrderDelivery`
 
 If the process stops after payment confirmation, `database.GetOrderDelivery` can recover the paid card for orders in `paid` or `delivery_failed`. The authenticated admin endpoint `POST /api/orders/{id}/retry-delivery` invokes the same delivery path and records an audit event.
 
+A background recovery loop also scans for due deliveries every 15 seconds. It claims up to 50 orders in a database transaction and sets a two-minute `delivery_lease_until` lease. PostgreSQL workers use `FOR UPDATE SKIP LOCKED`; SQLite uses its serialized write transaction. A worker restart leaves the order in `delivering`, and the next worker can reclaim it after the lease expires. Successful delivery clears the lease; failed delivery records the error and returns the order to `delivery_failed` for another scan. This lease prevents concurrent workers from normally sending the same order at the same time, but it does not remove Telegram's at-least-once delivery limitation described below.
+
 Telegram `sendMessage` does not provide an idempotency key. If Telegram accepts a message but the network response is lost, a later retry can send the card again. The current delivery guarantee is therefore at-least-once, not exactly-once. The order number is included so duplicate messages can be recognized.
 
 ## Not yet connected
