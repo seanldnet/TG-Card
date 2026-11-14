@@ -17,6 +17,9 @@ type Config struct {
 	JWTSecret string
 	AdminUsername string
 	AdminPassword string
+	TronGridAPIKey string
+	TronReceiveAddress string
+	TronUSDTContract string
 }
 
 func Load() (Config, error) {
@@ -43,6 +46,9 @@ func Load() (Config, error) {
 		JWTSecret: strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		AdminUsername: env("ADMIN_USERNAME", "admin"),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+		TronGridAPIKey: strings.TrimSpace(os.Getenv("TRONGRID_API_KEY")),
+		TronReceiveAddress: strings.TrimSpace(os.Getenv("TRON_RECEIVE_ADDRESS")),
+		TronUSDTContract: env("TRON_USDT_CONTRACT", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"),
 	}, nil
 }
 
