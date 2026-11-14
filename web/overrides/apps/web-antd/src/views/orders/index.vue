@@ -1,0 +1,116 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+
+import { message } from 'ant-design-vue';
+import { requestClient } from '#/api/request';
+
+interface Order {
+  id: string;
+  orderNo: string;
+  botId: string;
+  telegramUserId: string;
+  telegramChatId: string;
+  productName: string;
+  unitPriceMinor: number;
+  quantity: number;
+  amountMinor: number;
+  currency: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  paidAt?: string;
+  deliveredAt?: string;
+  stockReserved: boolean;
+}
+const loading = ref(false);
+const orders = ref<Order[]>([]);
+const pendingCount = computed(() => orders.value.filter((item) => item.status === 'pending_payment').length);
+const reservedCount = computed(() => orders.value.filter((item) => item.stockReserved).length);
+const paidCount = computed(() => orders.value.filter((item) => item.status === 'paid' || item.status === 'delivered').length);
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending_payment: '待付款',
+    paid: '已付款',
+    delivered: '已发货',
+    expired: '已过期',
+    cancelled: '已取消',
+    failed: '异常',
+  };
+  return labels[status] ?? status;
+}
+function statusColor(status: string) {
+  if (status === 'delivered') return 'success';
+  if (status === 'paid') return 'processing';
+  if (status === 'pending_payment') return 'warning';
+  if (status === 'expired' || status === 'cancelled' || status === 'failed') return 'default';
+  return 'blue';
+}
+function formatTime(value: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+async function loadOrders() {
+  loading.value = true;
+  try {
+    orders.value = await requestClient.get<Order[]>('/orders');
+  } catch {
+    message.error('订单列表加载失败');
+  } finally {
+    loading.value = false;
+  }
+}
+onMounted(loadOrders);
+</script>
+
+<template>
+  <div class="p-5">
+    <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <a-card :bordered="false">
+        <div class="text-sm text-gray-500">订单总数（最近 500 笔）</div>
+        <div class="mt-2 text-2xl font-semibold">{{ orders.length }}</div>
+      </a-card>
+      <a-card :bordered="false">
+        <div class="text-sm text-gray-500">待付款订单</div>
+        <div class="mt-2 text-2xl font-semibold">{{ pendingCount }}</div>
+      </a-card>
+      <a-card :bordered="false">
+        <div class="text-sm text-gray-500">当前占用库存</div>
+        <div class="mt-2 text-2xl font-semibold">{{ reservedCount }}</div>
+      </a-card>
+    </div>
+    <a-card :bordered="false">
+      <template #title>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="text-lg font-semibold">订单管理</div>
+            <div class="mt-1 text-sm text-gray-500">查看 Telegram 用户订单、付款状态及库存预留情况</div>
+          </div>
+          <a-button :loading="loading" @click="loadOrders">刷新订单</a-button>
+        </div>
+      </template>
+      <a-table :data-source="orders" :loading="loading" row-key="id" :scroll="{ x: 1100 }">
+        <a-table-column title="订单号" data-index="orderNo" key="orderNo" :width="190" />
+        <a-table-column title="商品" data-index="productName" key="productName" />
+        <a-table-column title="金额" key="amount" :width="130">
+          <template #default="{ record }">{{ (record.amountMinor / 100).toFixed(2) }} {{ record.currency }}</template>
+        </a-table-column>
+        <a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="150" />
+        <a-table-column title="订单状态" key="status" :width="110">
+          <template #default="{ record }"><a-tag :color="statusColor(record.status)">{{ statusLabel(record.status) }}</a-tag></template>
+        </a-table-column>
+        <a-table-column title="库存预留" key="stockReserved" :width="100">
+          <template #default="{ record }"><a-tag :color="record.stockReserved ? 'processing' : 'default'">{{ record.stockReserved ? '已预留' : '未预留' }}</a-tag></template>
+        </a-table-column>
+        <a-table-column title="创建时间" key="createdAt" :width="190">
+          <template #default="{ record }">{{ formatTime(record.createdAt) }}</template>
+        </a-table-column>
+        <a-table-column title="付款截止" key="expiresAt" :width="190">
+          <template #default="{ record }">{{ formatTime(record.expiresAt) }}</template>
+        </a-table-column>
+      </a-table>
+      <a-alert class="mt-3" type="info" show-icon message="当前阶段仅创建待付款订单并预留卡密库存；尚未接入链上收款确认与自动发货，不会将订单误标为已付款。" />
+    </a-card>
+  </div>
+</template>
