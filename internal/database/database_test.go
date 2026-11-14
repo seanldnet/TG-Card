@@ -287,21 +287,3 @@ func TestSupportTicketLifecycleAndOrderOwnership(t *testing.T) {
 	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"support-bot","support-user","support-chat",order.OrderNo,"other","follow-up after resolution");err!=nil{t.Fatalf("resolved ticket should not block a new ticket: %v",err)}
 	items,err:=ListSupportTickets(ctx,db,cfg.DBDriver);if err!=nil{t.Fatal(err)};if len(items)!=2{t.Fatalf("got %d tickets, want 2",len(items))}
 }
-func TestSupportTicketLifecycleAndOrderOwnership(t *testing.T) {
-	ctx:=context.Background()
-	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
-	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
-	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
-	product,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Support card",PriceMinor:1200,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
-	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,product.ID,[]StockSecret{{Ciphertext:"support-cipher",Fingerprint:"support-fp"}});err!=nil{t.Fatal(err)}
-	order,err:=CreateOrder(ctx,db,cfg.DBDriver,"support-bot","support-user","support-chat",product.ID,time.Minute);if err!=nil{t.Fatal(err)}
-	if _,err:=ConfirmOrderPayment(ctx,db,cfg.DBDriver,order.ID,"test-adapter","support-payment-ref");err!=nil{t.Fatal(err)}
-	ticket,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"support-bot","support-user","support-chat",order.OrderNo,"invalid_key","The card key does not work");if err!=nil{t.Fatal(err)}
-	if ticket.Status!="open"||ticket.TicketNo==""||ticket.OrderID!=order.ID{t.Fatalf("unexpected support ticket: %+v",ticket)}
-	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"support-bot","support-user","support-chat",order.OrderNo,"other","duplicate request");err==nil{t.Fatal("second active ticket for one order should be rejected")}
-	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"support-bot","another-user","other-chat",order.OrderNo,"other","not my order");err==nil{t.Fatal("ticket must be scoped to the order owner")}
-	updated,err:=UpdateSupportTicket(ctx,db,cfg.DBDriver,ticket.ID,"resolved","Replacement provided");if err!=nil{t.Fatal(err)}
-	if updated.Status!="resolved"||updated.AdminReply!="Replacement provided"||updated.ResolvedAt==""{t.Fatalf("ticket resolution not persisted: %+v",updated)}
-	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"support-bot","support-user","support-chat",order.OrderNo,"other","follow-up after resolution");err!=nil{t.Fatalf("resolved ticket should not block a new ticket: %v",err)}
-	items,err:=ListSupportTickets(ctx,db,cfg.DBDriver);if err!=nil{t.Fatal(err)};if len(items)!=2{t.Fatalf("got %d tickets, want 2",len(items))}
-}
