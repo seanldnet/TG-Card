@@ -69,7 +69,7 @@ func (m *Manager) scan(ctx context.Context) error {
 	fingerprint := ""
 	maxTimestampMS := time.Now().UnixMilli()
 	minTimestampMS := time.UnixMilli(maxTimestampMS).Add(-2 * time.Hour).UnixMilli()
-	processed := 0
+	confirmed := 0
 	for page := 0; page < 25; page++ {
 		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS, maxTimestampMS)
 		if err != nil {
@@ -97,11 +97,11 @@ func (m *Manager) scan(ctx context.Context) error {
 					log.Printf("TRC20 payment confirmed but card delivery failed: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err)
 				}
 			}
-			processed++
+			confirmed++
 			log.Printf("TRC20 payment confirmed: order_id=%s tx=%s delivery_claimed=%t", order.ID, transfer.TransactionID, claimed)
 		}
 		if next == "" || next == fingerprint {
-			if processed > 0 { log.Printf("TRC20 payment scan completed: delivered=%d", processed) }
+			if confirmed > 0 { log.Printf("TRC20 payment scan completed: confirmed=%d", confirmed) }
 			return nil
 		}
 		fingerprint = next
@@ -109,6 +109,6 @@ func (m *Manager) scan(ctx context.Context) error {
 			log.Printf("TRC20 scan reached pagination safety cap: pages=25; additional confirmed transfers may remain")
 		}
 	}
-	if processed > 0 { log.Printf("TRC20 payment scan completed: delivered=%d", processed) }
+	if confirmed > 0 { log.Printf("TRC20 payment scan completed: confirmed=%d", confirmed) }
 	return nil
 }
