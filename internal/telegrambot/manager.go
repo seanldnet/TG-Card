@@ -389,6 +389,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 	if len(orders) == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, "你还没有订单。"); return }
 	var b strings.Builder
 	b.WriteString("最近订单：")
+	paymentAddress, paymentEnabled := m.paymentConfig()
 		for _, order := range orders {
 		details := `
 
@@ -397,7 +398,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 商品金额：`+formatPrice(order.AmountMinor, order.Currency)+`
 状态：`+order.Status
 		if order.Status == "pending_payment" {
-			if m.paymentEnabled && m.paymentAddress != "" && order.PaymentAmountAtomic > 0 {
+			if paymentEnabled && paymentAddress != "" && order.PaymentAmountAtomic > 0 {
 				details += `
 网络：TRON（TRC20）
 收款地址：`+paymentAddress+`
