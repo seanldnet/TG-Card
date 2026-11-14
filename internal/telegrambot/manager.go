@@ -274,7 +274,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		_ = m.sendMessage(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。")
 		return
 	}
-	if len(orders) == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, "你还没有订单。",); return }
+	if len(orders) == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, "你还没有订单。"); return }
 	var b strings.Builder
 	b.WriteString("最近订单：")
 	for _, order := range orders {
