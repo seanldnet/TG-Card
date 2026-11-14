@@ -67,10 +67,11 @@ func (m *Manager) scan(ctx context.Context) error {
 	scanCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	fingerprint := ""
-	minTimestampMS := time.Now().Add(-2 * time.Hour).UnixMilli()
+	maxTimestampMS := time.Now().UnixMilli()
+	minTimestampMS := time.UnixMilli(maxTimestampMS).Add(-2 * time.Hour).UnixMilli()
 	processed := 0
 	for page := 0; page < 25; page++ {
-		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS)
+		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS, maxTimestampMS)
 		if err != nil {
 			return err
 		}
