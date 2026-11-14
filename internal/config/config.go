@@ -19,7 +19,7 @@ func Load() Config {
 		if dsn != "" { driver = "postgres" } else { driver = "sqlite" }
 	}
 	if dsn == "" { dsn = "./data/tg-card.db" }
-	return Config{Port: env("PORT", "8080"), DBDriver: driver, DatabaseDSN: dsn, AppEnv: env("APP_ENV", "production")}
+	return Config{Port: env("PORT", "38647"), DBDriver: driver, DatabaseDSN: dsn, AppEnv: env("APP_ENV", "production")}
 }
 
 func env(key, fallback string) string {
