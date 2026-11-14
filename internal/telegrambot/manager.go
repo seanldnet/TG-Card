@@ -276,12 +276,12 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 	var b strings.Builder
 	b.WriteString("最近订单：")
 	for _, order := range orders {
-		b.WriteString("
+		b.WriteString(`
 
-订单号："+order.OrderNo+"
-商品："+order.ProductName+"
-金额："+formatPrice(order.AmountMinor, order.Currency)+"
-状态："+order.Status)
+订单号：`+order.OrderNo+`
+商品：`+order.ProductName+`
+金额：`+formatPrice(order.AmountMinor, order.Currency)+`
+状态：`+order.Status)
 	}
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, b.String(), map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
 }
