@@ -229,7 +229,7 @@ func ListBots(ctx context.Context, db *sql.DB) ([]Bot, error) {
 	return items, rows.Err()
 }
 
-func CreateBot(ctx context.Context, db *sql.DB, name, username, encryptedToken, fingerprint, welcome string) (Bot, error) {
+func CreateBot(ctx context.Context, db *sql.DB, driver, name, username, encryptedToken, fingerprint, welcome string) (Bot, error) {
 	id, err := randomID()
 	if err != nil { return Bot{}, err }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -239,9 +239,9 @@ func CreateBot(ctx context.Context, db *sql.DB, name, username, encryptedToken, 
 	return item, err
 }
 
-func UpdateBot(ctx context.Context, db *sql.DB, id, name, welcome string, status int) error {
+func UpdateBot(ctx context.Context, db *sql.DB, driver, id, name, welcome string, status int) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result, err := db.ExecContext(ctx, "UPDATE bots SET name=?, welcome_text=?, status=?, updated_at=? WHERE id=?", name,welcome,status,now,id)
+	query := "UPDATE bots SET name="+placeholder(driver,1)+", welcome_text="+placeholder(driver,2)+", status="+placeholder(driver,3)+", updated_at="+placeholder(driver,4)+" WHERE id="+placeholder(driver,5)\n\tresult, err := db.ExecContext(ctx, query, name,welcome,status,now,id)
 	if err != nil { return err }
 	count, err := result.RowsAffected()
 	if err != nil { return err }

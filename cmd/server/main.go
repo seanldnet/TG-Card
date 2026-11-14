@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
+	"errors"\n\t"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -280,4 +280,89 @@ func (a *application) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.password.change", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "success; all existing sessions revoked")
 	writeSuccess(w, http.StatusOK, map[string]string{"message": "Password updated; please sign in again"})
+}
+
+type botCreateRequest struct {
+	Name string `json:"name"`
+	Token string `json:"token"`
+	WelcomeText string `json:"welcomeText"`
+}
+type botUpdateRequest struct {
+	Name string `json:"name"`
+	WelcomeText string `json:"welcomeText"`
+	Status int `json:"status"`
+}
+type telegramGetMeResponse struct {
+	OK bool `json:"ok"`
+	Description string `json:"description"`
+	Result struct {
+		Username string `json:"username"`
+		FirstName string `json:"first_name"`
+	} `json:"result"`
+}
+type botView struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Username string `json:"username"`
+	Status int `json:"status"`
+	WelcomeText string `json:"welcomeText"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func (a *application) listBots(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w,r); !ok { return }
+	items, err := database.ListBots(r.Context(), a.db)
+	if err != nil { log.Printf("list bots: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load bots"); return }
+	result := make([]botView,0,len(items))
+	for _, item := range items { result=append(result,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt}) }
+	writeSuccess(w,http.StatusOK,result)
+}
+
+func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w,r); if !ok { return }
+	var input botCreateRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err != nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
+	input.Name=strings.TrimSpace(input.Name); input.Token=strings.TrimSpace(input.Token)
+	if input.Name=="" || len(input.Name)>100 || input.Token=="" || len(input.Token)>512 || len(input.WelcomeText)>4000 { writeError(w,http.StatusBadRequest,"Name, valid Bot Token, and welcome text are required"); return }
+	info, err := telegramGetMe(r.Context(),input.Token)
+	if err != nil { writeError(w,http.StatusBadRequest,"Telegram Bot Token validation failed: "+err.Error()); return }
+	encrypted, err := a.secrets.Encrypt(input.Token)
+	if err != nil { log.Printf("encrypt bot token: %v",err); writeError(w,http.StatusInternalServerError,"Unable to securely store Bot Token"); return }
+	item, err := database.CreateBot(r.Context(),a.db,a.driver,input.Name,info.Result.Username,encrypted,secret.Fingerprint(input.Token),input.WelcomeText)
+	if err != nil { log.Printf("create bot: %v",err); writeError(w,http.StatusConflict,"Bot already exists or could not be saved"); return }
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.create","bot:"+item.ID,clientIP(r),r.UserAgent(),"telegram_username=@"+item.Username)
+	writeSuccess(w,http.StatusCreated,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt})
+}
+
+func (a *application) updateBot(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w,r); if !ok { return }
+	var input botUpdateRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err!=nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
+	input.Name=strings.TrimSpace(input.Name)
+	if input.Name=="" || len(input.Name)>100 || len(input.WelcomeText)>4000 || (input.Status!=0 && input.Status!=1) { writeError(w,http.StatusBadRequest,"Invalid Bot settings"); return }
+	id:=r.PathValue("id")
+	if err:=database.UpdateBot(r.Context(),a.db,a.driver,id,input.Name,input.WelcomeText,input.Status); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to update Bot") }; return }
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.update","bot:"+id,clientIP(r),r.UserAgent(),"settings updated")
+	writeSuccess(w,http.StatusOK,map[string]bool{"updated":true})
+}
+
+func (a *application) deleteBot(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w,r); if !ok { return }
+	id:=r.PathValue("id")
+	if err:=database.DeleteBot(r.Context(),a.db,a.driver,id); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to delete Bot") }; return }
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.delete","bot:"+id,clientIP(r),r.UserAgent(),"deleted")
+	writeSuccess(w,http.StatusOK,map[string]bool{"deleted":true})
+}
+
+func telegramGetMe(ctx context.Context, token string) (telegramGetMeResponse,error) {
+	var result telegramGetMeResponse
+	ctx,cancel:=context.WithTimeout(ctx,10*time.Second); defer cancel()
+	request,err:=http.NewRequestWithContext(ctx,http.MethodGet,"https://api.telegram.org/bot"+token+"/getMe",nil)
+	if err!=nil { return result,err }
+	response,err:=http.DefaultClient.Do(request); if err!=nil { return result,fmt.Errorf("cannot reach Telegram API: %w",err) }; defer response.Body.Close()
+	if response.StatusCode!=http.StatusOK { return result,fmt.Errorf("Telegram API returned HTTP %d",response.StatusCode) }
+	if err:=json.NewDecoder(http.MaxBytesReader(nil,response.Body,1<<20)).Decode(&result); err!=nil { return result,fmt.Errorf("invalid Telegram response") }
+	if !result.OK || result.Result.Username=="" { if result.Description!="" { return result,fmt.Errorf("%s",result.Description) }; return result,fmt.Errorf("Telegram rejected this token") }
+	return result,nil
 }
