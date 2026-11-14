@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"fmt"
 	"sync"
 	"time"
 
@@ -94,17 +95,26 @@ func (m *Manager) scan(ctx context.Context) error {
 		}
 		for _, transfer := range transfers {
 			if scanCtx.Err() != nil { return scanCtx.Err() }
+			if _, err := database.RecordTRC20Transfer(scanCtx, m.db, m.driver, transfer); err != nil {
+				return fmt.Errorf("persist TRC20 transfer %s: %w", transfer.TransactionID, err)
+			}
 			order, err := database.MatchPendingTRC20Order(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
-			if errors.Is(err, sql.ErrNoRows) { continue }
+			if errors.Is(err, sql.ErrNoRows) {
+				if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "unmatched", "", "No active order matched this confirmed transfer"); classifyErr != nil { return classifyErr }
+				continue
+			}
 			if err != nil {
+				_ = database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", "", err.Error())
 				log.Printf("TRC20 transfer requires reconciliation: tx=%s error=%v", transfer.TransactionID, err)
 				continue
 			}
 			_, err = database.ConfirmOrderPayment(scanCtx, m.db, m.driver, order.ID, "trc20-usdt", transfer.TransactionID)
 			if err != nil {
+				_ = database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", order.ID, err.Error())
 				log.Printf("TRC20 order payment confirmation rejected: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err)
 				continue
 			}
+			if err := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "matched", order.ID, ""); err != nil { return err }
 			claimed, err := database.ClaimOrderDelivery(scanCtx, m.db, m.driver, order.ID, 2*time.Minute)
 			if err != nil { log.Printf("TRC20 paid order lease failed: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err); continue }
 			if claimed {
