@@ -198,6 +198,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"name": "BotManagement", "path": "/bots", "component": "/bots/index",
 			"meta": map[string]any{"icon": "lucide:bot", "order": 1, "title": "机器人管理"},
 		},
+		{
+			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
+			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
+		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
 }
