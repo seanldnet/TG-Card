@@ -81,7 +81,7 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	secrets, err := secret.New(cfg.DataDir)
 	if err != nil { log.Fatal(err) }
-	botManager := telegrambot.NewManager(db, cfg.DBDriver)
+	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt)
 	defer botManager.Stop()
 	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager}
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
