@@ -118,3 +118,41 @@ func ListOrdersByTelegramUser(ctx context.Context, db *sql.DB, driver, telegramU
 	}
 	return items, rows.Err()
 }
+ 
+// ExpirePendingOrders atomically expires overdue unpaid orders and releases their reserved stock.
+// The operation is idempotent and safe to run concurrently on multiple application instances.
+func ExpirePendingOrders(ctx context.Context, db *sql.DB, driver string, limit int) (int, error) {
+	if limit <= 0 || limit > 1000 { limit = 100 }
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return 0, err }
+	defer tx.Rollback()
+
+	query := "SELECT id FROM orders WHERE status='pending_payment' AND expires_at <= " + placeholder(driver, 1) + " ORDER BY expires_at LIMIT " + fmt.Sprint(limit)
+	if driver == "postgres" { query += " FOR UPDATE SKIP LOCKED" }
+	rows, err := tx.QueryContext(ctx, query, time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil { return 0, err }
+	ids := make([]string, 0, limit)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil { rows.Close(); return 0, err }
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil { rows.Close(); return 0, err }
+	if err := rows.Close(); err != nil { return 0, err }
+
+	expired := 0
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, id := range ids {
+		update := "UPDATE orders SET status='expired', updated_at=" + placeholder(driver, 1) + " WHERE id=" + placeholder(driver, 2) + " AND status='pending_payment'"
+		result, err := tx.ExecContext(ctx, update, now, id)
+		if err != nil { return 0, err }
+		affected, err := result.RowsAffected()
+		if err != nil { return 0, err }
+		if affected == 0 { continue }
+		release := "UPDATE product_keys SET status=0, order_id=NULL WHERE order_id=" + placeholder(driver, 1) + " AND status=1"
+		if _, err := tx.ExecContext(ctx, release, id); err != nil { return 0, err }
+		expired += int(affected)
+	}
+	if err := tx.Commit(); err != nil { return 0, err }
+	return expired, nil
+}
