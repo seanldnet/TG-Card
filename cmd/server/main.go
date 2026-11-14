@@ -528,6 +528,8 @@ type orderView struct {
 	CreatedAt string `json:"createdAt"`
 	PaidAt string `json:"paidAt,omitempty"`
 	DeliveredAt string `json:"deliveredAt,omitempty"`
+	DeliveryAttempts int `json:"deliveryAttempts"`
+	DeliveryError string `json:"deliveryError,omitempty"`
 	StockReserved bool `json:"stockReserved"`
 }
 
@@ -563,7 +565,7 @@ func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 			ProductName:item.ProductName, UnitPriceMinor:item.UnitPriceMinor,
 			Quantity:item.Quantity, AmountMinor:item.AmountMinor, Currency:item.Currency,
 			Status:item.Status, ExpiresAt:item.ExpiresAt, CreatedAt:item.CreatedAt,
-			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, StockReserved:item.StockReserved,
+			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, DeliveryAttempts:item.DeliveryAttempts, DeliveryError:item.DeliveryError, StockReserved:item.StockReserved,
 		})
 	}
 	writeSuccess(w, http.StatusOK, result)
