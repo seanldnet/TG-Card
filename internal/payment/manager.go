@@ -51,9 +51,10 @@ func (m *Manager) scan(ctx context.Context) {
 	scanCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	fingerprint := ""
+	minTimestampMS := time.Now().Add(-2*time.Hour).UnixMilli()
 	processed := 0
 	for page := 0; page < 25; page++ {
-		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint)
+		transfers, next, err := m.chain.FetchConfirmedIncoming(scanCtx, fingerprint, minTimestampMS)
 		if err != nil {
 			if scanCtx.Err() == nil { log.Printf("TRC20 confirmed transfer scan failed: %v", err) }
 			return
