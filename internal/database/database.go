@@ -260,27 +260,27 @@ func DeleteBot(ctx context.Context, db *sql.DB, driver, id string) error {
 }
 
 type Category struct {
-	ID string
-	Name string
-	SortOrder int
-	Status int
-	CreatedAt string
-	UpdatedAt string
+	ID string `json:"id"`
+	Name string `json:"name"`
+	SortOrder int `json:"sortOrder"`
+	Status int `json:"status"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 type Product struct {
-	ID string
-	CategoryID string
-	CategoryName string
-	Name string
-	Description string
-	PriceMinor int64
-	Currency string
-	DeliveryType string
-	Status int
-	StockCount int
-	CreatedAt string
-	UpdatedAt string
+	ID string `json:"id"`
+	CategoryID string `json:"categoryId"`
+	CategoryName string `json:"categoryName"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	PriceMinor int64 `json:"priceMinor"`
+	Currency string `json:"currency"`
+	DeliveryType string `json:"deliveryType"`
+	Status int `json:"status"`
+	StockCount int `json:"stockCount"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 type StockSecret struct {
