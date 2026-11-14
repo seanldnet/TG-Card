@@ -108,7 +108,7 @@ onMounted(loadOrders);
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div class="text-lg font-semibold">订单管理</div>
-            <div class="mt-1 text-sm text-gray-500">查看 Telegram 用户订单、付款状态及库存预留情况</div>
+            <div class="mt-1 text-sm text-gray-500">查看 Telegram 用户订单、付款状态、库存预留及自动发货重试情况</div>
           </div>
           <a-button :loading="loading" @click="loadOrders">刷新订单</a-button>
         </div>
@@ -137,6 +137,9 @@ onMounted(loadOrders);
             >重试发货</a-button>
             <span v-else class="text-gray-400">-</span>
           </template>
+        </a-table-column>
+        <a-table-column title="发货尝试次数" data-index="deliveryAttempts" key="deliveryAttempts" :width="120">
+          <template #default="{ record }">{{ record.deliveryAttempts }}</template>
         </a-table-column>
         <a-table-column title="最近发货错误" data-index="deliveryError" key="deliveryError" :width="220" ellipsis />
         <a-table-column title="创建时间" key="createdAt" :width="190">
