@@ -104,6 +104,7 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
@@ -528,6 +529,22 @@ type orderView struct {
 	PaidAt string `json:"paidAt,omitempty"`
 	DeliveredAt string `json:"deliveredAt,omitempty"`
 	StockReserved bool `json:"stockReserved"`
+}
+
+func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	orderID := r.PathValue("id")
+	item, err := database.GetOrderDelivery(r.Context(), a.db, a.driver, orderID)
+	if errors.Is(err, sql.ErrNoRows) { writeError(w, http.StatusConflict, "Order is not awaiting delivery or is not retryable"); return }
+	if err != nil { log.Printf("load order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
+	if err := a.botManager.DeliverPaidOrder(r.Context(), item); err != nil {
+		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, clientIP(r), r.UserAgent(), "failed: "+err.Error())
+		writeError(w, http.StatusBadGateway, "Delivery failed; order remains retryable")
+		return
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, clientIP(r), r.UserAgent(), "delivered")
+	writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true})
 }
 
 func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
