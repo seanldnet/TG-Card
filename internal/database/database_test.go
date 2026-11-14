@@ -287,3 +287,29 @@ func TestSupportTicketLifecycleAndOrderOwnership(t *testing.T) {
 	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"support-bot","support-user","support-chat",order.OrderNo,"other","follow-up after resolution");err!=nil{t.Fatalf("resolved ticket should not block a new ticket: %v",err)}
 	items,err:=ListSupportTickets(ctx,db,cfg.DBDriver);if err!=nil{t.Fatal(err)};if len(items)!=2{t.Fatalf("got %d tickets, want 2",len(items))}
 }
+
+func TestPaymentSettingsPersistAcrossReads(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+
+	want := PaymentSettings{
+		TronAPIKeyCiphertext: "encrypted-api-key",
+		TronReceiveAddress: "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM",
+		TronUSDTContract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+		TronEnabled: true,
+	}
+	if err := SavePaymentSettings(ctx, db, cfg.DBDriver, want); err != nil { t.Fatal(err) }
+	got, err := GetPaymentSettings(ctx, db, cfg.DBDriver)
+	if err != nil { t.Fatal(err) }
+	if got != want { t.Fatalf("settings mismatch: got %+v, want %+v", got, want) }
+	want.TronEnabled = false
+	want.TronReceiveAddress = "TNewAddress"
+	if err := SavePaymentSettings(ctx, db, cfg.DBDriver, want); err != nil { t.Fatal(err) }
+	got, err = GetPaymentSettings(ctx, db, cfg.DBDriver)
+	if err != nil { t.Fatal(err) }
+	if got != want { t.Fatalf("updated settings mismatch: got %+v, want %+v", got, want) }
+}
