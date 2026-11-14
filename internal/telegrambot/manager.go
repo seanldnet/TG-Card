@@ -268,7 +268,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 }
 
 func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
-	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, strconv.FormatInt(user.ID, 10), cfg.ID)
+	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
 		log.Printf("telegram user orders failed: bot_id=%s user_id=%d error=%v", cfg.ID, user.ID, err)
 		_ = m.sendMessage(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。")
