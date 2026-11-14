@@ -20,7 +20,7 @@ func TestFetchConfirmedIncomingFiltersAndParsesUSDTTransfers(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"success":true,
 			"data":[
-				{"transaction_id":"ABCDEF","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Transfer","value":"1234567","block_timestamp":1700000000000,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}},
+				{"transaction_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Transfer","value":"1234567","block_timestamp":1700000000000,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}},
 				{"transaction_id":"OUT","from":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","to":"TOther","type":"Transfer","value":"9000000","block_timestamp":1700000000001,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}},
 				{"transaction_id":"WRONG","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Transfer","value":"100","block_timestamp":1700000000002,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":18,"symbol":"USDT"}},
 				{"transaction_id":"APPROVE","from":"TFrom","to":"TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM","type":"Approval","value":"100","block_timestamp":1700000000003,"token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6,"symbol":"USDT"}}
@@ -34,7 +34,7 @@ func TestFetchConfirmedIncomingFiltersAndParsesUSDTTransfers(t *testing.T) {
 	items, fingerprint, err := client.FetchConfirmedIncoming(context.Background(), "", 1700000000000)
 	if err != nil { t.Fatal(err) }
 	if len(items) != 1 { t.Fatalf("expected one eligible transfer, got %d", len(items)) }
-	if items[0].TransactionID != "abcdef" || items[0].AmountAtomic != 1234567 || items[0].Decimals != 6 {
+	if items[0].TransactionID != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" || items[0].AmountAtomic != 1234567 || items[0].Decimals != 6 {
 		t.Fatalf("unexpected transfer: %+v", items[0])
 	}
 	if fingerprint != "next-page" { t.Fatalf("unexpected fingerprint: %q", fingerprint) }
