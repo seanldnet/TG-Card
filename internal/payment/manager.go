@@ -83,17 +83,22 @@ func (m *Manager) scan(ctx context.Context) error {
 				log.Printf("TRC20 transfer requires reconciliation: tx=%s error=%v", transfer.TransactionID, err)
 				continue
 			}
-			item, err := database.ConfirmOrderPayment(scanCtx, m.db, m.driver, order.ID, "trc20-usdt", transfer.TransactionID)
+			_, err = database.ConfirmOrderPayment(scanCtx, m.db, m.driver, order.ID, "trc20-usdt", transfer.TransactionID)
 			if err != nil {
 				log.Printf("TRC20 order payment confirmation rejected: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err)
 				continue
 			}
-			if err := m.bots.DeliverPaidOrder(scanCtx, item); err != nil {
-				log.Printf("TRC20 payment confirmed but card delivery failed: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err)
-				continue
+			claimed, err := database.ClaimOrderDelivery(scanCtx, m.db, m.driver, order.ID, 2*time.Minute)
+			if err != nil { log.Printf("TRC20 paid order lease failed: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err); continue }
+			if claimed {
+				delivery, err := database.GetOrderDelivery(scanCtx, m.db, m.driver, order.ID)
+				if err != nil { log.Printf("TRC20 paid order load failed: order_id=%s error=%v", order.ID, err); continue }
+				if err := m.bots.DeliverPaidOrder(scanCtx, delivery); err != nil {
+					log.Printf("TRC20 payment confirmed but card delivery failed: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err)
+				}
 			}
 			processed++
-			log.Printf("TRC20 payment confirmed and order delivered: order_id=%s tx=%s", order.ID, transfer.TransactionID)
+			log.Printf("TRC20 payment confirmed: order_id=%s tx=%s delivery_claimed=%t", order.ID, transfer.TransactionID, claimed)
 		}
 		if next == "" || next == fingerprint {
 			if processed > 0 { log.Printf("TRC20 payment scan completed: delivered=%d", processed) }

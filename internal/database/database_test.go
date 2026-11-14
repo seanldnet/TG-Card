@@ -245,3 +245,27 @@ func TestTRC20PaymentAmountsAreUniqueAndMatchOnlyActiveOrderWindow(t *testing.T)
 	tooEarly := time.Now().UTC().Add(-time.Minute).UnixMilli()
 	if _, err := MatchPendingTRC20Order(ctx, db, cfg.DBDriver, first.PaymentAmountAtomic, tooEarly); err == nil { t.Fatal("transfer before order creation must not match") }
 }
+func TestClaimOrderDeliveryPreventsConcurrentDispatch(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Single-claim card", PriceMinor: 900, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{{Ciphertext: "single-claim-cipher", Fingerprint: "single-claim-fp"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-claim-one", "user-claim-one", "chat-claim-one", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := ConfirmOrderPayment(ctx, db, cfg.DBDriver, order.ID, "test-adapter", "single-claim-payment"); err != nil { t.Fatal(err) }
+	claimed, err := ClaimOrderDelivery(ctx, db, cfg.DBDriver, order.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if !claimed { t.Fatal("first dispatch should acquire the delivery lease") }
+	claimed, err = ClaimOrderDelivery(ctx, db, cfg.DBDriver, order.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if claimed { t.Fatal("a second dispatch must not bypass the active delivery lease") }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET delivery_lease_until=? WHERE id=?", time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano), order.ID); err != nil { t.Fatal(err) }
+	claimed, err = ClaimOrderDelivery(ctx, db, cfg.DBDriver, order.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if !claimed { t.Fatal("expired delivery lease should be reclaimable") }
+}

@@ -536,6 +536,8 @@ type orderView struct {
 	CreatedAt string `json:"createdAt"`
 	PaidAt string `json:"paidAt,omitempty"`
 	DeliveredAt string `json:"deliveredAt,omitempty"`
+	PaymentMethod string `json:"paymentMethod,omitempty"`
+	PaymentReference string `json:"paymentReference,omitempty"`
 	DeliveryAttempts int `json:"deliveryAttempts"`
 	DeliveryError string `json:"deliveryError,omitempty"`
 	StockReserved bool `json:"stockReserved"`
@@ -545,6 +547,9 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
 	orderID := r.PathValue("id")
+	claimed, err := database.ClaimOrderDelivery(r.Context(), a.db, a.driver, orderID, 2*time.Minute)
+	if err != nil { log.Printf("claim order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to claim order delivery"); return }
+	if !claimed { writeError(w, http.StatusConflict, "Order is already being delivered or is not retryable"); return }
 	item, err := database.GetOrderDelivery(r.Context(), a.db, a.driver, orderID)
 	if errors.Is(err, sql.ErrNoRows) { writeError(w, http.StatusConflict, "Order is not awaiting delivery or is not retryable"); return }
 	if err != nil { log.Printf("load order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
@@ -573,7 +578,7 @@ func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 			ProductName:item.ProductName, UnitPriceMinor:item.UnitPriceMinor,
 			Quantity:item.Quantity, AmountMinor:item.AmountMinor, PaymentAmount:formatUSDTAtomic(item.PaymentAmountAtomic), Currency:item.Currency,
 			Status:item.Status, ExpiresAt:item.ExpiresAt, CreatedAt:item.CreatedAt,
-			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, DeliveryAttempts:item.DeliveryAttempts, DeliveryError:item.DeliveryError, StockReserved:item.StockReserved,
+			PaidAt:item.PaidAt, DeliveredAt:item.DeliveredAt, PaymentMethod:item.PaymentMethod, PaymentReference:item.PaymentReference, DeliveryAttempts:item.DeliveryAttempts, DeliveryError:item.DeliveryError, StockReserved:item.StockReserved,
 		})
 	}
 	writeSuccess(w, http.StatusOK, result)

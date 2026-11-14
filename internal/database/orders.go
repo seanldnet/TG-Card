@@ -21,6 +21,8 @@ type Order struct {
 	Quantity int `json:"quantity"`
 	AmountMinor int64 `json:"amountMinor"`
 	PaymentAmountAtomic int64 `json:"paymentAmountAtomic"`
+	PaymentMethod string `json:"paymentMethod,omitempty"`
+	PaymentReference string `json:"paymentReference,omitempty"`
 	Currency string `json:"currency"`
 	Status string `json:"status"`
 	ExpiresAt string `json:"expiresAt"`
@@ -107,7 +109,7 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 }
 
 func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
-	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.delivery_attempts,o.delivery_error,o.payment_amount_atomic,
+	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.delivery_attempts,o.delivery_error,o.payment_amount_atomic,COALESCE(o.payment_method,''),COALESCE(o.payment_reference,''),
 	EXISTS(SELECT 1 FROM product_keys k WHERE k.order_id=o.id AND k.status=1)
 	FROM orders o ORDER BY o.created_at DESC LIMIT 500`)
 	if err != nil { return nil, err }
@@ -115,7 +117,7 @@ func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
 	items := make([]OrderListItem,0)
 	for rows.Next() {
 		var item OrderListItem
-		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.PaymentAmountAtomic,&item.StockReserved); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.StockReserved); err != nil { return nil, err }
 		items = append(items,item)
 	}
 	return items, rows.Err()
@@ -283,6 +285,23 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 	return claimedIDs, nil
 }
 
+// ClaimOrderDelivery atomically leases one order for immediate or manual dispatch.
+// It uses the same state rules as ClaimOrderDeliveries to prevent concurrent sends.
+func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string, lease time.Duration) (bool, error) {
+	if orderID == "" { return false, fmt.Errorf("order ID is required") }
+	if lease <= 0 { lease = 2 * time.Minute }
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
+	leaseText := now.Add(lease).Format(time.RFC3339Nano)
+	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
+	if driver == "postgres" { dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
+	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
+	result, err := db.ExecContext(ctx, query, leaseText, nowText, orderID, nowText)
+	if err != nil { return false, err }
+	affected, err := result.RowsAffected()
+	if err != nil { return false, err }
+	return affected == 1, nil
+}
 // GetOrderDelivery recovers a paid card for retry after a process interruption.
 func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, error) {
 	var item OrderDelivery
