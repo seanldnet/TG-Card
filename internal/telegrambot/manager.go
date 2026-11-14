@@ -124,6 +124,19 @@ func (m *Manager) Reconcile(configs []Config) {
 	}
 }
 
+func (m *Manager) SetPaymentConfig(address string, enabled bool) {
+	m.mu.Lock()
+	m.paymentAddress = address
+	m.paymentEnabled = enabled && address != ""
+	m.mu.Unlock()
+}
+
+func (m *Manager) paymentConfig() (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.paymentAddress, m.paymentEnabled
+}
+
 func (m *Manager) Stop() {
 	m.mu.Lock()
 	if m.expiryCancel != nil { m.expiryCancel(); m.expiryCancel = nil }
@@ -187,7 +200,8 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 		if p.ID != productID || p.Status != 1 { continue }
 		if p.StockCount < 1 { _ = m.sendMessage(ctx, cfg.Token, chatID, "该商品库存不足，请返回商城选择其他商品。"); return }
 		text := "请确认订单信息：\n商品：" + p.Name + "\n商品金额：" + formatPrice(p.PriceMinor, p.Currency) + "\n数量：1\n库存：" + strconv.Itoa(p.StockCount) + "\n\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。"
-		if m.paymentEnabled && m.paymentAddress != "" {
+		paymentAddress, paymentEnabled := m.paymentConfig()
+		if paymentEnabled && paymentAddress != "" {
 			text += "\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"
 		} else {
 			text += "\n支付尚未启用，请勿转账。"
@@ -346,11 +360,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 商品金额：` + formatPrice(order.AmountMinor, order.Currency) + `
 状态：待付款
 有效期至：` + order.ExpiresAt
-		if m.paymentEnabled && m.paymentAddress != "" && order.PaymentAmountAtomic > 0 {
+		paymentAddress, paymentEnabled := m.paymentConfig()
+		if paymentEnabled && paymentAddress != "" && order.PaymentAmountAtomic > 0 {
 			text += `
 
 支付网络：TRON（TRC20）
-USDT 收款地址：` + m.paymentAddress + `
+USDT 收款地址：` + paymentAddress + `
 请准确转账：` + formatUSDTAtomic(order.PaymentAmountAtomic) + ` USDT
 请勿使用其他网络或转账其他金额。系统仅在链上交易确认后自动发货。`
 		} else {
@@ -385,7 +400,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 			if m.paymentEnabled && m.paymentAddress != "" && order.PaymentAmountAtomic > 0 {
 				details += `
 网络：TRON（TRC20）
-收款地址：`+m.paymentAddress+`
+收款地址：`+paymentAddress+`
 应付：`+formatUSDTAtomic(order.PaymentAmountAtomic)+` USDT`
 			} else {
 				details += "\n此订单没有有效的链上付款金额，请重新下单，切勿转账。"
