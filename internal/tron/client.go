@@ -64,6 +64,12 @@ func NewClient(apiKey, receiveAddress, contractAddress string) (*Client, error) 
 	if contractAddress == "" {
 		contractAddress = MainnetUSDTContract
 	}
+	if err := validateBase58Address(receiveAddress); err != nil {
+		return nil, fmt.Errorf("invalid TRON receiving address: %w", err)
+	}
+	if err := validateBase58Address(contractAddress); err != nil {
+		return nil, fmt.Errorf("invalid TRC20 contract address: %w", err)
+	}
 	return &Client{
 		baseURL: MainnetBaseURL,
 		apiKey: apiKey,
