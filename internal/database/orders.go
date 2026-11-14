@@ -221,10 +221,51 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 	return delivery, nil
 }
 
+// ClaimOrderDeliveries leases due paid orders for one worker. Expired leases make
+// interrupted deliveries recoverable after a process restart.
+func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit int, lease time.Duration) ([]string, error) {
+	if limit <= 0 || limit > 500 { limit = 50 }
+	if lease <= 0 { lease = 2 * time.Minute }
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return nil, err }
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
+	leaseText := now.Add(lease).Format(time.RFC3339Nano)
+	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 1) + ")"
+	orderExpr := "created_at"
+	if driver == "postgres" {
+		dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 1) + " AS TIMESTAMPTZ)"
+	}
+	query := "SELECT id FROM orders WHERE status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) ORDER BY " + orderExpr + " LIMIT " + fmt.Sprint(limit)
+	if driver == "postgres" { query += " FOR UPDATE SKIP LOCKED" }
+	rows, err := tx.QueryContext(ctx, query, nowText)
+	if err != nil { return nil, err }
+	ids := make([]string, 0, limit)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil { rows.Close(); return nil, err }
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil { rows.Close(); return nil, err }
+	if err := rows.Close(); err != nil { return nil, err }
+	for _, id := range ids {
+		update := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
+		args := []any{leaseText, nowText, id, nowText}
+		result, err := tx.ExecContext(ctx, update, args...)
+		if err != nil { return nil, err }
+		affected, err := result.RowsAffected()
+		if err != nil { return nil, err }
+		if affected != 1 { continue }
+	}
+	if err := tx.Commit(); err != nil { return nil, err }
+	return ids, nil
+}
+
 // GetOrderDelivery recovers a paid card for retry after a process interruption.
 func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, error) {
 	var item OrderDelivery
-	query := "SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.payment_method,COALESCE(o.payment_reference,''),k.secret_ciphertext FROM orders o JOIN product_keys k ON k.order_id=o.id AND k.status=2 WHERE o.id=" + placeholder(driver, 1) + " AND o.status IN ('paid','delivery_failed') LIMIT 1"
+	query := "SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.payment_method,COALESCE(o.payment_reference,''),k.secret_ciphertext FROM orders o JOIN product_keys k ON k.order_id=o.id AND k.status=2 WHERE o.id=" + placeholder(driver, 1) + " AND o.status IN ('paid','delivering','delivery_failed') LIMIT 1"
 	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.PaymentMethod,&item.PaymentReference,&item.SecretCiphertext)
 	return item, err
 }
