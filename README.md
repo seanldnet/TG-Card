@@ -1,13 +1,14 @@
 # TG-Card
 
-单商户、多 Telegram Bot 的自动发卡系统。
+单商户、多 Telegram Bot 的自动发卡商城系统。
 
-## 技术栈
+## 技术栈与架构
 
-- Admin UI: 官方 Vue Vben Admin 5.x（Vue 3 + TypeScript + Vite + Ant Design Vue），源码以 Git Submodule 固定版本引入
-- Backend: Go
-- Database: Docker 默认 PostgreSQL；独立二进制支持 SQLite / PostgreSQL
-- Deployment: Docker Compose（预构建镜像，无需在服务器编译）
+- Admin UI：官方 Vue Vben Admin 5.x，使用 apps/web-antd（Vue 3 + TypeScript + Vite + Ant Design Vue）
+- Backend：Go HTTP API
+- Database：Docker 默认 PostgreSQL；独立运行支持 SQLite / PostgreSQL
+- Authentication：Vben 官方请求层与认证状态，Go 后端签发 HS256 Bearer Token
+- Deployment：多阶段 Docker 构建，GHCR 预构建镜像（linux/amd64、linux/arm64）
 
 ## 产品边界
 
@@ -16,32 +17,81 @@
 - 每个 Bot 可单独配置 Token、名称、欢迎语、菜单和商品展示。
 - 不包含多商户、代理商或分销体系。
 
-## 产品介绍首页
+## 产品介绍首页与管理后台
 
-- 公开产品介绍页：访问 `/` 或 `/intro`，介绍多 Bot 管理、商品卡密、自动发货、支付、售后、签到与营销能力。
-- 管理后台登录：`/auth/login`。
-- 前端基于官方 Vben `apps/web-antd` 应用，TG-Card 定制页面和路由覆盖文件保存在 `web/overrides/`，不直接修改上游子模块。
-- 首次拉取需要执行 `git clone --recurse-submodules https://github.com/seanldnet/TG-Card.git`；已有仓库执行 `git submodule update --init --recursive`。
-- 本地应用定制并构建：`scripts/build-admin.sh`（需要 Node.js 与 pnpm，构建产物后续再接入 Go 静态资源服务）。
+- 产品介绍首页：/，也可访问 /intro。
+- 管理后台登录：/auth/login。
+- Vben 上游源码通过 Git Submodule 固定版本引入；TG-Card 的页面、路由和构建配置放在 web/overrides/，不直接修改上游子模块。
+- 首次克隆：git clone --recurse-submodules https://github.com/seanldnet/TG-Card.git。
+- 已有克隆：git submodule update --init --recursive。
+- 本地构建前端：./scripts/build-admin.sh。构建产物会复制到 web/dist，由 Go 服务托管。
+- API 地址与前端同源，统一使用 /api 前缀；Vben 使用 History 路由，Go 服务提供 SPA fallback。
 
-## 计划模块
+## 第二阶段已交付的基础能力
 
-仪表盘、机器人管理、商品分类、商品管理、卡密库存、订单管理、支付渠道、用户管理、财务统计、系统设置、管理员与操作日志。
+- SQLite / PostgreSQL 数据库连接与启动检查。
+- SQL 文件版本化迁移，迁移版本记录在 schema_migrations。
+- 首次启动自动初始化超级管理员，密码使用 bcrypt 哈希。
+- 未设置 ADMIN_PASSWORD 时生成一次性随机密码，仅在首次启动日志显示；请立即保存并妥善保管。
+- HS256 登录令牌；未设置 JWT_SECRET 时，在持久化的 DATA_DIR/jwt-secret 中自动生成签名密钥。
+- 登录、用户信息、权限码、菜单接口遵循 Vben 的 { code, data, error, message } 响应结构。
+- 登录成功/失败审计记录。
+- Go 服务托管 Vben 静态资源并支持前端 History 路由回退。
+- GitHub Actions 提供 Go CI 和 GHCR 多架构镜像构建发布。
 
-## 一键部署目标
+## 本地运行
 
-最终发布后，服务器只需准备 Docker 与 Docker Compose，下载 `docker-compose.yml`，执行：
+需要 Go 1.23+。默认 SQLite，无需单独安装数据库：
 
-```bash
+~~~bash
+go mod download
+go run ./cmd/server
+~~~
+
+首次启动会在日志中打印随机管理员密码。默认监听 38647，数据库和签名密钥位于 ./data。
+
+构建并托管前端：
+
+~~~bash
+git submodule update --init --recursive
+./scripts/build-admin.sh
+go run ./cmd/server
+~~~
+
+PostgreSQL 可通过环境变量启用：
+
+~~~bash
+DB_DRIVER=postgres
+DATABASE_URL=postgres://user:password@127.0.0.1:5432/tgcard?sslmode=disable
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD='replace-with-at-least-12-characters'
+~~~
+
+## Docker 部署
+
+准备 Docker Compose 和 .env（从 .env.example 复制并设置强 POSTGRES_PASSWORD），然后：
+
+~~~bash
 docker compose up -d
-```
+~~~
 
-然后访问 `http://服务器IP:38647`。数据库迁移、初始管理员创建和静态前端资源由容器自动完成。正式发布前会提供安全的首次初始化流程，不使用公开固定密码。
+容器使用 GHCR 的 latest 镜像，默认端口为 38647。首次启动时查看容器日志获取自动生成的管理员密码：
 
-## 当前状态
+~~~bash
+docker compose logs app
+~~~
 
-项目正在初始化。后续提交会逐步交付 Go API、Vben 管理界面、Telegram Bot 多实例运行时、支付和自动发卡流程，以及 GHCR 自动构建发布。
+数据持久化在 Docker volumes 中。不要删除数据卷，否则会丢失数据库和 JWT 签名密钥。
 
-## 功能范围
+## API 基础端点
 
-完整功能清单与实施优先级见 [`docs/product-scope.md`](docs/product-scope.md)，覆盖商品与卡密、Bot 欢迎页和动态菜单、订单支付自动交付、售后工单、签到奖励、余额积分、优惠券活动、USDT 链上收款、GMpay、EPUSDT，以及后台运营与安全管理。
+- GET /api/health：健康检查。
+- POST /api/auth/login：管理员登录。
+- POST /api/auth/logout：退出登录（当前 Bearer Token 为短期无状态令牌，客户端清除令牌）。
+- GET /api/user/info：当前管理员信息。
+- GET /api/auth/codes：当前管理员权限码。
+- GET /api/menu/all：当前管理员可见的动态菜单。
+
+## 产品功能范围
+
+完整功能清单与实施优先级见 docs/product-scope.md。机器人运行时、商品/库存、订单支付、TRC20 链上确认、售后和运营功能仍按阶段继续开发；基础认证和数据库已完成不代表完整商城已交付。
