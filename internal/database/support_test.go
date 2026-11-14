@@ -1,0 +1,46 @@
+package database
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/seanldnet/TG-Card/internal/config"
+)
+
+func TestCreateSupportTicketRejectsExpiredUnpaidOrder(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil {
+		t.Fatal(err)
+	}
+
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{
+		Name: "Expired support test", PriceMinor: 500, Currency: "USDT",
+		DeliveryType: "card", Status: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{
+		{Ciphertext: "expired-support-cipher", Fingerprint: "expired-support-fp"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "support-bot", "support-user", "support-chat", product.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='expired' WHERE id=?", order.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := CreateSupportTicket(ctx, db, cfg.DBDriver, "support-bot", "support-user", "support-chat", order.OrderNo, "other", "I did not receive my order"); err == nil {
+		t.Fatal("an unpaid expired order must not be eligible for after-sales support")
+	}
+}
