@@ -326,6 +326,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"name": "Support", "path": "/support", "component": "/support/index",
 			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 4, "title": "售后工单"},
 		},
+		{
+			"name": "PaymentSettings", "path": "/settings/payment", "component": "/settings/payment/index",
+			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 5, "title": "支付设置"},
+		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
 }
