@@ -75,7 +75,7 @@ func NewClient(apiKey, receiveAddress, contractAddress string) (*Client, error) 
 
 // FetchConfirmedIncoming reads only confirmed USDT transfers to the configured
 // receiving address. The fingerprint must be passed unchanged between pages.
-func (c *Client) FetchConfirmedIncoming(ctx context.Context, fingerprint string) ([]Transfer, string, error) {
+func (c *Client) FetchConfirmedIncoming(ctx context.Context, fingerprint string, minTimestampMS int64) ([]Transfer, string, error) {
 	u, err := url.Parse(c.baseURL + "/v1/accounts/" + url.PathEscape(c.address) + "/transactions/trc20")
 	if err != nil { return nil, "", err }
 	q := u.Query()
@@ -85,7 +85,8 @@ func (c *Client) FetchConfirmedIncoming(ctx context.Context, fingerprint string)
 	q.Set("order_by", "block_timestamp,asc")
 	// All active order invoices expire within minutes; a bounded lookback avoids
 	// rescanning the merchant's entire historical account on every poll.
-	q.Set("min_timestamp", strconv.FormatInt(time.Now().Add(-2*time.Hour).UnixMilli(), 10))
+	if minTimestampMS <= 0 { minTimestampMS = time.Now().Add(-2*time.Hour).UnixMilli() }
+	q.Set("min_timestamp", strconv.FormatInt(minTimestampMS, 10))
 	q.Set("contract_address", c.contract)
 	if fingerprint != "" { q.Set("fingerprint", fingerprint) }
 	u.RawQuery = q.Encode()
