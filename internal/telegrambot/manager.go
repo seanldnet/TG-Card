@@ -260,10 +260,19 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		text := `可用命令：
 /shop - 浏览商城
 /orders - 我的订单
+/support 订单号 问题描述 - 申请售后
 /help - 查看帮助`
 		if err := m.sendMessage(ctx, cfg.Token, msg.Chat.ID, text); err != nil { log.Printf("telegram help reply failed: bot_id=%s chat_id=%d error=%v", cfg.ID, msg.Chat.ID, err) }
 	case "/orders":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
+	case "/support":
+		if len(command) < 3 {
+			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "提交售后请发送：/support 订单号 问题描述\n例如：/support TC202611150001 卡密无法使用")
+			return
+		}
+		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
+		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。")
 	}
 }
 
@@ -489,4 +498,17 @@ func wait(ctx context.Context, duration time.Duration) bool {
 func formatUSDTAtomic(value int64) string {
 	if value < 0 { value = 0 }
 	return fmt.Sprintf("%d.%06d", value/1_000_000, value%1_000_000)
+}
+// SendSupportReply delivers an administrator response to the Telegram user who opened the ticket.
+func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportTicket) error {
+	m.mu.Lock()
+	current,ok:=m.workers[ticket.BotID]
+	var cfg Config
+	if ok { cfg=current.config }
+	m.mu.Unlock()
+	if !ok { return fmt.Errorf("Telegram bot for this support ticket is not running") }
+	chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64);if err!=nil{return fmt.Errorf("invalid support ticket chat ID: %w",err)}
+	text:="售后工单更新\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n当前状态："+ticket.Status
+	if ticket.AdminReply!="" { text+="\n管理员回复：\n"+ticket.AdminReply }
+	return m.sendMessage(ctx,cfg.Token,chatID,text)
 }
