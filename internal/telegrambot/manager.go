@@ -92,7 +92,7 @@ func (m *Manager) Reconcile(configs []Config) {
 
 	for id, current := range m.workers {
 		next, exists := desired[id]
-		if !exists || next.Fingerprint != current.config.Fingerprint {
+		if !exists || next != current.config {
 			current.cancel()
 			delete(m.workers, id)
 			log.Printf("telegram bot worker stopped: bot_id=%s username=@%s", id, current.config.Username)
