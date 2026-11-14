@@ -180,10 +180,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	case "/start", "/shop":
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case "/help":
-		text := "可用命令：
+		text := `可用命令：
 /shop - 浏览商城
 /orders - 我的订单
-/help - 查看帮助"
+/help - 查看帮助`
 		if err := m.sendMessage(ctx, cfg.Token, msg.Chat.ID, text); err != nil { log.Printf("telegram help reply failed: bot_id=%s chat_id=%d error=%v", cfg.ID, msg.Chat.ID, err) }
 	case "/orders":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
@@ -205,12 +205,10 @@ func (m *Manager) showShop(ctx context.Context, cfg Config, chatID int64) {
 	}
 	rows = append(rows, []map[string]string{{"text": "📦 我的订单", "callback_data": "shop:orders"}})
 	if len(rows) == 1 {
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！
-目前暂无可购买的商品。")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n目前暂无可购买的商品。")
 		return
 	}
-	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！
-请选择要购买的商品：", map[string]any{"inline_keyboard": rows}); err != nil {
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n请选择要购买的商品：", map[string]any{"inline_keyboard": rows}); err != nil {
 		log.Printf("telegram shop menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
 	}
 }
@@ -220,12 +218,12 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
 	for _, p := range products {
 		if p.ID != productID || p.Status != 1 { continue }
-		text := p.Name + "
+		text := p.Name + `
 
-" + p.Description + "
+` + p.Description + `
 
-价格：" + formatPrice(p.PriceMinor, p.Currency) + "
-库存：" + strconv.Itoa(p.StockCount)
+价格：` + formatPrice(p.PriceMinor, p.Currency) + `
+库存：` + strconv.Itoa(p.StockCount)
 		buttons := [][]map[string]string{{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
 		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"暂时缺货","callback_data":"shop:home"}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
@@ -253,14 +251,14 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			return
 		}
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "订单已创建")
-		text := "订单创建成功！
-订单号：" + order.OrderNo + "
-商品：" + order.ProductName + "
-金额：" + formatPrice(order.AmountMinor, order.Currency) + "
+		text := `订单创建成功！
+订单号：` + order.OrderNo + `
+商品：` + order.ProductName + `
+金额：` + formatPrice(order.AmountMinor, order.Currency) + `
 状态：待付款
-有效期至：" + order.ExpiresAt + "
+有效期至：` + order.ExpiresAt + `
 
-支付功能尚未开通，请暂勿转账。"
+支付功能尚未开通，请暂勿转账。`
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"继续购物","callback_data":"shop:home"}}}})
 	default:
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "未知操作")
