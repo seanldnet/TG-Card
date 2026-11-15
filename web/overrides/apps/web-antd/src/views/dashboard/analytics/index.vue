@@ -83,28 +83,10 @@ onMounted(loadDashboard);
         { title: '待处理售后', value: openTickets, hint: `发货异常 ${deliveryIssues} 笔`, path: '/support', icon: 'mdi:headset', tone: 'text-orange-600 bg-orange-50' },
       ]" :key="metric.path" :xs="12" :sm="12" :xl="6">
         <a-card :bordered="false" hoverable class="h-full cursor-pointer" :body-style="{ padding: '16px 18px' }" @click="open(metric.path)">
-          <div class="flex items-center justify-between gap-2"><div class="min-w-0"><div class="text-xs text-gray-500">{{ metric.title }}</div><div class="mt-2 text-2xl font-semibold leading-none">{{ metric.value }}</div><div class="mt-2 truncate text-xs text-gray-500">{{ metric.hint }}</div></div><a-avatar :size="40" shape="square" :class="metric.tone"><IconifyIcon :icon="metric.icon" class="text-xl" /></a-avatar></div>
-        </a-card>
-      </a-col>
-      <a-col :xs="12" :sm="12" :xl="6">
-        <a-card :bordered="false" hoverable @click="open('/catalog')">
-          <div class="text-sm text-gray-500">商品与库存</div>
-          <div class="mt-2 text-3xl font-semibold">{{ products.length }}</div>
-          <div class="mt-2 text-xs text-gray-500">上架 {{ activeProducts }} 件 · 可售库存 {{ stockCount }}</div>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :sm="12" :xl="6">
-        <a-card :bordered="false" hoverable @click="open('/orders')">
-          <div class="text-sm text-gray-500">订单（最近 500 笔）</div>
-          <div class="mt-2 text-3xl font-semibold">{{ orders.length }}</div>
-          <div class="mt-2 text-xs text-gray-500">待付款 {{ pendingOrders }} 笔</div>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :sm="12" :xl="6">
-        <a-card :bordered="false" hoverable @click="open('/support')">
-          <div class="text-sm text-gray-500">待处理售后</div>
-          <div class="mt-2 text-3xl font-semibold">{{ openTickets }}</div>
-          <div class="mt-2 text-xs text-gray-500">发货异常 {{ deliveryIssues }} 笔</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0"><div class="text-xs text-gray-500">{{ metric.title }}</div><div class="mt-2 text-2xl font-semibold leading-none">{{ metric.value }}</div><div class="mt-2 truncate text-xs text-gray-500">{{ metric.hint }}</div></div>
+            <a-avatar :size="40" shape="square" :class="metric.tone"><IconifyIcon :icon="metric.icon" class="text-xl" /></a-avatar>
+          </div>
         </a-card>
       </a-col>
     </a-row>
