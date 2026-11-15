@@ -102,12 +102,12 @@ onMounted(loadAll);
    <a-button v-else type="primary" size="large" @click="handleAddCategory"><template #icon><PlusOutlined/></template>新增分类</a-button>
   </div>
   <a-row :gutter="[12,12]">
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'18px 20px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">商品总数</div><div class="mt-2 text-2xl font-semibold leading-none">{{products.length}}</div><div class="mt-2 text-xs text-gray-400">已创建的商品</div></div><a-avatar :size="42" shape="square" class="bg-blue-50 text-blue-600"><AppstoreOutlined/></a-avatar></div></a-card></a-col>
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'18px 20px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">商品分类</div><div class="mt-2 text-2xl font-semibold leading-none">{{categories.length}}</div><div class="mt-2 text-xs text-gray-400">可供商品选择</div></div><a-avatar :size="42" shape="square" class="bg-violet-50 text-violet-600"><TagsOutlined/></a-avatar></div></a-card></a-col>
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'18px 20px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">可售卡密库存</div><div class="mt-2 text-2xl font-semibold leading-none">{{totalStock}}</div><div class="mt-2 text-xs text-gray-400">等待自动发货的卡密</div></div><a-avatar :size="42" shape="square" class="bg-emerald-50 text-emerald-600"><InboxOutlined/></a-avatar></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">商品总数</div><div class="mt-2 text-2xl font-semibold leading-none">{{products.length}}</div><div class="mt-2 text-xs text-gray-400">已创建的商品</div></div><a-avatar :size="42" shape="square" class="bg-blue-50 text-blue-600"><AppstoreOutlined/></a-avatar></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">商品分类</div><div class="mt-2 text-2xl font-semibold leading-none">{{categories.length}}</div><div class="mt-2 text-xs text-gray-400">可供商品选择</div></div><a-avatar :size="42" shape="square" class="bg-violet-50 text-violet-600"><TagsOutlined/></a-avatar></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">可售卡密库存</div><div class="mt-2 text-2xl font-semibold leading-none">{{totalStock}}</div><div class="mt-2 text-xs text-gray-400">等待自动发货的卡密</div></div><a-avatar :size="42" shape="square" class="bg-emerald-50 text-emerald-600"><InboxOutlined/></a-avatar></div></a-card></a-col>
   </a-row>
   <a-alert v-if="totalStock===0" type="warning" show-icon message="当前还没有可用卡密库存" description="可以先创建商品，再向商品导入卡密。没有库存也可以先完成商品和分类设置。"/>
-  <a-card :bordered="false" class="rounded-xl shadow-sm" :body-style="{padding:'16px 18px'}">
+  <a-card :bordered="false" class="rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}">
    <a-tabs v-model:activeKey="activeTab" class="mb-1">
     <a-tab-pane key="products" tab="商品与库存"/>
     <a-tab-pane key="categories" tab="商品分类"/>
@@ -120,7 +120,7 @@ onMounted(loadAll);
    <div v-else>
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-semibold">商品列表</div><div class="mt-1 text-xs text-gray-400">没有分类也可以新增商品，分类为可选项</div></div><a-button type="primary" @click="handleAddProduct"><template #icon><PlusOutlined/></template>新增商品</a-button></div>
     <div v-if="isMobile" class="flex flex-col gap-3">
-     <a-card v-for="item in products" :key="item.id" size="small" class="rounded-lg border border-gray-100" :body-style="{padding:'14px 16px'}">
+     <a-card v-for="item in products" :key="item.id" size="small" class="rounded-lg border border-gray-100" :body-style="{padding:'20px 24px'}">
       <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0"><div class="break-words text-sm font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-400">{{item.categoryName||'未分类'}}</div></div><a-tag class="m-0 shrink-0" :color="item.status===1?'success':'default'">{{item.status===1?'销售中':'已下架'}}</a-tag></div>
       <a-divider class="my-3"/>
       <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">售价</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div></div><div><div class="text-xs text-gray-400">可售库存</div><div class="mt-1 text-sm font-semibold">{{item.stockCount}}</div></div></div>
