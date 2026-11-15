@@ -15,10 +15,10 @@ const deliveryIssues=computed(()=>orders.value.filter(x=>['paid','delivery_faile
 const openTickets=computed(()=>tickets.value.filter(x=>!['resolved','rejected','closed'].includes(x.status)));
 const lowStock=computed(()=>products.value.filter(x=>x.status===1&&x.stockCount===0));
 const tasks=computed(()=>[
- {title:'待处理发货',count:deliveryIssues.value.length,desc:'付款完成或发货失败，需要检查并处理',path:'/orders',icon:'mdi:truck-delivery-outline',tone:'text-orange-600 bg-orange-50'},
- {title:'待处理售后',count:openTickets.value.length,desc:'用户提交的售后请求，及时回复可减少纠纷',path:'/support',icon:'mdi:headset',tone:'text-violet-600 bg-violet-50'},
- {title:'待付款订单',count:pendingOrders.value.length,desc:'正在等待用户完成付款的订单',path:'/orders',icon:'mdi:clock-outline',tone:'text-sky-600 bg-sky-50'},
- {title:'缺货商品',count:lowStock.value.length,desc:'已上架但没有可售卡密的商品',path:'/catalog',icon:'mdi:package-variant-closed',tone:'text-rose-600 bg-rose-50'},
+ {title:'待处理发货',count:deliveryIssues.value.length,desc:'付款完成或发货失败，需要检查并处理',path:'/orders',icon:'mdi:truck-delivery-outline'},
+ {title:'待处理售后',count:openTickets.value.length,desc:'用户提交的售后请求，及时回复可减少纠纷',path:'/support',icon:'mdi:headset'},
+ {title:'待付款订单',count:pendingOrders.value.length,desc:'正在等待用户完成付款的订单',path:'/orders',icon:'mdi:clock-outline'},
+ {title:'缺货商品',count:lowStock.value.length,desc:'已上架但没有可售卡密的商品',path:'/catalog',icon:'mdi:package-variant-closed'},
 ]);
 async function load(){
  loading.value=true;
@@ -46,7 +46,7 @@ onMounted(load);
   <a-row :gutter="[12,12]">
    <a-col v-for="task in tasks" :key="task.path+task.title" :xs="12" :md="6">
     <a-card :bordered="false" class="h-full cursor-pointer" hoverable :body-style="{padding:'16px 18px'}" @click="open(task.path)">
-     <div class="flex items-center justify-between gap-2"><div class="min-w-0"><div class="text-xs text-gray-500">{{task.title}}</div><div class="mt-2 text-2xl font-semibold leading-none">{{task.count}}</div></div><a-avatar :size="40" shape="square" :class="task.tone"><IconifyIcon :icon="task.icon" class="text-xl"/></a-avatar></div>
+     <div class="flex items-center justify-between gap-2"><div class="min-w-0"><div class="text-xs text-gray-500">{{task.title}}</div><div class="mt-2 text-2xl font-semibold leading-none">{{task.count}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon :icon="task.icon" class="block text-2xl"/></span></div>
      <div class="mt-3 text-xs leading-5 text-gray-500">{{task.desc}}</div>
      <div class="mt-3 flex items-center gap-1 text-xs font-medium text-primary">前往处理 <IconifyIcon icon="mdi:arrow-right" /></div>
     </a-card>
