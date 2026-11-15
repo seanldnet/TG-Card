@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 
+interface OrderOption { id: string; orderNo: string; productName: string; status: string; paymentAmount: string; paymentReference?: string; }
 interface PaymentTransaction {
   id: string;
   provider: string;
@@ -20,11 +21,25 @@ interface PaymentTransaction {
 }
 const loading = ref(false);
 const transactions = ref<PaymentTransaction[]>([]);
+const orders = ref<OrderOption[]>([]);
+const reconcileOpen = ref(false);
+const reconcileLoading = ref(false);
+const selectedTransaction = ref<PaymentTransaction | null>(null);
+const selectedOrderId = ref('');
+const reconciliationNote = ref('');
 const filterStatus = ref('all');
 const keyword = ref('');
 const unmatchedCount = computed(() => transactions.value.filter((x) => x.status === 'unmatched').length);
 const reviewCount = computed(() => transactions.value.filter((x) => x.status === 'reconciliation_required').length);
 const matchedCount = computed(() => transactions.value.filter((x) => x.status === 'matched').length);
+const reconcileCandidates = computed(() => {
+  if (!selectedTransaction.value) return [];
+  return orders.value.filter((order) => {
+    const amount = Math.round(Number(order.paymentAmount || 0) * 1_000_000);
+    const stateOK = ['pending_payment', 'expired'].includes(order.status) || (order.paymentReference === selectedTransaction.value?.transactionId && ['paid', 'delivering', 'delivery_failed', 'delivered'].includes(order.status));
+    return stateOK && amount === selectedTransaction.value?.amountAtomic;
+  });
+});
 const filtered = computed(() => {
   const q = keyword.value.trim().toLowerCase();
   return transactions.value.filter((item) => {
@@ -54,6 +69,10 @@ function formatTime(value: number | string) {
 function shortAddress(value: string) {
   return value ? value.slice(0, 8) + '…' + value.slice(-6) : '-';
 }
+async function loadOrders() {
+  try { orders.value = await requestClient.get<OrderOption[]>('/orders'); }
+  catch { message.error('订单列表加载失败，无法进行人工补单'); }
+}
 async function loadTransactions() {
   loading.value = true;
   try {
@@ -67,6 +86,24 @@ async function loadTransactions() {
 function copy(value: string) {
   if (!value) return;
   navigator.clipboard?.writeText(value).then(() => message.success('已复制')).catch(() => message.error('复制失败'));
+}
+function openReconcile(item: PaymentTransaction) {
+  selectedTransaction.value = item;
+  selectedOrderId.value = item.orderId || '';
+  reconciliationNote.value = item.reconciliationNote || '';
+  reconcileOpen.value = true;
+  void loadOrders();
+}
+async function submitReconciliation() {
+  if (!selectedTransaction.value || !selectedOrderId.value) { message.warning('请选择与到账金额一致的订单'); return; }
+  reconcileLoading.value = true;
+  try {
+    await requestClient.post('/payment/transactions/' + selectedTransaction.value.transactionId + '/reconcile', { orderId: selectedOrderId.value, note: reconciliationNote.value });
+    message.success('交易核对完成，系统已自动尝试发货');
+    reconcileOpen.value = false;
+    await Promise.all([loadTransactions(), loadOrders()]);
+  } catch { message.error('人工核对失败，请检查金额、收款地址、订单状态及库存'); }
+  finally { reconcileLoading.value = false; }
 }
 onMounted(loadTransactions);
 </script>
@@ -126,12 +163,26 @@ onMounted(loadTransactions);
           <template #default="{ record }">{{ record.orderId || '-' }}</template>
         </a-table-column>
         <a-table-column title="核对备注" data-index="reconciliationNote" key="reconciliationNote" :width="260" ellipsis />
+        <a-table-column title="操作" key="actions" :width="130" fixed="right">
+          <template #default="{ record }"><a-button v-if="record.status !== 'matched'" type="link" size="small" @click="openReconcile(record)">人工关联 / 补单</a-button><span v-else class="text-gray-400">已处理</span></template>
+        </a-table-column>
         <a-table-column title="首次入库时间" key="firstSeenAt" :width="190">
           <template #default="{ record }">{{ formatTime(record.firstSeenAt) }}</template>
         </a-table-column>
         <template #emptyText><a-empty description="暂无链上交易流水；启用 TRC20 收款并收到转账后，这里会自动记录" /></template>
       </a-table>
-      <a-alert class="mt-4" type="info" show-icon message="当前页面用于追踪和筛选链上入账。人工关联订单、逾期交易补单和退款尚未开放，避免在库存已释放或订单状态不一致时误发卡密。" />
+      <a-alert class="mt-4" type="info" show-icon message="人工补单会校验当前收款地址、交易金额、订单创建时间及库存；逾期订单只有在仍有可用卡密时才会补发。退款功能尚未开放。" />
     </a-card>
+    <a-modal v-model:open="reconcileOpen" title="人工核对链上交易" :confirm-loading="reconcileLoading" ok-text="确认关联并尝试发货" cancel-text="取消" @ok="submitReconciliation">
+      <a-alert class="mb-3" type="warning" show-icon message="确认后会将订单标记为已付款，并尝试通过对应 Telegram Bot 发货。请先核对交易哈希、收款地址和到账金额。" />
+      <div v-if="selectedTransaction" class="mb-3 text-sm">到账金额：<strong>{{ formatAmount(selectedTransaction) }} USDT</strong><br />交易哈希：{{ selectedTransaction.transactionId }}</div>
+      <div class="mb-2 text-sm font-medium">匹配订单（仅显示金额完全一致的订单）</div>
+      <a-select v-model:value="selectedOrderId" class="w-full" show-search option-filter-prop="label" placeholder="选择订单">
+        <a-select-option v-for="order in reconcileCandidates" :key="order.id" :value="order.id" :label="order.orderNo + ' ' + order.productName">{{ order.orderNo }} · {{ order.productName }} · {{ order.status }}</a-select-option>
+      </a-select>
+      <div class="mt-3 mb-2 text-sm font-medium">核对备注</div>
+      <a-textarea v-model:value="reconciliationNote" :rows="3" :maxlength="1000" show-count placeholder="填写人工核对依据（选填）" />
+      <div v-if="reconcileCandidates.length === 0" class="mt-2 text-sm text-orange-600">没有找到金额完全一致且状态允许处理的订单，请勿强行补单。</div>
+    </a-modal>
   </div>
 </template>
