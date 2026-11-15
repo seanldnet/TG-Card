@@ -469,7 +469,6 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		log.Printf("Telegram card sent but order delivery state update failed: order_id=%s error=%v", item.Order.ID, err)
 		return err
 	}
-	m.Notify("payment_success", "付款成功：订单 "+item.Order.OrderNo+"\n金额："+formatPrice(item.Order.AmountMinor, item.Order.Currency), item.Order.TelegramChatID)
 	m.Notify("delivery_success", "自动发货成功：订单 "+item.Order.OrderNo, item.Order.TelegramChatID)
 	log.Printf("Telegram order delivered: bot_id=%s order_id=%s", item.Order.BotID, item.Order.ID)
 	return nil
