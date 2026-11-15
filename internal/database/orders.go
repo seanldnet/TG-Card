@@ -367,6 +367,59 @@ func FindExpiredTRC20OrderByAmount(ctx context.Context, db *sql.DB, driver strin
 	return item, err
 }
 
+// FindTRC20AmountMismatchOrder identifies a single recent invoice whose amount
+// differs from a confirmed transfer. It is advisory only: callers must never
+// mark the order paid or deliver stock based on this result.
+func FindTRC20AmountMismatchOrder(ctx context.Context, db *sql.DB, driver string, amountAtomic int64, blockTimestampMS int64) (Order, string, error) {
+	if amountAtomic <= 0 || blockTimestampMS <= 0 {
+		return Order{}, "", fmt.Errorf("invalid TRC20 transfer amount or timestamp")
+	}
+	blockTime := time.UnixMilli(blockTimestampMS).UTC().Format(time.RFC3339Nano)
+	cutoffTime := time.UnixMilli(blockTimestampMS).UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
+	timeExpr := "julianday(created_at) <= julianday(" + placeholder(driver, 2) + ") AND julianday(expires_at) >= julianday(" + placeholder(driver, 3) + ")"
+	if driver == "postgres" {
+		timeExpr = "CAST(created_at AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 2) + " AS TIMESTAMPTZ) AND CAST(expires_at AS TIMESTAMPTZ) >= CAST(" + placeholder(driver, 3) + " AS TIMESTAMPTZ)"
+	}
+	query := "SELECT id, payment_amount_atomic FROM orders WHERE status IN ('pending_payment','expired') AND payment_amount_atomic <> " + placeholder(driver, 1) + " AND " + timeExpr + " ORDER BY created_at DESC LIMIT 2"
+	rows, err := db.QueryContext(ctx, query, amountAtomic, blockTime, cutoffTime)
+	if err != nil {
+		return Order{}, "", err
+	}
+	type candidate struct { id string; invoice int64 }
+	candidates := make([]candidate, 0, 2)
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.id, &item.invoice); err != nil {
+			_ = rows.Close()
+			return Order{}, "", err
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return Order{}, "", err
+	}
+	if err := rows.Close(); err != nil {
+		return Order{}, "", err
+	}
+	if len(candidates) == 0 {
+		return Order{}, "", sql.ErrNoRows
+	}
+	if len(candidates) != 1 {
+		return Order{}, "", fmt.Errorf("ambiguous TRC20 amount mismatch; manual order identification required")
+	}
+	var item Order
+	load := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,payment_amount_atomic,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver, 1)
+	if err := db.QueryRowContext(ctx, load, candidates[0].id).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.PaymentAmountAtomic,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt); err != nil {
+		return Order{}, "", err
+	}
+	kind := "overpayment"
+	if amountAtomic < candidates[0].invoice {
+		kind = "underpayment"
+	}
+	return item, kind, nil
+}
+
 func MatchPendingTRC20Order(ctx context.Context, db *sql.DB, driver string, amountAtomic int64, blockTimestampMS int64) (Order, error) {
 	if amountAtomic <= 0 || blockTimestampMS <= 0 { return Order{}, fmt.Errorf("invalid TRC20 transfer amount or timestamp") }
 	blockTime := time.UnixMilli(blockTimestampMS).UTC().Format(time.RFC3339Nano)
