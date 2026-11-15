@@ -105,7 +105,19 @@ func (m *Manager) scan(ctx context.Context) error {
 			}
 			order, err := database.MatchPendingTRC20Order(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
 			if errors.Is(err, sql.ErrNoRows) {
-				if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "unmatched", "", "No active order matched this confirmed transfer"); classifyErr != nil { return classifyErr }
+				lateOrder, lateErr := database.FindExpiredTRC20OrderByAmount(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
+				if lateErr == nil {
+					note := "Confirmed transfer arrived after the order payment window; manual reconciliation required"
+					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", lateOrder.ID, note); classifyErr != nil { return classifyErr }
+					log.Printf("late TRC20 payment requires manual reconciliation: order_id=%s tx=%s", lateOrder.ID, transfer.TransactionID)
+					continue
+				}
+				if !errors.Is(lateErr, sql.ErrNoRows) {
+					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", "", lateErr.Error()); classifyErr != nil { return classifyErr }
+					log.Printf("TRC20 transfer could not be uniquely matched to an expired order: tx=%s error=%v", transfer.TransactionID, lateErr)
+					continue
+				}
+				if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "unmatched", "", "No active or expired order matched this confirmed transfer"); classifyErr != nil { return classifyErr }
 				continue
 			}
 			if err != nil {
