@@ -1,0 +1,73 @@
+/* Responsive layout guardrails for the official Vben + Ant Design Vue components. */
+@media (max-width: 767px) {
+  html,
+  body,
+  #app {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  [data-layout-region='layout'],
+  [data-layout-region='main'],
+  [data-layout-region='content'],
+  [data-layout-region='header'],
+  [data-layout-region='tabbar'] {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ant-card {
+    max-width: 100%;
+  }
+
+  .ant-card-body {
+    padding: 16px !important;
+  }
+
+  .ant-form,
+  .ant-form-item,
+  .ant-form-item-control,
+  .ant-form-item-control-input,
+  .ant-form-item-control-input-content {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select,
+  .ant-picker,
+  .ant-input-number {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ant-table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ant-table {
+    min-width: max-content;
+  }
+
+  .ant-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px);
+    margin: 12px auto;
+  }
+
+  .ant-modal-content {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+
+  [data-layout-region='tabbar'] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

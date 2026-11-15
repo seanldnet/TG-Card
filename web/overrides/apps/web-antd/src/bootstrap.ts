@@ -6,6 +6,7 @@ import { preferences, updatePreferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antd';
+import './styles/mobile.css';
 
 import Antd from 'ant-design-vue';
 import { useTitle } from '@vueuse/core';
