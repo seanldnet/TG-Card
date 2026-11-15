@@ -64,8 +64,8 @@ onMounted(loadTransactions);
    <a-card :bordered="false"><div class="text-sm text-gray-500">未匹配</div><div class="mt-2 text-2xl font-bold text-orange-500">{{unmatchedCount}}</div></a-card>
    <a-card :bordered="false"><div class="text-sm text-gray-500">需人工核对</div><div class="mt-2 text-2xl font-bold text-red-500">{{reviewCount}}</div></a-card>
   </div>
-  <a-card :bordered="false">
-   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3"><div class="min-w-0"><div class="text-lg font-semibold">支付交易流水</div><div class="mt-1 text-sm text-gray-500">TronGrid 已确认 TRC20 USDT 转账记录</div></div><a-button :loading="loading" @click="loadTransactions">刷新流水</a-button></div></template>
+  <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
+   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">支付交易流水</div><div class="mt-1 text-xs leading-5 text-gray-500">TronGrid 已确认 TRC20 USDT 转账记录</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadTransactions">刷新流水</a-button></div></template>
    <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
     <a-select v-model:value="filterStatus" class="w-full"><a-select-option value="all">全部状态</a-select-option><a-select-option value="matched">已匹配订单</a-select-option><a-select-option value="unmatched">未匹配</a-select-option><a-select-option value="reconciliation_required">需要人工核对</a-select-option></a-select>
     <a-input v-model:value="keyword" allow-clear class="w-full" placeholder="搜索交易哈希、地址、订单 ID 或核对备注"/>
