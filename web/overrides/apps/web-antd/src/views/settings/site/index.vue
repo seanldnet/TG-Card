@@ -36,7 +36,7 @@ onMounted(load);
      </div>
     </a-tab-pane>
     <a-tab-pane key="smtp">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:email-cog-outline" />邮件服务</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:email-outline" />邮件服务</span></template>
      <div class="max-w-3xl">
       <div class="mb-3 text-sm font-semibold">SMTP 邮件服务</div>
       <a-alert class="mb-4" type="info" show-icon message="SMTP 密码加密保存在数据库。密码留空时保持已保存的密码不变。" />
