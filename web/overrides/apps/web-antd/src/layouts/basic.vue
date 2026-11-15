@@ -14,8 +14,8 @@ import {
 } from '@vben/layouts';
 import { preferences, updatePreferences, usePreferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
+import { useWindowSize } from '@vueuse/core';
 
-import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 import { requestClient } from '#/api/request';
 import LoginForm from '#/views/_core/authentication/login.vue';
@@ -27,79 +27,88 @@ const authStore = useAuthStore();
 const accessStore = useAccessStore();
 const { destroyWatermark, updateWatermark } = useWatermark();
 const { isDark } = usePreferences();
-const showDot = computed(() =>
-  notifications.value.some((item) => !item.isRead),
+const { width } = useWindowSize();
+const showDot = computed(() => notifications.value.some((item) => !item.isRead));
+
+// Preserve the user's desktop widget preferences and switch the official Vben
+// layout to a compact, mobile-first header without touching the drawer toggle.
+const desktopWidgetSettings = { ...preferences.widget };
+const desktopPreferencesEnabled = preferences.app.enablePreferences;
+watch(
+  width,
+  (viewportWidth) => {
+    const mobile = viewportWidth < 768;
+    updatePreferences({
+      app: {
+        isMobile: mobile,
+        enablePreferences: mobile ? false : desktopPreferencesEnabled,
+      },
+      header: { enable: true, hidden: false, mode: 'fixed' },
+      sidebar: { enable: true, hidden: false },
+      widget: mobile
+        ? {
+            sidebarToggle: true,
+            globalSearch: false,
+            languageToggle: false,
+            timezone: false,
+            fullscreen: false,
+            refresh: false,
+            notification: false,
+            lockScreen: false,
+            themeToggle: false,
+            logoutButtonPosition: 'user-dropdown',
+          }
+        : desktopWidgetSettings,
+    });
+  },
+  { immediate: true },
 );
 
-// Apply the site name saved by the administrator to the official Vben title/header.
+// Use the site name maintained by the administrator as the Vben application title.
 onMounted(async () => {
   try {
     const settings = await requestClient.get<{ siteName?: string }>('/settings/site');
-    if (settings.siteName?.trim()) {
-      updatePreferences({ app: { name: settings.siteName.trim() } });
-    }
+    if (settings.siteName?.trim()) updatePreferences({ app: { name: settings.siteName.trim() } });
   } catch {
-    // The authenticated shell remains usable if site settings are temporarily unavailable.
+    // Keep the shell available when optional site settings cannot be read.
   }
 });
 
-const menus = computed(() => [{
-  handler: () => router.push({ name: 'Profile' }),
-  icon: 'lucide:user',
-  text: '个人中心',
-}]);
+const menus = computed(() => [
+  {
+    handler: () => router.push({ name: 'Profile' }),
+    icon: 'lucide:user-round',
+    text: '个人中心',
+  },
+]);
 
-const avatar = computed(() => {
-  return userStore.userInfo?.avatar ?? preferences.app.defaultAvatar;
-});
+const avatar = computed(
+  () => userStore.userInfo?.avatar || preferences.app.defaultAvatar,
+);
 
 async function handleLogout() {
   await authStore.logout(false);
 }
-
 function handleNoticeClear() {
   notifications.value = [];
 }
-
 function markRead(id: number | string) {
   const item = notifications.value.find((item) => item.id === id);
-  if (item) {
-    item.isRead = true;
-  }
+  if (item) item.isRead = true;
 }
-
 function remove(id: number | string) {
   notifications.value = notifications.value.filter((item) => item.id !== id);
 }
-
 function handleMakeAll() {
   notifications.value.forEach((item) => (item.isRead = true));
 }
-
 const viewAll = () => {};
-
-const handleClick = (item: NotificationItem) => {
-  // 如果通知项有链接，点击时跳转
-  if (item.link) {
-    navigateTo(item.link, item.query, item.state);
-  }
-};
-
-function navigateTo(
-  link: string,
-  query?: Record<string, any>,
-  state?: Record<string, any>,
-) {
-  if (link.startsWith('http://') || link.startsWith('https://')) {
-    // 外部链接，在新标签页打开
-    window.open(link, '_blank');
+function handleClick(item: NotificationItem) {
+  if (!item.link) return;
+  if (item.link.startsWith('http://') || item.link.startsWith('https://')) {
+    window.open(item.link, '_blank', 'noopener,noreferrer');
   } else {
-    // 内部路由链接，支持 query 参数和 state
-    router.push({
-      path: link,
-      query: query || {},
-      state,
-    });
+    router.push({ path: item.link, query: item.query || {}, state: item.state });
   }
 }
 
@@ -109,52 +118,39 @@ watch(
     content: preferences.app.watermarkContent,
     isDark: isDark.value,
   }),
-  async ({ enable, content, isDark: isDarkValue }) => {
-    if (enable) {
-      const watermarkColor = isDarkValue
-        ? 'rgba(255, 255, 255, 0.12)'
-        : 'rgba(0, 0, 0, 0.12)';
-
-      await updateWatermark({
-        advancedStyle: {
-          colorStops: [
-            {
-              color: watermarkColor,
-              offset: 0,
-            },
-            {
-              color: watermarkColor,
-              offset: 1,
-            },
-          ],
-          type: 'linear',
-        },
-        content:
-          content ||
-          `${userStore.userInfo?.username} - ${userStore.userInfo?.realName}`,
-      });
-    } else {
+  async ({ enable, content, isDark: dark }) => {
+    if (!enable) {
       destroyWatermark();
+      return;
     }
+    const watermarkColor = dark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.12)';
+    await updateWatermark({
+      advancedStyle: {
+        colorStops: [
+          { color: watermarkColor, offset: 0 },
+          { color: watermarkColor, offset: 1 },
+        ],
+        type: 'linear',
+      },
+      content: content || `${userStore.userInfo?.username} - ${userStore.userInfo?.realName}`,
+    });
   },
-  {
-    immediate: true,
-  },
+  { immediate: true },
 );
 </script>
 
 <template>
   <BasicLayout
-    :avatar
-    :text="userStore.userInfo?.realName"
+    :avatar="avatar"
+    :text="userStore.userInfo?.realName || userStore.userInfo?.username"
     @clear-preferences-and-logout="handleLogout"
     @logout="handleLogout"
   >
     <template #user-dropdown>
       <UserDropdown
-        :avatar
-        :menus
-        :text="userStore.userInfo?.realName"
+        :avatar="avatar"
+        :menus="menus"
+        :text="userStore.userInfo?.realName || userStore.userInfo?.username"
         description="账户管理"
         @clear-preferences-and-logout="handleLogout"
         @logout="handleLogout"
@@ -173,15 +169,12 @@ watch(
       />
     </template>
     <template #extra>
-      <AuthenticationLoginExpiredModal
-        v-model:open="accessStore.loginExpired"
-        :avatar
-      >
+      <AuthenticationLoginExpiredModal v-model:open="accessStore.loginExpired" :avatar="avatar">
         <LoginForm />
       </AuthenticationLoginExpiredModal>
     </template>
     <template #lock-screen>
-      <LockScreen :avatar @to-login="handleLogout" />
+      <LockScreen :avatar="avatar" @to-login="handleLogout" />
     </template>
   </BasicLayout>
 </template>
