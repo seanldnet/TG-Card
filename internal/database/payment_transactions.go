@@ -43,6 +43,14 @@ func RecordTRC20Transfer(ctx context.Context, db *sql.DB, driver string, transfe
 	return n == 1, nil
 }
 
+
+func GetTRC20TransferStatus(ctx context.Context, db *sql.DB, driver, transactionID string) (string, error) {
+	var status string
+	query := "SELECT status FROM payment_transactions WHERE provider=" + placeholder(driver, 1) + " AND transaction_id=" + placeholder(driver, 2)
+	if err := db.QueryRowContext(ctx, query, "trc20-usdt", transactionID).Scan(&status); err != nil { return "", err }
+	return status, nil
+}
+
 // ClassifyTRC20Transfer records the result of deterministic matching or flags the
 // transfer for operator review. It never changes order payment state itself.
 func ClassifyTRC20Transfer(ctx context.Context, db *sql.DB, driver, transactionID, status, orderID, note string) error {
