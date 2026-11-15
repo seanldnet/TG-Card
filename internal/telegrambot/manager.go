@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/skip2/go-qrcode"
 	"github.com/seanldnet/TG-Card/internal/database"
 )
 
@@ -231,6 +233,7 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 }
 
 func (m *Manager) run(ctx context.Context, cfg Config) {
+	m.configureMenu(ctx, cfg.Token)
 	var offset int64
 	for {
 		if ctx.Err() != nil { return }
@@ -282,32 +285,76 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	if msg.Chat.Type != "private" || msg.From == nil { return }
-	command := strings.Fields(strings.TrimSpace(msg.Text))
-	if len(command) == 0 { return }
-	switch strings.SplitN(command[0], "@", 2)[0] {
-	case "/start", "/shop":
+	text := strings.TrimSpace(msg.Text)
+	if text == "" { return }
+	command := strings.Fields(text)
+	first := strings.SplitN(command[0], "@", 2)[0]
+	switch {
+	case first == "/start" || first == "/shop" || text == "🛍️ 商城":
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "主菜单已打开。你可以使用下方菜单随时进入商城、查看订单或联系售后。", mainMenuKeyboard())
 		m.showShop(ctx, cfg, msg.Chat.ID)
-	case "/help":
-		text := `可用命令：
-/shop - 浏览商城
-/orders - 我的订单
-/support 订单号 问题描述 - 申请售后
-/help - 查看帮助`
-		if err := m.sendMessage(ctx, cfg.Token, msg.Chat.ID, text); err != nil { log.Printf("telegram help reply failed: bot_id=%s chat_id=%d error=%v", cfg.ID, msg.Chat.ID, err) }
-	case "/orders":
+	case first == "/help" || text == "❓ 使用帮助":
+		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboard())
+	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
-	case "/support":
+	case text == "🧾 售后帮助":
+		msgText := "提交售后请发送：\n/support 订单号 问题描述\n例如：\n/support TC202611150001 卡密无法使用"
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, msgText, mainMenuKeyboard())
+	case first == "/support":
 		if len(command) < 3 {
-			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "提交售后请发送：/support 订单号 问题描述\n例如：/support TC202611150001 卡密无法使用")
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请发送：/support 订单号 问题描述\n例如：/support TC202611150001 卡密无法使用", mainMenuKeyboard())
 			return
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
-		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",mainMenuKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
 }
 
+func mainMenuKeyboard() map[string]any {
+	return map[string]any{
+		"keyboard": [][]map[string]string{
+			{{"text":"🛍️ 商城"},{"text":"📦 我的订单"}},
+			{{"text":"🧾 售后帮助"},{"text":"❓ 使用帮助"}},
+		},
+		"resize_keyboard": true,
+		"is_persistent": true,
+		"input_field_placeholder": "选择菜单或输入命令",
+	}
+}
+
+// configureMenu publishes BotFather-style commands and explicitly selects the
+// commands menu button beside Telegram's message input.
+func (m *Manager) configureMenu(ctx context.Context, token string) {
+	requests := []struct { method string; payload map[string]any }{
+		{"setMyCommands", map[string]any{"commands": []map[string]string{
+			{"command":"start","description":"打开主菜单"},
+			{"command":"shop","description":"浏览商城"},
+			{"command":"orders","description":"查看我的订单"},
+			{"command":"support","description":"提交售后申请"},
+			{"command":"help","description":"查看使用帮助"},
+		}}},
+		{"setChatMenuButton", map[string]any{"menu_button": map[string]string{"type":"commands"}}},
+	}
+	for _, item := range requests {
+		payload, _ := json.Marshal(item.payload)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+token+"/"+item.method, bytes.NewReader(payload))
+		if err != nil { log.Printf("telegram menu setup failed: bot method=%s error=%v", item.method, err); continue }
+		req.Header.Set("Content-Type", "application/json")
+		response, err := m.client.Do(req)
+		if err != nil { log.Printf("telegram menu setup failed: bot method=%s error=%v", item.method, err); continue }
+		var result apiResult
+		err = json.NewDecoder(response.Body).Decode(&result)
+		_ = response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK || !result.OK {
+			log.Printf("telegram menu setup rejected: bot method=%s http_status=%d description=%s error=%v", item.method, response.StatusCode, result.Description, err)
+		} else {
+			log.Printf("telegram menu configured: bot method=%s", item.method)
+		}
+	}
+}
 func (m *Manager) showShop(ctx context.Context, cfg Config, chatID int64) {
 	products, err := database.ListProducts(ctx, m.db)
 	if err != nil {
@@ -323,7 +370,7 @@ func (m *Manager) showShop(ctx context.Context, cfg Config, chatID int64) {
 	}
 	rows = append(rows, []map[string]string{{"text": "📦 我的订单", "callback_data": "shop:orders"}})
 	if len(rows) == 1 {
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n目前暂无可购买的商品。")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n目前暂无可购买的商品。", mainMenuKeyboard())
 		return
 	}
 	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n请选择要购买的商品：", map[string]any{"inline_keyboard": rows}); err != nil {
@@ -392,7 +439,16 @@ USDT 收款地址：` + paymentAddress + `
 
 支付功能尚未启用，请暂勿转账。`
 		}
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"继续购物","callback_data":"shop:home"}}}})
+		inlineMenu := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"继续购物","callback_data":"shop:home"}}}}
+		if paymentEnabled && paymentAddress != "" && order.PaymentAmountAtomic > 0 {
+			text += "\n\n二维码内容为本订单 TRON 收款地址，请扫码后核对并填写上方准确金额。"
+			if err := m.sendPhotoMarkup(ctx, cfg.Token, chatID, text, paymentAddress, inlineMenu); err != nil {
+				log.Printf("telegram payment QR send failed: bot_id=%s order_no=%s error=%v", cfg.ID, order.OrderNo, err)
+				_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text+"\n（二维码暂时无法显示，请复制上方收款地址付款。）", inlineMenu)
+			}
+		} else {
+			_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, inlineMenu)
+		}
 	default:
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "未知操作")
 	}
@@ -502,6 +558,34 @@ func renderWelcome(template string, cfg Config, chat Chat, user TelegramUser) st
 
 func formatPrice(minor int64, currency string) string {
 	return fmt.Sprintf("%s %d.%02d", currency, minor/100, minor%100)
+}
+
+func (m *Manager) sendPhotoMarkup(ctx context.Context, token string, chatID int64, caption, qrContent string, markup any) error {
+	pngData, err := qrcode.Encode(qrContent, qrcode.Medium, 360)
+	if err != nil { return fmt.Errorf("generate payment QR: %w", err) }
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil { return err }
+	if err := writer.WriteField("caption", caption); err != nil { return err }
+	if markup != nil {
+		encoded, err := json.Marshal(markup)
+		if err != nil { return err }
+		if err := writer.WriteField("reply_markup", string(encoded)); err != nil { return err }
+	}
+	part, err := writer.CreateFormFile("photo", "payment-address-qr.png")
+	if err != nil { return err }
+	if _, err := part.Write(pngData); err != nil { return err }
+	if err := writer.Close(); err != nil { return err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+token+"/sendPhoto", &body)
+	if err != nil { return err }
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	response, err := m.client.Do(req)
+	if err != nil { return err }
+	defer response.Body.Close()
+	var result apiResult
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return fmt.Errorf("decode sendPhoto response: %w", err) }
+	if response.StatusCode != http.StatusOK || !result.OK { return fmt.Errorf("Telegram sendPhoto HTTP %d: %s", response.StatusCode, result.Description) }
+	return nil
 }
 
 func (m *Manager) sendMessage(ctx context.Context, token string, chatID int64, text string) error {
