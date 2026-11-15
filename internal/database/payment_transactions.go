@@ -83,3 +83,96 @@ func ListPaymentTransactions(ctx context.Context, db *sql.DB, limit int) ([]Paym
 	}
 	return items, rows.Err()
 }
+
+
+// ReconcileTRC20Transfer atomically links one confirmed chain transfer to an order,
+// validates the exact invoice and receiving address, consumes reserved stock (or
+// re-reserves stock for a late payment), and marks both records paid/matched.
+func ReconcileTRC20Transfer(ctx context.Context, db *sql.DB, driver, transactionID, expectedReceiveAddress, orderID, note string) error {
+	if len(transactionID) != 64 || expectedReceiveAddress == "" || orderID == "" {
+		return fmt.Errorf("交易哈希、收款地址和订单 ID 均为必填项")
+	}
+	if len(note) > 1000 { note = note[:1000] }
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+
+	transferQuery := "SELECT status, order_id, to_address, amount_atomic, token_decimals, block_timestamp_ms FROM payment_transactions WHERE provider=" + placeholder(driver,1) + " AND transaction_id=" + placeholder(driver,2)
+	if driver == "postgres" { transferQuery += " FOR UPDATE" }
+	var transferStatus string
+	var existingOrderID, toAddress sql.NullString
+	var amountAtomic int64
+	var decimals int
+	var blockTimestampMS int64
+	if err := tx.QueryRowContext(ctx, transferQuery, "trc20-usdt", transactionID).Scan(&transferStatus,&existingOrderID,&toAddress,&amountAtomic,&decimals,&blockTimestampMS); err != nil { return err }
+	if !toAddress.Valid || toAddress.String != expectedReceiveAddress { return fmt.Errorf("链上收款地址与当前后台配置不一致") }
+	if decimals != 6 || amountAtomic <= 0 { return fmt.Errorf("仅支持有效的六位精度 USDT TRC20 转账") }
+	if transferStatus == "matched" {
+		if existingOrderID.Valid && existingOrderID.String == orderID { return tx.Commit() }
+		return fmt.Errorf("该链上交易已经关联其他订单")
+	}
+	if transferStatus != "unmatched" && transferStatus != "reconciliation_required" {
+		return fmt.Errorf("当前交易状态不允许人工关联：%s", transferStatus)
+	}
+
+	orderQuery := "SELECT status, COALESCE(product_id,''), payment_amount_atomic, created_at, expires_at, COALESCE(payment_method,''), COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver,1)
+	if driver == "postgres" { orderQuery += " FOR UPDATE" }
+	var orderStatus, productID, createdAt, expiresAt, existingMethod, existingReference string
+	var expectedAmount int64
+	if err := tx.QueryRowContext(ctx, orderQuery, orderID).Scan(&orderStatus,&productID,&expectedAmount,&createdAt,&expiresAt,&existingMethod,&existingReference); err != nil { return err }
+	if amountAtomic != expectedAmount { return fmt.Errorf("到账金额与订单应付金额不一致") }
+	blockTime := time.UnixMilli(blockTimestampMS).UTC()
+	created, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil { return fmt.Errorf("订单创建时间无效：%w", err) }
+	if blockTime.Before(created) { return fmt.Errorf("链上交易时间早于订单创建时间") }
+
+	now := time.Now().UTC()
+	stamp := now.Format(time.RFC3339Nano)
+	alreadyPaid := orderStatus == "paid" || orderStatus == "delivering" || orderStatus == "delivery_failed" || orderStatus == "delivered"
+	if alreadyPaid {
+		if existingMethod != "trc20-usdt" || existingReference != transactionID {
+			return fmt.Errorf("订单已由其他支付交易确认")
+		}
+	} else {
+		if orderStatus != "pending_payment" && orderStatus != "expired" {
+			return fmt.Errorf("订单状态不允许补单：%s", orderStatus)
+		}
+		var keyID string
+		keyQuery := "SELECT id FROM product_keys WHERE order_id=" + placeholder(driver,1) + " AND status=1 LIMIT 1"
+		if driver == "postgres" { keyQuery += " FOR UPDATE" }
+		keyErr := tx.QueryRowContext(ctx, keyQuery, orderID).Scan(&keyID)
+		if keyErr != nil && keyErr != sql.ErrNoRows { return keyErr }
+		if keyErr == sql.ErrNoRows {
+			expiry, parseErr := time.Parse(time.RFC3339Nano, expiresAt)
+			late := orderStatus == "expired" || (parseErr == nil && !now.Before(expiry))
+			if !late { return fmt.Errorf("订单预留库存不存在，拒绝自动补发") }
+			if productID == "" { return fmt.Errorf("订单商品已不存在，无法重新分配库存") }
+			stockQuery := "SELECT id FROM product_keys WHERE product_id=" + placeholder(driver,1) + " AND status=0 ORDER BY created_at,id LIMIT 1"
+			if driver == "postgres" { stockQuery += " FOR UPDATE SKIP LOCKED" }
+			if err := tx.QueryRowContext(ctx, stockQuery, productID).Scan(&keyID); err != nil {
+				if err == sql.ErrNoRows { return fmt.Errorf("订单已过期且当前无可用库存，交易保留待人工处理") }
+				return err
+			}
+			reserve := "UPDATE product_keys SET status=2, order_id=" + placeholder(driver,1) + ", sold_at=" + placeholder(driver,2) + " WHERE id=" + placeholder(driver,3) + " AND status=0"
+			result, err := tx.ExecContext(ctx, reserve, orderID, stamp, keyID)
+			if err != nil { return err }
+			n, err := result.RowsAffected(); if err != nil { return err }; if n != 1 { return fmt.Errorf("库存重新分配发生冲突") }
+		} else {
+			sell := "UPDATE product_keys SET status=2, sold_at=" + placeholder(driver,1) + " WHERE id=" + placeholder(driver,2) + " AND status=1"
+			result, err := tx.ExecContext(ctx, sell, stamp, keyID)
+			if err != nil { return err }
+			n, err := result.RowsAffected(); if err != nil { return err }; if n != 1 { return fmt.Errorf("预留库存状态已变化") }
+		}
+		updateOrder := "UPDATE orders SET status='paid', payment_method='trc20-usdt', payment_reference=" + placeholder(driver,1) + ", paid_at=" + placeholder(driver,2) + ", updated_at=" + placeholder(driver,3) + " WHERE id=" + placeholder(driver,4) + " AND status IN ('pending_payment','expired')"
+		result, err := tx.ExecContext(ctx, updateOrder, transactionID, stamp, stamp, orderID)
+		if err != nil { return err }
+		n, err := result.RowsAffected(); if err != nil { return err }; if n != 1 { return fmt.Errorf("订单支付状态已被其他操作修改") }
+	}
+
+	updateTransfer := "UPDATE payment_transactions SET status='matched', order_id=" + placeholder(driver,1) + ", reconciliation_note=" + placeholder(driver,2) + ", updated_at=" + placeholder(driver,3) + " WHERE provider=" + placeholder(driver,4) + " AND transaction_id=" + placeholder(driver,5) + " AND status IN ('unmatched','reconciliation_required')"
+	result, err := tx.ExecContext(ctx, updateTransfer, orderID, note, stamp, "trc20-usdt", transactionID)
+	if err != nil { return err }
+	n, err := result.RowsAffected(); if err != nil { return err }
+	if n != 1 { return fmt.Errorf("交易状态已被其他操作修改") }
+	return tx.Commit()
+}
