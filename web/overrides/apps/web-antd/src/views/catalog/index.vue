@@ -7,7 +7,7 @@ import { requestClient } from '#/api/request';
 interface Category{id:string;name:string;sortOrder:number;status:number}
 interface Product{id:string;categoryId:string;categoryName:string;name:string;description:string;priceMinor:number;currency:string;status:number;stockCount:number}
 const loading=ref(false),saving=ref(false),categorySaving=ref(false),editingId=ref('');
-const categoryModalOpen=ref(false),productModalOpen=ref(false),importModalOpen=ref(false);
+const categoryModalOpen=ref(false),productModalOpen=ref(false),importModalOpen=ref(false),activeTab=ref('products');
 const categories=ref<Category[]>([]),products=ref<Product[]>([]),importProduct=ref<Product|null>(null);
 const {width}=useWindowSize(),isMobile=computed(()=>width.value<768);
 const enabledProducts=computed(()=>products.value.filter(p=>p.status===1).length);
@@ -39,14 +39,16 @@ onMounted(loadAll);
 </script>
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+  <a-alert v-if="totalStock===0" class="mb-4" type="warning" show-icon message="当前没有可售卡密库存" description="请在商品列表中导入卡密，库存充足后机器人才能正常自动发货"/>
   <a-row :gutter="[16,16]">
    <a-col :xs="12" :md="8"><a-card :bordered="false" :body-style="{ padding: '20px 24px' }"><div class="text-sm text-gray-500">商品总数</div><div class="mt-3 text-2xl font-bold">{{products.length}}</div><div class="mt-2 text-xs text-gray-500">当前创建的商品</div></a-card></a-col><a-col :xs="12" :md="8"><a-card :bordered="false" :body-style="{ padding: '20px 24px' }"><div class="text-sm text-gray-500">已上架商品</div><div class="mt-3 text-2xl font-bold">{{enabledProducts}}</div><div class="mt-2 text-xs text-gray-500">正在销售的商品</div></a-card></a-col><a-col :xs="12" :md="8"><a-card :bordered="false" :body-style="{ padding: '20px 24px' }"><div class="text-sm text-gray-500">可售卡密库存</div><div class="mt-3 text-2xl font-bold">{{totalStock}}</div><div class="mt-2 text-xs text-gray-500">可供订单发货的库存</div></a-card></a-col>
   </a-row>
-  <a-card :bordered="false" :body-style="{ padding: '20px 24px' }">
+  <a-tabs v-model:activeKey="activeTab" class="mb-2"><a-tab-pane key="products" tab="商品与库存"/><a-tab-pane key="categories" tab="商品分类"/></a-tabs>
+  <a-card v-if="activeTab==='categories'" :bordered="false" :body-style="{ padding: '20px 24px' }">
    <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3"><div class="min-w-0"><div class="text-base font-semibold">商品分类</div><div class="mt-2 text-xs text-gray-500">分类供所有 Telegram 机器人共享使用</div></div><a-button @click="handleAddCategory">新增分类</a-button></div></template>
    <a-space v-if="categories.length" wrap><a-tag v-for="category in categories" :key="category.id" closable @close.prevent="removeCategory(category)">{{category.name}}</a-tag></a-space><a-empty v-else description="尚未创建分类"/>
   </a-card>
-  <a-card :bordered="false">
+  <a-card v-if="activeTab==='products'" :bordered="false" :body-style="{ padding: '20px 24px' }">
    <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3"><div class="min-w-0"><div class="text-base font-semibold">商品与卡密库存</div><div class="mt-2 text-xs text-gray-500">卡密入库后使用 AES-256-GCM 加密保存；重复卡密会自动跳过</div></div><a-button type="primary" @click="handleAddProduct">新增商品</a-button></div></template>
    <div v-if="isMobile" class="tg-mobile-list">
     <a-card v-for="item in products" :key="item.id" size="small" :body-style="{ padding: '20px 24px' }"><div class="flex min-w-0 items-start justify-between gap-2"><div class="min-w-0 flex-1"><div class="break-words font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-500">{{item.categoryName||'未分类'}}</div></div><a-tag class="shrink-0" :color="item.status===1?'success':'default'">{{item.status===1?'上架':'下架'}}</a-tag></div>
