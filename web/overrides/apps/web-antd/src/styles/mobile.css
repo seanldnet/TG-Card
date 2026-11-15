@@ -31,6 +31,16 @@ body {
     padding-top: var(--tg-safe-top);
     padding-bottom: var(--tg-safe-bottom);
   }
+  /* Safe-area padding belongs to the fixed shell as well as the document;
+     otherwise iOS standalone browsers can place the header under the status bar. */
+  [data-layout-region='header'] {
+    top: 0 !important;
+    padding-top: var(--tg-safe-top);
+    min-height: calc(56px + var(--tg-safe-top));
+  }
+  [data-layout-region='layout'] {
+    padding-top: 0;
+  }
   #app,
   [data-layout-region='layout'],
   [data-layout-region='scroll'],
@@ -50,7 +60,9 @@ body {
   }
   /* Vben keeps its native sidebar toggle as the first header control.
      Other desktop-only toolbar widgets are disabled from preferences on H5. */
-  [data-layout-action='toggle-sidebar'] {
+  [data-layout-action='toggle-sidebar'],
+  [data-layout-action='sidebar-toggle'],
+  [data-layout-action='toggleSidebar'] {
     display: inline-flex !important;
     flex: 0 0 40px;
     width: 40px;
@@ -146,6 +158,31 @@ body {
   .ant-alert {
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+  /* Vben's floating preferences launcher is redundant on a phone and can
+     cover the final action/card. The desktop preferences remain untouched. */
+  .vben-preferences,
+  .vben-preferences-button,
+  [data-layout-action='preferences'],
+  [data-layout-action='toggle-preferences'],
+  [data-vben-preferences],
+  .ant-float-btn {
+    display: none !important;
+  }
+  .tg-mobile-list > .ant-card {
+    margin: 0;
+  }
+  .tg-mobile-list .ant-card-body {
+    overflow-wrap: anywhere;
+  }
+  .tg-mobile-list .ant-btn {
+    max-width: 100%;
+  }
+  .tg-mobile-list .ant-tag {
+    white-space: nowrap;
+  }
+  .tg-safe-bottom {
+    padding-bottom: calc(20px + var(--tg-safe-bottom));
   }
   .ant-descriptions,
   .ant-descriptions-view,
