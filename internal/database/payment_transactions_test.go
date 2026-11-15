@@ -37,4 +37,7 @@ func TestPaymentTransactionLedgerIsIdempotentAndClassifiable(t *testing.T) {
 	if got.Status != "reconciliation_required" || got.OrderID != "order-1" || got.AmountAtomic != transfer.AmountAtomic {
 		t.Fatalf("unexpected ledger transaction: %+v", got)
 	}
+	status, err := GetTRC20TransferStatus(ctx, db, "sqlite", transfer.TransactionID)
+	if err != nil { t.Fatal(err) }
+	if status != "reconciliation_required" { t.Fatalf("got status %q, want reconciliation_required", status) }
 }
