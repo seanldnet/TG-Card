@@ -41,3 +41,24 @@ func TestPaymentTransactionLedgerIsIdempotentAndClassifiable(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if status != "reconciliation_required" { t.Fatalf("got status %q, want reconciliation_required", status) }
 }
+
+
+func TestManualTRC20ReconciliationMatchesExactPaymentAndReservesLateStock(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx,db,"sqlite"); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx,db,"sqlite",Product{Name:"Reconciliation card",PriceMinor:1500,Currency:"USDT",DeliveryType:"card",Status:1}); if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx,db,"sqlite",product.ID,[]StockSecret{{Ciphertext:"late-card-cipher",Fingerprint:"late-card-fp"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx,db,"sqlite","bot-reconcile","user-reconcile","chat-reconcile",product.ID,time.Minute); if err != nil { t.Fatal(err) }
+	if _, err := db.ExecContext(ctx,"UPDATE orders SET expires_at=? WHERE id=?",time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano),order.ID); err != nil { t.Fatal(err) }
+	if _, err := ExpirePendingOrders(ctx,db,"sqlite",10); err != nil { t.Fatal(err) }
+	transfer := tron.Transfer{TransactionID:"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",From:"TFrom",To:"TReceive",AmountAtomic:order.PaymentAmountAtomic,Decimals:6,BlockTimestamp:time.Now().UTC().UnixMilli()}
+	if _, err := RecordTRC20Transfer(ctx,db,"sqlite",transfer); err != nil { t.Fatal(err) }
+	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,"late payment"); err != nil { t.Fatal(err) }
+	items, err := ListOrders(ctx,db); if err != nil { t.Fatal(err) }; if len(items)!=1 || items[0].Status!="paid" || items[0].StockReserved { t.Fatalf("late order state: %+v",items) }
+	status, err := GetTRC20TransferStatus(ctx,db,"sqlite",transfer.TransactionID); if err != nil { t.Fatal(err) }; if status!="matched" { t.Fatalf("status=%q",status) }
+	delivery, err := GetOrderDelivery(ctx,db,"sqlite",order.ID); if err != nil { t.Fatal(err) }; if delivery.SecretCiphertext!="late-card-cipher" { t.Fatalf("delivery=%+v",delivery) }
+	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,"repeat"); err != nil { t.Fatalf("idempotent retry: %v",err) }
+}
