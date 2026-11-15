@@ -143,6 +143,7 @@ func main() {
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
+	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
@@ -711,6 +712,74 @@ func (a *application) updateSupportTicket(w http.ResponseWriter, r *http.Request
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.ticket.update","support_ticket:"+id,clientIP(r),r.UserAgent(),"status="+item.Status)
 	writeSuccess(w,http.StatusOK,map[string]any{"ticket":item,"notificationSent":notificationSent})
 }
+
+type reconcilePaymentTransactionRequest struct {
+	OrderID string `json:"orderId"`
+	Note string `json:"note"`
+}
+
+func (a *application) reconcilePaymentTransaction(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	if claims.Role != "super" {
+		writeError(w, http.StatusForbidden, "仅超级管理员可以执行支付补单")
+		return
+	}
+	transactionID := strings.TrimSpace(r.PathValue("transactionId"))
+	if len(transactionID) != 64 {
+		writeError(w, http.StatusBadRequest, "无效的 TRON 交易哈希")
+		return
+	}
+	if _, err := hex.DecodeString(transactionID); err != nil {
+		writeError(w, http.StatusBadRequest, "无效的 TRON 交易哈希")
+		return
+	}
+	var input reconcilePaymentTransactionRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	input.OrderID = strings.TrimSpace(input.OrderID)
+	input.Note = strings.TrimSpace(input.Note)
+	if input.OrderID == "" || len(input.OrderID) > 128 || len(input.Note) > 1000 {
+		writeError(w, http.StatusBadRequest, "订单 ID 必填，备注最多 1000 个字符")
+		return
+	}
+	settings, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
+	if err != nil || settings.TronReceiveAddress == "" {
+		writeError(w, http.StatusBadRequest, "后台尚未配置 TRON 收款地址")
+		return
+	}
+	if err := database.ReconcileTRC20Transfer(r.Context(), a.db, a.driver, transactionID, settings.TronReceiveAddress, input.OrderID, input.Note); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.reconcile", "payment_transaction:"+transactionID, clientIP(r), r.UserAgent(), "order_id="+input.OrderID+"; "+input.Note)
+	claimed, err := database.ClaimOrderDelivery(r.Context(), a.db, a.driver, input.OrderID, 2*time.Minute)
+	if err != nil {
+		log.Printf("claim reconciled payment delivery: order_id=%s tx=%s error=%v", input.OrderID, transactionID, err)
+		writeError(w, http.StatusInternalServerError, "交易已核对入账，但发货任务创建失败；可在订单管理中重试发货")
+		return
+	}
+	delivered := false
+	if claimed {
+		delivery, loadErr := database.GetOrderDelivery(r.Context(), a.db, a.driver, input.OrderID)
+		if loadErr != nil {
+			log.Printf("load reconciled order delivery: order_id=%s error=%v", input.OrderID, loadErr)
+			writeError(w, http.StatusInternalServerError, "交易已核对入账，但发货信息读取失败；可在订单管理中重试发货")
+			return
+		}
+		if sendErr := a.botManager.DeliverPaidOrder(r.Context(), delivery); sendErr != nil {
+			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.delivery", "order:"+input.OrderID, clientIP(r), r.UserAgent(), "failed: "+sendErr.Error())
+			writeError(w, http.StatusBadGateway, "交易已核对入账，但 Telegram 发货失败；订单已保留，可重试发货")
+			return
+		}
+		delivered = true
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.delivery", "order:"+input.OrderID, clientIP(r), r.UserAgent(), fmt.Sprintf("delivery_claimed=%t", claimed))
+	writeSuccess(w, http.StatusOK, map[string]any{"matched": true, "delivered": delivered, "deliveryClaimed": claimed})
+}
+
 func (a *application) listPaymentTransactions(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w, r); !ok { return }
 	items, err := database.ListPaymentTransactions(r.Context(), a.db, 500)
