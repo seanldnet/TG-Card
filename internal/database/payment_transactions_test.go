@@ -91,6 +91,33 @@ func TestFindExpiredTRC20OrderByAmountFlagsLateInvoice(t *testing.T) {
 	}
 }
 
+func TestFindTRC20AmountMismatchOrderFlagsUnderpaymentAndOverpayment(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, "sqlite", Product{Name:"Amount mismatch card",PriceMinor:1500,Currency:"USDT",DeliveryType:"card",Status:1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, "sqlite", product.ID, []StockSecret{{Ciphertext:"mismatch-key",Fingerprint:"mismatch-key"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, "sqlite", "bot-mismatch", "user-mismatch", "chat-mismatch", product.ID, time.Hour)
+	if err != nil { t.Fatal(err) }
+	blockTime := time.Now().UTC().Add(time.Second).UnixMilli()
+	for _, tc := range []struct{name string; amount int64; want string}{
+		{name:"underpayment", amount:order.PaymentAmountAtomic-1, want:"underpayment"},
+		{name:"overpayment", amount:order.PaymentAmountAtomic+1, want:"overpayment"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			found, kind, err := FindTRC20AmountMismatchOrder(ctx, db, "sqlite", tc.amount, blockTime)
+			if err != nil { t.Fatal(err) }
+			if found.ID != order.ID || kind != tc.want { t.Fatalf("found order=%s kind=%s, want order=%s kind=%s", found.ID, kind, order.ID, tc.want) }
+		})
+	}
+	if _, _, err := FindTRC20AmountMismatchOrder(ctx, db, "sqlite", order.PaymentAmountAtomic, blockTime); err != sql.ErrNoRows {
+		t.Fatalf("exact amount should not be treated as mismatch, got %v", err)
+	}
+}
+
 func TestManualTRC20ReconciliationRejectsWrongAddressAmountAndReuse(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
