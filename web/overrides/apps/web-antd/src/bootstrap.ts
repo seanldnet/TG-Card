@@ -2,7 +2,7 @@ import { createApp, watchEffect } from 'vue';
 
 import { registerAccessDirective } from '@vben/access';
 import { registerLoadingDirective } from '@vben/common-ui/es/loading';
-import { preferences } from '@vben/preferences';
+import { preferences, updatePreferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antd';
@@ -18,6 +18,17 @@ import App from './app.vue';
 import { router } from './router';
 
 async function bootstrap(namespace: string) {
+  // Vben 5.8.0 does not infer mobile layout from viewport width.
+  // Keep its official mobile drawer mode synchronized with the device.
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+    const syncMobileLayout = () => {
+      updatePreferences({ app: { isMobile: mobileQuery.matches } });
+    };
+    syncMobileLayout();
+    mobileQuery.addEventListener('change', syncMobileLayout);
+  }
+
   await initComponentAdapter();
   await initSetupVbenForm();
 
