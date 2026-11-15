@@ -23,6 +23,33 @@ func TestSQLiteMigrationAndAdminBootstrap(t *testing.T) {
 	if again.Created { t.Fatal("administrator should not be recreated on subsequent starts") }
 }
 
+func TestFindAdminByIDScansAllSessionFields(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+
+	created, err := EnsureAdmin(ctx, db, cfg.DBDriver, "admin", "a-strong-test-password")
+	if err != nil { t.Fatal(err) }
+	if err := UpdateAdminProfile(ctx, db, cfg.DBDriver, "admin-id-placeholder", "Test Admin", "/uploads/avatars/test.png"); err == nil {
+		t.Fatal("updating a nonexistent administrator should fail")
+	}
+	admin, err := FindAdminByUsername(ctx, db, cfg.DBDriver, created.Username)
+	if err != nil { t.Fatal(err) }
+	if err := UpdateAdminProfile(ctx, db, cfg.DBDriver, admin.ID, "Test Admin", "/uploads/avatars/test.png"); err != nil { t.Fatal(err) }
+
+	loaded, err := FindAdminByID(ctx, db, cfg.DBDriver, admin.ID)
+	if err != nil { t.Fatalf("FindAdminByID failed: %v", err) }
+	if loaded.ID != admin.ID || loaded.Username != "admin" || loaded.Role != "super" || loaded.Status != 1 {
+		t.Fatalf("unexpected administrator session fields: %+v", loaded)
+	}
+	if loaded.RealName != "Test Admin" || loaded.AvatarURL != "/uploads/avatars/test.png" || loaded.TokenVersion != admin.TokenVersion {
+		t.Fatalf("profile or token version fields were not scanned: %+v", loaded)
+	}
+}
+
 func TestBotRegistryCRUD(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
