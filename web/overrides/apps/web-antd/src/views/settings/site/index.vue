@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useWindowSize } from '@vueuse/core';
+import { IconifyIcon } from '@vben/icons';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 interface SiteSettings {
