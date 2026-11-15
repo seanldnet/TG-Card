@@ -45,8 +45,8 @@ onMounted(loadTickets);
    <a-card :bordered="false"><div class="text-sm text-gray-500">待处理</div><div class="mt-2 text-2xl font-bold">{{openCount}}</div></a-card>
    <a-card :bordered="false"><div class="text-sm text-gray-500">已解决</div><div class="mt-2 text-2xl font-bold">{{resolvedCount}}</div></a-card>
   </div>
-  <a-card :bordered="false">
-   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3"><div class="min-w-0"><div class="text-lg font-semibold">售后工单</div><div class="mt-1 text-sm text-gray-500">回复会通过原 Telegram Bot 私聊发送给用户</div></div><a-button :loading="loading" @click="loadTickets">刷新工单</a-button></div></template>
+  <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
+   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">售后工单</div><div class="mt-1 text-xs leading-5 text-gray-500">回复会通过原 Telegram Bot 私聊发送给用户</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadTickets">刷新工单</a-button></div></template>
    <div v-if="isMobile" class="tg-mobile-list">
     <a-card v-for="item in tickets" :key="item.id" size="small">
      <div class="flex min-w-0 items-start justify-between gap-2"><div class="min-w-0"><div class="truncate font-semibold">{{item.ticketNo}}</div><div class="mt-1 break-all text-xs text-gray-500">订单：{{item.orderNo}}</div></div><a-tag class="shrink-0" :color="statusColor(item.status)">{{statusLabel(item.status)}}</a-tag></div>
