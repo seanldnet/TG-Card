@@ -8,14 +8,19 @@ COPY scripts/ ./scripts/
 COPY web/overrides/ ./web/overrides/
 RUN ./scripts/apply-vben-overrides.sh
 WORKDIR /src/web/vben-admin
-RUN CI=true pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=tg-card-pnpm-store,target=/root/.local/share/pnpm/store CI=true pnpm install --frozen-lockfile
 RUN pnpm --filter @vben/web-antd build
 
-FROM golang:1.23-alpine AS go-builder
+# Build Go for the requested target architecture without emulating the target CPU.
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-builder
+ARG TARGETOS=linux
+ARG TARGETARCH
 WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 COPY --from=web-builder /src/web/vben-admin/apps/web-antd/dist ./web/dist
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata && addgroup -S tgcard && adduser -S -G tgcard tgcard

@@ -19,14 +19,15 @@ permissions:
   contents: read
   packages: write
 
-# Keep the mutable :latest tag aligned with the newest main commit.
+# Serialize publishes so an older build can never overwrite the newest :latest.
 concurrency:
   group: tg-card-publish-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout source and Vben submodule
         uses: actions/checkout@v4
@@ -49,6 +50,8 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=tg-card
+          cache-to: type=gha,scope=tg-card,mode=max
           tags: |
             ghcr.io/${{ github.repository_owner }}/tg-card:latest
             ghcr.io/${{ github.repository_owner }}/tg-card:${{ github.sha }}
