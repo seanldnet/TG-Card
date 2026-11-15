@@ -16,7 +16,9 @@ FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-builder
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /src
-COPY go.mod go.sum ./
+# The repository intentionally tracks go.mod without a committed go.sum.
+# Let Go resolve and verify module checksums during the image build.
+COPY go.mod ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /src/web/vben-admin/apps/web-antd/dist ./web/dist
