@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
+import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
 import { requestClient } from '#/api/request';
 
@@ -28,10 +29,10 @@ onMounted(loadOrders);
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
   <div class="tg-mobile-metric-grid md:grid md:grid-cols-4 md:gap-4">
-   <a-card :bordered="false"><div class="text-sm text-gray-500">订单总数</div><div class="mt-2 text-2xl font-bold">{{orders.length}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">待付款</div><div class="mt-2 text-2xl font-bold">{{pendingCount}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">库存预留</div><div class="mt-2 text-2xl font-bold">{{reservedCount}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">发货异常</div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">订单总数</div><div class="mt-2 text-2xl font-bold">{{orders.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:receipt-text-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">待付款</div><div class="mt-2 text-2xl font-bold">{{pendingCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:clock-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">库存预留</div><div class="mt-2 text-2xl font-bold">{{reservedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:package-variant-closed" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">发货异常</div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:alert-circle-outline" class="block text-2xl" /></span></div></a-card>
   </div>
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
    <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">订单管理</div><div class="mt-1 text-xs leading-5 text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadOrders">刷新订单</a-button></div></template>
