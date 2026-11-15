@@ -130,7 +130,7 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, driver, username, password str
 }
 
 func FindAdminByUsername(ctx context.Context, db *sql.DB, driver, username string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, role, status, token_version FROM admins WHERE username = "+placeholder(driver,1)
+	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version FROM admins WHERE username = "+placeholder(driver,1)
 	var admin Admin
 	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion)
 	return admin, err
