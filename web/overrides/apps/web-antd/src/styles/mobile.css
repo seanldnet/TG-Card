@@ -28,15 +28,16 @@ body {
 }
 @media (max-width: 767px) {
   body {
-    padding-top: var(--tg-safe-top);
     padding-bottom: var(--tg-safe-bottom);
   }
-  /* Safe-area padding belongs to the fixed shell as well as the document;
-     otherwise iOS standalone browsers can place the header under the status bar. */
+  /* Vben's header is fixed to the viewport, so offset the fixed header itself
+     and reserve the same safe-area space in the scroll region. */
   [data-layout-region='header'] {
-    top: 0 !important;
-    padding-top: var(--tg-safe-top);
-    min-height: calc(56px + var(--tg-safe-top));
+    top: var(--tg-safe-top) !important;
+    padding-top: 0;
+  }
+  [data-layout-region='scroll'] {
+    margin-top: calc(90px + var(--tg-safe-top)) !important;
   }
   [data-layout-region='layout'] {
     padding-top: 0;
