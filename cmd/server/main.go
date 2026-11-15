@@ -320,16 +320,20 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"meta": map[string]any{"icon": "lucide:receipt-text", "order": 3, "title": "订单管理"},
 		},
 		{
+			"name": "PaymentTransactions", "path": "/payments/transactions", "component": "/payments/index",
+			"meta": map[string]any{"icon": "lucide:arrow-left-right", "order": 4, "title": "支付交易流水"},
+		},
+		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
 			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
 		},
 		{
 			"name": "Support", "path": "/support", "component": "/support/index",
-			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 4, "title": "售后工单"},
+			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 5, "title": "售后工单"},
 		},
 		{
 			"name": "PaymentSettings", "path": "/settings/payment", "component": "/settings/payment/index",
-			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 5, "title": "支付设置"},
+			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 6, "title": "支付设置"},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
