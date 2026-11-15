@@ -77,15 +77,15 @@ onMounted(loadDashboard);
 
     <a-row :gutter="[12,12]">
       <a-col v-for="metric in [
-        { title: '机器人', value: bots.length, hint: `运行中 ${activeBots} 个`, path: '/bots', icon: 'mdi:robot-outline', tone: 'text-sky-600 bg-sky-50' },
-        { title: '商品与库存', value: products.length, hint: `上架 ${activeProducts} 件 · 库存 ${stockCount}`, path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-violet-600 bg-violet-50' },
-        { title: '订单', value: orders.length, hint: `待付款 ${pendingOrders} 笔`, path: '/orders', icon: 'mdi:receipt-text-outline', tone: 'text-emerald-600 bg-emerald-50' },
-        { title: '待处理售后', value: openTickets, hint: `发货异常 ${deliveryIssues} 笔`, path: '/support', icon: 'mdi:headset', tone: 'text-orange-600 bg-orange-50' },
+        { title: '机器人', value: bots.length, hint: `运行中 ${activeBots} 个`, path: '/bots', icon: 'mdi:robot-outline', tone: 'text-blue-600 bg-transparent' },
+        { title: '商品与库存', value: products.length, hint: `上架 ${activeProducts} 件 · 库存 ${stockCount}`, path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-blue-600 bg-transparent' },
+        { title: '订单', value: orders.length, hint: `待付款 ${pendingOrders} 笔`, path: '/orders', icon: 'mdi:receipt-text-outline', tone: 'text-blue-600 bg-transparent' },
+        { title: '待处理售后', value: openTickets, hint: `发货异常 ${deliveryIssues} 笔`, path: '/support', icon: 'mdi:headset', tone: 'text-blue-600 bg-transparent' },
       ]" :key="metric.path" :xs="12" :sm="12" :xl="6">
         <a-card :bordered="false" hoverable class="h-full cursor-pointer" :body-style="{ padding: '16px 18px' }" @click="open(metric.path)">
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0"><div class="text-xs text-gray-500">{{ metric.title }}</div><div class="mt-2 text-2xl font-semibold leading-none">{{ metric.value }}</div><div class="mt-2 truncate text-xs text-gray-500">{{ metric.hint }}</div></div>
-            <a-avatar :size="40" shape="square" :class="metric.tone"><IconifyIcon :icon="metric.icon" class="text-xl" /></a-avatar>
+            <a-avatar :size="44" shape="square" :class="['flex shrink-0 items-center justify-center !bg-transparent !text-blue-600', metric.tone]"><IconifyIcon :icon="metric.icon" class="block text-2xl" /></a-avatar>
           </div>
         </a-card>
       </a-col>
