@@ -1,6 +1,7 @@
 package database
 
 import (
+	"golang.org/x/crypto/bcrypt"
 	"context"
 	"testing"
 	"time"
@@ -312,4 +313,23 @@ func TestPaymentSettingsPersistAcrossReads(t *testing.T) {
 	got, err = GetPaymentSettings(ctx, db, cfg.DBDriver)
 	if err != nil { t.Fatal(err) }
 	if got != want { t.Fatalf("updated settings mismatch: got %+v, want %+v", got, want) }
+}
+
+func TestFindAdminByUsernameScansProfileAndRole(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	created, err := EnsureAdmin(ctx, db, cfg.DBDriver, "admin", "a-strong-test-password")
+	if err != nil { t.Fatal(err) }
+	admin, err := FindAdminByUsername(ctx, db, cfg.DBDriver, created.Username)
+	if err != nil { t.Fatalf("FindAdminByUsername: %v", err) }
+	if admin.Username != "admin" || admin.Role != "super" || admin.Status != 1 || admin.AvatarURL != "" {
+		t.Fatalf("unexpected administrator record: %+v", admin)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte("a-strong-test-password")); err != nil {
+		t.Fatalf("stored password hash does not match bootstrap password: %v", err)
+	}
 }
