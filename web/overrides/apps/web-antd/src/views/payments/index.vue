@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
+import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
 import { useVbenModal, VbenButton } from '@vben/common-ui';
 import { useVbenForm } from '#/adapter/form';
@@ -59,10 +60,10 @@ onMounted(loadTransactions);
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
   <div class="tg-mobile-metric-grid md:grid md:grid-cols-4 md:gap-4">
-   <a-card :bordered="false"><div class="text-sm text-gray-500">链上流水</div><div class="mt-2 text-2xl font-bold">{{transactions.length}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">已匹配</div><div class="mt-2 text-2xl font-bold text-green-600">{{matchedCount}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">未匹配</div><div class="mt-2 text-2xl font-bold text-orange-500">{{unmatchedCount}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">需人工核对</div><div class="mt-2 text-2xl font-bold text-red-500">{{reviewCount}}</div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">链上流水</div><div class="mt-2 text-2xl font-bold">{{transactions.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:bank-transfer" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">已匹配</div><div class="mt-2 text-2xl font-bold">{{matchedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:check-circle-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">未匹配</div><div class="mt-2 text-2xl font-bold">{{unmatchedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:alert-circle-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">需人工核对</div><div class="mt-2 text-2xl font-bold">{{reviewCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:clipboard-alert-outline" class="block text-2xl" /></span></div></a-card>
   </div>
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
    <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">支付交易流水</div><div class="mt-1 text-xs leading-5 text-gray-500">TronGrid 已确认 TRC20 USDT 转账记录</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadTransactions">刷新流水</a-button></div></template>
