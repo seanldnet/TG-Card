@@ -28,6 +28,7 @@ type Admin struct {
 	Username string
 	PasswordHash string
 	RealName string
+	AvatarURL string
 	Role string
 	Status int
 	TokenVersion int
@@ -131,7 +132,7 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, driver, username, password str
 func FindAdminByUsername(ctx context.Context, db *sql.DB, driver, username string) (Admin, error) {
 	query := "SELECT id, username, password_hash, real_name, role, status, token_version FROM admins WHERE username = "+placeholder(driver,1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.Role, &admin.Status, &admin.TokenVersion)
+	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion)
 	return admin, err
 }
 
@@ -177,10 +178,22 @@ func nullableString(value string) any {
 
 
 func FindAdminByID(ctx context.Context, db *sql.DB, driver, adminID string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, role, status, token_version FROM admins WHERE id = " + placeholder(driver, 1)
+	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version FROM admins WHERE id = " + placeholder(driver, 1)
 	var admin Admin
 	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.Role, &admin.Status, &admin.TokenVersion)
 	return admin, err
+}
+
+
+func UpdateAdminProfile(ctx context.Context, db *sql.DB, driver, adminID, realName, avatarURL string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE admins SET real_name = " + placeholder(driver, 1) + ", avatar_url = " + placeholder(driver, 2) + ", updated_at = " + placeholder(driver, 3) + " WHERE id = " + placeholder(driver, 4)
+	result, err := db.ExecContext(ctx, query, realName, avatarURL, now, adminID)
+	if err != nil { return err }
+	affected, err := result.RowsAffected()
+	if err != nil { return err }
+	if affected != 1 { return fmt.Errorf("administrator not found") }
+	return nil
 }
 
 func UpdateAdminPassword(ctx context.Context, db *sql.DB, driver, adminID, passwordHash string) error {

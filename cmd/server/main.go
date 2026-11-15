@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -36,6 +37,7 @@ type application struct {
 	secrets *secret.Manager
 	botManager *telegrambot.Manager
 	paymentManager *payment.Manager
+	dataDir string
 }
 
 type apiEnvelope struct {
@@ -94,6 +96,7 @@ type userInfo struct {
 	ID string `json:"id"`
 	Username string `json:"username"`
 	RealName string `json:"realName"`
+	Avatar string `json:"avatar"`
 	Roles []string `json:"roles"`
 	HomePath string `json:"homePath"`
 }
@@ -152,7 +155,7 @@ func main() {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager}
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 
@@ -187,10 +190,13 @@ func main() {
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
+	api.HandleFunc("PUT /api/user/profile", app.updateUserProfile)
+	api.HandleFunc("POST /api/user/avatar", app.uploadUserAvatar)
 	api.HandleFunc("GET /api/menu/all", app.menus)
 
 	root := http.NewServeMux()
 	root.Handle("/api/", api)
+	root.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(filepath.Join(cfg.DataDir, "uploads")))))
 	root.Handle("/", staticHandler(cfg.WebDistDir))
 
 	addr := ":" + cfg.Port
@@ -322,13 +328,108 @@ func (a *application) accessCodes(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, []string{})
 }
 
+
 func (a *application) userInfo(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
+	admin, err := database.FindAdminByID(r.Context(), a.db, a.driver, claims.AdminID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Administrator account is unavailable")
+		return
+	}
 	writeSuccess(w, http.StatusOK, userInfo{
-		ID: claims.AdminID, Username: claims.Username, RealName: claims.RealName,
-		Roles: []string{claims.Role}, HomePath: "/dashboard/analytics",
+		ID: admin.ID, Username: admin.Username, RealName: admin.RealName,
+		Avatar: admin.AvatarURL, Roles: []string{admin.Role}, HomePath: "/dashboard/analytics",
 	})
+}
+
+type userProfileUpdateRequest struct {
+	RealName string `json:"realName"`
+	AvatarURL string `json:"avatar"`
+}
+
+func (a *application) updateUserProfile(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	var input userProfileUpdateRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	input.RealName = strings.TrimSpace(input.RealName)
+	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
+	if input.RealName == "" || len(input.RealName) > 80 {
+		writeError(w, http.StatusBadRequest, "昵称长度必须为 1 到 80 个字符")
+		return
+	}
+	if input.AvatarURL != "" && (!strings.HasPrefix(input.AvatarURL, "/uploads/avatars/") || strings.Contains(input.AvatarURL, "..")) {
+		writeError(w, http.StatusBadRequest, "头像地址无效，请重新上传")
+		return
+	}
+	if err := database.UpdateAdminProfile(r.Context(), a.db, a.driver, claims.AdminID, input.RealName, input.AvatarURL); err != nil {
+		log.Printf("update administrator profile: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to update profile")
+		return
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.profile.update", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "profile updated")
+	writeSuccess(w, http.StatusOK, map[string]string{"realName": input.RealName, "avatar": input.AvatarURL})
+}
+
+func (a *application) uploadUserAvatar(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	const maxAvatarBytes = 2 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+64<<10)
+	if err := r.ParseMultipartForm(maxAvatarBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "头像文件超过 2 MB 或上传请求无效")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "请选择头像文件")
+		return
+	}
+	defer file.Close()
+	if header.Size > maxAvatarBytes {
+		writeError(w, http.StatusBadRequest, "头像文件不能超过 2 MB")
+		return
+	}
+	content, err := io.ReadAll(io.LimitReader(file, maxAvatarBytes+1))
+	if err != nil || len(content) == 0 || len(content) > maxAvatarBytes {
+		writeError(w, http.StatusBadRequest, "头像文件读取失败或超过 2 MB")
+		return
+	}
+	contentType := http.DetectContentType(content)
+	extensions := map[string]string{
+		"image/jpeg": ".jpg",
+		"image/png": ".png",
+		"image/webp": ".webp",
+	}
+	extension, supported := extensions[contentType]
+	if !supported {
+		writeError(w, http.StatusBadRequest, "头像仅支持 JPG、PNG 或 WebP 图片")
+		return
+	}
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		writeError(w, http.StatusInternalServerError, "Unable to generate avatar filename")
+		return
+	}
+	filename := hex.EncodeToString(random) + extension
+	directory := filepath.Join(a.dataDir, "uploads", "avatars")
+	if err := os.MkdirAll(directory, 0o750); err != nil {
+		log.Printf("create avatar directory: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to store avatar")
+		return
+	}
+	if err := os.WriteFile(filepath.Join(directory, filename), content, 0o640); err != nil {
+		log.Printf("save avatar: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to store avatar")
+		return
+	}
+	avatarURL := "/uploads/avatars/" + filename
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.avatar.upload", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "avatar uploaded")
+	writeSuccess(w, http.StatusCreated, map[string]string{"avatar": avatarURL})
 }
 
 func (a *application) menus(w http.ResponseWriter, r *http.Request) {
