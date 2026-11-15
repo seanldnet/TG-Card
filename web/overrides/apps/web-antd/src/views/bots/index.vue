@@ -2,15 +2,37 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { useWindowSize } from '@vueuse/core';
+import { useVbenModal } from '@vben/common-ui';
+import { useVbenForm } from '#/adapter/form';
 import { requestClient } from '#/api/request';
 interface Bot{id:string;name:string;username:string;status:number;welcomeText:string;createdAt:string;updatedAt:string}
-const loading=ref(false),saving=ref(false),modalOpen=ref(false),editingId=ref(''),bots=ref<Bot[]>([]);
+const loading=ref(false),saving=ref(false),editingId=ref(''),bots=ref<Bot[]>([]);
 const {width}=useWindowSize(),isMobile=computed(()=>width.value<768);
-const form=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',status:1});
+const [BotForm,botFormApi]=useVbenForm({
+ commonConfig:{componentProps:{class:'w-full'}},layout:'vertical',showDefaultActions:false,wrapperClass:'grid-cols-1',
+ schema:[
+  {component:'Input',fieldName:'name',label:'机器人名称',componentProps:{maxlength:100,placeholder:'例如：主商城机器人'}},
+  {component:'InputPassword',fieldName:'token',label:'Bot Token',componentProps:{autocomplete:'new-password',placeholder:'从 @BotFather 获取的 Token（编辑时留空）'}},
+  {component:'Textarea',fieldName:'welcomeText',label:'欢迎语',componentProps:{rows:4,maxlength:4000,showCount:true,placeholder:'用户首次打开机器人时显示的欢迎内容'}},
+  {component:'Switch',fieldName:'enabled',label:'运行开关'},
+ ],
+});
+const [BotModal,botModalApi]=useVbenModal({title:'Telegram 机器人配置',onConfirm:submit});
 async function loadBots(){loading.value=true;try{bots.value=await requestClient.get<Bot[]>('/bots')}catch{message.error('机器人列表加载失败')}finally{loading.value=false}}
-function openCreate(){editingId.value='';Object.assign(form,{name:'',token:'',welcomeText:'欢迎来到我们的商城！',status:1});modalOpen.value=true}
-function openEdit(bot:Bot){editingId.value=bot.id;Object.assign(form,{name:bot.name,token:'',welcomeText:bot.welcomeText,status:bot.status});modalOpen.value=true}
-async function submit(){if(!form.name.trim()){message.warning('请输入机器人名称');return}if(!editingId.value&&!form.token.trim()){message.warning('请输入 Telegram Bot Token');return}saving.value=true;try{if(editingId.value){await requestClient.put('/bots/'+editingId.value,{name:form.name,welcomeText:form.welcomeText,status:form.status});message.success('机器人配置已更新')}else{await requestClient.post('/bots',{name:form.name,token:form.token,welcomeText:form.welcomeText});message.success('机器人已添加，Token 已加密保存')}modalOpen.value=false;await loadBots()}catch(error:any){message.error(error?.response?.data?.message||'机器人保存失败')}finally{saving.value=false}}
+async function openCreate(){editingId.value='';await botFormApi.setValues({name:'',token:'',welcomeText:'欢迎来到我们的商城！',enabled:true});botModalApi.open()}
+async function openEdit(bot:Bot){editingId.value=bot.id;await botFormApi.setValues({name:bot.name,token:'',welcomeText:bot.welcomeText,enabled:bot.status===1});botModalApi.open()}
+async function submit(){
+ const {valid}=await botFormApi.validate();if(!valid)return;
+ const values=await botFormApi.getValues();
+ if(!String(values.name||'').trim()){message.warning('请输入机器人名称');return}
+ if(!editingId.value&&!String(values.token||'').trim()){message.warning('请输入 Telegram Bot Token');return}
+ saving.value=true;
+ try{
+  if(editingId.value){await requestClient.put('/bots/'+editingId.value,{name:String(values.name).trim(),welcomeText:values.welcomeText||'',status:values.enabled?1:0});message.success('机器人配置已更新')}
+  else{await requestClient.post('/bots',{name:String(values.name).trim(),token:String(values.token).trim(),welcomeText:values.welcomeText||''});message.success('机器人已添加，Token 已加密保存')}
+  botModalApi.close();await loadBots();
+ }catch(error:any){message.error(error?.response?.data?.message||'机器人保存失败')}finally{saving.value=false}
+}
 function removeBot(bot:Bot){Modal.confirm({title:'删除机器人',content:`确定删除 @${bot.username} 吗？此操作不可撤销。`,okType:'danger',onOk:async()=>{await requestClient.delete('/bots/'+bot.id);message.success('机器人已删除');await loadBots()}})}
 onMounted(loadBots);
 </script>
@@ -34,13 +56,8 @@ onMounted(loadBots);
     <a-table-column key="actions" title="操作" fixed="right" width="150"><template #default="{record}"><a-space><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeBot(record)">删除</a-button></a-space></template></a-table-column>
    </a-table>
   </a-card>
-  <a-modal v-model:open="modalOpen" :title="editingId?'编辑机器人':'添加 Telegram 机器人'" :confirm-loading="saving" ok-text="保存" cancel-text="取消" @ok="submit">
-   <a-form layout="vertical">
-    <a-form-item label="机器人名称" required><a-input v-model:value="form.name" placeholder="例如：主商城机器人" :maxlength="100"/></a-form-item>
-    <a-form-item v-if="!editingId" label="Bot Token" required><a-input-password v-model:value="form.token" autocomplete="new-password" placeholder="从 @BotFather 获取的 Token"/></a-form-item>
-    <a-form-item label="欢迎语"><a-textarea v-model:value="form.welcomeText" :rows="4" :maxlength="4000" show-count placeholder="用户首次打开机器人时显示的欢迎内容"/></a-form-item>
-    <a-form-item v-if="editingId" label="运行开关"><a-switch :checked="form.status===1" checked-children="启用" un-checked-children="停用" @change="(checked)=>form.status=checked?1:0"/></a-form-item>
-   </a-form>
-  </a-modal>
+  <BotModal class="w-full max-w-xl" :confirm-loading="saving">
+   <div class="p-4 sm:p-6"><a-alert v-if="!editingId" class="mb-4" type="info" show-icon message="新 Bot Token 会实时调用 Telegram getMe 验证，并使用 AES-256-GCM 加密保存。"/><BotForm/></div>
+  </BotModal>
  </div>
 </template>
