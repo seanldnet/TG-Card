@@ -34,12 +34,12 @@ function replaceOnce(from, to, label) {
 if (!source.includes("import { useRoute } from 'vue-router';")) {
   replaceOnce(
     "import { useEventListener, useScroll } from '@vueuse/core';",
-    "import { useRoute } from 'vue-router';\\n\\nimport { useEventListener, useScroll } from '@vueuse/core';",
+    "import { useRoute } from 'vue-router';\n\nimport { useEventListener, useScroll } from '@vueuse/core';",
     'layout imports',
   );
 }
 if (!source.includes('const route = useRoute();')) {
-  replaceOnce('const emit = defineEmits<{', 'const route = useRoute();\\n\\nconst emit = defineEmits<{', 'layout setup');
+  replaceOnce('const emit = defineEmits<{', 'const route = useRoute();\n\nconst emit = defineEmits<{', 'layout setup');
 }
 if (!source.includes('route.fullPath')) {
   const routeWatch = `watch(
