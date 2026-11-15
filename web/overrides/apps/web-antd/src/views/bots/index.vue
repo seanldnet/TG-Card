@@ -40,7 +40,7 @@ onMounted(loadBots);
    <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3"><div class="min-w-0"><div class="text-base font-semibold">Telegram 机器人</div><div class="mt-2 text-xs text-gray-500">管理商城销售入口，所有机器人共享商品、库存和订单</div></div><a-button type="primary" @click="handleAddBot">添加机器人</a-button></div></template>
    <a-alert class="mb-4" type="info" show-icon message="Token 安全说明" description="添加时会实时调用 Telegram getMe 验证 Token，并使用 AES-256-GCM 加密保存。Token 不会在列表中再次显示。"/>
    <div v-if="isMobile" class="tg-mobile-list">
-    <a-card v-for="bot in bots" :key="bot.id" size="small">
+    <a-card v-for="bot in bots" :key="bot.id" size="small" :body-style="{ padding: '20px 24px' }">
      <div class="flex min-w-0 items-start justify-between gap-2"><div class="min-w-0"><div class="break-words text-sm font-semibold">{{bot.name}}</div><a class="mt-1 block truncate text-sm" :href="`https://t.me/${bot.username}`" target="_blank" rel="noreferrer">@{{bot.username}}</a></div><a-tag class="shrink-0" :color="bot.status===1?'success':'default'">{{bot.status===1?'已启用':'已停用'}}</a-tag></div>
      <div class="mt-3 flex items-center justify-between gap-2"><span class="text-xs text-gray-500">{{bot.createdAt}}</span><a-space><a-button size="small" @click="openEdit(bot)">编辑</a-button><a-button size="small" danger @click="removeBot(bot)">删除</a-button></a-space></div>
     </a-card>
