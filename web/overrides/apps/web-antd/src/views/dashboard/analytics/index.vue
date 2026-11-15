@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
 import { useWindowSize } from '@vueuse/core';
+import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
 
 interface Bot { id: string; name: string; username: string; status: number; }
@@ -75,14 +76,17 @@ onMounted(loadDashboard);
     </div>
 
     <a-row :gutter="[12,12]">
-      <a-col :xs="12" :sm="12" :xl="6">
-        <a-card :bordered="false" hoverable @click="open('/bots')">
-          <div class="text-sm text-gray-500">机器人</div>
-          <div class="mt-2 text-3xl font-semibold">{{ bots.length }}</div>
-          <div class="mt-2 text-xs text-gray-500">运行中 {{ activeBots }} 个</div>
+      <a-col v-for="metric in [
+        { title: '机器人', value: bots.length, hint: `运行中 ${activeBots} 个`, path: '/bots', icon: 'mdi:robot-outline', tone: 'text-sky-600 bg-sky-50' },
+        { title: '商品与库存', value: products.length, hint: `上架 ${activeProducts} 件 · 库存 ${stockCount}`, path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-violet-600 bg-violet-50' },
+        { title: '订单', value: orders.length, hint: `待付款 ${pendingOrders} 笔`, path: '/orders', icon: 'mdi:receipt-text-outline', tone: 'text-emerald-600 bg-emerald-50' },
+        { title: '待处理售后', value: openTickets, hint: `发货异常 ${deliveryIssues} 笔`, path: '/support', icon: 'mdi:headset', tone: 'text-orange-600 bg-orange-50' },
+      ]" :key="metric.path" :xs="12" :sm="12" :xl="6">
+        <a-card :bordered="false" hoverable class="h-full cursor-pointer" :body-style="{ padding: '16px 18px' }" @click="open(metric.path)">
+          <div class="flex items-center justify-between gap-2"><div class="min-w-0"><div class="text-xs text-gray-500">{{ metric.title }}</div><div class="mt-2 text-2xl font-semibold leading-none">{{ metric.value }}</div><div class="mt-2 truncate text-xs text-gray-500">{{ metric.hint }}</div></div><a-avatar :size="40" shape="square" :class="metric.tone"><IconifyIcon :icon="metric.icon" class="text-xl" /></a-avatar></div>
         </a-card>
       </a-col>
-      <a-col :xs="24" :sm="12" :xl="6">
+      <a-col :xs="12" :sm="12" :xl="6">
         <a-card :bordered="false" hoverable @click="open('/catalog')">
           <div class="text-sm text-gray-500">商品与库存</div>
           <div class="mt-2 text-3xl font-semibold">{{ products.length }}</div>
