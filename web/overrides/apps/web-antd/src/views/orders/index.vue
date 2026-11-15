@@ -77,7 +77,7 @@ onMounted(loadOrders);
     <a-table-column title="创建时间" key="createdAt" :width="190"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
     <a-table-column title="付款截止" key="expiresAt" :width="190"><template #default="{record}">{{formatTime(record.expiresAt)}}</template></a-table-column>
    </a-table>
-   <a-alert class="mt-4" type="info" show-icon message="TRC20 USDT 经 TronGrid 确认后自动核验，付款成功进入自动发货队列；失败时可在此重试。"/>
+   <a-alert class="mx-1 mb-2 mt-7 rounded-lg" type="info" show-icon message="TRC20 USDT 经 TronGrid 确认后自动核验，付款成功进入自动发货队列；失败时可在此重试。"/>
   </a-card>
  </div>
 </template>
