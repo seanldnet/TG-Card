@@ -57,7 +57,7 @@ type siteSettings struct {
  SMTPPort int `json:"smtpPort"`
  SMTPUsername string `json:"smtpUsername"`
  SMTPPassword string `json:"smtpPassword,omitempty"`
- SMTPPasswordCiphertext string `json:"-"`
+ SMTPPasswordCiphertext string `json:"smtpPasswordCiphertext,omitempty"`
  SMTPFromName string `json:"smtpFromName"`
  SMTPFromEmail string `json:"smtpFromEmail"`
  SMTPUseTLS bool `json:"smtpUseTLS"`
@@ -863,6 +863,7 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if err := json.Unmarshal([]byte(raw),&settings); err != nil { log.Printf("decode site settings: %v",err); writeError(w,http.StatusInternalServerError,"Invalid saved site settings"); return }
  configured := settings.SMTPPasswordCiphertext != ""
  settings.SMTPPassword = ""
+ settings.SMTPPasswordCiphertext = ""
  writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured})
 }
 func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request) {

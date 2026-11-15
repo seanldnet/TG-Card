@@ -28,14 +28,7 @@ const coreRoutes: RouteRecordRaw[] = [
     name: 'Root',
     path: '/',
     redirect: '/intro',
-    children: [
-      {
-        name: 'Profile',
-        path: 'profile',
-        component: () => import('#/views/_core/profile/index.vue'),
-        meta: { hideInBreadcrumb: true, hideInMenu: true, title: '个人中心' },
-      },
-    ],
+    children: [],
   },
   {
     name: 'ProductIntro',
