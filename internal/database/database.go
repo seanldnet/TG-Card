@@ -180,7 +180,7 @@ func nullableString(value string) any {
 func FindAdminByID(ctx context.Context, db *sql.DB, driver, adminID string) (Admin, error) {
 	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version FROM admins WHERE id = " + placeholder(driver, 1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.Role, &admin.Status, &admin.TokenVersion)
+	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion)
 	return admin, err
 }
 
