@@ -864,6 +864,9 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if err != nil { log.Printf("load site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load site settings"); return }
  var settings siteSettings
  if err := json.Unmarshal([]byte(raw),&settings); err != nil { log.Printf("decode site settings: %v",err); writeError(w,http.StatusInternalServerError,"Invalid saved site settings"); return }
+ if settings.SiteName == "" { settings.SiteName = "TG-Card" }
+ if settings.SMTPPort == 0 { settings.SMTPPort = 587 }
+ if settings.SMTPFromName == "" { settings.SMTPFromName = settings.SiteName }
  configured := settings.SMTPPasswordCiphertext != ""
  settings.SMTPPassword = ""
  settings.SMTPPasswordCiphertext = ""
