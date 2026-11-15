@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
+import { useWindowSize } from '@vueuse/core';
 import { requestClient } from '#/api/request';
 
 interface Bot { id: string; name: string; username: string; status: number; }
@@ -9,6 +10,8 @@ interface Product { id: string; name: string; status: number; stockCount: number
 interface Order { id: string; orderNo: string; productName: string; amountMinor: number; currency: string; status: string; createdAt: string; }
 interface Ticket { id: string; status: string; }
 const router = useRouter();
+const { width } = useWindowSize();
+const isMobile = computed(() => width.value < 768);
 const loading = ref(false);
 const bots = ref<Bot[]>([]);
 const products = ref<Product[]>([]);
@@ -128,7 +131,23 @@ onMounted(loadDashboard);
           <a-button type="link" @click="open('/orders')">全部订单</a-button>
         </div>
       </template>
-      <a-table :data-source="recentOrders" :loading="loading" row-key="id" :pagination="false" :scroll="{ x: 700 }">
+      <div v-if="isMobile" class="tg-mobile-list">
+        <a-card v-for="record in recentOrders" :key="record.id" size="small">
+          <div class="flex min-w-0 items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="break-all font-semibold">{{ record.orderNo }}</div>
+              <div class="mt-1 break-words text-sm text-gray-600">{{ record.productName }}</div>
+            </div>
+            <a-tag class="shrink-0" :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <div class="text-lg font-bold">{{ (record.amountMinor / 100).toFixed(2) }} {{ record.currency }}</div>
+            <div class="text-xs text-gray-500">{{ formatTime(record.createdAt) }}</div>
+          </div>
+        </a-card>
+        <a-empty v-if="!loading && recentOrders.length === 0" description="暂无订单数据" />
+      </div>
+      <a-table v-else :data-source="recentOrders" :loading="loading" row-key="id" :pagination="false" :scroll="{ x: 700 }">
         <a-table-column title="订单号" data-index="orderNo" key="orderNo" />
         <a-table-column title="商品" data-index="productName" key="productName" />
         <a-table-column title="金额" key="amount">
