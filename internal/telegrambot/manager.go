@@ -36,6 +36,7 @@ type Manager struct {
 	expiryCancel context.CancelFunc
 	paymentAddress string
 	paymentEnabled bool
+	notifier func(event, details, userChatID string)
 }
 
 type worker struct {
@@ -97,6 +98,22 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 		paymentAddress: paymentAddress,
 		paymentEnabled: paymentEnabled,
 	}
+}
+
+
+// SetNotifier attaches the application-level notification dispatcher.
+func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
+ m.mu.Lock()
+ m.notifier = notifier
+ m.mu.Unlock()
+}
+
+// Notify dispatches a business event without coupling the bot worker to SMTP or site settings.
+func (m *Manager) Notify(event, details, userChatID string) {
+ m.mu.Lock()
+ notifier := m.notifier
+ m.mu.Unlock()
+ if notifier != nil { notifier(event, details, userChatID) }
 }
 
 func (m *Manager) Reconcile(configs []Config) {
@@ -287,6 +304,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
 		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。")
+		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
 }
 
@@ -354,6 +372,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			return
 		}
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "订单已创建")
+		m.Notify("order_created", "新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor, order.Currency), strconv.FormatInt(chatID, 10))
 		text := `订单创建成功！
 订单号：` + order.OrderNo + `
 商品：` + order.ProductName + `
@@ -450,6 +469,8 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		log.Printf("Telegram card sent but order delivery state update failed: order_id=%s error=%v", item.Order.ID, err)
 		return err
 	}
+	m.Notify("payment_success", "付款成功：订单 "+item.Order.OrderNo+"\n金额："+formatPrice(item.Order.AmountMinor, item.Order.Currency), item.Order.TelegramChatID)
+	m.Notify("delivery_success", "自动发货成功：订单 "+item.Order.OrderNo, item.Order.TelegramChatID)
 	log.Printf("Telegram order delivered: bot_id=%s order_id=%s", item.Order.BotID, item.Order.ID)
 	return nil
 }

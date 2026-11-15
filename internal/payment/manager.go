@@ -146,6 +146,7 @@ func (m *Manager) scan(ctx context.Context) error {
 				continue
 			}
 			if err := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "matched", order.ID, ""); err != nil { return err }
+			m.bots.Notify("payment_success", "链上付款已确认：订单 "+order.OrderNo+"\n金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT", order.TelegramChatID)
 			claimed, err := database.ClaimOrderDelivery(scanCtx, m.db, m.driver, order.ID, 2*time.Minute)
 			if err != nil { log.Printf("TRC20 paid order lease failed: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err); continue }
 			if claimed {

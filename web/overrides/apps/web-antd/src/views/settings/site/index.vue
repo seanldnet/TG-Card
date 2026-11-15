@@ -12,6 +12,7 @@ const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'
 async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;form.smtpPassword='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
 async function save(){saving.value=true;try{const data=await requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site',form);Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
 async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success('测试邮件已发送，请检查收件箱');}catch(error:any){message.error(error?.response?.data?.message||'测试邮件发送失败');}finally{testing.value=false;}}
+async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success('Telegram 测试通知已发送');}catch(error:any){message.error(error?.response?.data?.message||'Telegram 测试通知失败');}finally{testing.value=false;}}
 onMounted(load);
 </script>
 <template>
@@ -31,7 +32,7 @@ onMounted(load);
     <a-col :xs="24" :md="12"><a-form-item label="发件人名称"><a-input v-model:value="form.smtpFromName"/></a-form-item></a-col>
     <a-col :xs="24" :md="12"><a-form-item label="发件人邮箱"><a-input v-model:value="form.smtpFromEmail" type="email"/></a-form-item></a-col>
    </a-row><a-form-item label="SMTP TLS"><a-switch v-model:checked="form.smtpUseTLS"/></a-form-item></a-form>
-   <a-button :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件到联系邮箱</a-button>
+   <a-space wrap><a-button :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件到联系邮箱</a-button><a-button :loading="testing" @click="testTelegram">发送 Telegram 测试通知</a-button></a-space>
   </a-card>
   <a-card :bordered="false" title="邮件通知开关"><a-row :gutter="[16,12]">
    <a-col :xs="24" :sm="12"><a-form-item label="新订单通知"><a-switch v-model:checked="form.emailOrderCreated"/></a-form-item></a-col>

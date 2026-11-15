@@ -152,6 +152,7 @@ func main() {
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
 	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager}
+	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 
 	api := http.NewServeMux()
@@ -177,6 +178,7 @@ func main() {
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.updateSiteSettings)
 	api.HandleFunc("POST /api/settings/site/test-email", app.testSiteEmail)
+	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
@@ -906,4 +908,76 @@ func (a *application) testSiteEmail(w http.ResponseWriter, r *http.Request) {
  body:="From: "+fromName+" <"+settings.SMTPFromEmail+">\r\nTo: "+settings.ContactEmail+"\r\nSubject: "+subject+"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n这是一封 TG-Card SMTP 测试邮件。"
  if err:=smtp.SendMail(fmt.Sprintf("%s:%d",settings.SMTPHost,port),auth,settings.SMTPFromEmail,[]string{settings.ContactEmail},[]byte(body)); err!=nil { log.Printf("SMTP test failed: %v",err); writeError(w,http.StatusBadGateway,"测试邮件发送失败："+err.Error()); return }
  writeSuccess(w,http.StatusOK,map[string]bool{"sent":true})
+}
+
+// notifySiteEvent delivers configured business notifications. Delivery failures are logged
+// and never roll back a paid order, stock reservation, or support ticket.
+func (a *application) notifySiteEvent(ctx context.Context, event, details, userChatID string) {
+ raw,err:=database.GetSiteSettings(ctx,a.db); if err!=nil { log.Printf("notification settings read failed: %v",err); return }
+ var s siteSettings; if err:=json.Unmarshal([]byte(raw),&s);err!=nil { log.Printf("notification settings decode failed: %v",err);return }
+ var emailEnabled,telegramEnabled bool
+ var title string
+ switch event {
+ case "order_created": emailEnabled,telegramEnabled=s.EmailOrderCreated,s.TelegramNotifyOrderCreated; title="新订单通知"
+ case "payment_success": emailEnabled,telegramEnabled=s.EmailPaymentSuccess,s.TelegramNotifyPaymentSuccess; title="付款成功通知"
+ case "delivery_success": emailEnabled,telegramEnabled=s.EmailDeliverySuccess,s.TelegramNotifyDeliverySuccess; title="自动发货通知"
+ case "support_created": emailEnabled,telegramEnabled=s.EmailSupportCreated,s.TelegramNotifySupportCreated; title="售后工单通知"
+ default: return
+ }
+ body:=s.SiteName+"\n"+title+"\n"+details
+ if emailEnabled {
+  if s.SMTPPasswordCiphertext=="" || s.SMTPHost=="" || s.SMTPUsername=="" || s.SMTPFromEmail=="" || s.ContactEmail=="" {
+   log.Printf("email notification skipped: SMTP or contact email is incomplete; event=%s",event)
+  } else if password,err:=a.secrets.Decrypt(s.SMTPPasswordCiphertext);err!=nil {
+   log.Printf("email notification decrypt failed: event=%s error=%v",event,err)
+  } else {
+   port:=s.SMTPPort;if port==0{port=587}
+   auth:=smtp.PlainAuth("",s.SMTPUsername,password,s.SMTPHost)
+   subject:="=?UTF-8?B?"+base64.StdEncoding.EncodeToString([]byte(s.SiteName+" "+title))+"?="
+   mail:= "From: "+s.SMTPFromName+" <"+s.SMTPFromEmail+">\r\nTo: "+s.ContactEmail+"\r\nSubject: "+subject+"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"+body
+   if err:=smtp.SendMail(fmt.Sprintf("%s:%d",s.SMTPHost,port),auth,s.SMTPFromEmail,[]string{s.ContactEmail},[]byte(mail));err!=nil { log.Printf("email notification failed: event=%s error=%v",event,err) }
+  }
+ }
+ if telegramEnabled {
+  targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
+  sent:=map[string]bool{}
+  bots,err:=database.ListBots(ctx,a.db)
+  if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }
+  for _,target:=range targets {
+   target=strings.TrimSpace(target);if target==""||sent[target]{continue};sent[target]=true
+   delivered:=false
+   for _,b:=range bots {
+    if b.Status!=1 {continue}
+    token,err:=a.secrets.Decrypt(b.TokenCiphertext);if err!=nil{continue}
+    payload,_:=json.Marshal(map[string]any{"chat_id":target,"text":body})
+    req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendMessage",bytes.NewReader(payload));if err!=nil{continue}
+    req.Header.Set("Content-Type","application/json")
+    response,err:=(&http.Client{Timeout:10*time.Second}).Do(req);if err!=nil{continue}
+    var result telegramGetMeResponse
+    _=json.NewDecoder(response.Body).Decode(&result);response.Body.Close()
+    if response.StatusCode==http.StatusOK {delivered=true;break}
+   }
+   if !delivered {log.Printf("Telegram notification delivery failed: event=%s chat_id=%s",event,target)}
+  }
+ }
+}
+
+// testSiteTelegram verifies the configured admin/group destinations using an active Bot.
+func (a *application) testSiteTelegram(w http.ResponseWriter,r *http.Request) {
+ if _,ok:=a.authenticate(w,r);!ok{return}
+ raw,err:=database.GetSiteSettings(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to load site settings");return}
+ var s siteSettings;if err:=json.Unmarshal([]byte(raw),&s);err!=nil{writeError(w,http.StatusInternalServerError,"Invalid site settings");return}
+ targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID};sent:=0
+ bots,err:=database.ListBots(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to load Telegram bots");return}
+ for _,target:=range targets{target=strings.TrimSpace(target);if target==""{continue}
+  ok:=false
+  for _,b:=range bots{if b.Status!=1{continue};token,e:=a.secrets.Decrypt(b.TokenCiphertext);if e!=nil{continue}
+   payload,_:=json.Marshal(map[string]any{"chat_id":target,"text":s.SiteName+"\nTG-Card Telegram 通知测试成功。"})
+   req,e:=http.NewRequestWithContext(r.Context(),http.MethodPost,"https://api.telegram.org/bot"+token+"/sendMessage",bytes.NewReader(payload));if e!=nil{continue};req.Header.Set("Content-Type","application/json")
+   response,e:=(&http.Client{Timeout:10*time.Second}).Do(req);if e!=nil{continue};response.Body.Close();if response.StatusCode==http.StatusOK{ok=true;break}
+  }
+  if ok{sent++}
+ }
+ if sent==0{writeError(w,http.StatusBadGateway,"没有成功发送测试消息，请检查 Chat ID、Bot 是否已启动，以及 Bot 是否有权向该目标发送消息");return}
+ writeSuccess(w,http.StatusOK,map[string]int{"sent":sent})
 }
