@@ -33,8 +33,8 @@ onMounted(loadOrders);
    <a-card :bordered="false"><div class="text-sm text-gray-500">库存预留</div><div class="mt-2 text-2xl font-bold">{{reservedCount}}</div></a-card>
    <a-card :bordered="false"><div class="text-sm text-gray-500">发货异常</div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></a-card>
   </div>
-  <a-card :bordered="false">
-   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3"><div class="min-w-0"><div class="text-lg font-semibold">订单管理</div><div class="mt-1 text-sm text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><a-button :loading="loading" @click="loadOrders">刷新订单</a-button></div></template>
+  <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
+   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">订单管理</div><div class="mt-1 text-xs leading-5 text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadOrders">刷新订单</a-button></div></template>
    <div v-if="isMobile" class="tg-mobile-list">
     <a-card v-for="item in orders" :key="item.id" size="small">
      <div class="flex min-w-0 items-start justify-between gap-3">
