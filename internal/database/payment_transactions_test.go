@@ -55,7 +55,7 @@ func TestManualTRC20ReconciliationMatchesExactPaymentAndReservesLateStock(t *tes
 	order, err := CreateOrder(ctx,db,"sqlite","bot-reconcile","user-reconcile","chat-reconcile",product.ID,time.Minute); if err != nil { t.Fatal(err) }
 	if _, err := db.ExecContext(ctx,"UPDATE orders SET expires_at=? WHERE id=?",time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano),order.ID); err != nil { t.Fatal(err) }
 	if _, err := ExpirePendingOrders(ctx,db,"sqlite",10); err != nil { t.Fatal(err) }
-	transfer := tron.Transfer{TransactionID:"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",From:"TFrom",To:"TReceive",AmountAtomic:order.PaymentAmountAtomic,Decimals:6,BlockTimestamp:time.Now().UTC().UnixMilli()}
+	transfer := tron.Transfer{TransactionID:"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",From:"TFrom",To:"TReceive",AmountAtomic:order.PaymentAmountAtomic,Decimals:6,BlockTimestamp:time.Now().UTC().Add(time.Second).UnixMilli()}
 	if _, err := RecordTRC20Transfer(ctx,db,"sqlite",transfer); err != nil { t.Fatal(err) }
 	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,"late payment"); err != nil { t.Fatal(err) }
 	items, err := ListOrders(ctx,db); if err != nil { t.Fatal(err) }; if len(items)!=1 || items[0].Status!="paid" || items[0].StockReserved { t.Fatalf("late order state: %+v",items) }
