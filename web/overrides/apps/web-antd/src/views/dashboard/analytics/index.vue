@@ -85,7 +85,7 @@ onMounted(loadDashboard);
         <a-card :bordered="false" hoverable class="h-full cursor-pointer" :body-style="{ padding: '16px 18px' }" @click="open(metric.path)">
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0"><div class="text-xs text-gray-500">{{ metric.title }}</div><div class="mt-2 text-2xl font-semibold leading-none">{{ metric.value }}</div><div class="mt-2 truncate text-xs text-gray-500">{{ metric.hint }}</div></div>
-            <a-avatar :size="44" shape="square" :class="['flex shrink-0 items-center justify-center !bg-transparent !text-blue-600', metric.tone]"><IconifyIcon :icon="metric.icon" class="block text-2xl" /></a-avatar>
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon :icon="metric.icon" class="block text-2xl" /></span>
           </div>
         </a-card>
       </a-col>
