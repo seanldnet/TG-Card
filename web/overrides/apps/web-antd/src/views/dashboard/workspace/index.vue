@@ -11,7 +11,7 @@ const items = [
 ];
 </script>
 <template>
-  <div class="p-4 md:p-6">
+  <div class="mx-auto w-full min-w-0 max-w-7xl p-3 md:p-6">
     <h1 class="m-0 text-2xl font-semibold">运营工作台</h1>
     <p class="mt-1 mb-5 text-sm text-gray-500">TG-Card 日常运营功能入口</p>
     <a-row :gutter="[16,16]">

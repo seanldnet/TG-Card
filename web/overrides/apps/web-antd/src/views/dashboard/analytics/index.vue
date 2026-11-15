@@ -62,7 +62,7 @@ onMounted(loadDashboard);
 </script>
 
 <template>
-  <div class="p-4 md:p-6">
+  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="m-0 text-2xl font-semibold">TG-Card 经营概览</h1>
@@ -71,8 +71,8 @@ onMounted(loadDashboard);
       <a-button :loading="loading" @click="loadDashboard">刷新数据</a-button>
     </div>
 
-    <a-row :gutter="[16,16]">
-      <a-col :xs="24" :sm="12" :xl="6">
+    <a-row :gutter="[12,12]">
+      <a-col :xs="12" :sm="12" :xl="6">
         <a-card :bordered="false" hoverable @click="open('/bots')">
           <div class="text-sm text-gray-500">机器人</div>
           <div class="mt-2 text-3xl font-semibold">{{ bots.length }}</div>

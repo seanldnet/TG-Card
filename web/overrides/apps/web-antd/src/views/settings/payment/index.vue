@@ -59,7 +59,7 @@ onMounted(loadSettings);
 </script>
 
 <template>
-  <div class="p-5">
+  <div class="mx-auto w-full min-w-0 max-w-5xl p-3 md:p-6">
     <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
       <template #extra>
         <a-tag :color="settings.enabled ? 'success' : 'default'">

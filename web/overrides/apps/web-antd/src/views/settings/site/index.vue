@@ -16,7 +16,7 @@ async function testTelegram(){testing.value=true;try{await requestClient.post('/
 onMounted(load);
 </script>
 <template>
- <div class="mx-auto w-full max-w-6xl space-y-4 p-4 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 p-3 md:p-6">
   <div><h1 class="m-0 text-2xl font-semibold">网站设置</h1><p class="mt-1 text-sm text-gray-500">统一管理站点信息、邮件服务与 Telegram 通知。配置保存到数据库，无需修改服务器环境变量。</p></div>
   <a-card :bordered="false" :loading="loading" title="基础信息"><a-form layout="vertical"><a-row :gutter="16">
    <a-col :xs="24" :md="12"><a-form-item label="站点名称"><a-input v-model:value="form.siteName" maxlength="100"/></a-form-item></a-col>
