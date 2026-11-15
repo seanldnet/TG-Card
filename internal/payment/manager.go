@@ -117,7 +117,21 @@ func (m *Manager) scan(ctx context.Context) error {
 					log.Printf("TRC20 transfer could not be uniquely matched to an expired order: tx=%s error=%v", transfer.TransactionID, lateErr)
 					continue
 				}
-				if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "unmatched", "", "No active or expired order matched this confirmed transfer"); classifyErr != nil { return classifyErr }
+				mismatchOrder, mismatchKind, mismatchErr := database.FindTRC20AmountMismatchOrder(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
+				if mismatchErr == nil {
+					invoice := fmt.Sprintf("%d.%06d", mismatchOrder.PaymentAmountAtomic/1_000_000, mismatchOrder.PaymentAmountAtomic%1_000_000)
+					received := fmt.Sprintf("%d.%06d", transfer.AmountAtomic/1_000_000, transfer.AmountAtomic%1_000_000)
+					note := fmt.Sprintf("Possible %s: received %s USDT, invoice %s USDT. Amount mismatch is not auto-accepted; verify the payer and order manually.", mismatchKind, received, invoice)
+					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", mismatchOrder.ID, note); classifyErr != nil { return classifyErr }
+					log.Printf("TRC20 amount mismatch requires manual review: kind=%s order_id=%s tx=%s", mismatchKind, mismatchOrder.ID, transfer.TransactionID)
+					continue
+				}
+				if !errors.Is(mismatchErr, sql.ErrNoRows) {
+					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", "", mismatchErr.Error()); classifyErr != nil { return classifyErr }
+					log.Printf("TRC20 amount mismatch is ambiguous: tx=%s error=%v", transfer.TransactionID, mismatchErr)
+					continue
+				}
+				if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "unmatched", "", "No active or recently expired invoice matched this confirmed transfer"); classifyErr != nil { return classifyErr }
 				continue
 			}
 			if err != nil {
