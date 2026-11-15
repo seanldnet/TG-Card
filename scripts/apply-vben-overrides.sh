@@ -38,7 +38,7 @@ if "const route = useRoute();" not in source:
     if emit_marker not in source:
         raise SystemExit("Unable to locate Vben layout setup for mobile drawer patch")
     source = source.replace(emit_marker, "const route = useRoute();\\n\\n" + emit_marker, 1)
-watch_marker = "watch(\\n  [() => headerWrapperHeight.value"
+watch_marker = "function handleLayoutWheel(event: WheelEvent) {"
 route_watch = """watch(
   () => route.fullPath,
   () => {
