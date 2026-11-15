@@ -63,3 +63,55 @@ func TestManualTRC20ReconciliationMatchesExactPaymentAndReservesLateStock(t *tes
 	delivery, err := GetOrderDelivery(ctx,db,"sqlite",order.ID); if err != nil { t.Fatal(err) }; if delivery.SecretCiphertext!="late-card-cipher" { t.Fatalf("delivery=%+v",delivery) }
 	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,"repeat"); err != nil { t.Fatalf("idempotent retry: %v",err) }
 }
+
+
+func TestFindExpiredTRC20OrderByAmountFlagsLateInvoice(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, "sqlite", Product{Name:"Late payment card",PriceMinor:1200,Currency:"USDT",DeliveryType:"card",Status:1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, "sqlite", product.ID, []StockSecret{{Ciphertext:"late-key",Fingerprint:"late-key"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, "sqlite", "bot-late", "user-late", "chat-late", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	expiredAt := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET expires_at=? WHERE id=?", expiredAt, order.ID); err != nil { t.Fatal(err) }
+	if _, err := ExpirePendingOrders(ctx, db, "sqlite", 10); err != nil { t.Fatal(err) }
+	blockTime := time.Now().UTC().Add(time.Second).UnixMilli()
+	if _, err := MatchPendingTRC20Order(ctx, db, "sqlite", order.PaymentAmountAtomic, blockTime); err != sql.ErrNoRows {
+		t.Fatalf("active matcher error=%v, want no rows", err)
+	}
+	lateOrder, err := FindExpiredTRC20OrderByAmount(ctx, db, "sqlite", order.PaymentAmountAtomic, blockTime)
+	if err != nil { t.Fatal(err) }
+	if lateOrder.ID != order.ID || lateOrder.Status != "expired" {
+		t.Fatalf("late order mismatch: %+v", lateOrder)
+	}
+}
+
+func TestManualTRC20ReconciliationRejectsWrongAddressAmountAndReuse(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, "sqlite", Product{Name:"Validation card",PriceMinor:1000,Currency:"USDT",DeliveryType:"card",Status:1})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, "sqlite", product.ID, []StockSecret{{Ciphertext:"key-one",Fingerprint:"key-one"},{Ciphertext:"key-two",Fingerprint:"key-two"}}); err != nil { t.Fatal(err) }
+	first, err := CreateOrder(ctx, db, "sqlite", "bot-validation", "user-one", "chat-one", product.ID, time.Hour)
+	if err != nil { t.Fatal(err) }
+	second, err := CreateOrder(ctx, db, "sqlite", "bot-validation", "user-two", "chat-two", product.ID, time.Hour)
+	if err != nil { t.Fatal(err) }
+	blockTime := time.Now().UTC().Add(time.Second).UnixMilli()
+	valid := tron.Transfer{TransactionID:"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",From:"TFrom",To:"TReceive",AmountAtomic:first.PaymentAmountAtomic,Decimals:6,BlockTimestamp:blockTime}
+	if _, err := RecordTRC20Transfer(ctx, db, "sqlite", valid); err != nil { t.Fatal(err) }
+	if err := ReconcileTRC20Transfer(ctx, db, "sqlite", valid.TransactionID, "TWrong", first.ID, ""); err == nil { t.Fatal("wrong receiving address must be rejected") }
+	wrongAmount := valid
+	wrongAmount.TransactionID = "1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	wrongAmount.AmountAtomic++
+	if _, err := RecordTRC20Transfer(ctx, db, "sqlite", wrongAmount); err != nil { t.Fatal(err) }
+	if err := ReconcileTRC20Transfer(ctx, db, "sqlite", wrongAmount.TransactionID, "TReceive", first.ID, ""); err == nil { t.Fatal("wrong amount must be rejected") }
+	if err := ReconcileTRC20Transfer(ctx, db, "sqlite", valid.TransactionID, "TReceive", first.ID, ""); err != nil { t.Fatal(err) }
+	if err := ReconcileTRC20Transfer(ctx, db, "sqlite", valid.TransactionID, "TReceive", second.ID, ""); err == nil { t.Fatal("a matched transaction cannot be reused for another order") }
+}
