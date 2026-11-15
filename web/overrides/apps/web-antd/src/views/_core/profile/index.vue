@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
-import { VbenAvatar, VbenButton } from '@vben-core/shadcn-ui';
+import { VbenAvatar, VbenButton } from '@vben/common-ui';
 import { useUserStore } from '@vben/stores';
 import { useVbenModal } from '@vben/common-ui';
 
