@@ -112,10 +112,12 @@ onMounted(loadSettings);
           message="安全提醒"
           description="请只填写商户自己的收款地址。系统仅监听到账，不需要钱包私钥；少付、多付、过期转账仍需人工对账。"
         />
-        <a-space>
-          <a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button>
-          <a-button :disabled="saving" @click="loadSettings">重新加载</a-button>
-        </a-space>
+        <div class="mt-7 border-t border-gray-100 pt-5">
+          <a-space wrap>
+            <a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button>
+            <a-button :disabled="saving" @click="loadSettings">重新加载</a-button>
+          </a-space>
+        </div>
       </a-form>
     </a-card>
   </div>
