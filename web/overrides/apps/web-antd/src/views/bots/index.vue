@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import { RobotOutlined, CheckCircleOutlined, StopOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import { useWindowSize } from '@vueuse/core';
 import { requestClient } from '#/api/request';
 
@@ -46,12 +45,12 @@ onMounted(loadBots);
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-5 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">机器人管理</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一管理 Telegram 商城机器人及运行状态</p></div>
-   <a-button type="primary" size="large" @click="handleAddBot"><template #icon><PlusOutlined/></template>添加机器人</a-button>
+   <a-button type="primary" size="large" @click="handleAddBot">＋添加机器人</a-button>
   </div>
   <a-row :gutter="[12,12]">
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">机器人总数</div><div class="mt-2 text-2xl font-semibold leading-none">{{bots.length}}</div><div class="mt-2 text-xs text-gray-400">已添加的机器人</div></div><a-avatar :size="42" shape="square" class="bg-blue-50 text-blue-600"><RobotOutlined/></a-avatar></div></a-card></a-col>
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">运行中</div><div class="mt-2 text-2xl font-semibold leading-none">{{activeCount}}</div><div class="mt-2 text-xs text-gray-400">正常启用的机器人</div></div><a-avatar :size="42" shape="square" class="bg-emerald-50 text-emerald-600"><CheckCircleOutlined/></a-avatar></div></a-card></a-col>
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">已停用</div><div class="mt-2 text-2xl font-semibold leading-none">{{disabledCount}}</div><div class="mt-2 text-xs text-gray-400">当前未运行的机器人</div></div><a-avatar :size="42" shape="square" class="bg-orange-50 text-orange-600"><StopOutlined/></a-avatar></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">机器人总数</div><div class="mt-2 text-2xl font-semibold leading-none">{{bots.length}}</div><div class="mt-2 text-xs text-gray-400">已添加的机器人</div></div><a-avatar :size="42" shape="square" class="bg-blue-50 text-blue-600">🤖</a-avatar></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">运行中</div><div class="mt-2 text-2xl font-semibold leading-none">{{activeCount}}</div><div class="mt-2 text-xs text-gray-400">正常启用的机器人</div></div><a-avatar :size="42" shape="square" class="bg-emerald-50 text-emerald-600">✓</a-avatar></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">已停用</div><div class="mt-2 text-2xl font-semibold leading-none">{{disabledCount}}</div><div class="mt-2 text-xs text-gray-400">当前未运行的机器人</div></div><a-avatar :size="42" shape="square" class="bg-orange-50 text-orange-600">Ⅱ</a-avatar></div></a-card></a-col>
   </a-row>
   <a-alert type="info" show-icon message="添加机器人需要填写 BotFather 提供的 Token。系统会先向 Telegram 验证，再加密保存。" />
   <a-card :bordered="false" class="rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}">
