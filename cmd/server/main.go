@@ -11,6 +11,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/smtp"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +49,33 @@ type passwordChangeRequest struct {
 	NewPassword string `json:"newPassword"`
 }
 
+type siteSettings struct {
+ SiteName string `json:"siteName"`
+ SiteLogo string `json:"siteLogo"`
+ ContactEmail string `json:"contactEmail"`
+ SMTPHost string `json:"smtpHost"`
+ SMTPPort int `json:"smtpPort"`
+ SMTPUsername string `json:"smtpUsername"`
+ SMTPPassword string `json:"smtpPassword,omitempty"`
+ SMTPPasswordCiphertext string `json:"-"`
+ SMTPFromName string `json:"smtpFromName"`
+ SMTPFromEmail string `json:"smtpFromEmail"`
+ SMTPUseTLS bool `json:"smtpUseTLS"`
+ EmailOrderCreated bool `json:"emailOrderCreated"`
+ EmailPaymentSuccess bool `json:"emailPaymentSuccess"`
+ EmailDeliverySuccess bool `json:"emailDeliverySuccess"`
+ EmailSupportCreated bool `json:"emailSupportCreated"`
+ TelegramAdminChatID string `json:"telegramAdminChatId"`
+ TelegramGroupChatID string `json:"telegramGroupChatId"`
+ TelegramNotifyOrderCreated bool `json:"telegramNotifyOrderCreated"`
+ TelegramNotifyPaymentSuccess bool `json:"telegramNotifyPaymentSuccess"`
+ TelegramNotifyDeliverySuccess bool `json:"telegramNotifyDeliverySuccess"`
+ TelegramNotifySupportCreated bool `json:"telegramNotifySupportCreated"`
+}
+type siteSettingsView struct {
+ siteSettings
+ SMTPPasswordConfigured bool `json:"smtpPasswordConfigured"`
+}
 type paymentSettingsRequest struct {
 	APIKey string `json:"apiKey"`
 	ClearAPIKey bool `json:"clearApiKey"`
@@ -145,6 +174,9 @@ func main() {
 	api.HandleFunc("GET /api/orders", app.listOrders)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
+	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
+	api.HandleFunc("PUT /api/settings/site", app.updateSiteSettings)
+	api.HandleFunc("POST /api/settings/site/test-email", app.testSiteEmail)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
@@ -334,8 +366,12 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 5, "title": "售后工单"},
 		},
 		{
+			"name": "SiteSettings", "path": "/settings/site", "component": "/settings/site/index",
+			"meta": map[string]any{"icon": "lucide:settings", "order": 6, "title": "网站设置"},
+		},
+		{
 			"name": "PaymentSettings", "path": "/settings/payment", "component": "/settings/payment/index",
-			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 6, "title": "支付设置"},
+			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 7, "title": "支付设置"},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
@@ -817,4 +853,56 @@ func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 func formatUSDTAtomic(value int64) string {
 	if value < 0 { value = 0 }
 	return fmt.Sprintf("%d.%06d", value/1_000_000, value%1_000_000)
+}
+
+func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
+ if _, ok := a.authenticate(w,r); !ok { return }
+ raw, err := database.GetSiteSettings(r.Context(),a.db)
+ if err != nil { log.Printf("load site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load site settings"); return }
+ var settings siteSettings
+ if err := json.Unmarshal([]byte(raw),&settings); err != nil { log.Printf("decode site settings: %v",err); writeError(w,http.StatusInternalServerError,"Invalid saved site settings"); return }
+ configured := settings.SMTPPasswordCiphertext != ""
+ settings.SMTPPassword = ""
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured})
+}
+func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
+ claims, ok := a.authenticate(w,r); if !ok { return }
+ var input siteSettings
+ if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err != nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
+ input.SiteName=strings.TrimSpace(input.SiteName); input.ContactEmail=strings.TrimSpace(input.ContactEmail)
+ input.SMTPHost=strings.TrimSpace(input.SMTPHost); input.SMTPUsername=strings.TrimSpace(input.SMTPUsername)
+ input.SMTPFromEmail=strings.TrimSpace(input.SMTPFromEmail); input.SMTPFromName=strings.TrimSpace(input.SMTPFromName)
+ input.TelegramAdminChatID=strings.TrimSpace(input.TelegramAdminChatID); input.TelegramGroupChatID=strings.TrimSpace(input.TelegramGroupChatID)
+ if input.SiteName=="" || len(input.SiteName)>100 || len(input.ContactEmail)>254 || len(input.SiteLogo)>2048 || len(input.SMTPHost)>255 || len(input.SMTPUsername)>254 || len(input.SMTPFromEmail)>254 || len(input.SMTPPassword)>512 {
+  writeError(w,http.StatusBadRequest,"Invalid site settings fields"); return
+ }
+ if input.SMTPPort==0 { input.SMTPPort=587 }; if input.SMTPPort<1 || input.SMTPPort>65535 { writeError(w,http.StatusBadRequest,"SMTP 端口无效"); return }
+ oldRaw,err:=database.GetSiteSettings(r.Context(),a.db); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to load current site settings"); return }
+ var old siteSettings; _=json.Unmarshal([]byte(oldRaw),&old)
+ if input.SMTPPassword=="" { input.SMTPPasswordCiphertext=old.SMTPPasswordCiphertext } else {
+  input.SMTPPasswordCiphertext,err=a.secrets.Encrypt(input.SMTPPassword); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encrypt SMTP password"); return }
+ }
+ input.SMTPPassword=""
+ raw,err:=json.Marshal(input); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encode site settings"); return }
+ if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(raw)); err!=nil { log.Printf("save site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to save site settings"); return }
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",clientIP(r),r.UserAgent(),"updated")
+ configured:=input.SMTPPasswordCiphertext!=""
+ input.SMTPPasswordCiphertext=""
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured})
+}
+func (a *application) testSiteEmail(w http.ResponseWriter, r *http.Request) {
+ if _,ok:=a.authenticate(w,r); !ok { return }
+ raw,err:=database.GetSiteSettings(r.Context(),a.db); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to load site settings"); return }
+ var settings siteSettings; if err:=json.Unmarshal([]byte(raw),&settings); err!=nil { writeError(w,http.StatusInternalServerError,"Invalid site settings"); return }
+ if settings.SMTPPasswordCiphertext=="" || settings.SMTPHost=="" || settings.SMTPUsername=="" || settings.SMTPFromEmail=="" || settings.ContactEmail=="" {
+  writeError(w,http.StatusBadRequest,"请先完整配置 SMTP 主机、账号、密码、发件人邮箱和联系邮箱"); return
+ }
+ password,err:=a.secrets.Decrypt(settings.SMTPPasswordCiphertext); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to decrypt SMTP password"); return }
+ port:=settings.SMTPPort; if port==0 { port=587 }
+ auth:=smtp.PlainAuth("",settings.SMTPUsername,password,settings.SMTPHost)
+ fromName:=settings.SMTPFromName; if fromName=="" { fromName=settings.SiteName }
+ subject:="=?UTF-8?B?"+base64.StdEncoding.EncodeToString([]byte("TG-Card 邮件配置测试"))+"?="
+ body:="From: "+fromName+" <"+settings.SMTPFromEmail+">\r\nTo: "+settings.ContactEmail+"\r\nSubject: "+subject+"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n这是一封 TG-Card SMTP 测试邮件。"
+ if err:=smtp.SendMail(fmt.Sprintf("%s:%d",settings.SMTPHost,port),auth,settings.SMTPFromEmail,[]string{settings.ContactEmail},[]byte(body)); err!=nil { log.Printf("SMTP test failed: %v",err); writeError(w,http.StatusBadGateway,"测试邮件发送失败："+err.Error()); return }
+ writeSuccess(w,http.StatusOK,map[string]bool{"sent":true})
 }
