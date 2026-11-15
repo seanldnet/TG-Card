@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
+import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
 import { useVbenModal } from '@vben/common-ui';
 import { useVbenForm } from '#/adapter/form';
@@ -41,9 +42,9 @@ onMounted(loadTickets);
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
   <div class="tg-mobile-metric-grid md:grid md:grid-cols-3 md:gap-4">
-   <a-card :bordered="false"><div class="text-sm text-gray-500">工单总数</div><div class="mt-2 text-2xl font-bold">{{tickets.length}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">待处理</div><div class="mt-2 text-2xl font-bold">{{openCount}}</div></a-card>
-   <a-card :bordered="false"><div class="text-sm text-gray-500">已解决</div><div class="mt-2 text-2xl font-bold">{{resolvedCount}}</div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">工单总数</div><div class="mt-2 text-2xl font-bold">{{tickets.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:ticket-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">待处理</div><div class="mt-2 text-2xl font-bold">{{openCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:clock-alert-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">已解决</div><div class="mt-2 text-2xl font-bold">{{resolvedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:check-circle-outline" class="block text-2xl" /></span></div></a-card>
   </div>
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
    <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">售后工单</div><div class="mt-1 text-xs leading-5 text-gray-500">回复会通过原 Telegram Bot 私聊发送给用户</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadTickets">刷新工单</a-button></div></template>
