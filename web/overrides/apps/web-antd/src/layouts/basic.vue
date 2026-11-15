@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { NotificationItem } from '@vben/layouts';
 
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
@@ -12,11 +12,12 @@ import {
   Notification,
   UserDropdown,
 } from '@vben/layouts';
-import { preferences, usePreferences } from '@vben/preferences';
+import { preferences, updatePreferences, usePreferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
+import { requestClient } from '#/api/request';
 import LoginForm from '#/views/_core/authentication/login.vue';
 
 const notifications = ref<NotificationItem[]>([]);
@@ -29,6 +30,18 @@ const { isDark } = usePreferences();
 const showDot = computed(() =>
   notifications.value.some((item) => !item.isRead),
 );
+
+// Apply the site name saved by the administrator to the official Vben title/header.
+onMounted(async () => {
+  try {
+    const settings = await requestClient.get<{ siteName?: string }>('/settings/site');
+    if (settings.siteName?.trim()) {
+      updatePreferences({ app: { name: settings.siteName.trim() } });
+    }
+  } catch {
+    // The authenticated shell remains usable if site settings are temporarily unavailable.
+  }
+});
 
 const menus = computed(() => [{
   handler: () => router.push({ name: 'Profile' }),
