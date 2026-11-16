@@ -376,3 +376,58 @@ func ImportProductKeys(ctx context.Context, db *sql.DB, driver, productID string
 	}
 	if err:=tx.Commit();err!=nil{return inserted,err};return inserted,nil
 }
+
+
+// TelegramUser stores the buyer identity and the platform's internal USDT balance.
+type TelegramUser struct {
+	ID string `json:"id"`
+	TelegramUserID string `json:"telegramUserId"`
+	Username string `json:"username"`
+	FirstName string `json:"firstName"`
+	LastName string `json:"lastName"`
+	LastSeenBotID string `json:"lastSeenBotId"`
+	BalanceAtomic int64 `json:"balanceAtomic"`
+	OrderCount int64 `json:"orderCount"`
+	TotalSpentAtomic int64 `json:"totalSpentAtomic"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func UpsertTelegramUser(ctx context.Context, db *sql.DB, driver, telegramUserID, username, firstName, lastName, botID string) error {
+	if telegramUserID == "" { return fmt.Errorf("Telegram user ID is required") }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	id, err := randomID()
+	if err != nil { return err }
+	query := "INSERT INTO telegram_users(id,telegram_user_id,username,first_name,last_name,last_seen_bot_id,balance_atomic,created_at,updated_at) VALUES("+
+		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+",0,"+placeholder(driver,7)+","+placeholder(driver,8)+") "+
+		"ON CONFLICT(telegram_user_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_seen_bot_id=excluded.last_seen_bot_id,updated_at=excluded.updated_at"
+	_, err = db.ExecContext(ctx,query,id,telegramUserID,username,firstName,lastName,botID,now,now)
+	return err
+}
+
+func ListTelegramUsers(ctx context.Context, db *sql.DB) ([]TelegramUser,error) {
+	query := `SELECT u.id,u.telegram_user_id,u.username,u.first_name,u.last_name,u.last_seen_bot_id,u.balance_atomic,u.created_at,u.updated_at,
+	(SELECT COUNT(1) FROM orders o WHERE o.telegram_user_id=u.telegram_user_id),
+	(SELECT COALESCE(SUM(o.payment_amount_atomic),0) FROM orders o WHERE o.telegram_user_id=u.telegram_user_id AND o.status IN ('paid','delivering','delivery_failed','delivered'))
+	FROM telegram_users u ORDER BY u.updated_at DESC LIMIT 1000`
+	rows,err:=db.QueryContext(ctx,query);if err!=nil{return nil,err};defer rows.Close()
+	items:=make([]TelegramUser,0)
+	for rows.Next(){var u TelegramUser;if err:=rows.Scan(&u.ID,&u.TelegramUserID,&u.Username,&u.FirstName,&u.LastName,&u.LastSeenBotID,&u.BalanceAtomic,&u.CreatedAt,&u.UpdatedAt,&u.OrderCount,&u.TotalSpentAtomic);err!=nil{return nil,err};items=append(items,u)}
+	return items,rows.Err()
+}
+
+func AdjustTelegramUserBalance(ctx context.Context, db *sql.DB, driver, userID, adminID string, amountAtomic int64, direction, note string) (int64,error) {
+	if amountAtomic<=0 || (direction!="credit" && direction!="debit") { return 0,fmt.Errorf("invalid balance adjustment") }
+	if len(note)>500 { note=note[:500] }
+	change:=amountAtomic;if direction=="debit"{change=-amountAtomic}
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return 0,err};defer tx.Rollback()
+	update:="UPDATE telegram_users SET balance_atomic=balance_atomic+"+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND balance_atomic+"+placeholder(driver,4)+">=0"
+	result,err:=tx.ExecContext(ctx,update,change,time.Now().UTC().Format(time.RFC3339Nano),userID,change);if err!=nil{return 0,err}
+	n,err:=result.RowsAffected();if err!=nil{return 0,err};if n!=1{return 0,fmt.Errorf("用户不存在或余额不足")}
+	var balance int64
+	if err:=tx.QueryRowContext(ctx,"SELECT balance_atomic FROM telegram_users WHERE id="+placeholder(driver,1),userID).Scan(&balance);err!=nil{return 0,err}
+	id,err:=randomID();if err!=nil{return 0,err}
+	insert:="INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")"
+	_,err=tx.ExecContext(ctx,insert,id,userID,adminID,direction,amountAtomic,balance,note,time.Now().UTC().Format(time.RFC3339Nano));if err!=nil{return 0,err}
+	if err:=tx.Commit();err!=nil{return 0,err};return balance,nil
+}
