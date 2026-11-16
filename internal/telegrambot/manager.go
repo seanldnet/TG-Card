@@ -1523,7 +1523,6 @@ func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
 			sendErr=err
 			delay:=time.Duration(1<<retry)*time.Second
 			if retryAfter>0 { delay=time.Duration(retryAfter)*time.Second }
-			if delay>30*time.Second { delay=30*time.Second }
 			if retry<2&&!wait(ctx,delay){return}
 		}
 		if sendErr!=nil { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed",sendErr.Error(),attempts);failed++ } else { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"sent","",attempts);sent++ }
