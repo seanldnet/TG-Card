@@ -1038,6 +1038,12 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		b.WriteString("\n\n订单号：" + order.OrderNo)
 		b.WriteString("\n商品：" + order.ProductName)
 		b.WriteString("\n数量：" + strconv.Itoa(order.Quantity))
+		if lines, lineErr := database.ListCartCheckoutItems(ctx, m.db, m.driver, order.ID); lineErr == nil && len(lines) > 0 {
+			b.WriteString("\n商品明细：")
+			for _, line := range lines {
+				b.WriteString("\n· " + line.ProductName + " × " + strconv.Itoa(line.Quantity))
+			}
+		}
 		b.WriteString("\n金额：" + formatPrice(order.AmountMinor, order.Currency))
 		b.WriteString("\n状态：" + orderStatusLabel(order.Status))
 		buttons := []map[string]string{{"text":"查看详情","callback_data":"order:detail:"+order.ID}}
@@ -1075,6 +1081,12 @@ func (m *Manager) showOrderDetail(ctx context.Context, cfg Config, chatID int64,
 		"\n金额：" + formatPrice(order.AmountMinor, order.Currency) +
 		"\n状态：" + orderStatusLabel(order.Status) +
 		"\n创建时间：" + order.CreatedAt
+	if lines, lineErr := database.ListCartCheckoutItems(ctx, m.db, m.driver, order.ID); lineErr == nil && len(lines) > 0 {
+		text += "\n\n商品明细："
+		for _, line := range lines {
+			text += "\n- " + line.ProductName + " × " + strconv.Itoa(line.Quantity) + " · " + formatPrice(line.LineTotalMinor, line.Currency)
+		}
+	}
 	buttons := make([][]map[string]string, 0, 3)
 	switch order.Status {
 	case "pending_payment":
