@@ -39,6 +39,18 @@ async function assignTicket(){
  try{selected.value=await requestClient.put<Ticket>('/support/tickets/'+selected.value.id+'/assign',{slaHours:slaHours.value});message.success('工单已分配给当前管理员');await loadTickets()}
  catch(error:any){message.error(error?.response?.data?.message||'分配工单失败')}
 }
+function refundTicket(item:Ticket){
+ Modal.confirm({title:'确认退款至站内余额',content:'将订单金额退还到用户站内余额，并撤销已交付卡密记录。该操作不可重复，也无法自动撤回外部链上转账。',okType:'danger',okText:'确认退款',cancelText:'取消',onOk:async()=>{
+  try{const result=await requestClient.post<any>('/support/tickets/'+item.id+'/refund');message.success(result?.warning||'退款已入账并撤销卡密记录');await loadTickets()}
+  catch(error:any){message.error(error?.response?.data?.message||'退款失败')}
+ }});
+}
+function resendOrder(item:Ticket){
+ Modal.confirm({title:'重新发送商品',content:'系统将尝试重新交付该工单关联订单的商品。',okText:'重新发送',cancelText:'取消',onOk:async()=>{
+  try{await requestClient.post('/orders/'+item.orderId+'/retry-delivery');message.success('已提交重新交付任务')}
+  catch(error:any){message.error(error?.response?.data?.message||'重新交付失败')}
+ }});
+}
 async function save(){
  if(!selected.value)return;
  const {valid}=await ticketFormApi.validate();if(!valid)return;
@@ -70,7 +82,7 @@ onMounted(loadTickets);
     <a-card v-for="item in tickets" :key="item.id" size="small">
      <div class="flex min-w-0 items-start justify-between gap-2"><div class="min-w-0"><div class="truncate font-semibold">{{item.ticketNo}}</div><div class="mt-1 break-all text-xs text-gray-500">订单：{{item.orderNo}}</div></div><a-tag class="shrink-0" :color="statusColor(item.status)">{{statusLabel(item.status)}}</a-tag></div>
      <div class="mt-3 text-sm font-medium">{{categoryLabel(item.category)}}</div><div class="mt-1 break-words text-sm text-gray-600">{{item.description}}</div>
-     <div class="mt-3 flex items-center justify-between gap-2"><span class="text-xs text-gray-500">{{formatTime(item.createdAt)}}</span><a-button size="small" type="primary" @click="openEdit(item)">处理工单</a-button></div>
+     <div class="mt-3 flex items-center justify-between gap-2"><span class="text-xs text-gray-500">{{formatTime(item.createdAt)}}</span><a-space size="small"><a-button size="small" @click="resendOrder(item)">重发商品</a-button><a-button size="small" danger @click="refundTicket(item)">退款</a-button><a-button size="small" type="primary" @click="openEdit(item)">处理</a-button></a-space></div>
     </a-card>
     <a-empty v-if="!loading&&tickets.length===0" description="暂无售后工单"/>
    </div>
@@ -78,7 +90,7 @@ onMounted(loadTickets);
     <a-table-column title="工单号" data-index="ticketNo" key="ticketNo" :width="190"/><a-table-column title="订单号" data-index="orderNo" key="orderNo" :width="190"/><a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="140"/>
     <a-table-column title="问题类型" key="category" :width="120"><template #default="{record}">{{categoryLabel(record.category)}}</template></a-table-column><a-table-column title="问题描述" data-index="description" key="description" ellipsis/>
     <a-table-column title="状态" key="status" :width="120"><template #default="{record}"><a-tag :color="statusColor(record.status)">{{statusLabel(record.status)}}</a-tag></template></a-table-column><a-table-column title="提交时间" key="createdAt" :width="180"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
-    <a-table-column title="操作" key="action" :width="100" fixed="right"><template #default="{record}"><a-button type="link" size="small" @click="openEdit(record)">处理工单</a-button></template></a-table-column>
+    <a-table-column title="操作" key="action" :width="210" fixed="right"><template #default="{record}"><a-space><a-button type="link" size="small" @click="resendOrder(record)">重发</a-button><a-button type="link" danger size="small" @click="refundTicket(record)">退款</a-button><a-button type="link" size="small" @click="openEdit(record)">处理</a-button></a-space></template></a-table-column>
    </a-table>
   </a-card>
   <TicketModal class="w-full max-w-xl" :confirm-loading="saving">
