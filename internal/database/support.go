@@ -129,3 +129,66 @@ func UpdateSupportTicket(ctx context.Context, db *sql.DB, driver, id, status, ad
 	affected,err:=result.RowsAffected();if err!=nil{return SupportTicket{},err};if affected!=1{return SupportTicket{},sql.ErrNoRows}
 	return GetSupportTicket(ctx,db,driver,id)
 }
+
+
+type SupportTicketMessage struct {
+	ID string `json:"id"`
+	TicketID string `json:"ticketId"`
+	SenderType string `json:"senderType"`
+	SenderID string `json:"senderId"`
+	Message string `json:"message"`
+	AttachmentFileID string `json:"attachmentFileId,omitempty"`
+	AttachmentName string `json:"attachmentName,omitempty"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// AppendSupportTicketMessage stores each customer/admin exchange as an immutable timeline entry.
+func AppendSupportTicketMessage(ctx context.Context, db *sql.DB, driver, ticketID, senderType, senderID, message, attachmentFileID, attachmentName string) (SupportTicketMessage, error) {
+	ticketID = strings.TrimSpace(ticketID)
+	senderType = strings.TrimSpace(senderType)
+	senderID = strings.TrimSpace(senderID)
+	message = strings.TrimSpace(message)
+	attachmentFileID = strings.TrimSpace(attachmentFileID)
+	attachmentName = strings.TrimSpace(attachmentName)
+	if ticketID == "" || (senderType != "user" && senderType != "admin" && senderType != "system") {
+		return SupportTicketMessage{}, fmt.Errorf("invalid support message")
+	}
+	if len(message) > 5000 || len(attachmentFileID) > 512 || len(attachmentName) > 255 || (message == "" && attachmentFileID == "") {
+		return SupportTicketMessage{}, fmt.Errorf("message or attachment is required and must be within size limits")
+	}
+	id, err := randomID()
+	if err != nil { return SupportTicketMessage{}, err }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	item := SupportTicketMessage{ID:id, TicketID:ticketID, SenderType:senderType, SenderID:senderID, Message:message, AttachmentFileID:attachmentFileID, AttachmentName:attachmentName, CreatedAt:now}
+	query := "INSERT INTO support_ticket_messages(id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at) VALUES(" +
+		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")"
+	if _, err := db.ExecContext(ctx, query, item.ID,item.TicketID,item.SenderType,item.SenderID,item.Message,item.AttachmentFileID,item.AttachmentName,item.CreatedAt); err != nil { return SupportTicketMessage{}, err }
+	return item, nil
+}
+
+func ListSupportTicketMessages(ctx context.Context, db *sql.DB, driver, ticketID string) ([]SupportTicketMessage, error) {
+	query := "SELECT id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at FROM support_ticket_messages WHERE ticket_id=" + placeholder(driver,1) + " ORDER BY created_at ASC LIMIT 1000"
+	rows, err := db.QueryContext(ctx, query, ticketID)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	items := make([]SupportTicketMessage,0)
+	for rows.Next() {
+		var item SupportTicketMessage
+		if err := rows.Scan(&item.ID,&item.TicketID,&item.SenderType,&item.SenderID,&item.Message,&item.AttachmentFileID,&item.AttachmentName,&item.CreatedAt); err != nil { return nil, err }
+		items = append(items,item)
+	}
+	return items, rows.Err()
+}
+
+func AssignSupportTicket(ctx context.Context, db *sql.DB, driver, ticketID, adminID string, sla time.Duration) (SupportTicket, error) {
+	if strings.TrimSpace(ticketID)=="" || strings.TrimSpace(adminID)=="" { return SupportTicket{}, fmt.Errorf("ticket and administrator are required") }
+	if sla < 0 || sla > 30*24*time.Hour { return SupportTicket{}, fmt.Errorf("SLA must be between 0 and 30 days") }
+	now := time.Now().UTC()
+	slaDue := ""
+	if sla > 0 { slaDue = now.Add(sla).Format(time.RFC3339Nano) }
+	query := "UPDATE support_tickets SET assigned_to="+placeholder(driver,1)+",sla_due_at="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)
+	result,err:=db.ExecContext(ctx,query,adminID,slaDue,now.Format(time.RFC3339Nano),ticketID)
+	if err!=nil{return SupportTicket{},err}
+	n,err:=result.RowsAffected();if err!=nil{return SupportTicket{},err};if n!=1{return SupportTicket{},sql.ErrNoRows}
+	return GetSupportTicket(ctx,db,driver,ticketID)
+}
