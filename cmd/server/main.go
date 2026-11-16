@@ -801,6 +801,17 @@ type productInput struct {
 	Currency string `json:"currency"`
 	DeliveryType string `json:"deliveryType"`
 	Status int `json:"status"`
+	BulkDiscount json.RawMessage `json:"bulkDiscount"`
+}
+type bulkDiscountTier struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
+func normalizeBulkDiscount(raw json.RawMessage) (string,error) {
+	if len(raw)==0 || string(raw)=="null" { return "[]",nil }
+	var tiers []bulkDiscountTier
+	if err:=json.Unmarshal(raw,&tiers);err!=nil{return "",fmt.Errorf("阶梯折扣格式无效")}
+	if len(tiers)>20{return "",fmt.Errorf("最多配置 20 个折扣阶梯")}
+	last:=1
+	for _,tier:=range tiers { if tier.MinQuantity<2 || tier.MinQuantity>100 || tier.MinQuantity<=last || tier.DiscountPercent<1 || tier.DiscountPercent>90 { return "",fmt.Errorf("折扣阶梯数量必须递增（2-100），折扣比例必须为 1-90") }; last=tier.MinQuantity }
+	encoded,err:=json.Marshal(tiers);if err!=nil{return "",err};return string(encoded),nil
 }
 type keyImportInput struct { Content string `json:"content"` }
 
@@ -834,7 +845,8 @@ func (a *application) createProduct(w http.ResponseWriter,r *http.Request) {
 	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||in.PriceMinor>9_000_000_000_000||len(in.Description)>4000||(in.Status!=0&&in.Status!=1){writeError(w,400,"Invalid product fields");return}
 	if in.Currency==""{in.Currency="USDT"};if in.Currency!="USDT"{writeError(w,400,"Only USDT pricing is currently supported");return}
 	if in.DeliveryType==""{in.DeliveryType="card"};if in.DeliveryType!="card"{writeError(w,400,"Unsupported delivery type");return}
-	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status})
+	discountJSON,discountErr:=normalizeBulkDiscount(in.BulkDiscount);if discountErr!=nil{writeError(w,400,discountErr.Error());return}
+	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON})
 	if err!=nil{writeError(w,400,"Unable to save product; check the category");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.create","product:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
 	writeSuccess(w,201,item)
@@ -844,7 +856,8 @@ func (a *application) updateProduct(w http.ResponseWriter,r *http.Request) {
 	var in productInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
 	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency));if in.Currency==""{in.Currency="USDT"};if in.DeliveryType==""{in.DeliveryType="card"}
 	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||len(in.Description)>4000||(in.Status!=0&&in.Status!=1)||in.Currency!="USDT"||in.DeliveryType!="card"{writeError(w,400,"Invalid product fields");return}
-	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status})
+	discountJSON,discountErr:=normalizeBulkDiscount(in.BulkDiscount);if discountErr!=nil{writeError(w,400,discountErr.Error());return}
+	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON})
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,400,"Unable to update product");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.update","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,200,map[string]bool{"updated":true})
