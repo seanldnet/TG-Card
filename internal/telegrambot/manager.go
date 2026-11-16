@@ -439,8 +439,14 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"充值 5 USDT","callback_data":"wallet:recharge:5000000"},{"text":"充值 10 USDT","callback_data":"wallet:recharge:10000000"}},{{"text":"充值 20 USDT","callback_data":"wallet:recharge:20000000"},{"text":"充值 50 USDT","callback_data":"wallet:recharge:50000000"}}}}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"选择充值金额（最低 1 USDT），也可以发送 /recharge 10 自定义充值 10 USDT。",keyboard)
-	case first == "/start" || first == "/shop" || text == "🛍️ 商城":
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "主菜单已打开。你可以使用下方菜单随时进入商城、查看订单或联系售后。", mainMenuKeyboard())
+	case first == "/start":
+		balance, balanceErr := database.GetTelegramWalletBalance(ctx, m.db, m.driver, strconv.FormatInt(msg.From.ID, 10))
+		balanceText := "暂不可查询"
+		if balanceErr == nil { balanceText = formatUSDTAtomic(balance) + " U" }
+		welcome := "🎉 欢迎来到自动发卡商城！\n选择下方菜单开始选购。\n\n👤 Telegram ID：\n" + strconv.FormatInt(msg.From.ID, 10) + "\n\n💰 当前余额：\n" + balanceText + "\n\n📌 购买须知：\n• 虚拟商品发货后不支持无理由退款\n• 如有问题请联系客服"
+		if link := m.customerServiceLink(); link != "" { welcome += "\n\n客服入口：" + link }
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, welcome, mainMenuKeyboard())
+	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
 		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 通过 TRC20 USDT 充值\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/balance - 查看余额\n/recharge 10 - 充值 10 USDT\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
