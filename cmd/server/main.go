@@ -680,7 +680,7 @@ type telegramGetMeResponse struct {
 type botView struct {
  ID string `json:"id"`; Name string `json:"name"`; Username string `json:"username"`; Status int `json:"status"`; WelcomeText string `json:"welcomeText"`
  OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"`
- CreatedAt string `json:"createdAt"`; UpdatedAt string `json:"updatedAt""
+ CreatedAt string `json:"createdAt"`; UpdatedAt string `json:"updatedAt"`
 }
 type botMenuSettings struct { OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"` }
 func decodeBotMenuSettings(raw string) botMenuSettings { var v botMenuSettings; _=json.Unmarshal([]byte(raw),&v); return v }
