@@ -38,6 +38,7 @@ type Manager struct {
 	expiryCancel context.CancelFunc
 	paymentAddress string
 	paymentEnabled bool
+	ownerID string
 	notifier func(event, details, userChatID string)
 }
 
@@ -141,6 +142,13 @@ func (m *Manager) Reconcile(configs []Config) {
 		go m.run(ctx, cfg)
 		log.Printf("telegram bot worker starting: bot_id=%s username=@%s", id, cfg.Username)
 	}
+}
+
+func (m *Manager) SetOwnerID(ownerID string) { m.mu.Lock(); m.ownerID = strings.TrimSpace(ownerID); m.mu.Unlock() }
+
+func (m *Manager) isOwner(telegramUserID int64) bool {
+	m.mu.Lock(); ownerID := m.ownerID; m.mu.Unlock()
+	return ownerID != "" && strconv.FormatInt(telegramUserID,10) == ownerID
 }
 
 func (m *Manager) SetPaymentConfig(address string, enabled bool) {
@@ -289,6 +297,26 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if text == "" { return }
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
+	if first == "/admin" {
+		if !m.isOwner(msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
+		menu := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 商品列表","callback_data":"owner:products"}},{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}}}}
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：可直接在机器人内查看商品或新增商品。",menu)
+		return
+	}
+	if first == "/addproduct" {
+		if !m.isOwner(msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
+		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(text,command[0])),"|",3)
+		if len(parts)<2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号"); return }
+		name := strings.TrimSpace(parts[0]); priceText := strings.TrimSpace(parts[1]); description := ""
+		if len(parts)==3 { description = strings.TrimSpace(parts[2]) }
+		price, err := strconv.ParseFloat(priceText,64)
+		if name=="" || err!=nil || price<=0 || price>1000000 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品名称或价格无效，请按示例重新发送。"); return }
+		priceMinor := int64(price*100+0.5)
+		created, err := database.CreateProduct(ctx,m.db,m.driver,database.Product{Name:name,Description:description,PriceMinor:priceMinor,Currency:"USDT",DeliveryType:"card",Status:1})
+		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品创建失败："+err.Error()); return }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品已创建！\n名称："+created.Name+"\n价格："+formatPrice(created.PriceMinor,created.Currency)+"\n请到后台导入卡密库存。")
+		return
+	}
 	switch {
 	case first == "/start" || first == "/shop" || text == "🛍️ 商城":
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "主菜单已打开。你可以使用下方菜单随时进入商城、查看订单或联系售后。", mainMenuKeyboard())
@@ -335,6 +363,7 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 			{"command":"orders","description":"查看我的订单"},
 			{"command":"support","description":"提交售后申请"},
 			{"command":"help","description":"查看使用帮助"},
+			{"command":"admin","description":"主人管理菜单"},
 		}}},
 		{"setChatMenuButton", map[string]any{"menu_button": map[string]string{"type":"commands"}}},
 	}
@@ -401,6 +430,19 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
 	switch {
+	case strings.HasPrefix(query.Data,"owner:"):
+		if !m.isOwner(query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
+		switch query.Data {
+		case "owner:addproduct":
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号")
+		case "owner:products":
+			products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
+			var lines []string
+			for _,p:=range products{lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+strconv.Itoa(p.StockCount))}
+			if len(lines)==0{lines=append(lines,"暂无商品")}
+			_ = m.sendMessage(ctx,cfg.Token,chatID,strings.Join(lines,"\n"))
+		}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
 	case query.Data == "shop:home":
 		m.showShop(ctx, cfg, chatID)
 	case query.Data == "shop:orders":
