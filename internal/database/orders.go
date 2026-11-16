@@ -448,3 +448,27 @@ func MatchPendingTRC20Order(ctx context.Context, db *sql.DB, driver string, amou
 
 // PlaceholderForAPI returns the database driver's positional parameter marker for API queries.
 func PlaceholderForAPI(driver string) string { return placeholder(driver, 1) }
+
+type OrderCleanupResult struct {
+	Orders int64 `json:"orders"`
+	PaymentTransactions int64 `json:"paymentTransactions"`
+	SupportTickets int64 `json:"supportTickets"`
+	WalletTransactions int64 `json:"walletTransactions"`
+	WalletRecharges int64 `json:"walletRecharges"`
+}
+// ClearOrderData removes commercial history and resets balances, but deliberately
+// keeps sold card keys marked as sold so previously delivered secrets cannot be resold.
+func ClearOrderData(ctx context.Context,db *sql.DB,driver string)(OrderCleanupResult,error){
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return OrderCleanupResult{},err};defer tx.Rollback()
+	var out OrderCleanupResult
+	for _,item:=range []struct{table string;target *int64}{{"support_tickets",&out.SupportTickets},{"payment_transactions",&out.PaymentTransactions},{"wallet_recharges",&out.WalletRecharges},{"orders",&out.Orders},{"wallet_transactions",&out.WalletTransactions}}{
+		query:="SELECT COUNT(1) FROM "+item.table
+		if err:=tx.QueryRowContext(ctx,query).Scan(item.target);err!=nil{return OrderCleanupResult{},fmt.Errorf("count %s: %w",item.table,err)}
+		if _,err:=tx.ExecContext(ctx,"DELETE FROM "+item.table);err!=nil{return OrderCleanupResult{},fmt.Errorf("clear %s: %w",item.table,err)}
+	}
+	if _,err:=tx.ExecContext(ctx,"UPDATE telegram_users SET balance_atomic=0,updated_at="+placeholder(driver,1),time.Now().UTC().Format(time.RFC3339Nano));err!=nil{return OrderCleanupResult{},err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE product_keys SET status=0,order_id=NULL WHERE status=1");err!=nil{return OrderCleanupResult{},err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE product_keys SET order_id=NULL WHERE status=2");err!=nil{return OrderCleanupResult{},err}
+	if err:=tx.Commit();err!=nil{return OrderCleanupResult{},err}
+	return out,nil
+}
