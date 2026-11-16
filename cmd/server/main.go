@@ -714,7 +714,7 @@ func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) updateBotOwnerID(w http.ResponseWriter,r *http.Request) {
-	claims,ok:=a.authenticate(w,r);if !ok{return}
+	claims,ok:=a.requireSuperAdmin(w,r);if !ok{return}
 	var input struct { TelegramOwnerID string `json:"telegramOwnerId"` }
 	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,4096)).Decode(&input);err!=nil { writeError(w,http.StatusBadRequest,"主人 Telegram ID 格式无效");return }
 	input.TelegramOwnerID=strings.TrimSpace(input.TelegramOwnerID)
@@ -1080,8 +1080,15 @@ func (a *application) getOrderDetail(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w,http.StatusOK,detail)
 }
 
+func (a *application) requireSuperAdmin(w http.ResponseWriter,r *http.Request)(auth.Claims,bool){
+	claims,ok:=a.authenticate(w,r);if !ok{return auth.Claims{},false}
+	admin,err:=database.FindAdminByID(r.Context(),a.db,a.driver,claims.AdminID)
+	if err!=nil||admin.Role!="super"{writeError(w,http.StatusForbidden,"此操作仅允许超级管理员执行");return auth.Claims{},false}
+	return claims,true
+}
+
 func (a *application) clearOrderData(w http.ResponseWriter,r *http.Request){
-	claims,ok:=a.authenticate(w,r);if !ok{return}
+	claims,ok:=a.requireSuperAdmin(w,r);if !ok{return}
 	var input struct{Confirmation string `json:"confirmation"`}
 	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,4096)).Decode(&input);err!=nil||input.Confirmation!="CLEAR_ALL_ORDERS" { writeError(w,http.StatusBadRequest,"请输入正确的确认口令后再执行");return }
 	result,err:=database.ClearOrderData(r.Context(),a.db,a.driver);if err!=nil { log.Printf("clear commercial order data failed: %v",err);writeError(w,http.StatusInternalServerError,"清理订单数据失败，未完成清理");return }
