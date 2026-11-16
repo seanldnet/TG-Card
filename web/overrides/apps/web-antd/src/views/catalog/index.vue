@@ -6,14 +6,14 @@ import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
 
 interface Category { id:string; name:string; sortOrder:number; status:number }
-interface Product { id:string; categoryId:string; categoryName:string; name:string; description:string; priceMinor:number; currency:string; status:number; stockCount:number; bulkDiscountJson:string }
+interface Product { id:string; categoryId:string; categoryName:string; name:string; description:string; priceMinor:number; currency:string; deliveryType:string; deliveryConfigJson:string; status:number; stockCount:number; bulkDiscountJson:string }
 const loading=ref(false),saving=ref(false),categorySaving=ref(false),activeTab=ref('products');
 const categoryModalOpen=ref(false),productModalOpen=ref(false),importModalOpen=ref(false);
 const editingId=ref(''),importProduct=ref<Product|null>(null);
 const categories=ref<Category[]>([]),products=ref<Product[]>([]);
 const categoryFormRef=ref(),productFormRef=ref(),importFormRef=ref();
 const categoryForm=reactive({name:''});
-const productForm=reactive({name:'',categoryId:'',price:'0.00',description:'',enabled:true,discountText:''});
+const productForm=reactive({name:'',categoryId:'',price:'0.00',description:'',enabled:true,discountText:'',deliveryType:'card',deliveryText:'',inviteChatId:'',inviteExpiryMinutes:60,telegramFileId:''});
 const importForm=reactive({content:''});
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
@@ -51,13 +51,16 @@ function removeCategory(item:Category){
 }
 function handleAddProduct(){
  editingId.value='';
- productForm.name='';productForm.categoryId='';productForm.price='0.00';productForm.description='';productForm.enabled=true;productForm.discountText='';
+ productForm.name='';productForm.categoryId='';productForm.price='0.00';productForm.description='';productForm.enabled=true;productForm.discountText='';productForm.deliveryType='card';productForm.deliveryText='';productForm.inviteChatId='';productForm.inviteExpiryMinutes=60;productForm.telegramFileId='';
  productModalOpen.value=true;
 }
 function openEdit(item:Product){
   editingId.value=item.id;productForm.name=item.name;productForm.categoryId=item.categoryId||'';
   productForm.price=(item.priceMinor/100).toFixed(2);productForm.description=item.description||'';
   productForm.enabled=item.status===1;
+  productForm.deliveryType=item.deliveryType||'card';
+  productForm.deliveryText='';productForm.inviteChatId='';productForm.inviteExpiryMinutes=60;productForm.telegramFileId='';
+  try { const config=JSON.parse(item.deliveryConfigJson||'{}');productForm.deliveryText=config.text||'';productForm.inviteChatId=config.chatId||'';productForm.inviteExpiryMinutes=config.expireMinutes||60;productForm.telegramFileId=config.fileId||''; } catch {}
   try {
    productForm.discountText=(JSON.parse(item.bulkDiscountJson||'[]') as Array<{minQuantity:number;discountPercent:number}>).map(t=>t.minQuantity+':'+t.discountPercent).join('\n');
   } catch { productForm.discountText=''; }
@@ -79,7 +82,11 @@ async function saveProduct(){
   if(tiers.some((t,i)=>i>0&&t.minQuantity===tiers[i-1].minQuantity)){message.warning('同一购买数量不能重复配置折扣');return}
   saving.value=true;
   try{
-   const payload={categoryId:productForm.categoryId||'',name:productForm.name.trim(),description:productForm.description,priceMinor:Math.round(price*100),currency:'USDT',deliveryType:'card',status:productForm.enabled?1:0,bulkDiscount:tiers};
+   let deliveryConfig={} as Record<string,any>;
+  if(productForm.deliveryType==='fixed_text'){if(!productForm.deliveryText.trim()){message.warning('请填写固定文本交付内容');return;}deliveryConfig={text:productForm.deliveryText.trim()};}
+  if(productForm.deliveryType==='invite_link'){if(!productForm.inviteChatId.trim()){message.warning('请填写目标群组 Chat ID');return;}deliveryConfig={chatId:productForm.inviteChatId.trim(),expireMinutes:Number(productForm.inviteExpiryMinutes)};}
+  if(productForm.deliveryType==='file'||productForm.deliveryType==='file_card'){if(!productForm.telegramFileId.trim()){message.warning('请填写 Telegram 文件 file_id');return;}deliveryConfig={fileId:productForm.telegramFileId.trim()};}
+  const payload={categoryId:productForm.categoryId||'',name:productForm.name.trim(),description:productForm.description,priceMinor:Math.round(price*100),currency:'USDT',deliveryType:productForm.deliveryType,deliveryConfig,status:productForm.enabled?1:0,bulkDiscount:tiers};
   if(editingId.value){await requestClient.put('/catalog/products/'+editingId.value,payload);message.success('商品修改成功')}
   else{await requestClient.post('/catalog/products',payload);message.success('商品创建成功')}
   productModalOpen.value=false;await loadAll();
@@ -166,6 +173,10 @@ onMounted(loadAll);
     <a-form-item label="商品名称" name="name"><a-input v-model:value="productForm.name" size="large" :maxlength="160" placeholder="例如：会员月卡"/></a-form-item>
     <a-form-item label="商品分类"><a-select v-model:value="productForm.categoryId" size="large" allow-clear show-search option-filter-prop="label" placeholder="可不选择分类" :options="categories.map(item=>({label:item.name,value:item.id}))"/></a-form-item>
     <a-form-item label="售价（USDT）" name="price"><a-input v-model:value="productForm.price" size="large" inputmode="decimal" placeholder="例如：9.90"/></a-form-item>
+    <a-form-item label="商品交付方式"><a-select v-model:value="productForm.deliveryType" size="large" :options="[{label:'卡密自动发货',value:'card'},{label:'固定文本',value:'fixed_text'},{label:'一次性 Telegram 邀请链接',value:'invite_link'},{label:'Telegram 文件',value:'file'},{label:'文件 + 卡密',value:'file_card'}]"/></a-form-item>
+    <a-form-item v-if="productForm.deliveryType==='fixed_text'" label="固定交付文本"><a-textarea v-model:value="productForm.deliveryText" :rows="4" :maxlength="4000" placeholder="付款后自动发送给买家的内容"/></a-form-item>
+    <template v-if="productForm.deliveryType==='invite_link'"><a-form-item label="目标群组 Chat ID"><a-input v-model:value="productForm.inviteChatId" placeholder="-100xxxxxxxxxx"/></a-form-item><a-form-item label="邀请链接有效期（分钟）"><a-input-number v-model:value="productForm.inviteExpiryMinutes" :min="5" :max="10080" class="w-full"/></a-form-item><a-alert type="info" show-icon message="Bot 必须是目标群组管理员，并拥有邀请用户权限；每个订单生成仅限 1 人使用的专属链接。"/></template>
+    <a-form-item v-if="productForm.deliveryType==='file'||productForm.deliveryType==='file_card'" label="Telegram 文件 file_id"><a-input v-model:value="productForm.telegramFileId" placeholder="填写由该 Bot 获取的 Telegram file_id"/><div class="mt-1 text-xs text-gray-400">当前通过 Telegram file_id 发送文件；请先将文件发送给该 Bot 并取得 file_id。</div></a-form-item>
     <a-form-item label="批量购买阶梯折扣（选填）"><a-textarea v-model:value="productForm.discountText" :rows="3" placeholder="每行一档：购买数量:折扣百分比\n例如：2:10 表示购买 2 件及以上打 9 折；5:20 表示购买 5 件及以上打 8 折"/><div class="mt-1 text-xs text-gray-400">折扣比例表示优惠百分比；不填写则按原价结算。数量需递增，最多 20 档。</div></a-form-item>\n     <a-form-item label="商品说明"><a-textarea v-model:value="productForm.description" :rows="3" :maxlength="4000" show-count placeholder="填写商品说明（选填）"/></a-form-item>
     <a-form-item label="销售状态"><a-switch v-model:checked="productForm.enabled" checked-children="上架" un-checked-children="下架"/></a-form-item>
    </a-form></div>
