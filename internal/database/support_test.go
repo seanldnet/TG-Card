@@ -105,3 +105,22 @@ func TestSupportTicketTimelineAndAssignment(t *testing.T) {
 	if err!=nil{t.Fatal(err)}
 	if assigned.AssignedTo!="admin-1" || assigned.SLADueAt==""{t.Fatalf("assignment/SLA not persisted: %#v",assigned)}
 }
+
+
+func TestRefundOrderToWalletIsAtomicAndIdempotent(t *testing.T) {
+	ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"refund-user","buyer","Buyer","","refund-bot");err!=nil{t.Fatal(err)}
+	product,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Refund card",PriceMinor:1250,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,product.ID,[]StockSecret{{Ciphertext:"encrypted-card",Fingerprint:"refund-fp"}});err!=nil{t.Fatal(err)}
+	order,err:=CreateOrder(ctx,db,cfg.DBDriver,"refund-bot","refund-user","refund-user",product.ID,time.Minute);if err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='delivered' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"refund-bot","refund-user","refund-user",order.OrderNo,"invalid_key","Card was invalid");err!=nil{t.Fatal(err)}
+	balance,err:=RefundOrderToWallet(ctx,db,cfg.DBDriver,order.ID,"admin-1","invalid key");if err!=nil{t.Fatal(err)}
+	if balance!=125000{t.Fatalf("expected 0.125000 USDT atomic balance, got %d",balance)}
+	if _,err:=RefundOrderToWallet(ctx,db,cfg.DBDriver,order.ID,"admin-1","duplicate");err==nil{t.Fatal("second refund must be rejected")}
+	var keyStatus int
+	if err:=db.QueryRowContext(ctx,"SELECT status FROM product_keys WHERE order_id=?",order.ID).Scan(&keyStatus);err!=nil{t.Fatal(err)}
+	if keyStatus!=3{t.Fatalf("expected delivered card key to be revoked, got status %d",keyStatus)}
+}
