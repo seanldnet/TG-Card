@@ -18,7 +18,7 @@ type StockNotification struct {
 func SubscribeProductStock(ctx context.Context, db *sql.DB, driver, productID, botID, telegramUserID, telegramChatID string) error {
   if productID=="" || botID=="" || telegramUserID=="" || telegramChatID=="" { return fmt.Errorf("invalid stock notification subscription") }
   id,err:=randomID(); if err!=nil{return err}
-  query:="INSERT INTO product_stock_notifications(id,product_id,bot_id,telegram_user_id,telegram_chat_id,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+") ON CONFLICT(product_id,bot_id,telegram_user_id) DO UPDATE SET telegram_chat_id=excluded.telegram_chat_id,notified_at=NULL"
+  query:="INSERT INTO product_stock_notifications(id,product_id,bot_id,telegram_user_id,telegram_chat_id,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+") ON CONFLICT(product_id,bot_id,telegram_user_id) DO UPDATE SET telegram_chat_id=excluded.telegram_chat_id,notified_at=NULL,claim_until=NULL"
   _,err=db.ExecContext(ctx,query,id,productID,botID,telegramUserID,telegramChatID,time.Now().UTC().Format(time.RFC3339Nano))
   return err
 }
