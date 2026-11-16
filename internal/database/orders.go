@@ -445,3 +445,6 @@ func MatchPendingTRC20Order(ctx context.Context, db *sql.DB, driver string, amou
 	err = db.QueryRowContext(ctx, load, ids[0]).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.PaymentAmountAtomic,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt)
 	return item, err
 }
+
+// PlaceholderForAPI returns the database driver's positional parameter marker for API queries.
+func PlaceholderForAPI(driver string) string { return placeholder(driver, 1) }
