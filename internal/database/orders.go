@@ -474,3 +474,58 @@ func ClearOrderData(ctx context.Context,db *sql.DB,driver string)(OrderCleanupRe
 	if err:=tx.Commit();err!=nil{return OrderCleanupResult{},err}
 	return out,nil
 }
+
+func GetOrderByID(ctx context.Context, db *sql.DB, driver, orderID string) (Order, error) {
+	var item Order
+	q := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic,COALESCE(payment_method,''),COALESCE(payment_reference,''),delivery_attempts,delivery_error FROM orders WHERE id=" + placeholder(driver, 1)
+	err := db.QueryRowContext(ctx, q, orderID).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.DeliveryAttempts,&item.DeliveryError)
+	return item, err
+}
+
+func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, int64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return OrderDelivery{}, 0, err }
+	defer tx.Rollback()
+	q := "SELECT status,expires_at,telegram_user_id,amount_minor,order_no FROM orders WHERE id=" + placeholder(driver, 1)
+	if driver == "postgres" { q += " FOR UPDATE" }
+	var status, expiresAt, userID, orderNo string
+	var amountMinor int64
+	if err := tx.QueryRowContext(ctx, q, orderID).Scan(&status,&expiresAt,&userID,&amountMinor,&orderNo); err != nil { return OrderDelivery{}, 0, err }
+	if status != "pending_payment" { return OrderDelivery{}, 0, fmt.Errorf("订单当前状态不允许余额支付：%s", status) }
+	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
+	if err != nil || !time.Now().UTC().Before(expires) { return OrderDelivery{}, 0, fmt.Errorf("订单已过期，请重新下单") }
+	amountAtomic := amountMinor * 10000
+	if amountAtomic <= 0 { return OrderDelivery{}, 0, fmt.Errorf("订单金额无效") }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	debit := "UPDATE telegram_users SET balance_atomic=balance_atomic-" + placeholder(driver,1) + ",updated_at=" + placeholder(driver,2) + " WHERE telegram_user_id=" + placeholder(driver,3) + " AND balance_atomic>=" + placeholder(driver,4)
+	res, err := tx.ExecContext(ctx, debit, amountAtomic, now, userID, amountAtomic)
+	if err != nil { return OrderDelivery{}, 0, err }
+	n, err := res.RowsAffected()
+	if err != nil { return OrderDelivery{}, 0, err }
+	if n != 1 { return OrderDelivery{}, 0, fmt.Errorf("站内余额不足，请先充值或选择 TRC20 付款") }
+	var balance int64
+	if err := tx.QueryRowContext(ctx, "SELECT balance_atomic FROM telegram_users WHERE telegram_user_id=" + placeholder(driver,1), userID).Scan(&balance); err != nil { return OrderDelivery{}, 0, err }
+	ledgerID, err := randomID()
+	if err != nil { return OrderDelivery{}, 0, err }
+	ledger := "INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES(" + placeholder(driver,1) + "," + placeholder(driver,2) + ",'','debit'," + placeholder(driver,3) + "," + placeholder(driver,4) + "," + placeholder(driver,5) + "," + placeholder(driver,6) + ")"
+	if _, err := tx.ExecContext(ctx, ledger, ledgerID, userID, amountAtomic, balance, "商城订单 "+orderNo, now); err != nil { return OrderDelivery{}, 0, err }
+	ref := "wallet:" + orderID
+	update := "UPDATE orders SET status='paid',payment_method='wallet',payment_reference=" + placeholder(driver,1) + ",paid_at=" + placeholder(driver,2) + ",updated_at=" + placeholder(driver,3) + " WHERE id=" + placeholder(driver,4) + " AND status='pending_payment'"
+	res, err = tx.ExecContext(ctx, update, ref, now, now, orderID)
+	if err != nil { return OrderDelivery{}, 0, err }
+	n, err = res.RowsAffected()
+	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单状态已变化，请刷新订单") }
+	sell := "UPDATE product_keys SET status=2,sold_at=" + placeholder(driver,1) + " WHERE order_id=" + placeholder(driver,2) + " AND status=1"
+	res, err = tx.ExecContext(ctx, sell, now, orderID)
+	if err != nil { return OrderDelivery{}, 0, err }
+	n, err = res.RowsAffected()
+	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单库存预留异常，已阻止扣款") }
+	var delivery OrderDelivery
+	delivery.PaymentMethod = "wallet"
+	delivery.PaymentReference = ref
+	if err := tx.QueryRowContext(ctx, "SELECT secret_ciphertext FROM product_keys WHERE order_id=" + placeholder(driver,1) + " AND status=2 LIMIT 1", orderID).Scan(&delivery.SecretCiphertext); err != nil { return OrderDelivery{}, 0, err }
+	load := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver,1)
+	if err := tx.QueryRowContext(ctx, load, orderID).Scan(&delivery.Order.ID,&delivery.Order.OrderNo,&delivery.Order.BotID,&delivery.Order.TelegramUserID,&delivery.Order.TelegramChatID,&delivery.Order.ProductID,&delivery.Order.ProductName,&delivery.Order.UnitPriceMinor,&delivery.Order.Quantity,&delivery.Order.AmountMinor,&delivery.Order.Currency,&delivery.Order.Status,&delivery.Order.ExpiresAt,&delivery.Order.CreatedAt,&delivery.Order.UpdatedAt,&delivery.Order.PaidAt,&delivery.Order.DeliveredAt); err != nil { return OrderDelivery{}, 0, err }
+	if err := tx.Commit(); err != nil { return OrderDelivery{}, 0, err }
+	return delivery, balance, nil
+}
