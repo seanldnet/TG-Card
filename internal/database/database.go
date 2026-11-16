@@ -425,11 +425,11 @@ func AdjustTelegramUserBalance(ctx context.Context, db *sql.DB, driver, userID, 
 	update:="UPDATE telegram_users SET balance_atomic=balance_atomic+"+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND balance_atomic+"+placeholder(driver,4)+">=0"
 	result,err:=tx.ExecContext(ctx,update,change,time.Now().UTC().Format(time.RFC3339Nano),userID,change);if err!=nil{return 0,err}
 	n,err:=result.RowsAffected();if err!=nil{return 0,err};if n!=1{return 0,fmt.Errorf("用户不存在或余额不足")}
-	var balance int64
-	if err:=tx.QueryRowContext(ctx,"SELECT balance_atomic FROM telegram_users WHERE id="+placeholder(driver,1),userID).Scan(&balance);err!=nil{return 0,err}
+	var balance int64;var telegramUserID string
+	if err:=tx.QueryRowContext(ctx,"SELECT balance_atomic,telegram_user_id FROM telegram_users WHERE id="+placeholder(driver,1),userID).Scan(&balance,&telegramUserID);err!=nil{return 0,err}
 	id,err:=randomID();if err!=nil{return 0,err}
 	insert:="INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")"
-	_,err=tx.ExecContext(ctx,insert,id,userID,adminID,direction,amountAtomic,balance,note,time.Now().UTC().Format(time.RFC3339Nano));if err!=nil{return 0,err}
+	_,err=tx.ExecContext(ctx,insert,id,telegramUserID,adminID,direction,amountAtomic,balance,note,time.Now().UTC().Format(time.RFC3339Nano));if err!=nil{return 0,err}
 	if err:=tx.Commit();err!=nil{return 0,err};return balance,nil
 }
 
