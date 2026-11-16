@@ -25,6 +25,12 @@ function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='�
 function handleAddBot(){editingId.value='';resetBotForm();botModalOpen.value=true}
 function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.welcomeMessage=bot.welcomeMessage||'🎉 欢迎来到我们的商城！';botForm.purchaseNotice=bot.purchaseNotice||'📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description=bot.description||'欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId=bot.ownerId||'';botForm.customerServiceUrl=bot.customerServiceUrl||'';botForm.businessGroupUrl=bot.businessGroupUrl||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
 async function refreshRuntime(){try{runtimeStatuses.value=await requestClient.get<RuntimeStatus[]>('/bots/runtime')}catch{/* Keep the last known runtime snapshot; bot list remains usable. */}}
+async function restartBot(bot:Bot){
+ Modal.confirm({title:'重启机器人',content:'确定重启 @'+bot.username+' 的 Telegram 轮询进程吗？其他机器人不会受到影响。',okText:'确认重启',cancelText:'取消',onOk:async()=>{
+  try{await requestClient.post('/bots/'+bot.id+'/restart');message.success('已提交单机器人重启');await refreshRuntime()}
+  catch(error:any){message.error(error?.response?.data?.message||'重启失败')}
+ }});
+}
 async function loadBots(){loading.value=true;try{bots.value=await requestClient.get<Bot[]>('/bots');await refreshRuntime()}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
 async function submit(){
  try{await botFormRef.value?.validate()}catch{return}
@@ -66,7 +72,7 @@ onUnmounted(()=>{if(runtimeTimer)clearInterval(runtimeTimer)});
    <div v-if="isMobile" class="flex flex-col gap-3">
     <a-card v-for="bot in bots" :key="bot.id" size="small" class="rounded-lg border border-gray-100" :body-style="{padding:'20px 24px'}">
      <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0"><div class="truncate text-sm font-semibold">{{bot.name}}</div><a class="mt-1 block truncate text-xs" :href="'https://t.me/'+bot.username" target="_blank" rel="noreferrer">@{{bot.username}}</a></div><a-tag class="m-0 shrink-0" :color="bot.status===1?'success':'default'">{{bot.status!==1?'已停用':(runtimeByBot[bot.id]?.state==='online'?'在线':runtimeByBot[bot.id]?.state==='conflict'?'轮询冲突':runtimeByBot[bot.id]?.state==='degraded'?'连接异常':runtimeByBot[bot.id]?.state==='starting'?'启动中':'等待连接')}}</a-tag></div>
-     <div v-if="runtimeByBot[bot.id]?.lastError" class="mt-2 break-words text-xs text-red-500">{{runtimeByBot[bot.id]?.lastError}}</div><div v-if="runtimeByBot[bot.id]?.lastPollAt" class="mt-1 text-xs text-gray-400">最近轮询：{{runtimeByBot[bot.id]?.lastPollAt}}</div><a-divider class="my-3"/><div class="flex items-center justify-between gap-2"><span class="truncate text-xs text-gray-400">{{bot.createdAt}}</span><a-space size="small"><a-button size="small" @click="openEdit(bot)">编辑</a-button><a-button size="small" danger @click="removeBot(bot)">删除</a-button></a-space></div>
+     <div v-if="runtimeByBot[bot.id]?.lastError" class="mt-2 break-words text-xs text-red-500">{{runtimeByBot[bot.id]?.lastError}}</div><div v-if="runtimeByBot[bot.id]?.lastPollAt" class="mt-1 text-xs text-gray-400">最近轮询：{{runtimeByBot[bot.id]?.lastPollAt}}</div><a-divider class="my-3"/><div class="flex items-center justify-between gap-2"><span class="truncate text-xs text-gray-400">{{bot.createdAt}}</span><a-space size="small"><a-button size="small" @click="restartBot(bot)">重启</a-button><a-button size="small" @click="openEdit(bot)">编辑</a-button><a-button size="small" danger @click="removeBot(bot)">删除</a-button></a-space></div>
     </a-card>
     <a-empty v-if="!loading&&bots.length===0" description="还没有机器人，点击右上角添加"/>
    </div>
@@ -75,7 +81,7 @@ onUnmounted(()=>{if(runtimeTimer)clearInterval(runtimeTimer)});
     <a-table-column key="username" title="Telegram 用户名"><template #default="{record}"><a :href="'https://t.me/'+record.username" target="_blank" rel="noreferrer">@{{record.username}}</a></template></a-table-column>
     <a-table-column key="status" title="运行状态" width="130"><template #default="{record}"><a-tag :color="record.status!==1?'default':runtimeByBot[record.id]?.state==='online'?'success':runtimeByBot[record.id]?.state==='conflict'?'error':'warning'">{{record.status!==1?'已停用':runtimeByBot[record.id]?.state==='online'?'在线':runtimeByBot[record.id]?.state==='conflict'?'轮询冲突':runtimeByBot[record.id]?.state==='degraded'?'连接异常':runtimeByBot[record.id]?.state==='starting'?'启动中':'等待连接'}}</a-tag><div v-if="runtimeByBot[record.id]?.lastError" class="mt-1 max-w-48 truncate text-xs text-red-500" :title="runtimeByBot[record.id]?.lastError">{{runtimeByBot[record.id]?.lastError}}</div></template></a-table-column>
     <a-table-column key="createdAt" title="创建时间" data-index="createdAt"/>
-    <a-table-column key="actions" title="操作" fixed="right" width="150"><template #default="{record}"><a-space><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeBot(record)">删除</a-button></a-space></template></a-table-column>
+    <a-table-column key="actions" title="操作" fixed="right" width="150"><template #default="{record}"><a-space><a-button type="link" size="small" @click="restartBot(record)">重启</a-button><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeBot(record)">删除</a-button></a-space></template></a-table-column>
     <template #emptyText><a-empty description="还没有机器人，点击添加机器人开始使用"/></template>
    </a-table>
   </a-card>
