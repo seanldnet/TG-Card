@@ -112,6 +112,8 @@ function removeProduct(item:Product){
  }});
 }
 function money(item:Product){return (item.priceMinor/100).toFixed(2)+' '+item.currency}
+function stockLabel(item:Product){return item.deliveryType==='card'||item.deliveryType==='file_card'?String(item.stockCount):'不限量'}
+function deliveryLabel(item:Product){return ({card:'卡密',fixed_text:'固定文本',invite_link:'一次性邀请链接',file:'文件',file_card:'文件 + 卡密'} as Record<string,string>)[item.deliveryType]||'卡密'}
 onMounted(loadAll);
 </script>
 
@@ -149,8 +151,8 @@ onMounted(loadAll);
      <a-card v-for="item in products" :key="item.id" size="small" class="rounded-lg border border-gray-100" :body-style="{padding:'20px 24px'}">
       <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0"><div class="break-words text-sm font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-400">{{item.categoryName||'未分类'}}</div></div><a-tag class="m-0 shrink-0" :color="item.status===1?'success':'default'">{{item.status===1?'销售中':'已下架'}}</a-tag></div>
       <a-divider class="my-3"/>
-      <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">售价</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div></div><div><div class="text-xs text-gray-400">可售库存</div><div class="mt-1 text-sm font-semibold">{{item.stockCount}}</div></div></div>
-      <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button size="small" @click="openImport(item)">导入卡密</a-button><a-button size="small" @click="openEdit(item)">编辑</a-button><a-button size="small" danger @click="removeProduct(item)">删除</a-button></div>
+      <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">售价</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div></div><div><div class="text-xs text-gray-400">可售库存</div><div class="mt-1 text-sm font-semibold">{{stockLabel(item)}}</div></div><div><div class="text-xs text-gray-400">交付方式</div><div class="mt-1 text-sm font-semibold">{{deliveryLabel(item)}}</div></div></div>
+      <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button v-if="item.deliveryType==='card'||item.deliveryType==='file_card'" size="small" @click="openImport(item)">导入卡密</a-button><a-button size="small" @click="openEdit(item)">编辑</a-button><a-button size="small" danger @click="removeProduct(item)">删除</a-button></div>
      </a-card>
      <a-empty v-if="!loading&&products.length===0" description="还没有商品，点击“新增商品”创建第一个商品"/>
     </div>
@@ -158,9 +160,9 @@ onMounted(loadAll);
      <a-table-column title="商品名称" data-index="name" key="name" :width="260"><template #default="{record}"><div class="whitespace-normal break-words leading-5">{{record.name}}</div></template></a-table-column>
      <a-table-column title="分类" data-index="categoryName" key="categoryName"><template #default="{record}">{{record.categoryName||'未分类'}}</template></a-table-column>
      <a-table-column title="售价" key="price"><template #default="{record}">{{money(record)}}</template></a-table-column>
-     <a-table-column title="可售库存" data-index="stockCount" key="stockCount" :width="110"/>
+     <a-table-column title="库存 / 交付" key="stockCount" :width="140"><template #default="{record}">{{stockLabel(record)}} · {{deliveryLabel(record)}}</template></a-table-column>
      <a-table-column title="状态" key="status"><template #default="{record}"><a-tag :color="record.status===1?'success':'default'">{{record.status===1?'销售中':'已下架'}}</a-tag></template></a-table-column>
-     <a-table-column title="操作" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button type="link" size="small" @click="openImport(record)">导入卡密</a-button><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeProduct(record)">删除</a-button></a-space></template></a-table-column>
+     <a-table-column title="操作" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button v-if="record.deliveryType==='card'||record.deliveryType==='file_card'" type="link" size="small" @click="openImport(record)">导入卡密</a-button><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeProduct(record)">删除</a-button></a-space></template></a-table-column>
      <template #emptyText><a-empty description="还没有商品，点击“新增商品”创建第一个商品"/></template>
     </a-table>
    </div>
