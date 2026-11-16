@@ -84,7 +84,8 @@ func CalculatePromotionDiscount(ctx context.Context, tx *sql.Tx, driver, code, t
 	code=normalizePromotionCode(code)
 	if code=="" { return Promotion{},0,nil }
 	var p Promotion
-	query:="SELECT id,name,code,discount_type,discount_value,minimum_order_minor,maximum_discount_minor,starts_at,ends_at,usage_limit,per_user_limit,usage_count,status,created_at,updated_at FROM promotions WHERE code="+placeholder(driver,1)\n\tif driver=="postgres"{query+=" FOR UPDATE"}
+	query:="SELECT id,name,code,discount_type,discount_value,minimum_order_minor,maximum_discount_minor,starts_at,ends_at,usage_limit,per_user_limit,usage_count,status,created_at,updated_at FROM promotions WHERE code="+placeholder(driver,1)
+	if driver=="postgres"{query+=" FOR UPDATE"}
 	err:=tx.QueryRowContext(ctx,query,code).Scan(&p.ID,&p.Name,&p.Code,&p.DiscountType,&p.DiscountValue,&p.MinimumOrderMinor,&p.MaximumDiscountMinor,&p.StartsAt,&p.EndsAt,&p.UsageLimit,&p.PerUserLimit,&p.UsageCount,&p.Status,&p.CreatedAt,&p.UpdatedAt)
 	if err!=nil{return Promotion{},0,fmt.Errorf("优惠码不存在或不可用")}
 	if p.Status!=1{return Promotion{},0,fmt.Errorf("优惠码已停用")}
