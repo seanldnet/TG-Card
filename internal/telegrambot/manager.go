@@ -716,7 +716,7 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 	}
 	totalLines := make([]string,0,len(currencyTotals))
 	for currency, amount := range currencyTotals { totalLines = append(totalLines,formatPrice(amount,currency)) }
-	text := "🛒 我的购物车\\n\\n"+strings.Join(lines,"\\n\\n")+"\\n\\n商品小计：\\n"+strings.Join(totalLines,"\\n")+"\\n\\n数量和库存会在结算时再次校验。"
+	text := "🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计：\n"+strings.Join(totalLines,"\n")+"\n\n数量和库存会在结算时再次校验。"
 	rows = append(rows,[]map[string]string{{"text":"🧹 清空购物车","callback_data":"cart:clear"},{"text":"🛍️ 继续选购","callback_data":"shop:home"}})
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":rows})
 }
