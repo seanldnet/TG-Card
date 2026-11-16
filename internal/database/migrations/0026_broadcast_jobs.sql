@@ -45,3 +45,8 @@ CREATE TABLE IF NOT EXISTS telegram_user_bots (
   PRIMARY KEY(bot_id, telegram_user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_telegram_user_bots_recent ON telegram_user_bots(bot_id, last_seen_at);
+
+INSERT INTO telegram_user_bots(bot_id,telegram_user_id,chat_id,last_seen_at)
+SELECT last_seen_bot_id,telegram_user_id,telegram_user_id,updated_at FROM telegram_users
+WHERE last_seen_bot_id IS NOT NULL AND last_seen_bot_id<>''
+ON CONFLICT(bot_id,telegram_user_id) DO NOTHING;
