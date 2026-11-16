@@ -665,6 +665,11 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 		stockLabel := "库存：不限量交付"
 		if keyBacked { stockLabel = "库存：" + strconv.Itoa(p.StockCount) }
 		text := p.Name + "\n\n" + p.Description + "\n\n价格：" + formatPrice(p.PriceMinor,p.Currency) + "\n" + stockLabel
+		var discountTiers []struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
+		if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil && len(discountTiers)>0 {
+			text += "\n批量优惠："
+			for _,tier:=range discountTiers { text += "\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%" }
+		}
 		buttons := make([][]map[string]string,0)
 		if keyBacked && p.StockCount < 1 {
 			buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}}}
@@ -686,7 +691,10 @@ func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query Cal
 	order, err := database.CreateOrderWithQuantity(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, 20*time.Minute)
 	if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
 	balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
-	text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)+"\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
+	text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)
+	gross:=order.UnitPriceMinor*int64(order.Quantity)
+	if saved:=gross-order.AmountMinor;saved>0{text+="\n批量优惠已减："+formatPrice(saved,order.Currency)}
+	text+="\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
 	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
 	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
 	_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
