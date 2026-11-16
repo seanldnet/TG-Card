@@ -478,15 +478,13 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
-		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 通过 TRC20 USDT 充值\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/balance - 查看余额\n/recharge 10 - 充值 10 USDT\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
+		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 选择金额即可创建充值单\n🧾 申请售后 - 选择订单并描述问题\n\n直接点击下方按钮即可使用各项功能。"
 		if link:=cfg.CustomerServiceURL;link!=""{help+="\n\nTelegram 客服："+link}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboard())
 	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
 	case text == "🧾 售后帮助":
-		msgText := "提交售后请发送：\n/support 订单号 问题描述\n例如：\n/support TC202611150001 卡密无法使用"
-		if link:=cfg.CustomerServiceURL;link!=""{msgText+="\n\nTelegram 客服："+link}
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, msgText, mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "点击“申请售后”后，选择订单并直接描述问题即可；如果列表里没有订单，也可以手动输入订单号。", mainMenuKeyboard())
 	case first == "/support":
 		if len(command) < 3 {
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请发送：/support 订单号 问题描述\n例如：/support TC202611150001 卡密无法使用", mainMenuKeyboard())
@@ -513,8 +511,12 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 			rows = append(rows, []map[string]string{{"text": label, "callback_data": "support:order:"+order.OrderNo}})
 		}
 	}
+	message := "请选择需要申请售后的订单："
+	if len(rows) == 0 {
+		message = "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。"
+	}
 	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
-	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "请选择需要申请售后的订单：", map[string]any{"inline_keyboard": rows})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, message, map[string]any{"inline_keyboard": rows})
 }
 
 func rechargeKeyboard() map[string]any {
