@@ -14,6 +14,7 @@ interface Order {
 }
 interface OrderDetail { order: Order; paymentFromAddress:string; paymentToAddress:string; paymentTransactionId:string; paymentBlockTimestampMs:number; }
 const loading=ref(false), orders=ref<Order[]>([]), retryingId=ref(''), detailLoading=ref(false), detailOpen=ref(false), selectedDetail=ref<OrderDetail|null>(null);
+const cleanupOpen=ref(false),cleanupPhrase=ref(''),cleanupLoading=ref(false);
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const pendingCount=computed(()=>orders.value.filter(x=>x.status==='pending_payment').length);
@@ -26,6 +27,7 @@ function copy(value:string){if(!value)return;navigator.clipboard?.writeText(valu
 async function loadOrders(){loading.value=true;try{orders.value=await requestClient.get<Order[]>('/orders')}catch{message.error('订单列表加载失败')}finally{loading.value=false}}
 async function openOrderDetail(order:Order){detailOpen.value=true;detailLoading.value=true;selectedDetail.value=null;try{selectedDetail.value=await requestClient.get<OrderDetail>('/orders/'+order.id)}catch{message.error('订单详情加载失败')}finally{detailLoading.value=false}}
 async function retryDelivery(order:Order){retryingId.value=order.id;try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货重试');await loadOrders()}catch{message.error('发货重试失败，请检查机器人状态及错误信息');await loadOrders()}finally{retryingId.value=''}}
+async function clearAllOrderData(){if(cleanupPhrase.value.trim()!=='清空全部订单数据'){message.warning('请完整输入“清空全部订单数据”以确认');return;}cleanupLoading.value=true;try{const result=await requestClient.post<{orders:number;paymentTransactions:number;supportTickets:number;walletTransactions:number;walletRecharges:number}>('/orders/cleanup',{confirmation:'CLEAR_ALL_ORDERS'});message.success('清理完成：订单 '+result.orders+' 笔，支付流水 '+result.paymentTransactions+' 笔，充值 '+result.walletRecharges+' 笔');cleanupOpen.value=false;cleanupPhrase.value='';await loadOrders();}catch(error:any){message.error(error?.response?.data?.message||'清理失败');}finally{cleanupLoading.value=false;}}
 onMounted(loadOrders);
 </script>
 <template>
@@ -37,7 +39,7 @@ onMounted(loadOrders);
    <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">发货异常</div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:alert-circle-outline" class="block text-2xl" /></span></div></a-card>
   </div>
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
-   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">订单管理</div><div class="mt-1 text-xs leading-5 text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><a-button size="small" class="mr-1" :loading="loading" @click="loadOrders">刷新订单</a-button></div></template>
+   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">订单管理</div><div class="mt-1 text-xs leading-5 text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><a-space wrap><a-button size="small" danger ghost @click="cleanupOpen=true">一键清理订单数据</a-button><a-button size="small" class="mr-1" :loading="loading" @click="loadOrders">刷新订单</a-button></a-space></div></template>
    <div v-if="isMobile" class="tg-mobile-list">
     <a-card v-for="item in orders" :key="item.id" size="small">
      <div class="flex min-w-0 items-start justify-between gap-3">
@@ -82,6 +84,10 @@ onMounted(loadOrders);
    </a-table>
    <a-alert class="mt-8 mb-2 rounded-lg border border-blue-200 px-4 py-4" type="info" show-icon message="TRC20 USDT 经 TronGrid 确认后自动核验，付款成功进入自动发货队列；失败时可在此重试。"/>
   </a-card>
+  <a-modal v-model:open="cleanupOpen" title="一键清理全部订单数据" :confirm-loading="cleanupLoading" ok-text="确认永久清理" ok-type="danger" cancel-text="取消" @ok="clearAllOrderData" @cancel="cleanupPhrase=''">
+   <a-alert class="mb-4" type="error" show-icon message="此操作不可撤销" description="将删除所有商城订单、支付交易流水、充值记录、售后工单和余额流水，并把所有用户站内余额归零。已发出的卡密会继续标记为已售，避免重复发货；未发货的库存预留会释放。"/>
+   <div class="mb-2 text-sm">请输入“清空全部订单数据”确认操作：</div><a-input v-model:value="cleanupPhrase" placeholder="清空全部订单数据"/>
+  </a-modal>
   <a-modal v-model:open="detailOpen" title="订单详情" :footer="null" width="min(720px, 94vw)">
    <a-spin :spinning="detailLoading">
     <template v-if="selectedDetail">
