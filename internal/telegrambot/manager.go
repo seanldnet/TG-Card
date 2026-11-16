@@ -502,7 +502,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
 	case text == "🧾 售后帮助":
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "点击“申请售后”后，选择订单并直接描述问题即可；如果列表里没有订单，也可以手动输入订单号。", mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "点击“申请售后”后，选择订单并直接描述问题即可；如果列表里没有订单，也可以手动输入订单号。", supportBackKeyboard())
 	case first == "/support":
 		if len(command) < 3 {
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请点击“申请售后”，选择订单并描述问题。", supportBackKeyboard())
@@ -510,7 +510,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",supportBackKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
 }
@@ -644,9 +644,9 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 	}
 }
 func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
- cats,err:=database.ListCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",mainMenuKeyboard());return}
- products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",mainMenuKeyboard());return}
- active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",mainMenuKeyboard());return}
+ cats,err:=database.ListCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
+ products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",shopBackKeyboard());return}
+ active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0)
  for _,c:=range cats{if c.Status!=1{continue};n:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==c.ID{n++}};if n>0{rows=append(rows,[]map[string]string{{"text":c.Name+"（"+strconv.Itoa(n)+"）","callback_data":"shop:category:"+c.ID}})}}
  other:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==""{other++}};if other>0{rows=append(rows,[]map[string]string{{"text":"其他商品（"+strconv.Itoa(other)+"）","callback_data":"shop:category:__uncategorized__"}})}
@@ -655,7 +655,7 @@ func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛍️ 商品中心\n请选择商品分类：",map[string]any{"inline_keyboard":rows})
 }
 func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
- products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",mainMenuKeyboard());return}
+ products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0)
  for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="不限量";if p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"{stock="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)}};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
  if len(rows)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回分类","callback_data":"shop:home"}}}});return}
