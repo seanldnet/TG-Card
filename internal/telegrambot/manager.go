@@ -258,6 +258,7 @@ func (m *Manager) checkLowStock(ctx context.Context) {
 	if ownerID==""{return}
 	now:=time.Now()
 	for _,p:=range products{
+		if p.Status==1 && p.StockCount>0 { m.NotifyProductRestocked(ctx,p.ID) }
 		if p.Status!=1||p.StockCount>5{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
 		m.mu.Lock();last:=m.stockAlerted[p.ID];due:=last.IsZero()||now.Sub(last)>=6*time.Hour
 		if due{m.stockAlerted[p.ID]=now}
