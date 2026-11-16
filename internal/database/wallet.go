@@ -102,3 +102,14 @@ func ListWalletTransactions(ctx context.Context,db *sql.DB,driver,telegramUserID
 	rows,err:=db.QueryContext(ctx,query,telegramUserID);if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]map[string]any,0);for rows.Next(){var direction,note,created string;var amount,balance int64;if err:=rows.Scan(&direction,&amount,&balance,&note,&created);err!=nil{return nil,err};items=append(items,map[string]any{"direction":direction,"amountAtomic":amount,"balanceAfterAtomic":balance,"note":note,"createdAt":created})};return items,rows.Err()
 }
+
+func FindExpiredWalletRechargeByAmount(ctx context.Context,db *sql.DB,driver string,amountAtomic,blockTimestampMS int64)(WalletRecharge,error){
+	if amountAtomic<=0||blockTimestampMS<=0{return WalletRecharge{},fmt.Errorf("invalid expired recharge transfer")}
+	blockTime:=time.UnixMilli(blockTimestampMS).UTC().Format(time.RFC3339Nano)
+	timeExpr:="julianday(created_at)<=julianday("+placeholder(driver,2)+") AND julianday(expires_at)<julianday("+placeholder(driver,3)+")"
+	if driver=="postgres"{timeExpr="CAST(created_at AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ) AND CAST(expires_at AS TIMESTAMPTZ)<CAST("+placeholder(driver,3)+" AS TIMESTAMPTZ)"}
+	q:="SELECT id,recharge_no,bot_id,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,status,COALESCE(payment_reference,''),expires_at,created_at,COALESCE(paid_at,'') FROM wallet_recharges WHERE status='expired' AND payment_amount_atomic="+placeholder(driver,1)+" AND "+timeExpr+" LIMIT 2"
+	rows,err:=db.QueryContext(ctx,q,amountAtomic,blockTime,blockTime);if err!=nil{return WalletRecharge{},err};defer rows.Close()
+	items:=make([]WalletRecharge,0,2);for rows.Next(){var v WalletRecharge;if err:=rows.Scan(&v.ID,&v.RechargeNo,&v.BotID,&v.TelegramUserID,&v.TelegramChatID,&v.AmountAtomic,&v.PaymentAmountAtomic,&v.Status,&v.PaymentReference,&v.ExpiresAt,&v.CreatedAt,&v.PaidAt);err!=nil{return WalletRecharge{},err};items=append(items,v)}
+	if err:=rows.Err();err!=nil{return WalletRecharge{},err};if len(items)==0{return WalletRecharge{},sql.ErrNoRows};if len(items)!=1{return WalletRecharge{},fmt.Errorf("ambiguous expired recharge invoice")};return items[0],nil
+}
