@@ -490,6 +490,31 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if err==nil && value>=1 && value<=1000000 { amount:=int64(value*1_000_000+0.5);m.sendWalletRechargeInvoice(ctx,cfg,msg.Chat.ID,msg.From.ID,amount);return }
 		}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请选择充值金额：",rechargeKeyboard())
+	case first == "/redeem":
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"兑换方式：/redeem 你的兑换码"); return }
+		result,redeemErr:=database.RedeemTelegramCode(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),strconv.FormatInt(msg.Chat.ID,10),command[1])
+		if redeemErr!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"兑换失败："+redeemErr.Error()); return }
+		switch result.RewardType {
+		case "balance":
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎉 兑换成功！已到账 "+formatUSDTAtomic(result.AmountAtomic)+" USDT 站内余额。")
+		case "package":
+			validity:="永久有效";if result.PackageDays>0{validity="有效期 "+strconv.Itoa(result.PackageDays)+" 天"}
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎉 套餐兑换成功！\n套餐："+result.PackageName+"\n数量："+strconv.Itoa(result.PackageQuantity)+"\n"+validity+"\n可发送 /mypackages 查看已兑换权益。")
+		case "product":
+			item,deliveryErr:=database.GetOrderDelivery(ctx,m.db,m.driver,result.ProductOrderID)
+			if deliveryErr!=nil { log.Printf("load redeemed product delivery failed: order_id=%s error=%v",result.ProductOrderID,deliveryErr);_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品兑换已登记，但自动交付暂时失败，请联系客服并提供订单号。");return }
+			if deliveryErr=m.DeliverPaidOrder(ctx,item);deliveryErr!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品兑换已成功，系统正在重试交付；如未收到商品，请在订单中查看状态。");return }
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎉 商品兑换成功！商品已发送，请查收。")
+		}
+		return
+	case first == "/mypackages":
+		entitlements,entErr:=database.ListTelegramPackageEntitlements(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),cfg.ID)
+		if entErr!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法读取套餐权益，请稍后重试。");return }
+		if len(entitlements)==0 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"目前没有已兑换的套餐权益。");return }
+		var lines []string
+		for _,v:=range entitlements { validity:="永久";if v.ExpiresAt!=""{validity="到期："+v.ExpiresAt};lines=append(lines,v.PackageName+" × "+strconv.Itoa(v.Quantity)+" · "+validity) }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎁 我的套餐权益\n"+strings.Join(lines,"\n"))
+		return
 	case first == "/start":
 		// /start always opens the same customer home card. Bot owners receive
 		// one additional, owner-only management button on that card.
