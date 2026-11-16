@@ -379,8 +379,8 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if text == "" { return }
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
 	if pending != "" && !strings.HasPrefix(text, "/") {
-		switch pending {
-		case "search":
+		switch {
+		case pending == "search":
 			products, err := database.ListProducts(ctx, m.db)
 			if err != nil { _ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "商品搜索暂时不可用，请稍后重试。"); return }
 			needle := strings.ToLower(text)
@@ -395,7 +395,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", mainMenuKeyboard()); return }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows))+"）：", map[string]any{"inline_keyboard": rows})
 			return
-		case "support_order_manual":
+		case pending == "support_order_manual":
 			orderNo := strings.TrimSpace(text)
 			if orderNo == "" || len(orderNo) > 80 {
 				_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "订单号格式不正确，请重新发送订单号。")
@@ -421,7 +421,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", mainMenuKeyboard())
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
 			return
-		case "wallet_custom_amount":
+		case pending == "wallet_custom_amount":
 			value, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
 			if err != nil || value < 1 || value > 1000000 {
 				m.setPendingAction(cfg.ID, msg.Chat.ID, "wallet_custom_amount")
