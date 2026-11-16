@@ -7,12 +7,12 @@ import { requestClient } from '#/api/request';
 interface SiteSettings {
  siteName:string;siteLogo:string;contactEmail:string;telegramCustomerServiceUrl:string;telegramOwnerId:string;smtpHost:string;smtpPort:number;smtpUsername:string;smtpPassword:string;smtpFromName:string;smtpFromEmail:string;smtpUseTLS:boolean;
  emailOrderCreated:boolean;emailPaymentSuccess:boolean;emailDeliverySuccess:boolean;emailSupportCreated:boolean;
- telegramAdminChatId:string;telegramGroupChatId:string;telegramNotifyOrderCreated:boolean;telegramNotifyPaymentSuccess:boolean;telegramNotifyDeliverySuccess:boolean;telegramNotifySupportCreated:boolean;
+ telegramAdminChatId:string;telegramGroupChatId:string;telegramNotifyOrderCreated:boolean;telegramNotifyPaymentSuccess:boolean;telegramNotifyDeliverySuccess:boolean;telegramNotifySupportCreated:boolean;telegramNotifyStockLow:boolean;telegramNotifyDailyReport:boolean;telegramNotifyRiskAlert:boolean;
 }
 const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),activeTab=ref('basic');
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
-const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',telegramCustomerServiceUrl:'',telegramOwnerId:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true});
+const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',telegramCustomerServiceUrl:'',telegramOwnerId:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true});
 async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;form.smtpPassword='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
 async function save(){saving.value=true;try{const data=await requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site',form);Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
 async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error('无法读取图标文件');return false;}if(image.size>20*1024*1024){message.warning('网站图标不能超过 20 MB');return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body,{headers:{'Content-Type':'multipart/form-data'}});form.siteLogo=result.siteLogo;message.success('网站图标上传成功，请保存设置');}catch(error:any){message.error(error?.response?.data?.message||'网站图标上传失败');}finally{logoUploading.value=false;}return false;}
@@ -32,7 +32,7 @@ onMounted(load);
       <a-form layout="vertical"><a-row :gutter="16">
        <a-col :xs="24" :md="12"><a-form-item label="站点名称"><a-input v-model:value="form.siteName" maxlength="100" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="Telegram 客服链接"><a-input v-model:value="form.telegramCustomerServiceUrl" placeholder="https://t.me/客服用户名" /></a-form-item></a-col>
-       <a-col :span="24"><a-form-item label="网站图标"><div class="flex flex-wrap items-center gap-3"><img v-if="form.siteLogo" :src="form.siteLogo" alt="网站图标预览" class="h-14 w-14 rounded-lg border border-gray-200 object-contain p-1" /><a-upload accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/avif,image/heic,image/heif" :show-upload-list="false" :before-upload="uploadSiteLogo"><a-button :loading="logoUploading">上传网站图标</a-button></a-upload><span class="text-xs text-gray-500">支持常见图片格式，最大 10 MB</span></div></a-form-item></a-col>
+       <a-col :span="24"><a-form-item label="网站图标"><div class="flex flex-wrap items-center gap-3"><img v-if="form.siteLogo" :src="form.siteLogo" alt="网站图标预览" class="h-14 w-14 rounded-lg border border-gray-200 object-contain p-1" /><a-upload accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/avif,image/heic,image/heif" :show-upload-list="false" :before-upload="uploadSiteLogo"><a-button :loading="logoUploading">上传网站图标</a-button></a-upload><span class="text-xs text-gray-500">支持常见图片格式，最大 20 MB</span></div></a-form-item></a-col>
       </a-row></a-form>
      </div>
     </a-tab-pane>
@@ -72,8 +72,7 @@ onMounted(load);
       <div class="mb-3 text-sm font-semibold">Telegram 私聊与群组通知</div>
       <a-alert class="mb-4" type="info" show-icon message="填写管理员私聊和通知群组 Chat ID；对应 Bot 必须能向该目标发送消息。" />
       <a-form layout="vertical"><a-row :gutter="16">
-       <a-col :xs="24" :md="12"><a-form-item label="机器人主人 Telegram ID"><a-input v-model:value="form.telegramOwnerId" placeholder="填写数字 ID，允许主人在机器人内管理商品" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="管理员通知 Chat ID"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
+        <a-col :xs="24" :md="12"><a-form-item label="管理员通知 Chat ID"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="通知群组 Chat ID"><a-input v-model:value="form.telegramGroupChatId" /></a-form-item></a-col>
       </a-row></a-form>
       <div class="mb-3 mt-2 text-sm font-semibold">通知事件</div>
@@ -82,6 +81,9 @@ onMounted(load);
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">付款成功</span><a-switch v-model:checked="form.telegramNotifyPaymentSuccess" /></div></a-col>
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">发货成功</span><a-switch v-model:checked="form.telegramNotifyDeliverySuccess" /></div></a-col>
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">售后工单</span><a-switch v-model:checked="form.telegramNotifySupportCreated" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">库存不足提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyStockLow" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">每日经营报告（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyDailyReport" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">支付风险提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyRiskAlert" /></div></a-col>
       </a-row>
       <a-button class="mt-4" size="small" :loading="testing" @click="testTelegram">发送 Telegram 测试通知</a-button>
      </div>
