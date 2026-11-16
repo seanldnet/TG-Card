@@ -786,7 +786,7 @@ func (a *application) syncBots(ctx context.Context) error {
 			log.Printf("decrypt Telegram Bot Token failed: bot_id=%s username=@%s error=%v", item.ID, item.Username, err)
 			continue
 		}
-		v:=decodeBotMenuSettings(item.MenuConfig);configs=append(configs,telegrambot.Config{ID:item.ID,Name:item.Name,Username:item.Username,Token:token,Fingerprint:item.TokenFingerprint,WelcomeText:item.WelcomeText,WelcomeMessage:v.WelcomeMessage,PurchaseNotice:v.PurchaseNotice,Description:v.Description,OwnerID:v.OwnerID,CustomerServiceURL:v.CustomerServiceURL,BusinessGroupURL:v.BusinessGroupURL,WelcomeMessage:v.WelcomeMessage,PurchaseNotice:v.PurchaseNotice,Description:v.Description})
+		v:=decodeBotMenuSettings(item.MenuConfig);configs=append(configs,telegrambot.Config{ID:item.ID,Name:item.Name,Username:item.Username,Token:token,Fingerprint:item.TokenFingerprint,WelcomeText:item.WelcomeText,WelcomeMessage:v.WelcomeMessage,PurchaseNotice:v.PurchaseNotice,Description:v.Description,OwnerID:v.OwnerID,CustomerServiceURL:v.CustomerServiceURL,BusinessGroupURL:v.BusinessGroupURL})
 	}
 	a.botManager.Reconcile(configs)
 	return nil
