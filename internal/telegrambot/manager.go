@@ -26,6 +26,9 @@ type Config struct {
 	Token string
 	Fingerprint string
 	WelcomeText string
+ OwnerID string
+ CustomerServiceURL string
+ BusinessGroupURL string
 }
 
 type Manager struct {
@@ -184,10 +187,7 @@ func truncateButtonText(value string, limit int) string {
 	return string(runes[:limit-1]) + "…"
 }
 
-func (m *Manager) isOwner(telegramUserID int64) bool {
-	m.mu.Lock(); ownerID := m.ownerID; m.mu.Unlock()
-	return ownerID != "" && strconv.FormatInt(telegramUserID,10) == ownerID
-}
+func (m *Manager) isOwner(cfg Config,telegramUserID int64) bool { return cfg.OwnerID!="" && strconv.FormatInt(telegramUserID,10)==cfg.OwnerID }
 
 func (m *Manager) SetPaymentConfig(address string, enabled bool) {
 	m.mu.Lock()
@@ -382,7 +382,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			needle := strings.ToLower(text)
 			rows := make([][]map[string]string, 0)
 			for _, product := range products {
-				if product.Status != 1 || product.StockCount < 1 { continue }
+				if product.Status != 1 { continue }
 				if strings.Contains(strings.ToLower(product.Name+" "+product.Description), needle) {
 					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
 					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
@@ -407,13 +407,13 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
 	if first == "/admin" {
-		if !m.isOwner(msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
 		menu := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 商品列表","callback_data":"owner:products"}},{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}}}}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：可直接在机器人内查看商品或新增商品。",menu)
 		return
 	}
 	if first == "/addproduct" {
-		if !m.isOwner(msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
 		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(text,command[0])),"|",3)
 		if len(parts)<2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号"); return }
 		name := strings.TrimSpace(parts[0]); priceText := strings.TrimSpace(parts[1]); description := ""
@@ -444,24 +444,21 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"充值 5 USDT","callback_data":"wallet:recharge:5000000"},{"text":"充值 10 USDT","callback_data":"wallet:recharge:10000000"}},{{"text":"充值 20 USDT","callback_data":"wallet:recharge:20000000"},{"text":"充值 50 USDT","callback_data":"wallet:recharge:50000000"}}}}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"选择充值金额（最低 1 USDT），也可以发送 /recharge 10 自定义充值 10 USDT。",keyboard)
 	case first == "/start":
-		balance, balanceErr := database.GetTelegramWalletBalance(ctx, m.db, m.driver, strconv.FormatInt(msg.From.ID, 10))
-		balanceText := "暂不可查询"
-		if balanceErr == nil { balanceText = formatUSDTAtomic(balance) + " U" }
-		welcome := "🎉 欢迎来到自动发卡商城！\n选择下方菜单开始选购。\n\n👤 Telegram ID：\n" + strconv.FormatInt(msg.From.ID, 10) + "\n\n💰 当前余额：\n" + balanceText + "\n\n📌 购买须知：\n• 虚拟商品发货后不支持无理由退款\n• 如有问题请联系客服"
-		if link := m.customerServiceLink(); link != "" { welcome += "\n\n客服入口：" + link }
-		if community, support := m.communityLinks(); community != "" || support != "" { welcome += "\n\n群组入口："; if community != "" { welcome += "\n官方群：" + community }; if support != "" { welcome += "\n售后群：" + support } }
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, welcome, mainMenuKeyboard())
+		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));balanceText:="暂不可查询";if balanceErr==nil{balanceText=formatUSDTAtomic(balance)+" USDT"}
+		welcome:="🎉 欢迎来到自动发卡商城！\n\n👤 Telegram ID："+strconv.FormatInt(msg.From.ID,10)+"\n💰 当前余额："+balanceText+"\n\n📌 购买须知：\n• 虚拟商品发货后不支持无理由退款\n• 请确认商品信息及库存后再下单"
+		if cfg.CustomerServiceURL!=""{welcome+="\n\n👩‍💻 客服："+cfg.CustomerServiceURL};if cfg.BusinessGroupURL!=""{welcome+="\n📢 业务通知群："+cfg.BusinessGroupURL}
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,welcome,mainMenuKeyboard())
 	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
 		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 通过 TRC20 USDT 充值\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/balance - 查看余额\n/recharge 10 - 充值 10 USDT\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
-		if link:=m.customerServiceLink();link!=""{help+="\n\nTelegram 客服："+link}
+		if link:=cfg.CustomerServiceURL;link!=""{help+="\n\nTelegram 客服："+link}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboard())
 	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
 	case text == "🧾 售后帮助":
 		msgText := "提交售后请发送：\n/support 订单号 问题描述\n例如：\n/support TC202611150001 卡密无法使用"
-		if link:=m.customerServiceLink();link!=""{msgText+="\n\nTelegram 客服："+link}
+		if link:=cfg.CustomerServiceURL;link!=""{msgText+="\n\nTelegram 客服："+link}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, msgText, mainMenuKeyboard())
 	case first == "/support":
 		if len(command) < 3 {
@@ -475,19 +472,12 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 }
 
-func mainMenuKeyboard() map[string]any {
-	return map[string]any{
-		"keyboard": [][]map[string]string{
-			{{"text":"🛍️ 商品中心"},{"text":"🔎 搜索商品"}},
-			{{"text":"📦 我的订单"},{"text":"💳 我的余额"}},
-			{{"text":"💰 余额充值"},{"text":"🧾 申请售后"}},
-			{{"text":"❓ 使用帮助"}},
-		},
-		"resize_keyboard": true,
-		"is_persistent": true,
-		"input_field_placeholder": "选择菜单或输入命令",
-	}
-}
+func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
+ {{"text":"🛍️ 商品中心","callback_data":"menu:shop"},{"text":"🔎 搜索商品","callback_data":"menu:search"}},
+ {{"text":"📦 我的订单","callback_data":"menu:orders"},{"text":"💳 我的余额","callback_data":"menu:balance"}},
+ {{"text":"💰 余额充值","callback_data":"menu:recharge"},{"text":"🧾 申请售后","callback_data":"menu:support"}},
+ {{"text":"❓ 使用帮助","callback_data":"menu:help"}},
+}}}
 
 // configureMenu publishes BotFather-style commands and explicitly selects the
 // commands menu button beside Telegram's message input.
@@ -522,27 +512,24 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 		}
 	}
 }
-func (m *Manager) showShop(ctx context.Context, cfg Config, chatID int64) {
-	products, err := database.ListProducts(ctx, m.db)
-	if err != nil {
-		log.Printf("telegram shop list failed: bot_id=%s error=%v", cfg.ID, err)
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "商城暂时无法加载，请稍后再试。")
-		return
-	}
-	rows := make([][]map[string]string, 0)
-	for _, product := range products {
-		if product.Status != 1 || product.StockCount < 1 { continue }
-		label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
-		rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:" + product.ID}})
-	}
-	rows = append(rows, []map[string]string{{"text": "📦 我的订单", "callback_data": "shop:orders"}})
-	if len(rows) == 1 {
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "目前暂无可购买的商品。", mainMenuKeyboard())
-		return
-	}
-	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "🛍️ 商品中心\n请选择商品；商品名称过长时会自动缩短，详情页会完整显示名称、价格和库存。", map[string]any{"inline_keyboard": rows}); err != nil {
-		log.Printf("telegram shop menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
-	}
+func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
+ cats,err:=database.ListCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",mainMenuKeyboard());return}
+ products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",mainMenuKeyboard());return}
+ active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",mainMenuKeyboard());return}
+ rows:=make([][]map[string]string,0)
+ for _,c:=range cats{if c.Status!=1{continue};n:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==c.ID{n++}};if n>0{rows=append(rows,[]map[string]string{{"text":c.Name+"（"+strconv.Itoa(n)+"）","callback_data":"shop:category:"+c.ID}})}}
+ other:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==""{other++}};if other>0{rows=append(rows,[]map[string]string{{"text":"其他商品（"+strconv.Itoa(other)+"）","callback_data":"shop:category:__uncategorized__"}})}
+ if len(rows)==0{rows=append(rows,[]map[string]string{{"text":"全部商品（"+strconv.Itoa(active)+"）","callback_data":"shop:category:all"}})}
+ rows=append(rows,[]map[string]string{{"text":"📦 我的订单","callback_data":"shop:orders"}})
+ _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛍️ 商品中心\n请选择商品分类：",map[string]any{"inline_keyboard":rows})
+}
+func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
+ products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",mainMenuKeyboard());return}
+ rows:=make([][]map[string]string,0)
+ for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
+ if len(rows)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回分类","callback_data":"shop:home"}}}});return}
+ rows=append(rows,[]map[string]string{{"text":"⬅️ 返回分类","callback_data":"shop:home"}})
+ _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（无库存商品也可以查看详情）：",map[string]any{"inline_keyboard":rows})
 }
 
 func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, productID string) {
@@ -557,7 +544,7 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 价格：` + formatPrice(p.PriceMinor, p.Currency) + `
 库存：` + strconv.Itoa(p.StockCount)
 		buttons := [][]map[string]string{{{"text":"确认购买","callback_data":"shop:confirm:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
-		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"暂时缺货","callback_data":"shop:home"}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
+		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"暂时缺货，不能购买","callback_data":"shop:home"}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
 		return
 	}
@@ -572,7 +559,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	}
 	switch {
 	case strings.HasPrefix(query.Data,"owner:"):
-		if !m.isOwner(query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		switch query.Data {
 		case "owner:addproduct":
 			_ = m.sendMessage(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号")
@@ -585,7 +572,21 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
 	case query.Data == "shop:home":
-		m.showShop(ctx, cfg, chatID)
+		m.showShop(ctx,cfg,chatID)
+	case strings.HasPrefix(query.Data,"shop:category:"):
+		m.showCategory(ctx,cfg,chatID,strings.TrimPrefix(query.Data,"shop:category:"))
+	case strings.HasPrefix(query.Data,"menu:"):
+		switch strings.TrimPrefix(query.Data,"menu:") {
+		case "shop": m.showShop(ctx,cfg,chatID)
+		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",mainMenuKeyboard())
+		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
+		case "balance": balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额。",mainMenuKeyboard())}else{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard())}
+		case "recharge": keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"充值 5 USDT","callback_data":"wallet:recharge:5000000"},{"text":"充值 10 USDT","callback_data":"wallet:recharge:10000000"}},{{"text":"充值 20 USDT","callback_data":"wallet:recharge:20000000"},{"text":"充值 50 USDT","callback_data":"wallet:recharge:50000000"}}}};_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",keyboard)
+		case "support": m.setPendingAction(cfg.ID,chatID,"support");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送：订单号 | 问题描述",mainMenuKeyboard())
+		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击消息中的按钮即可浏览商品、查询订单和余额、充值或申请售后。",mainMenuKeyboard())
+		}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开")
+		return
 	case query.Data == "shop:orders":
 		m.showOrders(ctx, cfg, chatID, query.From)
 	case strings.HasPrefix(query.Data, "shop:product:"):
