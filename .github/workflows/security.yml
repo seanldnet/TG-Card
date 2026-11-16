@@ -34,6 +34,6 @@ jobs:
           go-version: "1.26.x"
           cache: true
       - name: Download project dependencies
-        run: go mod download
+        run: go mod tidy
       - name: Check known Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
