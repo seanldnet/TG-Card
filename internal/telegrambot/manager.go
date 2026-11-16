@@ -236,7 +236,7 @@ func (m *Manager) sendDailyOperationsReport(ctx context.Context) {
 	summary,err:=database.GetDailyOperationsSummary(ctx,m.db,m.driver,time.Now().UTC())
 	if err!=nil{log.Printf("daily operations summary failed: %v",err);return}
 	revenue:=fmt.Sprintf("%d.%02d",summary.RevenueMinor/100,summary.RevenueMinor%100)
-	details:=fmt.Sprintf("日期（UTC）：%s\n新增订单：%d\n付款订单：%d\n成功发货：%d\n当日销售额：%s USDT\n未结售后：%d\n待核对/未匹配链上交易：%d",time.Now().UTC().Format("2006-01-02"),summary.OrderCount,summary.PaidOrderCount,summary.DeliveredOrderCount,revenue,summary.OpenSupportCount,summary.PaymentRiskCount)
+	details:=fmt.Sprintf("日期（UTC）：%s\n新增订单：%d\n付款订单：%d\n成功发货：%d\n发货失败：%d\n过期订单：%d\n待付款订单：%d\n当日销售额：%s USDT\n未结售后：%d\n待核对/未匹配链上交易：%d",time.Now().UTC().Format("2006-01-02"),summary.OrderCount,summary.PaidOrderCount,summary.DeliveredOrderCount,summary.DeliveryFailedCount,summary.ExpiredOrderCount,summary.PendingPaymentCount,revenue,summary.OpenSupportCount,summary.PaymentRiskCount)
 	m.Notify("daily_report",details,ownerID)
 }
 
