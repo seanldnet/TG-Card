@@ -26,7 +26,7 @@ type CartItem struct {
 func ListCartItems(ctx context.Context, db *sql.DB, driver, botID, telegramUserID string) ([]CartItem, error) {
 	query := `SELECT c.id,c.bot_id,c.telegram_user_id,c.product_id,p.name,p.price_minor,p.currency,p.delivery_type,c.quantity,
 	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),
-	p.price_minor*c.quantity
+	p.price_minor
 	FROM shopping_cart_items c JOIN products p ON p.id=c.product_id
 	WHERE c.bot_id=` + placeholder(driver, 1) + ` AND c.telegram_user_id=` + placeholder(driver, 2) + `
 	ORDER BY c.created_at,c.id`
@@ -36,7 +36,9 @@ func ListCartItems(ctx context.Context, db *sql.DB, driver, botID, telegramUserI
 	items := make([]CartItem, 0)
 	for rows.Next() {
 		var item CartItem
-		if err := rows.Scan(&item.ID,&item.BotID,&item.TelegramUserID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Currency,&item.DeliveryType,&item.Quantity,&item.StockCount,&item.LineTotalMinor); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.BotID,&item.TelegramUserID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Currency,&item.DeliveryType,&item.Quantity,&item.StockCount); err != nil { return nil, err }
+		if item.Quantity < 1 || item.UnitPriceMinor < 0 || item.UnitPriceMinor > (1<<63-1)/int64(item.Quantity) { return nil, fmt.Errorf("购物车商品金额超出范围") }
+		item.LineTotalMinor = item.UnitPriceMinor * int64(item.Quantity)
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -55,13 +57,21 @@ func AddCartItem(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 	if err != nil { return err }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	query := "INSERT INTO shopping_cart_items(id,bot_id,telegram_user_id,product_id,quantity,created_at,updated_at) VALUES("+
-		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+") "+
-		"ON CONFLICT(bot_id,telegram_user_id,product_id) DO UPDATE SET quantity=shopping_cart_items.quantity+excluded.quantity,updated_at=excluded.updated_at WHERE shopping_cart_items.quantity+excluded.quantity<=100"
+		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+") "
+	if deliveryType != "card" && deliveryType != "file_card" {
+		// Non-key products represent one entitlement per order and cannot be stacked.
+		query += "ON CONFLICT(bot_id,telegram_user_id,product_id) DO NOTHING"
+	} else {
+		query += "ON CONFLICT(bot_id,telegram_user_id,product_id) DO UPDATE SET quantity=shopping_cart_items.quantity+excluded.quantity,updated_at=excluded.updated_at WHERE shopping_cart_items.quantity+excluded.quantity<=100"
+	}
 	result, err := db.ExecContext(ctx,query,id,botID,telegramUserID,productID,quantity,now,now)
 	if err != nil { return err }
 	affected, err := result.RowsAffected()
 	if err != nil { return err }
-	if affected != 1 { return fmt.Errorf("购物车中该商品数量最多为 100 件") }
+	if affected != 1 {
+		if deliveryType != "card" && deliveryType != "file_card" { return fmt.Errorf("该交付方式每次仅支持加入 1 件，商品已在购物车中") }
+		return fmt.Errorf("购物车中该商品数量最多为 100 件")
+	}
 	return nil
 }
 
