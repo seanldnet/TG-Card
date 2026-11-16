@@ -348,14 +348,17 @@ func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (
 	query := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(delivery_type,'card'),COALESCE(delivery_config_snapshot,'{}'),COALESCE(delivery_payload_json,'{}'),COALESCE(payment_method,''),COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver, 1) + " AND status IN ('paid','delivering','delivery_failed')"
 	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.Order.DeliveryType,&item.Order.DeliveryConfigSnapshot,&item.Order.DeliveryPayloadJSON,&item.PaymentMethod,&item.PaymentReference)
 	if err != nil { return item, err }
-	rows, err := db.QueryContext(ctx, "SELECT secret_ciphertext FROM product_keys WHERE order_id="+placeholder(driver,1)+" AND status=2 ORDER BY created_at,id", orderID)
-	if err != nil { return item, err }
-	defer rows.Close()
-	var secrets []string
-	for rows.Next() { var secret string; if err := rows.Scan(&secret); err != nil { return item, err }; secrets = append(secrets, secret) }
-	if err := rows.Err(); err != nil { return item, err }
-	if len(secrets) != item.Order.Quantity { return item, fmt.Errorf("recover paid card keys: expected %d, found %d", item.Order.Quantity, len(secrets)) }
-	item.SecretCiphertext = strings.Join(secrets, "\n")
+	if item.Order.DeliveryType == "" { item.Order.DeliveryType = "card" }
+	if item.Order.DeliveryType == "card" || item.Order.DeliveryType == "file_card" {
+		rows, err := db.QueryContext(ctx, "SELECT secret_ciphertext FROM product_keys WHERE order_id="+placeholder(driver,1)+" AND status=2 ORDER BY created_at,id", orderID)
+		if err != nil { return item, err }
+		defer rows.Close()
+		var secrets []string
+		for rows.Next() { var secret string; if err := rows.Scan(&secret); err != nil { return item, err }; secrets = append(secrets, secret) }
+		if err := rows.Err(); err != nil { return item, err }
+		if len(secrets) != item.Order.Quantity { return item, fmt.Errorf("recover paid card keys: expected %d, found %d", item.Order.Quantity, len(secrets)) }
+		item.SecretCiphertext = strings.Join(secrets, "\n")
+	}
 	return item, nil
 }
 
