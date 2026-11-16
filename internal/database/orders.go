@@ -652,3 +652,35 @@ func ClaimOrderRedelivery(ctx context.Context, db *sql.DB, driver, orderID strin
 	if err != nil { return false, err }
 	return affected == 1, nil
 }
+
+
+// RefundOrderToWallet atomically credits the buyer's internal balance, marks
+// the order refunded, and revokes reserved card-key records to prevent reuse.
+func RefundOrderToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,note string)(int64,error){
+	note=strings.TrimSpace(note);if len(note)>500{note=note[:500]}
+	tx,err:=db.BeginTx(ctx,&sql.TxOptions{Isolation:sql.LevelSerializable});if err!=nil{return 0,err};defer tx.Rollback()
+	query:="SELECT status,telegram_user_id,amount_minor,order_no FROM orders WHERE id="+placeholder(driver,1)
+	if driver=="postgres"{query+=" FOR UPDATE"}
+	var status,userID,orderNo string;var amountMinor int64
+	if err:=tx.QueryRowContext(ctx,query,orderID).Scan(&status,&userID,&amountMinor,&orderNo);err!=nil{return 0,err}
+	if status=="refunded"{return 0,fmt.Errorf("order has already been refunded")}
+	switch status{case "paid","delivering","delivery_failed","delivered":default:return 0,fmt.Errorf("order status %s cannot be refunded",status)}
+	if amountMinor<=0||amountMinor>922337203685477{ return 0,fmt.Errorf("order refund amount is invalid") }
+	amountAtomic:=amountMinor*10000
+	updateBalance:="UPDATE telegram_users SET balance_atomic=balance_atomic+"+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE telegram_user_id="+placeholder(driver,3)
+	result,err:=tx.ExecContext(ctx,updateBalance,amountAtomic,time.Now().UTC().Format(time.RFC3339Nano),userID);if err!=nil{return 0,err}
+	n,err:=result.RowsAffected();if err!=nil{return 0,err};if n!=1{return 0,fmt.Errorf("Telegram wallet account not found")}
+	var balance int64
+	if err:=tx.QueryRowContext(ctx,"SELECT balance_atomic FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),userID).Scan(&balance);err!=nil{return 0,err}
+	ledgerID,err:=randomID();if err!=nil{return 0,err}
+	ledgerNote:="售后退款："+orderNo;if note!=""{ledgerNote+="；"+note}
+	insert:="INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",'credit',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+")"
+	if _,err:=tx.ExecContext(ctx,insert,ledgerID,userID,adminID,amountAtomic,balance,ledgerNote,time.Now().UTC().Format(time.RFC3339Nano));err!=nil{return 0,err}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	updateOrder:="UPDATE orders SET status='refunded',refunded_at="+placeholder(driver,1)+",refund_note="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)+" AND status="+placeholder(driver,5)
+	res,err:=tx.ExecContext(ctx,updateOrder,now,note,now,orderID,status);if err!=nil{return 0,err}
+	n,err=res.RowsAffected();if err!=nil{return 0,err};if n!=1{return 0,fmt.Errorf("order state changed while refunding")}
+	if _,err:=tx.ExecContext(ctx,"UPDATE product_keys SET status=3 WHERE order_id="+placeholder(driver,1)+" AND status=2",orderID);err!=nil{return 0,err}
+	if err:=tx.Commit();err!=nil{return 0,err}
+	return balance,nil
+}
