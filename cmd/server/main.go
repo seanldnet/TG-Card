@@ -1129,6 +1129,11 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if err != nil { log.Printf("load site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load site settings"); return }
  var settings siteSettings
  if err := json.Unmarshal([]byte(raw),&settings); err != nil { log.Printf("decode site settings: %v",err); writeError(w,http.StatusInternalServerError,"Invalid saved site settings"); return }
+ var savedFields map[string]json.RawMessage
+ _ = json.Unmarshal([]byte(raw),&savedFields)
+ if _,ok:=savedFields["telegramNotifyStockLow"];!ok{settings.TelegramNotifyStockLow=true}
+ if _,ok:=savedFields["telegramNotifyDailyReport"];!ok{settings.TelegramNotifyDailyReport=true}
+ if _,ok:=savedFields["telegramNotifyRiskAlert"];!ok{settings.TelegramNotifyRiskAlert=true}
  if settings.SiteName == "" { settings.SiteName = "TG-Card" }
  if settings.SMTPPort == 0 { settings.SMTPPort = 587 }
  if settings.SMTPFromName == "" { settings.SMTPFromName = settings.SiteName }
