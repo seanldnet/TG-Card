@@ -153,6 +153,7 @@ func (m *Manager) Reconcile(configs []Config) {
 		if _, exists := m.workers[id]; exists { continue }
 		ctx, cancel := context.WithCancel(context.Background())
 		m.workers[id] = &worker{config: cfg, cancel: cancel}
+		go m.setBotDescription(context.Background(),cfg.Token,cfg.Description)
 		go m.run(ctx, cfg)
 		log.Printf("telegram bot worker starting: bot_id=%s username=@%s", id, cfg.Username)
 	}
