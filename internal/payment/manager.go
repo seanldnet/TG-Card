@@ -109,6 +109,7 @@ func (m *Manager) scan(ctx context.Context) error {
 				if confirmErr!=nil { _=database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required","",confirmErr.Error());log.Printf("TRC20 wallet recharge confirmation requires review: recharge=%s tx=%s error=%v",recharge.RechargeNo,transfer.TransactionID,confirmErr);continue }
 				if err:=database.ClassifyTRC20RechargeTransfer(scanCtx,m.db,m.driver,transfer.TransactionID,recharge.ID,"Wallet recharge "+recharge.RechargeNo);err!=nil{return err}
 				m.bots.Notify("payment_success","余额充值到账：充值单 "+confirmedRecharge.RechargeNo+"\n充值金额："+fmt.Sprintf("%d.%06d",confirmedRecharge.AmountAtomic/1_000_000,confirmedRecharge.AmountAtomic%1_000_000)+" USDT\n当前余额："+fmt.Sprintf("%d.%06d",balance/1_000_000,balance%1_000_000)+" USDT",confirmedRecharge.TelegramChatID)
+				if sendErr:=m.bots.SendWalletRechargeNotice(scanCtx,confirmedRecharge,balance);sendErr!=nil{log.Printf("send wallet recharge confirmation to Telegram user failed: recharge=%s error=%v",confirmedRecharge.RechargeNo,sendErr)}
 				confirmed++
 				log.Printf("TRC20 wallet recharge confirmed: recharge=%s tx=%s",confirmedRecharge.RechargeNo,transfer.TransactionID)
 				continue
