@@ -685,3 +685,23 @@ func RefundOrderToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,n
 	if err:=tx.Commit();err!=nil{return 0,err}
 	return balance,nil
 }
+
+func GetOrderByOrderNo(ctx context.Context, db *sql.DB, driver, orderNo string) (Order,error) {
+	var item Order
+	q:="SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic,COALESCE(payment_method,''),COALESCE(payment_reference,''),delivery_attempts,delivery_error,COALESCE(delivery_type,'card') FROM orders WHERE order_no="+placeholder(driver,1)
+	err:=db.QueryRowContext(ctx,q,strings.TrimSpace(orderNo)).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.DeliveryAttempts,&item.DeliveryError,&item.DeliveryType)
+	return item,err
+}
+
+func ClosePendingOrder(ctx context.Context, db *sql.DB, driver, orderNo string) error {
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	q:="SELECT id,status FROM orders WHERE order_no="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE"}
+	var id,status string;if err:=tx.QueryRowContext(ctx,q,strings.TrimSpace(orderNo)).Scan(&id,&status);err!=nil{return err}
+	if status!="pending_payment"{return fmt.Errorf("仅待付款订单可关闭，当前状态：%s",status)}
+	now:=time.Now().UTC()
+	update:="UPDATE orders SET status='cancelled',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND status='pending_payment'"
+	res,err:=tx.ExecContext(ctx,update,now.Format(time.RFC3339Nano),id);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("订单状态已变化，请刷新后重试")}
+	if _,err:=tx.ExecContext(ctx,"UPDATE product_keys SET status=0,order_id=NULL WHERE order_id="+placeholder(driver,1)+" AND status=1",id);err!=nil{return err}
+	if err:=ReleaseOrderPromotion(ctx,tx,driver,id,now);err!=nil{return err}
+	return tx.Commit()
+}
