@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/auth"
@@ -41,6 +42,8 @@ type application struct {
 	botManager *telegrambot.Manager
 	paymentManager *payment.Manager
 	dataDir string
+	loginMu sync.Mutex
+	loginFailures map[string][]time.Time
 }
 
 type apiEnvelope struct {
@@ -166,7 +169,7 @@ func main() {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir}
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time)}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 
@@ -304,6 +307,8 @@ func (a *application) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) login(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if !a.allowLoginAttempt(ip) { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
 	var input loginRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
@@ -317,7 +322,8 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 
 	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
 	if err != nil || admin.Status != 1 || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.Password)) != nil {
-		database.RecordLoginAudit(r.Context(), a.db, a.driver, "", input.Username, clientIP(r), r.UserAgent(), false)
+		a.recordLoginFailure(ip)
+		database.RecordLoginAudit(r.Context(), a.db, a.driver, "", input.Username, ip, r.UserAgent(), false)
 		writeError(w, http.StatusUnauthorized, "Username or password is incorrect")
 		return
 	}
@@ -332,9 +338,22 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	if err := database.UpdateLastLogin(r.Context(), a.db, a.driver, admin.ID); err != nil {
 		log.Printf("update administrator last login: %v", err)
 	}
-	database.RecordLoginAudit(r.Context(), a.db, a.driver, admin.ID, admin.Username, clientIP(r), r.UserAgent(), true)
+	a.clearLoginFailures(ip)
+	database.RecordLoginAudit(r.Context(), a.db, a.driver, admin.ID, admin.Username, ip, r.UserAgent(), true)
 	writeSuccess(w, http.StatusOK, map[string]string{"accessToken": token})
 }
+
+
+func (a *application) allowLoginAttempt(ip string) bool {
+	now:=time.Now();a.loginMu.Lock();defer a.loginMu.Unlock()
+	if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)}
+	cutoff:=now.Add(-15*time.Minute);kept:=make([]time.Time,0)
+	for _,stamp:=range a.loginFailures[ip]{if stamp.After(cutoff){kept=append(kept,stamp)}}
+	a.loginFailures[ip]=kept
+	return len(kept)<10
+}
+func (a *application) recordLoginFailure(ip string){a.loginMu.Lock();defer a.loginMu.Unlock();if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)};a.loginFailures[ip]=append(a.loginFailures[ip],time.Now())}
+func (a *application) clearLoginFailures(ip string){a.loginMu.Lock();delete(a.loginFailures,ip);a.loginMu.Unlock()}
 
 func (a *application) logout(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, "")
