@@ -836,7 +836,7 @@ func mainReplyKeyboard(isOwner bool) map[string]any { rows:=[][]map[string]strin
 	{{"text":"📦 我的订单"},{"text":"💳 我的余额"}},
 	{{"text":"💰 余额充值"},{"text":"🧾 申请售后"}},
 	{{"text":"❓ 使用帮助"},{"text":"🏠 主菜单"}},
-}};if isOwner { rows=append(rows,[]map[string]string{{"text":"🛠️ 主人管理"}}) };return map[string]any{"keyboard":rows,"resize_keyboard":true,"is_persistent":true,"input_field_placeholder":"选择菜单功能"} }
+};if isOwner { rows=append(rows,[]map[string]string{{"text":"🛠️ 主人管理"}}) };return map[string]any{"keyboard":rows,"resize_keyboard":true,"is_persistent":true,"input_field_placeholder":"选择菜单功能"} }
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
