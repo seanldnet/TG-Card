@@ -109,7 +109,9 @@ func UpdateBroadcastRecipient(ctx context.Context,db *sql.DB,driver,id,status,la
 	if status!="sent"&&status!="failed"&&status!="pending"{return fmt.Errorf("invalid broadcast recipient status")}
 	sentAt:="";if status=="sent"{sentAt=time.Now().UTC().Format(time.RFC3339Nano)}
 	q:="UPDATE broadcast_recipients SET status="+placeholder(driver,1)+",last_error="+placeholder(driver,2)+",attempts="+placeholder(driver,3)+",sent_at="+placeholder(driver,4)+" WHERE id="+placeholder(driver,5)
-	_,err:=db.ExecContext(ctx,q,status,lastError,attempts,sentAt,id);return err
+	_,err:=db.ExecContext(ctx,q,status,lastError,attempts,sentAt,id);if err!=nil{return err}
+	progress:="UPDATE broadcast_tasks SET sent_count=(SELECT COUNT(1) FROM broadcast_recipients WHERE task_id=broadcast_tasks.id AND status='sent'),failed_count=(SELECT COUNT(1) FROM broadcast_recipients WHERE task_id=broadcast_tasks.id AND status='failed') WHERE id=(SELECT task_id FROM broadcast_recipients WHERE id="+placeholder(driver,1)+")"
+	_,err=db.ExecContext(ctx,progress,id);return err
 }
 
 func FinishBroadcastTask(ctx context.Context,db *sql.DB,driver,id,status string,sent,failed int)error{
