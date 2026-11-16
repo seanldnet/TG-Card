@@ -49,9 +49,9 @@ onMounted(loadBots);
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">机器人管理</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一管理 Telegram 商城机器人及运行状态</p></div>
    <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-    <a-input v-model:value="ownerID" class="w-full sm:w-56" size="large" inputmode="numeric" placeholder="主人 Telegram 数字 ID"/>
-    <a-button size="large" :loading="ownerSaving" @click="saveOwnerID">保存主人 ID</a-button>
-    <a-button type="primary" size="large" @click="handleAddBot">＋添加机器人</a-button>
+    <a-input v-model:value="ownerID" class="w-full sm:w-56" size="middle" inputmode="numeric" placeholder="主人 Telegram 数字 ID"/>
+    <a-button size="middle" :loading="ownerSaving" @click="saveOwnerID">保存主人 ID</a-button>
+    <a-button type="primary" size="middle" @click="handleAddBot">＋添加机器人</a-button>
    </div>
   </div>
   <a-row :gutter="[12,12]">
