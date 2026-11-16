@@ -39,7 +39,7 @@ onMounted(loadOrders);
    <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">发货异常</div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:alert-circle-outline" class="block text-2xl" /></span></div></a-card>
   </div>
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
-   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">订单管理</div><div class="mt-1 text-xs leading-5 text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><a-space wrap><a-button size="small" danger ghost @click="cleanupOpen=true">一键清理订单数据</a-button><a-button size="small" class="mr-1" :loading="loading" @click="loadOrders">刷新订单</a-button></a-space></div></template>
+   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">订单管理</div><div class="mt-1 text-xs leading-5 text-gray-500">查看付款状态、库存预留及自动发货重试</div></div><div class="flex flex-wrap items-center gap-3"><a-button size="small" danger ghost @click="cleanupOpen=true">一键清理订单数据</a-button><a-button size="small" :loading="loading" @click="loadOrders">刷新订单</a-button></div></div></template>
    <div v-if="isMobile" class="tg-mobile-list">
     <a-card v-for="item in orders" :key="item.id" size="small">
      <div class="flex min-w-0 items-start justify-between gap-3">
