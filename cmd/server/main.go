@@ -57,6 +57,7 @@ type siteSettings struct {
  SiteLogo string `json:"siteLogo"`
  ContactEmail string `json:"contactEmail"`
  TelegramCustomerServiceURL string `json:"telegramCustomerServiceUrl"`
+ TelegramOwnerID string `json:"telegramOwnerId"`
  SMTPHost string `json:"smtpHost"`
  SMTPPort int `json:"smtpPort"`
  SMTPUsername string `json:"smtpUsername"`
@@ -148,6 +149,10 @@ func main() {
 	}
 	paymentsEnabled := paymentSettings.TronEnabled && apiKey != "" && paymentSettings.TronReceiveAddress != ""
 	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
+	if rawSite, siteErr := database.GetSiteSettings(ctx, db); siteErr == nil {
+		var initialSite siteSettings
+		if json.Unmarshal([]byte(rawSite), &initialSite) == nil { botManager.SetOwnerID(initialSite.TelegramOwnerID) }
+	}
 	defer botManager.Stop()
 	cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract = "", "", paymentSettings.TronUSDTContract
 	if paymentsEnabled { cfg.TronGridAPIKey, cfg.TronReceiveAddress = apiKey, paymentSettings.TronReceiveAddress }
@@ -1036,14 +1041,15 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  var input siteSettings
  if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err != nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
  input.SiteName=strings.TrimSpace(input.SiteName); input.ContactEmail=strings.TrimSpace(input.ContactEmail)
- input.TelegramCustomerServiceURL=strings.TrimSpace(input.TelegramCustomerServiceURL)
+ input.TelegramCustomerServiceURL=strings.TrimSpace(input.TelegramCustomerServiceURL); input.TelegramOwnerID=strings.TrimSpace(input.TelegramOwnerID)
  input.SMTPHost=strings.TrimSpace(input.SMTPHost); input.SMTPUsername=strings.TrimSpace(input.SMTPUsername)
  input.SMTPFromEmail=strings.TrimSpace(input.SMTPFromEmail); input.SMTPFromName=strings.TrimSpace(input.SMTPFromName)
  input.TelegramAdminChatID=strings.TrimSpace(input.TelegramAdminChatID); input.TelegramGroupChatID=strings.TrimSpace(input.TelegramGroupChatID)
- if input.SiteName=="" || len(input.SiteName)>100 || len(input.ContactEmail)>254 || len(input.TelegramCustomerServiceURL)>2048 || len(input.SiteLogo)>2048 || len(input.SMTPHost)>255 || len(input.SMTPUsername)>254 || len(input.SMTPFromEmail)>254 || len(input.SMTPPassword)>512 {
+ if input.SiteName=="" || len(input.SiteName)>100 || len(input.ContactEmail)>254 || len(input.TelegramCustomerServiceURL)>2048 || len(input.TelegramOwnerID)>32 || len(input.SiteLogo)>2048 || len(input.SMTPHost)>255 || len(input.SMTPUsername)>254 || len(input.SMTPFromEmail)>254 || len(input.SMTPPassword)>512 {
   writeError(w,http.StatusBadRequest,"Invalid site settings fields"); return
  }
  if input.SiteLogo!="" && (!strings.HasPrefix(input.SiteLogo,"/uploads/site/") || strings.Contains(input.SiteLogo,"..")) { writeError(w,http.StatusBadRequest,"网站图标地址无效，请重新上传"); return }
+ if input.TelegramOwnerID!="" { for _, digit := range input.TelegramOwnerID { if digit<'0'||digit>'9' { writeError(w,http.StatusBadRequest,"Telegram 主人 ID 只能填写数字"); return } } }
  if input.TelegramCustomerServiceURL!="" && !strings.HasPrefix(input.TelegramCustomerServiceURL,"https://t.me/") && !strings.HasPrefix(input.TelegramCustomerServiceURL,"https://telegram.me/") { writeError(w,http.StatusBadRequest,"Telegram 客服链接请使用 https://t.me/ 开头"); return }
  if input.SMTPPort==0 { input.SMTPPort=587 }; if input.SMTPPort<1 || input.SMTPPort>65535 { writeError(w,http.StatusBadRequest,"SMTP 端口无效"); return }
  oldRaw,err:=database.GetSiteSettings(r.Context(),a.db); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to load current site settings"); return }
@@ -1054,6 +1060,7 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  input.SMTPPassword=""
  raw,err:=json.Marshal(input); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encode site settings"); return }
  if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(raw)); err!=nil { log.Printf("save site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to save site settings"); return }
+ a.botManager.SetOwnerID(input.TelegramOwnerID)
  database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",clientIP(r),r.UserAgent(),"updated")
  configured:=input.SMTPPasswordCiphertext!=""
  input.SMTPPasswordCiphertext=""
