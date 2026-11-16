@@ -322,7 +322,7 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 		text:="请确认订单信息：\n商品："+p.Name+"\n商品金额："+formatPrice(p.PriceMinor,p.Currency)+"\n数量：1\n"+stockText+"\n\n确认后将创建订单，需在 20 分钟内完成付款。"
 		paymentAddress,paymentEnabled:=m.paymentConfig()
 		if paymentEnabled&&paymentAddress!=""{text+="\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"}else{text+="\n支付尚未启用，请勿转账。"}
-		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
+		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"🎟️ 使用优惠码","callback_data":"shop:coupon:"+p.ID+":1"}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,markup);return
 	}
 	_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在或已下架。")
@@ -394,6 +394,13 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
 	if pending != "" && !strings.HasPrefix(text, "/") {
 		switch {
+		case strings.HasPrefix(pending,"coupon:"):
+			parts:=strings.Split(strings.TrimPrefix(pending,"coupon:"),":")
+			if len(parts)!=2{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"优惠码会话已失效，请重新选择商品。");return}
+			quantity,parseErr:=strconv.Atoi(parts[1]);if parseErr!=nil||quantity<1||quantity>100{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"购买数量无效，请重新选择商品。");return}
+			query:=CallbackQuery{ID:"",From:*msg.From}
+			m.createPurchaseOrderWithPromotion(ctx,cfg,query,msg.Chat.ID,parts[0],quantity,text)
+			return
 		case pending == "search":
 			products, err := database.ListProducts(ctx, m.db)
 			if err != nil { _ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "商品搜索暂时不可用，请稍后重试。"); return }
@@ -713,12 +720,17 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 }
 
 func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int) {
-	order, err := database.CreateOrderWithQuantity(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, 20*time.Minute)
+	m.createPurchaseOrderWithPromotion(ctx,cfg,query,chatID,productID,quantity,"")
+}
+
+func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int, promotionCode string) {
+	order, err := database.CreateOrderWithPromotion(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, promotionCode, 20*time.Minute)
 	if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
 	balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
 	text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)
 	gross:=order.UnitPriceMinor*int64(order.Quantity)
-	if saved:=gross-order.AmountMinor;saved>0{text+="\n批量优惠已减："+formatPrice(saved,order.Currency)}
+	if saved:=gross-order.AmountMinor;saved>0{text+="\n优惠已减："+formatPrice(saved,order.Currency)}
+	if order.PromotionCode!=""{text+="\n优惠码："+order.PromotionCode+"（减 "+formatPrice(order.PromotionDiscountMinor,order.Currency)+"）"}
 	text+="\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
 	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
 	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
@@ -793,6 +805,13 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data, "shop:confirm:"):
 		m.showPurchaseConfirmation(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:confirm:"))
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请核对订单信息")
+	case strings.HasPrefix(query.Data, "shop:coupon:"):
+		parts:=strings.Split(strings.TrimPrefix(query.Data,"shop:coupon:"),":")
+		if len(parts)!=2{_ = m.answerCallback(ctx,cfg.Token,query.ID,"优惠码入口无效");return}
+		quantity,parseErr:=strconv.Atoi(parts[1]);if parseErr!=nil||quantity<1||quantity>100{_ = m.answerCallback(ctx,cfg.Token,query.ID,"购买数量无效");return}
+		m.setPendingAction(cfg.ID,chatID,"coupon:"+parts[0]+":"+strconv.Itoa(quantity))
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"请输入优惠码")
+		_ = m.sendMessage(ctx,cfg.Token,chatID,"请发送优惠码（不区分大小写）。发送后将自动验证并创建订单；如需取消，请发送 /cancel。")
 	case strings.HasPrefix(query.Data, "shop:buyqty:"):
 		parts := strings.Split(strings.TrimPrefix(query.Data,"shop:buyqty:"),":")
 		if len(parts)!=2 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买参数无效"); return }
