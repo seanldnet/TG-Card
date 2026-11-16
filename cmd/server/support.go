@@ -69,3 +69,22 @@ func (a *application) assignSupportTicket(w http.ResponseWriter, r *http.Request
 	writeSuccess(w, http.StatusOK, item)
 }
 
+
+
+func (a *application) refundSupportTicket(w http.ResponseWriter,r *http.Request){
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	ticketID:=strings.TrimSpace(r.PathValue("id"))
+	ticket,err:=database.GetSupportTicket(r.Context(),a.db,a.driver,ticketID)
+	if err!=nil{writeError(w,http.StatusNotFound,"售后工单不存在");return}
+	balance,err:=database.RefundOrderToWallet(r.Context(),a.db,a.driver,ticket.OrderID,claims.AdminID,"售后工单 "+ticket.TicketNo)
+	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	reply:="售后处理完成：订单 "+ticket.OrderNo+" 已退款至站内余额，当前余额 "+formatUSDTAtomic(balance)+" USDT。已交付卡密记录已撤销，请勿继续使用原凭证。"
+	updated,updateErr:=database.UpdateSupportTicket(r.Context(),a.db,a.driver,ticketID,"resolved",reply)
+	if updateErr==nil{ticket=updated}
+	_,timelineErr:=database.AppendSupportTicketMessage(r.Context(),a.db,a.driver,ticketID,"admin",claims.AdminID,reply,"","")
+	notifyErr:=a.botManager.SendSupportReply(r.Context(),ticket)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.refund","ticket:"+ticket.TicketNo,clientIP(r),r.UserAgent(),"order_id="+ticket.OrderID)
+	result:=map[string]any{"ticket":ticket,"balanceAtomic":balance}
+	if updateErr!=nil||timelineErr!=nil||notifyErr!=nil{result["warning"]="退款已完成，但工单状态、时间线或 Telegram 通知有部分步骤未完成，请检查记录"}
+	writeSuccess(w,http.StatusOK,result)
+}
