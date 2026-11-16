@@ -65,10 +65,9 @@ const [AvatarForm] = useVbenForm({
       fieldName: 'avatarFile',
       label: '头像上传',
       componentProps: {
-        accept: 'image/png,image/jpeg,image/webp',
+        accept: 'image/*',
         listType: 'picture',
         maxCount: 1,
-        maxSize: 2,
         showUploadList: false,
         beforeUpload: uploadAvatar,
       },
@@ -149,8 +148,8 @@ async function uploadAvatar(file: any) {
     message.error('无法读取所选头像文件');
     return false;
   }
-  if (imageFile.size > 2 * 1024 * 1024) {
-    message.warning('头像文件不能超过 2 MB');
+  if (imageFile.size > 20 * 1024 * 1024) {
+    message.warning('头像文件不能超过 20 MB');
     return false;
   }
   uploading.value = true;
