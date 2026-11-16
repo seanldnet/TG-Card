@@ -575,6 +575,7 @@ func rechargeKeyboard() map[string]any {
 		{{"text": "5 USDT", "callback_data": "wallet:recharge:5000000"}, {"text": "10 USDT", "callback_data": "wallet:recharge:10000000"}},
 		{{"text": "20 USDT", "callback_data": "wallet:recharge:20000000"}, {"text": "50 USDT", "callback_data": "wallet:recharge:50000000"}},
 		{{"text": "100 USDT", "callback_data": "wallet:recharge:100000000"}, {"text": "自定义金额", "callback_data": "wallet:custom"}},
+		{{"text":"⬅️ 返回余额","callback_data":"menu:balance"}},
 	}}
 }
 
@@ -790,7 +791,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case query.Data == "wallet:custom":
 		m.setPendingAction(cfg.ID, chatID, "wallet_custom_amount")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入充值金额")
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "请输入充值金额（USDT），最低 1 USDT，例如：25")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入充值金额（USDT），最低 1 USDT，例如：25",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"取消并返回余额","callback_data":"menu:balance"}}}})
 	case query.Data == "support:manual":
 		m.setPendingAction(cfg.ID, chatID, "support_order_manual")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入订单号")
