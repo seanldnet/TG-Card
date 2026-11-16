@@ -202,6 +202,10 @@ func main() {
 	api.HandleFunc("POST /api/promotions", app.savePromotion)
 	api.HandleFunc("PUT /api/promotions/{id}", app.savePromotion)
 	api.HandleFunc("DELETE /api/promotions/{id}", app.deletePromotion)
+	api.HandleFunc("GET /api/redemption-codes", app.listRedemptionCodes)
+	api.HandleFunc("POST /api/redemption-codes", app.saveRedemptionCode)
+	api.HandleFunc("PUT /api/redemption-codes/{id}", app.saveRedemptionCode)
+	api.HandleFunc("DELETE /api/redemption-codes/{id}", app.deleteRedemptionCode)
 	api.HandleFunc("POST /api/orders/cleanup", app.clearOrderData)
 	api.HandleFunc("GET /api/users", app.listTelegramUsers)
 	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
@@ -561,8 +565,12 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
 		},
 		{
-			"name": "Promotions", "path": "/promotions", "component": "/promotions/index",
-			"meta": map[string]any{"icon": "lucide:ticket-percent", "order": 4, "title": "优惠券与兑换码"},
+			"name": "Coupons", "path": "/coupons", "component": "/promotions/index",
+			"meta": map[string]any{"icon": "lucide:ticket-percent", "order": 4, "title": "优惠券管理"},
+		},
+		{
+			"name": "RedemptionCodes", "path": "/redemption-codes", "component": "/redemption-codes/index",
+			"meta": map[string]any{"icon": "lucide:gift", "order": 5, "title": "兑换码管理"},
 		},
 		{
 			"name": "Support", "path": "/support", "component": "/support/index",
