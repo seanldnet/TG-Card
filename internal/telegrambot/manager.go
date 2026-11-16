@@ -310,6 +310,7 @@ func (m *Manager) startExpiryLoop() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				m.processDueBroadcastTasks(ctx)
 			case <-stockTicker.C:
 				m.checkLowStock(ctx)
 			case <-dailyTicker.C:
@@ -1434,6 +1435,67 @@ func (m *Manager) sendPhotoMarkup(ctx context.Context, token string, chatID int6
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return fmt.Errorf("decode sendPhoto response: %w", err) }
 	if response.StatusCode != http.StatusOK || !result.OK { return fmt.Errorf("Telegram sendPhoto HTTP %d: %s", response.StatusCode, result.Description) }
 	return nil
+}
+
+
+type broadcastTelegramResult struct {
+	OK bool `json:"ok"`
+	Description string `json:"description"`
+	Parameters struct { RetryAfter int `json:"retry_after"` } `json:"parameters"`
+}
+
+func (m *Manager) sendBroadcastMessage(ctx context.Context, token string, chatID int64, text string) (int,error) {
+	payload,_:=json.Marshal(map[string]any{"chat_id":chatID,"text":text})
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendMessage",bytes.NewReader(payload))
+	if err!=nil{return 0,err};req.Header.Set("Content-Type","application/json")
+	resp,err:=m.client.Do(req);if err!=nil{return 0,err};defer resp.Body.Close()
+	var result broadcastTelegramResult
+	if err:=json.NewDecoder(resp.Body).Decode(&result);err!=nil{return 0,err}
+	if resp.StatusCode!=http.StatusOK||!result.OK{return result.Parameters.RetryAfter,fmt.Errorf("Telegram sendMessage HTTP %d: %s",resp.StatusCode,result.Description)}
+	return 0,nil
+}
+
+func (m *Manager) processDueBroadcastTasks(ctx context.Context) {
+	ids,err:=database.ClaimDueBroadcastTasks(ctx,m.db,m.driver,5)
+	if err!=nil { if ctx.Err()==nil { log.Printf("claim due broadcast tasks failed: %v",err) }; return }
+	for _,id:=range ids { go m.processBroadcastTask(ctx,id) }
+}
+
+func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
+	task,err:=database.GetBroadcastTask(ctx,m.db,m.driver,taskID)
+	if err!=nil { log.Printf("load broadcast task failed: task_id=%s error=%v",taskID,err); return }
+	m.mu.Lock();current:=m.workers[task.BotID];m.mu.Unlock()
+	if current==nil { _=database.FinishBroadcastTask(ctx,m.db,m.driver,taskID,"failed",0,task.TotalCount);return }
+	recipients,err:=database.ListPendingBroadcastRecipients(ctx,m.db,m.driver,taskID)
+	if err!=nil { log.Printf("load broadcast recipients failed: task_id=%s error=%v",taskID,err);return }
+	var sent,failed int
+	for _,recipient:=range recipients {
+		if ctx.Err()!=nil { return }
+		optedOut,optErr:=database.IsBroadcastOptedOut(ctx,m.db,m.driver,task.BotID,recipient.TelegramUserID)
+		if optErr==nil&&optedOut {
+			_ = database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","用户已退订",recipient.Attempts)
+			failed++;continue
+		}
+		chatID,parseErr:=strconv.ParseInt(recipient.ChatID,10,64)
+		if parseErr!=nil { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","无效的 Telegram Chat ID",recipient.Attempts);failed++;continue }
+		var sendErr error
+		attempts:=recipient.Attempts
+		for retry:=0;retry<3;retry++ {
+			attempts++
+			retryAfter,err:=m.sendBroadcastMessage(ctx,current.config.Token,chatID,task.MessageText)
+			if err==nil { sendErr=nil;break }
+			sendErr=err
+			delay:=time.Duration(1<<retry)*time.Second
+			if retryAfter>0 { delay=time.Duration(retryAfter)*time.Second }
+			if delay>30*time.Second { delay=30*time.Second }
+			if retry<2&&!wait(ctx,delay){return}
+		}
+		if sendErr!=nil { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed",sendErr.Error(),attempts);failed++ } else { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"sent","",attempts);sent++ }
+		if !wait(ctx,45*time.Millisecond) { return }
+	}
+	status:="completed";if failed>0&&sent>0{status="completed_with_errors"}else if failed>0{status="failed"}
+	if err:=database.FinishBroadcastTask(ctx,m.db,m.driver,taskID,status,sent,failed);err!=nil{log.Printf("finish broadcast task failed: task_id=%s error=%v",taskID,err)}
+	log.Printf("telegram broadcast completed: task_id=%s bot_id=%s sent=%d failed=%d",taskID,task.BotID,sent,failed)
 }
 
 func (m *Manager) sendMessage(ctx context.Context, token string, chatID int64, text string) error {
