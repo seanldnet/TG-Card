@@ -586,6 +586,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
+	if first == "/unsubscribe" || first == "/subscribe" {
+		optOut:=first=="/unsubscribe"
+		if err:=database.SetBroadcastOptOut(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),optOut);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订阅设置失败，请稍后重试。") } else if optOut { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已退订本机器人群发通知。发送 /subscribe 可重新订阅。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已重新订阅本机器人通知。") }
+		return
+	}
 	if first == "/admin" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
 		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
