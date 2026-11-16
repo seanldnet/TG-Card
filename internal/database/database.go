@@ -296,6 +296,8 @@ type Product struct {
 	DeliveryType string `json:"deliveryType"`
 	Status int `json:"status"`
 	StockCount int `json:"stockCount"`
+	BulkDiscountJSON string `json:"bulkDiscountJson"`
+	DeliveryConfigJSON string `json:"deliveryConfigJson"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -335,12 +337,12 @@ func DeleteCategory(ctx context.Context, db *sql.DB, driver, id string) error {
 }
 
 func ListProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
-	rows,err:=db.QueryContext(ctx,`SELECT p.id,COALESCE(p.category_id,''),COALESCE(c.name,''),p.name,p.description,p.price_minor,p.currency,p.delivery_type,p.status,
+	rows,err:=db.QueryContext(ctx,`SELECT p.id,COALESCE(p.category_id,''),COALESCE(c.name,''),p.name,p.description,p.price_minor,p.currency,p.delivery_type,p.status,COALESCE(p.bulk_discount_json,'[]'),COALESCE(p.delivery_config_json,'{}'),
 	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),p.created_at,p.updated_at
 	FROM products p LEFT JOIN product_categories c ON c.id=p.category_id ORDER BY p.created_at DESC`)
 	if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]Product,0)
-	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.StockCount,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
+	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
 	return items,rows.Err()
 }
 
@@ -348,15 +350,17 @@ func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (P
 	id,err:=randomID();if err!=nil{return Product{},err};now:=time.Now().UTC().Format(time.RFC3339Nano)
 	p.ID=id;p.CreatedAt=now;p.UpdatedAt=now;if p.Currency==""{p.Currency="USDT"};if p.DeliveryType==""{p.DeliveryType="card"};if p.Status==0{p.Status=1}
 	var category any;if p.CategoryID!=""{category=p.CategoryID}
-	query:="INSERT INTO products(id,category_id,name,description,price_minor,currency,delivery_type,status,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")"
-	_,err=db.ExecContext(ctx,query,p.ID,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.CreatedAt,p.UpdatedAt)
+	query:="INSERT INTO products(id,category_id,name,description,price_minor,currency,delivery_type,status,bulk_discount_json,delivery_config_json,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+","+placeholder(driver,11)+","+placeholder(driver,12)+")"
+	if p.BulkDiscountJSON=="" { p.BulkDiscountJSON="[]" }; if p.DeliveryConfigJSON=="" { p.DeliveryConfigJSON="{}" }
+	_,err=db.ExecContext(ctx,query,p.ID,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.BulkDiscountJSON,p.DeliveryConfigJSON,p.CreatedAt,p.UpdatedAt)
 	return p,err
 }
 
 func UpdateProduct(ctx context.Context, db *sql.DB, driver string, p Product) error {
 	now:=time.Now().UTC().Format(time.RFC3339Nano);var category any;if p.CategoryID!=""{category=p.CategoryID}
-	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",updated_at="+placeholder(driver,8)+" WHERE id="+placeholder(driver,9)
-	result,err:=db.ExecContext(ctx,query,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,now,p.ID);if err!=nil{return err}
+	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)
+	if p.BulkDiscountJSON=="" { p.BulkDiscountJSON="[]" }; if p.DeliveryConfigJSON=="" { p.DeliveryConfigJSON="{}" }
+	result,err:=db.ExecContext(ctx,query,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.BulkDiscountJSON,p.DeliveryConfigJSON,now,p.ID);if err!=nil{return err}
 	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
 

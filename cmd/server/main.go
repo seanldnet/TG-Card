@@ -162,6 +162,7 @@ func main() {
 	}
 	paymentsEnabled := paymentSettings.TronEnabled && apiKey != "" && paymentSettings.TronReceiveAddress != ""
 	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
+	botManager.SetEncryptor(secrets.Encrypt)
 	if rawSite, siteErr := database.GetSiteSettings(ctx, db); siteErr == nil {
 		var initialSite siteSettings
 		if json.Unmarshal([]byte(rawSite), &initialSite) == nil { botManager.SetOwnerID(initialSite.TelegramOwnerID); botManager.SetCustomerServiceURL(initialSite.TelegramCustomerServiceURL); botManager.SetCommunityLinks(initialSite.TelegramCommunityURL, initialSite.TelegramSupportGroupURL) }
@@ -210,6 +211,8 @@ func main() {
 	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
+	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
+	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
 	api.HandleFunc("PUT /api/support/tickets/{id}", app.updateSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
@@ -241,6 +244,21 @@ type paymentSettingsView struct {
 	ReceiveAddress string `json:"receiveAddress"`
 	USDTContract string `json:"usdtContract"`
 	Enabled bool `json:"enabled"`
+}
+
+func (a *application) getRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
+ if _,ok:=a.authenticate(w,r);!ok{return}
+ rule,err:=database.GetWalletRechargeBonusRule(r.Context(),a.db);if err!=nil{log.Printf("load recharge bonus rule: %v",err);writeError(w,http.StatusInternalServerError,"无法读取充值赠送规则");return}
+ writeSuccess(w,http.StatusOK,rule)
+}
+func (a *application) updateRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
+ claims,ok:=a.authenticate(w,r);if !ok{return}
+ var rule database.WalletRechargeBonusRule
+ if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&rule);err!=nil{writeError(w,http.StatusBadRequest,"充值赠送规则格式无效");return}
+ if err:=database.SaveWalletRechargeBonusRule(r.Context(),a.db,a.driver,rule);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.recharge_bonus.update","wallet:recharge_bonus",clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t tiers=%d",rule.Enabled,len(rule.Tiers)))
+ saved,err:=database.GetWalletRechargeBonusRule(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"保存成功但读取配置失败");return}
+ writeSuccess(w,http.StatusOK,saved)
 }
 
 func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request) {
@@ -801,6 +819,48 @@ type productInput struct {
 	Currency string `json:"currency"`
 	DeliveryType string `json:"deliveryType"`
 	Status int `json:"status"`
+	BulkDiscount json.RawMessage `json:"bulkDiscount"`
+	DeliveryConfig json.RawMessage `json:"deliveryConfig"`
+}
+
+type bulkDiscountTier struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
+func normalizeDeliveryConfig(deliveryType string, raw json.RawMessage) (string,error) {
+	var config map[string]any
+	if len(raw)>0 && string(raw)!="null" {
+		if err:=json.Unmarshal(raw,&config);err!=nil{return "",fmt.Errorf("商品交付配置格式无效")}
+	}
+	if config==nil { config=map[string]any{} }
+	switch deliveryType {
+	case "card":
+		config=map[string]any{}
+	case "fixed_text":
+		value,_:=config["text"].(string);value=strings.TrimSpace(value)
+		if value==""||len(value)>4000{return "",fmt.Errorf("固定文本交付内容必须为 1-4000 个字符")}
+		config=map[string]any{"text":value}
+	case "invite_link":
+		chatID,_:=config["chatId"].(string);chatID=strings.TrimSpace(chatID)
+		if chatID==""||len(chatID)>32{return "",fmt.Errorf("邀请链接必须配置目标 Telegram 群组 Chat ID")}
+		expiry:=60
+		if v,ok:=config["expireMinutes"].(float64);ok { expiry=int(v) }
+		if expiry<5||expiry>10080{return "",fmt.Errorf("邀请链接有效期必须为 5-10080 分钟")}
+		config=map[string]any{"chatId":chatID,"expireMinutes":expiry}
+	case "file","file_card":
+		fileID,_:=config["fileId"].(string);fileID=strings.TrimSpace(fileID)
+		if fileID==""||len(fileID)>1000{return "",fmt.Errorf("文件交付必须配置 Telegram file_id")}
+		config=map[string]any{"fileId":fileID}
+	default:
+		return "",fmt.Errorf("不支持的商品交付方式")
+	}
+	encoded,err:=json.Marshal(config);if err!=nil{return "",err};return string(encoded),nil
+}
+func normalizeBulkDiscount(raw json.RawMessage) (string,error) {
+	if len(raw)==0 || string(raw)=="null" { return "[]",nil }
+	var tiers []bulkDiscountTier
+	if err:=json.Unmarshal(raw,&tiers);err!=nil{return "",fmt.Errorf("阶梯折扣格式无效")}
+	if len(tiers)>20{return "",fmt.Errorf("最多配置 20 个折扣阶梯")}
+	last:=1
+	for _,tier:=range tiers { if tier.MinQuantity<2 || tier.MinQuantity>100 || tier.MinQuantity<=last || tier.DiscountPercent<1 || tier.DiscountPercent>90 { return "",fmt.Errorf("折扣阶梯数量必须递增（2-100），折扣比例必须为 1-90") }; last=tier.MinQuantity }
+	encoded,err:=json.Marshal(tiers);if err!=nil{return "",err};return string(encoded),nil
 }
 type keyImportInput struct { Content string `json:"content"` }
 
@@ -833,8 +893,10 @@ func (a *application) createProduct(w http.ResponseWriter,r *http.Request) {
 	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency))
 	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||in.PriceMinor>9_000_000_000_000||len(in.Description)>4000||(in.Status!=0&&in.Status!=1){writeError(w,400,"Invalid product fields");return}
 	if in.Currency==""{in.Currency="USDT"};if in.Currency!="USDT"{writeError(w,400,"Only USDT pricing is currently supported");return}
-	if in.DeliveryType==""{in.DeliveryType="card"};if in.DeliveryType!="card"{writeError(w,400,"Unsupported delivery type");return}
-	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status})
+	if in.DeliveryType==""{in.DeliveryType="card"}
+	discountJSON,discountErr:=normalizeBulkDiscount(in.BulkDiscount);if discountErr!=nil{writeError(w,400,discountErr.Error());return}
+	deliveryJSON,deliveryErr:=normalizeDeliveryConfig(in.DeliveryType,in.DeliveryConfig);if deliveryErr!=nil{writeError(w,400,deliveryErr.Error());return}
+	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON,DeliveryConfigJSON:deliveryJSON})
 	if err!=nil{writeError(w,400,"Unable to save product; check the category");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.create","product:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
 	writeSuccess(w,201,item)
@@ -843,8 +905,10 @@ func (a *application) updateProduct(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
 	var in productInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
 	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency));if in.Currency==""{in.Currency="USDT"};if in.DeliveryType==""{in.DeliveryType="card"}
-	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||len(in.Description)>4000||(in.Status!=0&&in.Status!=1)||in.Currency!="USDT"||in.DeliveryType!="card"{writeError(w,400,"Invalid product fields");return}
-	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status})
+	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||len(in.Description)>4000||(in.Status!=0&&in.Status!=1)||in.Currency!="USDT"{writeError(w,400,"Invalid product fields");return}
+	discountJSON,discountErr:=normalizeBulkDiscount(in.BulkDiscount);if discountErr!=nil{writeError(w,400,discountErr.Error());return}
+	deliveryJSON,deliveryErr:=normalizeDeliveryConfig(in.DeliveryType,in.DeliveryConfig);if deliveryErr!=nil{writeError(w,400,deliveryErr.Error());return}
+	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON,DeliveryConfigJSON:deliveryJSON})
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,400,"Unable to update product");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.update","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,200,map[string]bool{"updated":true})
@@ -870,6 +934,7 @@ func (a *application) importProductKeys(w http.ResponseWriter,r *http.Request) {
 	inserted,err:=database.ImportProductKeys(r.Context(),a.db,a.driver,r.PathValue("id"),items)
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,500,"Unable to import card keys");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.keys.import","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),fmt.Sprintf("submitted=%d inserted=%d",len(items),inserted))
+	if inserted>0 && a.botManager!=nil { go a.botManager.NotifyProductRestocked(context.Background(),r.PathValue("id")) }
 	writeSuccess(w,200,map[string]int{"submitted":len(items),"inserted":inserted,"duplicates":len(items)-inserted})
 }
 

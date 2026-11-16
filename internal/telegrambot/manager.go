@@ -41,6 +41,7 @@ type Manager struct {
 	db *sql.DB
 	driver string
 	decrypt func(string) (string, error)
+	encrypt func(string) (string, error)
 	expiryCancel context.CancelFunc
 	paymentAddress string
 	paymentEnabled bool
@@ -82,6 +83,12 @@ type Message struct {
 	Chat Chat `json:"chat"`
 	From *TelegramUser `json:"from"`
 	NewChatMembers []TelegramUser `json:"new_chat_members"`
+	Document *TelegramDocument `json:"document"`
+}
+type TelegramDocument struct {
+	FileID string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
 }
 
 type Chat struct {
@@ -119,6 +126,8 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 
 
 // SetNotifier attaches the application-level notification dispatcher.
+func (m *Manager) SetEncryptor(encrypt func(string) (string, error)) { m.mu.Lock(); m.encrypt=encrypt; m.mu.Unlock() }
+
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
  m.mu.Lock()
  m.notifier = notifier
@@ -258,6 +267,9 @@ func (m *Manager) checkLowStock(ctx context.Context) {
 	if ownerID==""{return}
 	now:=time.Now()
 	for _,p:=range products{
+		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
+		if !keyBacked { m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue }
+		if p.Status==1 && p.StockCount>0 { m.NotifyProductRestocked(ctx,p.ID) }
 		if p.Status!=1||p.StockCount>5{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
 		m.mu.Lock();last:=m.stockAlerted[p.ID];due:=last.IsZero()||now.Sub(last)>=6*time.Hour
 		if due{m.stockAlerted[p.ID]=now}
@@ -301,22 +313,19 @@ func (m *Manager) retryDueDeliveries(ctx context.Context) {
 
 func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chatID int64, productID string) {
 	products, err := database.ListProducts(ctx, m.db)
-	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
-	for _, p := range products {
-		if p.ID != productID || p.Status != 1 { continue }
-		if p.StockCount < 1 { _ = m.sendMessage(ctx, cfg.Token, chatID, "该商品库存不足，请返回商城选择其他商品。"); return }
-		text := "请确认订单信息：\n商品：" + p.Name + "\n商品金额：" + formatPrice(p.PriceMinor, p.Currency) + "\n数量：1\n库存：" + strconv.Itoa(p.StockCount) + "\n\n确认后将为你锁定一份库存，订单需在 20 分钟内完成付款。"
-		paymentAddress, paymentEnabled := m.paymentConfig()
-		if paymentEnabled && paymentAddress != "" {
-			text += "\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"
-		} else {
-			text += "\n支付尚未启用，请勿转账。"
-		}
-		markup := map[string]any{"inline_keyboard": [][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, markup)
-		return
+	if err != nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"商品暂时无法加载，请稍后再试。"); return }
+	for _,p:=range products {
+		if p.ID!=productID||p.Status!=1 { continue }
+		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
+		if keyBacked&&p.StockCount<1 { _ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。"); return }
+		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}
+		text:="请确认订单信息：\n商品："+p.Name+"\n商品金额："+formatPrice(p.PriceMinor,p.Currency)+"\n数量：1\n"+stockText+"\n\n确认后将创建订单，需在 20 分钟内完成付款。"
+		paymentAddress,paymentEnabled:=m.paymentConfig()
+		if paymentEnabled&&paymentAddress!=""{text+="\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"}else{text+="\n支付尚未启用，请勿转账。"}
+		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,markup);return
 	}
-	_ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在或已下架。")
+	_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在或已下架。")
 }
 
 func (m *Manager) run(ctx context.Context, cfg Config) {
@@ -375,6 +384,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
 	}
+	if msg.Document != nil {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文件 ID 查询仅对 Bot 主人开放。"); return }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id（复制到后台商品文件配置）：\n"+msg.Document.FileID)
+		return
+	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
@@ -388,12 +402,14 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			for _, product := range products {
 				if product.Status != 1 { continue }
 				if strings.Contains(strings.ToLower(product.Name+" "+product.Description), needle) {
-					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
+					stockLabel:="不限量";if product.DeliveryType==""||product.DeliveryType=="card"||product.DeliveryType=="file_card"{stockLabel="库存 "+strconv.Itoa(product.StockCount)}
+					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · " + stockLabel
 					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
 				}
 			}
-			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", mainMenuKeyboard()); return }
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows))+"）：", map[string]any{"inline_keyboard": rows})
+			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", shopBackKeyboard()); return }
+			rows = append(rows,[]map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows)-1)+"）：", map[string]any{"inline_keyboard": rows})
 			return
 		case pending == "support_order_manual":
 			orderNo := strings.TrimSpace(text)
@@ -415,10 +431,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			}
 			ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), orderNo, "other", description)
 			if err != nil {
-				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error()+"\n你可以重新点击“申请售后”选择订单。", mainMenuKeyboard())
+				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error()+"\n你可以重新点击“申请售后”选择订单。", supportBackKeyboard())
 				return
 			}
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", mainMenuKeyboard())
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
 			return
 		case pending == "wallet_custom_amount":
@@ -436,8 +452,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	first := strings.SplitN(command[0], "@", 2)[0]
 	if first == "/admin" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
-		menu := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 商品列表","callback_data":"owner:products"}},{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}}}}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：可直接在机器人内查看商品或新增商品。",menu)
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：此菜单仅对当前 Bot 主人开放。",ownerMenuKeyboard())
 		return
 	}
 	if first == "/addproduct" {
@@ -457,12 +472,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	switch {
 	case text == "🔎 搜索商品":
 		m.setPendingAction(cfg.ID, msg.Chat.ID, "search")
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", shopBackKeyboard())
 	case text == "🧾 申请售后":
 		m.startSupportFlow(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first=="/balance" || text=="💳 我的余额":
-		balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10))
-		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"暂时无法查询余额，请稍后再试。",mainMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard()) }
+		m.showWalletBalance(ctx,cfg,msg.Chat.ID,msg.From.ID)
 	case first=="/recharge" || text=="💰 余额充值":
 		if len(command)>1 {
 			value,err:=strconv.ParseFloat(command[1],64)
@@ -470,6 +484,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请选择充值金额：",rechargeKeyboard())
 	case first == "/start":
+		if m.isOwner(cfg,msg.From.ID) {
+			_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"欢迎回来，Bot 主人。请选择商品管理操作。",ownerMenuKeyboard())
+			return
+		}
 		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));balanceText:="暂不可查询";if balanceErr==nil{balanceText=formatUSDTAtomic(balance)+" USDT"}
 		welcomeMessage:=strings.TrimSpace(cfg.WelcomeMessage);if welcomeMessage==""{welcomeMessage="🎉 欢迎来到我们的商城！"}
 		purchaseNotice:=strings.TrimSpace(cfg.PurchaseNotice);if purchaseNotice==""{purchaseNotice="📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密"}
@@ -484,15 +502,15 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
 	case text == "🧾 售后帮助":
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "点击“申请售后”后，选择订单并直接描述问题即可；如果列表里没有订单，也可以手动输入订单号。", mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "点击“申请售后”后，选择订单并直接描述问题即可；如果列表里没有订单，也可以手动输入订单号。", supportBackKeyboard())
 	case first == "/support":
 		if len(command) < 3 {
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请发送：/support 订单号 问题描述\n例如：/support TC202611150001 卡密无法使用", mainMenuKeyboard())
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请点击“申请售后”，选择订单并描述问题。", supportBackKeyboard())
 			return
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",supportBackKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
 }
@@ -500,7 +518,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "暂时无法查询你的订单，请稍后再试。")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "暂时无法查询你的订单，请稍后再试。", supportBackKeyboard())
 		return
 	}
 	rows := make([][]map[string]string, 0)
@@ -516,17 +534,63 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 		message = "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。"
 	}
 	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
+	rows = append(rows, []map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, message, map[string]any{"inline_keyboard": rows})
 }
 
+
+// showWalletBalance keeps the balance interaction focused: identity, balance and two actions only.
+func (m *Manager) showWalletBalance(ctx context.Context,cfg Config,chatID,userID int64) {
+  balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(userID,10))
+  if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额，请稍后再试。",walletBalanceKeyboard()); return }
+  text:="👤 Telegram 用户 ID："+strconv.FormatInt(userID,10)+"\n💰 账户余额："+formatUSDTAtomic(balance)+" USDT"
+  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,walletBalanceKeyboard())
+}
+
+func walletBalanceKeyboard() map[string]any {
+  return map[string]any{"inline_keyboard":[][]map[string]string{
+    {{"text":"💰 充值余额","callback_data":"wallet:openrecharge"},{"text":"🔄 刷新账户","callback_data":"wallet:refresh"}},
+  }}
+}
+
+// NotifyProductRestocked sends one availability message per pending subscription.
+// The subscription is acknowledged only after Telegram accepts the message.
+func (m *Manager) NotifyProductRestocked(ctx context.Context,productID string) {
+	products,err:=database.ListProducts(ctx,m.db);if err!=nil{return}
+	var product *database.Product
+	for i:=range products { if products[i].ID==productID { product=&products[i];break } }
+	if product==nil || product.StockCount<1 { return }
+	subscribers,err:=database.ClaimPendingProductStockNotifications(ctx,m.db,m.driver,productID,100,2*time.Minute)
+	if err!=nil { log.Printf("claim stock notification subscribers failed: product_id=%s error=%v",productID,err);return }
+	for _,sub:=range subscribers {
+		m.mu.Lock();worker:=m.workers[sub.BotID];m.mu.Unlock()
+		if worker==nil { _=database.ReleaseProductStockNotificationClaim(ctx,m.db,m.driver,sub.ID); continue }
+		chatID,err:=strconv.ParseInt(sub.TelegramChatID,10,64);if err!=nil{_ = database.ReleaseProductStockNotificationClaim(ctx,m.db,m.driver,sub.ID);continue}
+		text:="🔔 你关注的商品已经补货！\n商品："+product.Name+"\n价格："+formatPrice(product.PriceMinor,product.Currency)+"\n当前库存："+strconv.Itoa(product.StockCount)
+		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"立即查看商品","callback_data":"shop:product:"+product.ID}}}}
+		if err:=m.sendMessageMarkup(ctx,worker.config.Token,chatID,text,markup);err!=nil {
+			log.Printf("send stock notification failed: product_id=%s subscriber_id=%s error=%v",productID,sub.ID,err)
+			_ = database.ReleaseProductStockNotificationClaim(ctx,m.db,m.driver,sub.ID)
+			continue
+		}
+		if err:=database.MarkProductStockNotificationSent(ctx,m.db,m.driver,sub.ID);err!=nil { log.Printf("mark stock notification sent failed: subscription_id=%s error=%v",sub.ID,err) }
+	}
+}
 func rechargeKeyboard() map[string]any {
 	return map[string]any{"inline_keyboard": [][]map[string]string{
 		{{"text": "5 USDT", "callback_data": "wallet:recharge:5000000"}, {"text": "10 USDT", "callback_data": "wallet:recharge:10000000"}},
 		{{"text": "20 USDT", "callback_data": "wallet:recharge:20000000"}, {"text": "50 USDT", "callback_data": "wallet:recharge:50000000"}},
 		{{"text": "100 USDT", "callback_data": "wallet:recharge:100000000"}, {"text": "自定义金额", "callback_data": "wallet:custom"}},
+		{{"text":"⬅️ 返回余额","callback_data":"menu:balance"}},
 	}}
 }
 
+func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
+	{{"text":"📦 商品列表","callback_data":"owner:products"}},
+	{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}},
+}}}
+func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
+func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
  {{"text":"🛍️ 商品中心","callback_data":"menu:shop"},{"text":"🔎 搜索商品","callback_data":"menu:search"}},
  {{"text":"📦 我的订单","callback_data":"menu:orders"},{"text":"💳 我的余额","callback_data":"menu:balance"}},
@@ -580,9 +644,9 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 	}
 }
 func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
- cats,err:=database.ListCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",mainMenuKeyboard());return}
- products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",mainMenuKeyboard());return}
- active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",mainMenuKeyboard());return}
+ cats,err:=database.ListCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
+ products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",shopBackKeyboard());return}
+ active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0)
  for _,c:=range cats{if c.Status!=1{continue};n:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==c.ID{n++}};if n>0{rows=append(rows,[]map[string]string{{"text":c.Name+"（"+strconv.Itoa(n)+"）","callback_data":"shop:category:"+c.ID}})}}
  other:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==""{other++}};if other>0{rows=append(rows,[]map[string]string{{"text":"其他商品（"+strconv.Itoa(other)+"）","callback_data":"shop:category:__uncategorized__"}})}
@@ -591,9 +655,9 @@ func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛍️ 商品中心\n请选择商品分类：",map[string]any{"inline_keyboard":rows})
 }
 func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
- products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",mainMenuKeyboard());return}
+ products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0)
- for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
+ for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="不限量";if p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"{stock="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)}};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
  if len(rows)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回分类","callback_data":"shop:home"}}}});return}
  rows=append(rows,[]map[string]string{{"text":"⬅️ 返回分类","callback_data":"shop:home"}})
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（无库存商品也可以查看详情）：",map[string]any{"inline_keyboard":rows})
@@ -604,23 +668,51 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
 	for _, p := range products {
 		if p.ID != productID || p.Status != 1 { continue }
-		text := p.Name + `
-
-` + p.Description + `
-
-价格：` + formatPrice(p.PriceMinor, p.Currency) + `
-库存：` + strconv.Itoa(p.StockCount)
-		buttons := [][]map[string]string{{{"text":"确认购买","callback_data":"shop:confirm:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
-		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"暂时缺货，不能购买","callback_data":"shop:home"}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
+		keyBacked := p.DeliveryType == "" || p.DeliveryType == "card" || p.DeliveryType == "file_card"
+		stockLabel := "库存：不限量交付"
+		if keyBacked { stockLabel = "库存：" + strconv.Itoa(p.StockCount) }
+		text := p.Name + "\n\n" + p.Description + "\n\n价格：" + formatPrice(p.PriceMinor,p.Currency) + "\n" + stockLabel
+		var discountTiers []struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
+		if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil && len(discountTiers)>0 {
+			text += "\n批量优惠："
+			for _,tier:=range discountTiers { text += "\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%" }
+		}
+		buttons := make([][]map[string]string,0)
+		if keyBacked && p.StockCount < 1 {
+			buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}}}
+		} else if keyBacked {
+			for _, quantity := range []int{1,2,3,5,10} {
+				if quantity <= p.StockCount { label := "购买 "+strconv.Itoa(quantity)+" 件"; buttons = append(buttons, []map[string]string{{"text":label,"callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}}) }
+			}
+		} else {
+			buttons = append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}})
+		}
+		buttons = append(buttons, []map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
 		return
 	}
 	_ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在、已下架或暂不可购买。")
 }
 
+func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int) {
+	order, err := database.CreateOrderWithQuantity(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, 20*time.Minute)
+	if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
+	balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
+	text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)
+	gross:=order.UnitPriceMinor*int64(order.Quantity)
+	if saved:=gross-order.AmountMinor;saved>0{text+="\n批量优惠已减："+formatPrice(saved,order.Currency)}
+	text+="\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
+	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
+	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
+	_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
+	m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
+	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
+}
+
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
+	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID) }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
 	}
@@ -628,16 +720,24 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"owner:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		switch query.Data {
+		case "owner:home":
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"主人管理菜单：请选择商品管理操作。",ownerMenuKeyboard())
 		case "owner:addproduct":
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号")
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号",ownerMenuKeyboard())
 		case "owner:products":
 			products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
 			var lines []string
 			for _,p:=range products{lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+strconv.Itoa(p.StockCount))}
 			if len(lines)==0{lines=append(lines,"暂无商品")}
-			_ = m.sendMessage(ctx,cfg.Token,chatID,strings.Join(lines,"\n"))
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
+	case strings.HasPrefix(query.Data,"stock:subscribe:"):
+		productID:=strings.TrimPrefix(query.Data,"stock:subscribe:")
+		err:=database.SubscribeProductStock(ctx,m.db,m.driver,productID,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10))
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订阅失败，请稍后重试"); return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
 	case query.Data == "shop:home":
 		m.showShop(ctx,cfg,chatID)
 	case strings.HasPrefix(query.Data,"shop:category:"):
@@ -645,12 +745,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"menu:"):
 		switch strings.TrimPrefix(query.Data,"menu:") {
 		case "shop": m.showShop(ctx,cfg,chatID)
-		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",mainMenuKeyboard())
+		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",shopBackKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
-		case "balance": balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额。",mainMenuKeyboard())}else{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard())}
+		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
 		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
 		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
-		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击消息中的按钮即可浏览商品、查询订单和余额、充值或申请售后。",mainMenuKeyboard())
+		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击“商品中心”浏览商品，或使用下方返回按钮回到商城。",shopBackKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开")
 		return
@@ -661,17 +761,15 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data, "shop:confirm:"):
 		m.showPurchaseConfirmation(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:confirm:"))
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请核对订单信息")
+	case strings.HasPrefix(query.Data, "shop:buyqty:"):
+		parts := strings.Split(strings.TrimPrefix(query.Data,"shop:buyqty:"),":")
+		if len(parts)!=2 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买参数无效"); return }
+		quantity, parseErr := strconv.Atoi(parts[1])
+		if parseErr!=nil || quantity<1 || quantity>100 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买数量无效"); return }
+		m.createPurchaseOrder(ctx,cfg,query,chatID,parts[0],quantity)
 	case strings.HasPrefix(query.Data, "shop:buy:"):
 		productID := strings.TrimPrefix(query.Data, "shop:buy:")
-		order, err := database.CreateOrder(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, 20*time.Minute)
-		if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
-		balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
-		text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
-		if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
-		keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
-		m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
+		m.createPurchaseOrder(ctx,cfg,query,chatID,productID,1)
 	case strings.HasPrefix(query.Data,"shop:walletpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:walletpay:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
@@ -680,7 +778,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付失败"); _ = m.sendMessage(ctx,cfg.Token,chatID,"余额支付失败："+err.Error()); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付成功")
 		m.Notify("payment_success","站内余额付款成功：订单 "+delivery.Order.OrderNo+"\n剩余余额："+formatUSDTAtomic(balance)+" USDT",strconv.FormatInt(chatID,10))
-		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但自动发货遇到问题，管理员会尽快处理。") } else { _ = m.sendMessage(ctx,cfg.Token,chatID,"站内余额支付成功，商品已进入发货流程。") }
+		claimed,claimErr:=database.ClaimOrderDelivery(ctx,m.db,m.driver,orderID,2*time.Minute)
+		if claimErr!=nil { log.Printf("wallet paid order delivery lease failed: order_id=%s error=%v",orderID,claimErr); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，商品已进入后台发货队列，请稍后查看订单。"); return }
+		if !claimed { _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，发货正在处理中，请稍后查看订单。"); return }
+		delivery,loadErr:=database.GetOrderDelivery(ctx,m.db,m.driver,orderID)
+		if loadErr!=nil { log.Printf("wallet paid order delivery load failed: order_id=%s error=%v",orderID,loadErr); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但发货信息暂时无法读取，系统会自动重试。"); return }
+		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但自动发货遇到问题，系统会自动重试。") } else { _ = m.sendMessage(ctx,cfg.Token,chatID,"站内余额支付成功，商品已发出。") }
 	case strings.HasPrefix(query.Data,"shop:chainpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:chainpay:")
 		order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
@@ -691,10 +794,16 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
+	case query.Data=="wallet:openrecharge":
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"请选择充值金额")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
+	case query.Data=="wallet:refresh":
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"账户信息已刷新")
+		m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "wallet:custom":
 		m.setPendingAction(cfg.ID, chatID, "wallet_custom_amount")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入充值金额")
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "请输入充值金额（USDT），最低 1 USDT，例如：25")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入充值金额（USDT），最低 1 USDT，例如：25",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"取消并返回余额","callback_data":"menu:balance"}}}})
 	case query.Data == "support:manual":
 		m.setPendingAction(cfg.ID, chatID, "support_order_manual")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入订单号")
@@ -722,7 +831,7 @@ func (m *Manager) SendWalletRechargeNotice(ctx context.Context,item database.Wal
 	m.mu.Lock();current:=m.workers[item.BotID];m.mu.Unlock()
 	if current==nil{return fmt.Errorf("Telegram bot for recharge is not running")}
 	chatID,err:=strconv.ParseInt(item.TelegramChatID,10,64);if err!=nil{return fmt.Errorf("invalid recharge chat ID: %w",err)}
-	text:="站内余额充值成功！\n充值单号："+item.RechargeNo+"\n本次入账："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n当前余额："+formatUSDTAtomic(balance)+" USDT"
+	text:="站内余额充值成功！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n充值赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n本次入账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\n当前余额："+formatUSDTAtomic(balance)+" USDT"
 	return m.sendMessage(ctx,current.config.Token,chatID,text)
 }
 
@@ -731,7 +840,7 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 	if !enabled || address=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"充值功能暂未启用，请联系管理员。");return }
 	item,err:=database.CreateWalletRecharge(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(userID,10),strconv.FormatInt(chatID,10),amountAtomic,30*time.Minute)
 	if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"创建充值单失败："+err.Error());return }
-	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n到账余额："+formatUSDTAtomic(item.AmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+formatUSDTAtomic(item.PaymentAmountAtomic)+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
+	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n预计赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n预计到账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+formatUSDTAtomic(item.PaymentAmountAtomic)+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
 	markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},{{"text":"🛍️ 返回商城","callback_data":"shop:home"}}}}
 	if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码暂不可用，请复制收款地址。",markup) }
 }
@@ -740,10 +849,10 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
 		log.Printf("telegram user orders failed: bot_id=%s user_id=%d error=%v", cfg.ID, user.ID, err)
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。", shopBackKeyboard())
 		return
 	}
-	if len(orders) == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, "你还没有订单。"); return }
+	if len(orders) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "你还没有订单。", shopBackKeyboard()); return }
 	var b strings.Builder
 	b.WriteString("最近订单：")
 	paymentAddress, paymentEnabled := m.paymentConfig()
@@ -774,7 +883,6 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 // Payment adapters must call this only after independently verifying settlement.
 func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
 	if item.Order.Status == "delivered" { return nil }
-	if item.SecretCiphertext == "" { return fmt.Errorf("paid order has no recoverable card key") }
 	m.mu.Lock()
 	current := m.workers[item.Order.BotID]
 	m.mu.Unlock()
@@ -783,32 +891,118 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
 		return err
 	}
-	if m.decrypt == nil {
-		err := fmt.Errorf("card-key decryptor is not configured")
-		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
-		return err
-	}
-	cardKey, err := m.decrypt(item.SecretCiphertext)
-	if err != nil {
-		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "decrypt card key: "+err.Error())
-		return err
-	}
 	chatID, err := strconv.ParseInt(item.Order.TelegramChatID, 10, 64)
 	if err != nil {
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "invalid Telegram chat ID")
 		return fmt.Errorf("invalid Telegram chat ID: %w", err)
 	}
-	message := "订单：" + item.Order.OrderNo + "\n卡密：\n" + cardKey + "\n请妥善保存，不要转发给他人。"
-	if err := m.sendMessage(ctx, current.config.Token, chatID, message); err != nil {
-		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
-		return fmt.Errorf("send paid order delivery: %w", err)
+	mode := item.Order.DeliveryType
+	if mode == "" { mode = "card" }
+	var config struct {
+		Text string `json:"text"`
+		ChatID string `json:"chatId"`
+		ExpireMinutes int `json:"expireMinutes"`
+		FileID string `json:"fileId"`
+	}
+	if err := json.Unmarshal([]byte(item.Order.DeliveryConfigSnapshot), &config); err != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,"invalid delivery configuration snapshot")
+		return fmt.Errorf("decode delivery configuration: %w",err)
+	}
+	var deliveredKeys []string
+	if mode == "card" || mode == "file_card" {
+		if m.decrypt == nil {
+			err := fmt.Errorf("card-key decryptor is not configured")
+			_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
+			return err
+		}
+		for _, ciphertext := range strings.Split(item.SecretCiphertext,"\n") {
+			if ciphertext == "" { continue }
+			cardKey, decryptErr := m.decrypt(ciphertext)
+			if decryptErr != nil {
+				_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,"decrypt card key: "+decryptErr.Error())
+				return decryptErr
+			}
+			deliveredKeys = append(deliveredKeys,cardKey)
+		}
+		if len(deliveredKeys) != item.Order.Quantity {
+			err := fmt.Errorf("paid order key count mismatch: expected %d, got %d",item.Order.Quantity,len(deliveredKeys))
+			_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,err.Error())
+			return err
+		}
+	}
+	var deliveryErr error
+	switch mode {
+	case "card":
+		message := "订单：" + item.Order.OrderNo + "\n卡密：\n" + strings.Join(deliveredKeys,"\n") + "\n请妥善保存，不要转发给他人。"
+		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,message)
+	case "fixed_text":
+		if strings.TrimSpace(config.Text)=="" { deliveryErr=fmt.Errorf("fixed text delivery is not configured") } else {
+			deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n"+config.Text)
+		}
+	case "invite_link":
+		if strings.TrimSpace(config.ChatID)=="" { deliveryErr=fmt.Errorf("invite link target chat is not configured"); break }
+		var payload struct { InviteLink string `json:"inviteLink"` }
+		if item.Order.DeliveryPayloadJSON!="" && item.Order.DeliveryPayloadJSON!="{}" {
+			if m.decrypt==nil { deliveryErr=fmt.Errorf("delivery payload decryptor is not configured");break }
+			plain,decryptErr:=m.decrypt(item.Order.DeliveryPayloadJSON);if decryptErr!=nil{deliveryErr=fmt.Errorf("decrypt saved invite link: %w",decryptErr);break}
+			if deliveryErr=json.Unmarshal([]byte(plain),&payload);deliveryErr!=nil{break}
+		}
+		if payload.InviteLink=="" {
+			minutes:=config.ExpireMinutes;if minutes<5||minutes>10080{minutes=60}
+			payload.InviteLink,deliveryErr=m.createOneTimeInviteLink(ctx,current.config.Token,config.ChatID,time.Now().Add(time.Duration(minutes)*time.Minute))
+			if deliveryErr!=nil { break }
+			encoded,_:=json.Marshal(payload)
+			if m.encrypt==nil { deliveryErr=fmt.Errorf("delivery payload encryptor is not configured");break }
+			encrypted,encryptErr:=m.encrypt(string(encoded));if encryptErr!=nil{deliveryErr=encryptErr;break}
+			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,encrypted);deliveryErr!=nil { break }
+		}
+		deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
+	case "file":
+		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
+			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+		}
+	case "file_card":
+		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
+			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+			if deliveryErr==nil {
+				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+strings.Join(deliveredKeys,"\n")+"\n请妥善保存，不要转发给他人。")
+			}
+		}
+	default:
+		deliveryErr=fmt.Errorf("unsupported delivery mode: %s",mode)
+	}
+	if deliveryErr != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error())
+		return fmt.Errorf("send paid order delivery: %w",deliveryErr)
 	}
 	if err := database.MarkOrderDelivered(ctx, m.db, m.driver, item.Order.ID); err != nil {
-		log.Printf("Telegram card sent but order delivery state update failed: order_id=%s error=%v", item.Order.ID, err)
+		log.Printf("Telegram delivery sent but order state update failed: order_id=%s error=%v", item.Order.ID, err)
 		return err
 	}
 	m.Notify("delivery_success", "自动发货成功：订单 "+item.Order.OrderNo, item.Order.TelegramChatID)
-	log.Printf("Telegram order delivered: bot_id=%s order_id=%s", item.Order.BotID, item.Order.ID)
+	log.Printf("Telegram order delivered: bot_id=%s order_id=%s mode=%s", item.Order.BotID, item.Order.ID, mode)
+	return nil
+}
+
+func (m *Manager) createOneTimeInviteLink(ctx context.Context, token, targetChatID string, expiresAt time.Time) (string,error) {
+	payload,_:=json.Marshal(map[string]any{"chat_id":targetChatID,"member_limit":1,"expire_date":expiresAt.Unix()})
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/createChatInviteLink",bytes.NewReader(payload))
+	if err!=nil{return "",err};req.Header.Set("Content-Type","application/json")
+	response,err:=m.client.Do(req);if err!=nil{return "",err};defer response.Body.Close()
+	var result struct { OK bool `json:"ok"`; Description string `json:"description"`; Result struct { InviteLink string `json:"invite_link"` } `json:"result"` }
+	if err:=json.NewDecoder(response.Body).Decode(&result);err!=nil{return "",err}
+	if response.StatusCode!=http.StatusOK||!result.OK||result.Result.InviteLink==""{return "",fmt.Errorf("Telegram createChatInviteLink failed: %s",result.Description)}
+	return result.Result.InviteLink,nil
+}
+
+func (m *Manager) sendDocument(ctx context.Context, token string, chatID int64, fileID, caption string) error {
+	payload,_:=json.Marshal(map[string]any{"chat_id":chatID,"document":fileID,"caption":caption})
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendDocument",bytes.NewReader(payload))
+	if err!=nil{return err};req.Header.Set("Content-Type","application/json")
+	response,err:=m.client.Do(req);if err!=nil{return err};defer response.Body.Close()
+	var result apiResult
+	if err:=json.NewDecoder(response.Body).Decode(&result);err!=nil{return err}
+	if response.StatusCode!=http.StatusOK||!result.OK{return fmt.Errorf("Telegram sendDocument HTTP %d: %s",response.StatusCode,result.Description)}
 	return nil
 }
 

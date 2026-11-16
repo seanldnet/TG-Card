@@ -461,3 +461,153 @@ func TestClearOrderDataResetsHistoryWithoutResellingDeliveredKeys(t *testing.T) 
 	if soldStatus!=2||soldOrderID.Valid{t.Fatalf("delivered key must remain sold and detached: status=%d order=%v",soldStatus,soldOrderID)}
 	if reservedStatus!=0||reservedOrderID.Valid{t.Fatalf("pending reservation should be released: status=%d order=%v",reservedStatus,reservedOrderID)}
 }
+
+func TestCreateBulkOrderAppliesDiscountAndDeliversAllReservedKeys(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+
+	product, err := CreateProduct(ctx, db, "sqlite", Product{
+		Name:"Bulk card", PriceMinor:1000, Currency:"USDT", DeliveryType:"card", Status:1,
+		BulkDiscountJSON:`[{"minQuantity":2,"discountPercent":10},{"minQuantity":5,"discountPercent":20}]`,
+	})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, "sqlite", product.ID, []StockSecret{
+		{Ciphertext:"cipher-one",Fingerprint:"bulk-one"},
+		{Ciphertext:"cipher-two",Fingerprint:"bulk-two"},
+		{Ciphertext:"cipher-three",Fingerprint:"bulk-three"},
+	}); err != nil { t.Fatal(err) }
+
+	order, err := CreateOrderWithQuantity(ctx, db, "sqlite", "bot-bulk", "user-bulk", "chat-bulk", product.ID, 2, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if order.Quantity != 2 || order.UnitPriceMinor != 1000 || order.AmountMinor != 1800 {
+		t.Fatalf("bulk price snapshot incorrect: %+v", order)
+	}
+	if _, err := CreateOrderWithQuantity(ctx, db, "sqlite", "bot-other", "user-other", "chat-other", product.ID, 2, time.Minute); err == nil {
+		t.Fatal("insufficient inventory must reject the whole order")
+	}
+	products, err := ListProducts(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(products)!=1 || products[0].StockCount!=1 { t.Fatalf("failed bulk reservation partially consumed inventory: %+v",products) }
+
+	paid, err := ConfirmOrderPayment(ctx, db, "sqlite", order.ID, "test-adapter", "bulk-payment-reference")
+	if err != nil { t.Fatal(err) }
+	want := "cipher-one\ncipher-two"
+	if paid.SecretCiphertext != want { t.Fatalf("paid order did not load all card keys: %q",paid.SecretCiphertext) }
+	recovered, err := GetOrderDelivery(ctx, db, "sqlite", order.ID)
+	if err != nil { t.Fatal(err) }
+	if recovered.SecretCiphertext != want || recovered.Order.Quantity != 2 {
+		t.Fatalf("bulk delivery recovery mismatch: %+v",recovered)
+	}
+}
+
+
+func TestWalletRechargeBonusIsSnapshottedAndCreditedExactlyOnce(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ if _,err:=db.ExecContext(ctx,"INSERT INTO telegram_users(id,telegram_user_id,created_at,updated_at) VALUES('u1','10001',?,?)",now,now);err!=nil{t.Fatal(err)}
+ rule:=WalletRechargeBonusRule{Enabled:true,Tiers:[]WalletRechargeBonusTier{{MinAmountAtomic:10_000_000,BonusType:"fixed",BonusValue:1_000_000},{MinAmountAtomic:50_000_000,BonusType:"percent",BonusValue:1000}}}
+ if err:=SaveWalletRechargeBonusRule(ctx,db,"sqlite",rule);err!=nil{t.Fatal(err)}
+ invoice,err:=CreateWalletRecharge(ctx,db,"sqlite","bot1","10001","10001",10_000_000,30*time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if invoice.BonusAmountAtomic!=1_000_000{t.Fatalf("bonus was not snapshotted: %+v",invoice)}
+ txID:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+ paid,balance,err:=ConfirmWalletRecharge(ctx,db,"sqlite",invoice.ID,txID)
+ if err!=nil{t.Fatal(err)}
+ if paid.BonusAmountAtomic!=1_000_000||balance!=11_000_000{t.Fatalf("unexpected credited amount: paid=%+v balance=%d",paid,balance)}
+ _,balance,err=ConfirmWalletRecharge(ctx,db,"sqlite",invoice.ID,txID)
+ if err!=nil{t.Fatal(err)}
+ if balance!=11_000_000{t.Fatalf("duplicate confirmation changed balance: %d",balance)}
+ var ledgerCount int
+ if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE telegram_user_id='10001'").Scan(&ledgerCount);err!=nil{t.Fatal(err)}
+ if ledgerCount!=2{t.Fatalf("expected principal and bonus ledger entries exactly once, got %d",ledgerCount)}
+}
+
+
+
+func TestNonCardOrderSnapshotsDeliveryAndRecoversWithoutKeys(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{
+		Name:"Private group access",PriceMinor:2500,Currency:"USDT",DeliveryType:"invite_link",Status:1,
+		DeliveryConfigJSON:`{"chatId":"-100123456789","expireMinutes":45}`,
+	})
+	if err!=nil{t.Fatal(err)}
+	order,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-invite","user-invite","chat-invite",product.ID,1,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if order.DeliveryType!="invite_link"||order.DeliveryConfigSnapshot!=product.DeliveryConfigJSON{t.Fatalf("delivery config was not snapshotted: %+v",order)}
+	if _,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-invite","user-invite","chat-invite",product.ID,2,time.Minute);err==nil{t.Fatal("non-card delivery must reject quantity greater than one")}
+	paid,err:=ConfirmOrderPayment(ctx,db,"sqlite",order.ID,"test-adapter","invite-payment-reference")
+	if err!=nil{t.Fatal(err)}
+	if paid.Order.DeliveryType!="invite_link"||paid.SecretCiphertext!=""{t.Fatalf("non-card payment unexpectedly requires card stock: %+v",paid)}
+	payload:=`{"inviteLink":"https://t.me/+single-use-link"}`
+	if err:=SaveOrderDeliveryPayload(ctx,db,"sqlite",order.ID,payload);err!=nil{t.Fatal(err)}
+	if err:=MarkOrderDeliveryFailed(ctx,db,"sqlite",order.ID,"Telegram send timeout");err!=nil{t.Fatal(err)}
+	retry,err:=GetOrderDelivery(ctx,db,"sqlite",order.ID)
+	if err!=nil{t.Fatal(err)}
+	if retry.Order.DeliveryType!="invite_link"||retry.Order.DeliveryConfigSnapshot!=product.DeliveryConfigJSON||retry.Order.DeliveryPayloadJSON!=payload||retry.SecretCiphertext!=""{t.Fatalf("non-card delivery retry snapshot mismatch: %+v",retry)}
+}
+
+func TestStockNotificationClaimsPreventConcurrentDuplicateDispatch(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	bot,err:=CreateBot(ctx,db,"sqlite","Stock Bot","stock_bot","cipher-token","stock-fp","")
+	if err!=nil{t.Fatal(err)}
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Restock item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1})
+	if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,"sqlite",product.ID,[]StockSecret{{Ciphertext:"stock-secret",Fingerprint:"stock-secret-fp"}});err!=nil{t.Fatal(err)}
+	if err:=SubscribeProductStock(ctx,db,"sqlite",product.ID,bot.ID,"telegram-1","chat-1");err!=nil{t.Fatal(err)}
+	claimed,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(claimed)!=1{t.Fatalf("expected one claimed notification, got %d",len(claimed))}
+	second,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(second)!=0{t.Fatalf("same notification was claimed twice: %+v",second)}
+	if err:=ReleaseProductStockNotificationClaim(ctx,db,"sqlite",claimed[0].ID);err!=nil{t.Fatal(err)}
+	retry,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(retry)!=1{t.Fatalf("released notification was not retryable: %+v",retry)}
+	if err:=MarkProductStockNotificationSent(ctx,db,"sqlite",retry[0].ID);err!=nil{t.Fatal(err)}
+	final,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(final)!=0{t.Fatalf("sent notification became claimable again: %+v",final)}
+}
+
+
+func TestWalletCheckoutSupportsNonCardAndMultiKeyDelivery(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,"sqlite","wallet-multi","walletbuyer","Wallet","Buyer","bot-1");err!=nil{t.Fatal(err)}
+	users,err:=ListTelegramUsers(ctx,db);if err!=nil{t.Fatal(err)}
+	if _,err:=AdjustTelegramUserBalance(ctx,db,"sqlite",users[0].ID,"admin",5_000_000,"credit","test funding");err!=nil{t.Fatal(err)}
+	fixed,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Text delivery",PriceMinor:100,Currency:"USDT",DeliveryType:"fixed_text",DeliveryConfigJSON:`{"text":"Your activation code is ABC"}`,Status:1})
+	if err!=nil{t.Fatal(err)}
+	fixedOrder,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-1","wallet-multi","wallet-multi",fixed.ID,1,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	fixedPaid,_,err:=PayOrderWithWallet(ctx,db,"sqlite",fixedOrder.ID)
+	if err!=nil{t.Fatal(err)}
+	if fixedPaid.Order.DeliveryType!="fixed_text"||fixedPaid.Order.DeliveryConfigSnapshot!=fixed.DeliveryConfigJSON||fixedPaid.SecretCiphertext!=""{t.Fatalf("fixed text wallet delivery snapshot incorrect: %+v",fixedPaid)}
+	fileCard,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"File and keys",PriceMinor:100,Currency:"USDT",DeliveryType:"file_card",DeliveryConfigJSON:`{"fileId":"telegram-file-id"}`,Status:1})
+	if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,"sqlite",fileCard.ID,[]StockSecret{{Ciphertext:"file-card-one",Fingerprint:"file-card-one"},{Ciphertext:"file-card-two",Fingerprint:"file-card-two"}});err!=nil{t.Fatal(err)}
+	fileOrder,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-1","wallet-multi","wallet-multi",fileCard.ID,2,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	filePaid,_,err:=PayOrderWithWallet(ctx,db,"sqlite",fileOrder.ID)
+	if err!=nil{t.Fatal(err)}
+	if filePaid.Order.DeliveryType!="file_card"||filePaid.Order.DeliveryConfigSnapshot!=fileCard.DeliveryConfigJSON||filePaid.SecretCiphertext!="file-card-one\nfile-card-two"{t.Fatalf("file+card wallet checkout mismatch: %+v",filePaid)}
+}
