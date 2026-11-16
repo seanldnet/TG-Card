@@ -477,6 +477,8 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	switch {
+	case first == "/cart" || text == "🛒 我的购物车":
+		m.showCart(ctx,cfg,msg.Chat.ID,msg.From.ID)
 	case text == "🔎 搜索商品":
 		m.setPendingAction(cfg.ID, msg.Chat.ID, "search")
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", shopBackKeyboard())
@@ -643,6 +645,7 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 		{"setMyCommands", map[string]any{"commands": []map[string]string{
 			{"command":"start","description":"打开主菜单"},
 			{"command":"shop","description":"浏览商城"},
+			{"command":"cart","description":"查看购物车"},
 			{"command":"orders","description":"查看我的订单"},
 			{"command":"balance","description":"查看站内余额"},
 			{"command":"recharge","description":"充值站内余额"},
@@ -699,12 +702,10 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 		return
 	}
 	var lines []string
-	var total int64
-	var currency string
+	currencyTotals := make(map[string]int64)
 	rows := make([][]map[string]string,0,len(items)*2+2)
 	for _, item := range items {
-		total += item.LineTotalMinor
-		currency = item.Currency
+		currencyTotals[item.Currency] += item.LineTotalMinor
 		stock := "不限量"
 		if item.DeliveryType=="" || item.DeliveryType=="card" || item.DeliveryType=="file_card" {
 			stock = "库存 "+strconv.Itoa(item.StockCount)
@@ -713,7 +714,9 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 		lines = append(lines,fmt.Sprintf("%s × %d\n%s · %s",item.ProductName,item.Quantity,formatPrice(item.UnitPriceMinor,item.Currency),stock))
 		rows = append(rows,[]map[string]string{{"text":"−","callback_data":"cart:dec:"+item.ProductID},{"text":strconv.Itoa(item.Quantity)+" 件","callback_data":"cart:show"},{"text":"+","callback_data":"cart:inc:"+item.ProductID},{"text":"删除","callback_data":"cart:remove:"+item.ProductID}})
 	}
-	text := "🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计："+formatPrice(total,currency)+"\n\n数量和库存会在结算时再次校验。"
+	totalLines := make([]string,0,len(currencyTotals))
+	for currency, amount := range currencyTotals { totalLines = append(totalLines,formatPrice(amount,currency)) }
+	text := "🛒 我的购物车\\n\\n"+strings.Join(lines,"\\n\\n")+"\\n\\n商品小计：\\n"+strings.Join(totalLines,"\\n")+"\\n\\n数量和库存会在结算时再次校验。"
 	rows = append(rows,[]map[string]string{{"text":"🧹 清空购物车","callback_data":"cart:clear"},{"text":"🛍️ 继续选购","callback_data":"shop:home"}})
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":rows})
 }
