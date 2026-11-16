@@ -584,3 +584,30 @@ func TestStockNotificationClaimsPreventConcurrentDuplicateDispatch(t *testing.T)
 	if err!=nil{t.Fatal(err)}
 	if len(final)!=0{t.Fatalf("sent notification became claimable again: %+v",final)}
 }
+
+
+func TestWalletCheckoutSupportsNonCardAndMultiKeyDelivery(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,"sqlite","wallet-multi","walletbuyer","Wallet","Buyer","bot-1");err!=nil{t.Fatal(err)}
+	users,err:=ListTelegramUsers(ctx,db);if err!=nil{t.Fatal(err)}
+	if _,err:=AdjustTelegramUserBalance(ctx,db,"sqlite",users[0].ID,"admin",5_000_000,"credit","test funding");err!=nil{t.Fatal(err)}
+	fixed,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Text delivery",PriceMinor:100,Currency:"USDT",DeliveryType:"fixed_text",DeliveryConfigJSON:`{"text":"Your activation code is ABC"}`,Status:1})
+	if err!=nil{t.Fatal(err)}
+	fixedOrder,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-1","wallet-multi","wallet-multi",fixed.ID,1,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	fixedPaid,_,err:=PayOrderWithWallet(ctx,db,"sqlite",fixedOrder.ID)
+	if err!=nil{t.Fatal(err)}
+	if fixedPaid.Order.DeliveryType!="fixed_text"||fixedPaid.Order.DeliveryConfigSnapshot!=fixed.DeliveryConfigJSON||fixedPaid.SecretCiphertext!=""{t.Fatalf("fixed text wallet delivery snapshot incorrect: %+v",fixedPaid)}
+	fileCard,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"File and keys",PriceMinor:100,Currency:"USDT",DeliveryType:"file_card",DeliveryConfigJSON:`{"fileId":"telegram-file-id"}`,Status:1})
+	if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,"sqlite",fileCard.ID,[]StockSecret{{Ciphertext:"file-card-one",Fingerprint:"file-card-one"},{Ciphertext:"file-card-two",Fingerprint:"file-card-two"}});err!=nil{t.Fatal(err)}
+	fileOrder,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-1","wallet-multi","wallet-multi",fileCard.ID,2,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	filePaid,_,err:=PayOrderWithWallet(ctx,db,"sqlite",fileOrder.ID)
+	if err!=nil{t.Fatal(err)}
+	if filePaid.Order.DeliveryType!="file_card"||filePaid.Order.DeliveryConfigSnapshot!=fileCard.DeliveryConfigJSON||filePaid.SecretCiphertext!="file-card-one\nfile-card-two"{t.Fatalf("file+card wallet checkout mismatch: %+v",filePaid)}
+}
