@@ -1,6 +1,8 @@
 package database
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"golang.org/x/crypto/bcrypt"
 	"context"
 	"testing"
@@ -359,4 +361,37 @@ func TestFindAdminByUsernameScansProfileAndRole(t *testing.T) {
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte("a-strong-test-password")); err != nil {
 		t.Fatalf("stored password hash does not match bootstrap password: %v", err)
 	}
+}
+
+
+func TestTelegramUserBalanceLedger(t *testing.T) {
+	ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"123456","buyer_name","Buyer","Example","bot-a");err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"123456","buyer_new","Buyer","Updated","bot-b");err!=nil{t.Fatal(err)}
+	users,err:=ListTelegramUsers(ctx,db);if err!=nil{t.Fatal(err)}
+	if len(users)!=1||users[0].Username!="buyer_new"||users[0].LastSeenBotID!="bot-b"{t.Fatalf("unexpected Telegram user: %+v",users)}
+	balance,err:=AdjustTelegramUserBalance(ctx,db,cfg.DBDriver,users[0].ID,"admin-id",2_500_000,"credit","test credit");if err!=nil{t.Fatal(err)}
+	if balance!=2_500_000{t.Fatalf("balance=%d, want 2500000",balance)}
+	balance,err=AdjustTelegramUserBalance(ctx,db,cfg.DBDriver,users[0].ID,"admin-id",500_000,"debit","test debit");if err!=nil{t.Fatal(err)}
+	if balance!=2_000_000{t.Fatalf("balance=%d, want 2000000",balance)}
+	if _,err:=AdjustTelegramUserBalance(ctx,db,cfg.DBDriver,users[0].ID,"admin-id",3_000_000,"debit","overspend");err==nil{t.Fatal("debit exceeding balance must fail")}
+	users,err=ListTelegramUsers(ctx,db);if err!=nil{t.Fatal(err)}
+	if len(users)!=1||users[0].BalanceAtomic!=2_000_000{t.Fatalf("balance ledger not persisted: %+v",users)}
+}
+
+func TestAdminEmailVerificationAndRateLimit(t *testing.T) {
+	ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	hash:=sha256.Sum256([]byte("123456"));hashText:=hex.EncodeToString(hash[:])
+	if err:=SaveAdminEmailCode(ctx,db,cfg.DBDriver,created.Username,"admin@example.com",hashText,time.Now().Add(10*time.Minute));err==nil{t.Fatal("expected invalid admin ID to fail")}
+	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
+	if err:=SaveAdminEmailCode(ctx,db,cfg.DBDriver,admin.ID,"admin@example.com",hashText,time.Now().Add(10*time.Minute));err!=nil{t.Fatal(err)}
+	if err:=SaveAdminEmailCode(ctx,db,cfg.DBDriver,admin.ID,"admin@example.com",hashText,time.Now().Add(10*time.Minute));err==nil{t.Fatal("second code request within 60 seconds should be rate limited")}
+	if err:=VerifyAdminEmailCode(ctx,db,cfg.DBDriver,admin.ID,"admin@example.com",hashText);err!=nil{t.Fatal(err)}
+	email,verified,err:=GetAdminEmail(ctx,db,cfg.DBDriver,admin.ID);if err!=nil{t.Fatal(err)}
+	if email!="admin@example.com"||!verified{t.Fatalf("email verification not saved: email=%s verified=%v",email,verified)}
 }
