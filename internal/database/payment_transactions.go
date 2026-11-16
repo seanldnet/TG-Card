@@ -185,3 +185,11 @@ func ClassifyTRC20RechargeTransfer(ctx context.Context,db *sql.DB,driver,transac
 	q:="UPDATE payment_transactions SET status='matched',order_id=NULL,wallet_recharge_id="+placeholder(driver,1)+",reconciliation_note="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE provider="+placeholder(driver,4)+" AND transaction_id="+placeholder(driver,5)+" AND status IN ('unmatched','reconciliation_required')"
 	res,err:=db.ExecContext(ctx,q,rechargeID,note,now,"trc20-usdt",transactionID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("交易状态已被其他操作修改")};return nil
 }
+
+func FlagTRC20RechargeTransfer(ctx context.Context,db *sql.DB,driver,transactionID,rechargeID,note string)error{
+	if len(transactionID)!=64||rechargeID==""{return fmt.Errorf("invalid expired wallet recharge transfer")}
+	if len(note)>1000{note=note[:1000]}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	q:="UPDATE payment_transactions SET status='reconciliation_required',order_id=NULL,wallet_recharge_id="+placeholder(driver,1)+",reconciliation_note="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE provider="+placeholder(driver,4)+" AND transaction_id="+placeholder(driver,5)+" AND status='unmatched'"
+	res,err:=db.ExecContext(ctx,q,rechargeID,note,now,"trc20-usdt",transactionID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("transaction state changed before recharge review flag")};return nil
+}
