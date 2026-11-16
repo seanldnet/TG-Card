@@ -82,6 +82,12 @@ type Message struct {
 	Chat Chat `json:"chat"`
 	From *TelegramUser `json:"from"`
 	NewChatMembers []TelegramUser `json:"new_chat_members"`
+	Document *TelegramDocument `json:"document"`
+}
+type TelegramDocument struct {
+	FileID string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
 }
 
 type Chat struct {
@@ -372,6 +378,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if msg.Chat.Type != "private" || msg.From == nil { return }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
+	}
+	if msg.Document != nil {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文件 ID 查询仅对 Bot 主人开放。"); return }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id（复制到后台商品文件配置）：\n"+msg.Document.FileID)
+		return
 	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
