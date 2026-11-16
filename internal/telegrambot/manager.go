@@ -3,7 +3,9 @@ package telegrambot
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -582,6 +584,30 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
 		return
 	}
+		if first == "/userbalance" {
+			if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对机器人主人开放。"); return }
+			if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/userbalance Telegram用户数字ID"); return }
+			balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,command[1])
+			if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用户不存在或余额暂不可查询。"); return }
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"Telegram 用户 ID："+command[1]+"\n站内余额："+formatUSDTAtomic(balance)+" USDT")
+			return
+		}
+		if first == "/addstock" {
+			if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对机器人主人开放。"); return }
+			parts:=strings.SplitN(text,"|",2)
+			if len(parts)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/addstock 商品ID | 卡密1,卡密2,卡密3"); return }
+			args:=strings.Fields(parts[0]);if len(args)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"请提供正确的商品 ID。"); return }
+			keys:=strings.FieldsFunc(parts[1],func(r rune)bool{return r==','||r=='\n'||r=='\r'})
+			if len(keys)==0||len(keys)>200 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"每次请导入 1 到 200 条卡密。"); return }
+			m.mu.Lock();encrypt:=m.encrypt;m.mu.Unlock()
+			if encrypt==nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"加密服务暂不可用，请在后台检查密钥配置。"); return }
+			secrets:=make([]database.StockSecret,0,len(keys))
+			for _,key:=range keys { key=strings.TrimSpace(key);if key==""{continue};cipher,err:=encrypt(key);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"卡密加密失败，未导入本批库存。");return};fingerprint:=sha256.Sum256([]byte(key));secrets=append(secrets,database.StockSecret{Ciphertext:cipher,Fingerprint:hex.EncodeToString(fingerprint[:])}) }
+			inserted,err:=database.ImportProductKeys(ctx,m.db,m.driver,args[1],secrets)
+			if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"库存导入失败："+err.Error());return }
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"库存导入完成。\n提交："+strconv.Itoa(len(secrets))+" 条\n新增："+strconv.Itoa(inserted)+" 条\n重复跳过："+strconv.Itoa(len(secrets)-inserted)+" 条")
+			return
+		}
 	if first == "/addproduct" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
 		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(text,command[0])),"|",3)
