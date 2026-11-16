@@ -681,6 +681,8 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	switch {
+	case text == "🛠️ 主人管理" && m.isOwner(cfg,msg.From.ID):
+		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
 	case text == "🛍️ 商品中心":
 		m.showShop(ctx,cfg,msg.Chat.ID)
 	case text == "🏠 主菜单":
@@ -829,12 +831,12 @@ func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard
 	{{"text":"⛔ 关闭待付款订单","callback_data":"owner:closeorder"}},
 	{{"text":"⬅️ 返回个人首页","callback_data":"owner:back"}},
 }}}
-func mainReplyKeyboard() map[string]any { return map[string]any{"keyboard":[][]map[string]string{
+func mainReplyKeyboard(isOwner bool) map[string]any { rows:=[][]map[string]string{
 	{{"text":"🛍️ 商品中心"},{"text":"🔎 搜索商品"}},
 	{{"text":"📦 我的订单"},{"text":"💳 我的余额"}},
 	{{"text":"💰 余额充值"},{"text":"🧾 申请售后"}},
 	{{"text":"❓ 使用帮助"},{"text":"🏠 主菜单"}},
-},"resize_keyboard":true,"is_persistent":true,"input_field_placeholder":"选择菜单功能"} }
+}};if isOwner { rows=append(rows,[]map[string]string{{"text":"🛠️ 主人管理"}}) };return map[string]any{"keyboard":rows,"resize_keyboard":true,"is_persistent":true,"input_field_placeholder":"选择菜单功能"} }
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
@@ -869,7 +871,7 @@ func (m *Manager) showStartHome(ctx context.Context, cfg Config, chatID int64, u
 	welcome := welcomeMessage + "\n\n👋 " + displayName +
 		"\n👤 Telegram ID：" + strconv.FormatInt(user.ID, 10) +
 		"\n💰 当前余额：" + balanceText + "\n\n" + purchaseNotice
-	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, mainReplyKeyboard())
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, mainReplyKeyboard(m.isOwner(cfg,user.ID)))
 }
 
 // configureMenu publishes BotFather-style commands and explicitly selects the
