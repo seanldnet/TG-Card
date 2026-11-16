@@ -596,9 +596,10 @@ func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard"
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
  {{"text":"🛍️ 商品中心","callback_data":"menu:shop"},{"text":"🔎 搜索商品","callback_data":"menu:search"}},
- {{"text":"📦 我的订单","callback_data":"menu:orders"},{"text":"💳 我的余额","callback_data":"menu:balance"}},
- {{"text":"💰 余额充值","callback_data":"menu:recharge"},{"text":"🧾 申请售后","callback_data":"menu:support"}},
- {{"text":"❓ 使用帮助","callback_data":"menu:help"}},
+ {{ "text":"🛒 购物车","callback_data":"menu:cart"},{"text":"📦 我的订单","callback_data":"menu:orders"}},
+ {{"text":"💳 我的余额","callback_data":"menu:balance"},{"text":"💰 余额充值","callback_data":"menu:recharge"}},
+ {{"text":"🧾 申请售后","callback_data":"menu:support"},{"text":"❓ 使用帮助","callback_data":"menu:help"}},
+ 
 }}}
 func welcomeKeyboard(cfg Config, isOwner bool) map[string]any {
  rows:=mainMenuKeyboard()["inline_keyboard"].([][]map[string]string)
@@ -688,6 +689,35 @@ func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categ
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（无库存商品也可以查看详情）：",map[string]any{"inline_keyboard":rows})
 }
 
+
+func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUserID int64) {
+	userID := strconv.FormatInt(telegramUserID,10)
+	items, err := database.ListCartItems(ctx,m.db,m.driver,cfg.ID,userID)
+	if err != nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"购物车暂时无法读取，请稍后重试。"); return }
+	if len(items)==0 {
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛒 购物车还是空的。\n去商品中心挑选商品，点击“加入购物车”即可。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🛍️ 去逛商城","callback_data":"shop:home"}}}})
+		return
+	}
+	var lines []string
+	var total int64
+	var currency string
+	rows := make([][]map[string]string,0,len(items)*2+2)
+	for _, item := range items {
+		total += item.LineTotalMinor
+		currency = item.Currency
+		stock := "不限量"
+		if item.DeliveryType=="" || item.DeliveryType=="card" || item.DeliveryType=="file_card" {
+			stock = "库存 "+strconv.Itoa(item.StockCount)
+			if item.StockCount < item.Quantity { stock += "（库存不足）" }
+		}
+		lines = append(lines,fmt.Sprintf("%s × %d\n%s · %s",item.ProductName,item.Quantity,formatPrice(item.UnitPriceMinor,item.Currency),stock))
+		rows = append(rows,[]map[string]string{{"text":"−","callback_data":"cart:dec:"+item.ProductID},{"text":strconv.Itoa(item.Quantity)+" 件","callback_data":"cart:show"},{"text":"+","callback_data":"cart:inc:"+item.ProductID},{"text":"删除","callback_data":"cart:remove:"+item.ProductID}})
+	}
+	text := "🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计："+formatPrice(total,currency)+"\n\n数量和库存会在结算时再次校验。"
+	rows = append(rows,[]map[string]string{{"text":"🧹 清空购物车","callback_data":"cart:clear"},{"text":"🛍️ 继续选购","callback_data":"shop:home"}})
+	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":rows})
+}
+
 func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, productID string) {
 	products, err := database.ListProducts(ctx, m.db)
 	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
@@ -713,6 +743,8 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 			buttons = append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}})
 			buttons = append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})
 		}
+		buttons = append(buttons, []map[string]string{{"text":"🛒 加入购物车","callback_data":"cart:add:"+p.ID}})
+		buttons = append(buttons, []map[string]string{{"text":"🛒 查看购物车","callback_data":"cart:show"}})
 		buttons = append(buttons, []map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
 		return
@@ -782,6 +814,41 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订阅失败，请稍后重试"); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
+	case query.Data == "cart:show":
+		m.showCart(ctx, cfg, chatID, query.From.ID)
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "已打开购物车")
+	case strings.HasPrefix(query.Data, "cart:add:"):
+		productID := strings.TrimPrefix(query.Data, "cart:add:")
+		if err := database.AddCartItem(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), productID, 1); err != nil {
+			_ = m.answerCallback(ctx, cfg.Token, query.ID, "加入失败")
+			_ = m.sendMessage(ctx, cfg.Token, chatID, "加入购物车失败："+err.Error())
+			return
+		}
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "已加入购物车")
+		m.showCart(ctx, cfg, chatID, query.From.ID)
+	case strings.HasPrefix(query.Data, "cart:inc:") || strings.HasPrefix(query.Data, "cart:dec:") || strings.HasPrefix(query.Data, "cart:remove:"):
+		parts := strings.Split(query.Data, ":")
+		if len(parts) != 3 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车操作无效"); return }
+		items, err := database.ListCartItems(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10))
+		if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"读取购物车失败"); return }
+		var current int
+		for _, item := range items { if item.ProductID == parts[2] { current = item.Quantity; break } }
+		if current == 0 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"商品已不在购物车"); return }
+		switch parts[1] {
+		case "inc":
+			if err = database.SetCartItemQuantity(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),parts[2],current+1); err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,err.Error()); return }
+		case "dec":
+			if current <= 1 { err = database.RemoveCartItem(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),parts[2]) } else { err = database.SetCartItemQuantity(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),parts[2],current-1) }
+			if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"更新失败"); return }
+		case "remove":
+			if err = database.RemoveCartItem(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),parts[2]); err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"删除失败"); return }
+		}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已更新")
+		m.showCart(ctx,cfg,chatID,query.From.ID)
+	case query.Data == "cart:clear":
+		_ = database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10))
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已清空")
+		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "shop:home":
 		m.showShop(ctx,cfg,chatID)
 	case strings.HasPrefix(query.Data,"shop:category:"):
@@ -789,6 +856,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"menu:"):
 		switch strings.TrimPrefix(query.Data,"menu:") {
 		case "shop": m.showShop(ctx,cfg,chatID)
+		case "cart": m.showCart(ctx,cfg,chatID,query.From.ID)
 		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",shopBackKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
 		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
