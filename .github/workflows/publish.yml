@@ -22,7 +22,7 @@ permissions:
 # Serialize publishes so an older build can never overwrite the newest :latest.
 concurrency:
   group: tg-card-publish-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
