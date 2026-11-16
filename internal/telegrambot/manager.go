@@ -84,6 +84,7 @@ type TelegramUser struct {
 	ID int64 `json:"id"`
 	Username string `json:"username"`
 	FirstName string `json:"first_name"`
+	LastName string `json:"last_name"`
 }
 
 type apiResult struct {
@@ -293,6 +294,9 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	if msg.Chat.Type != "private" || msg.From == nil { return }
+	if m.db != nil {
+		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
+	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
 	command := strings.Fields(text)
@@ -429,6 +433,9 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
+	if m.db != nil {
+		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
+	}
 	switch {
 	case strings.HasPrefix(query.Data,"owner:"):
 		if !m.isOwner(query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
