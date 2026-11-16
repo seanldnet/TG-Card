@@ -529,3 +529,58 @@ func TestWalletRechargeBonusIsSnapshottedAndCreditedExactlyOnce(t *testing.T) {
  if ledgerCount!=2{t.Fatalf("expected principal and bonus ledger entries exactly once, got %d",ledgerCount)}
 }
 
+
+
+func TestNonCardOrderSnapshotsDeliveryAndRecoversWithoutKeys(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{
+		Name:"Private group access",PriceMinor:2500,Currency:"USDT",DeliveryType:"invite_link",Status:1,
+		DeliveryConfigJSON:`{"chatId":"-100123456789","expireMinutes":45}`,
+	})
+	if err!=nil{t.Fatal(err)}
+	order,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-invite","user-invite","chat-invite",product.ID,1,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if order.DeliveryType!="invite_link"||order.DeliveryConfigSnapshot!=product.DeliveryConfigJSON{t.Fatalf("delivery config was not snapshotted: %+v",order)}
+	if _,err:=CreateOrderWithQuantity(ctx,db,"sqlite","bot-invite","user-invite","chat-invite",product.ID,2,time.Minute);err==nil{t.Fatal("non-card delivery must reject quantity greater than one")}
+	paid,err:=ConfirmOrderPayment(ctx,db,"sqlite",order.ID,"test-adapter","invite-payment-reference")
+	if err!=nil{t.Fatal(err)}
+	if paid.Order.DeliveryType!="invite_link"||paid.SecretCiphertext!=""{t.Fatalf("non-card payment unexpectedly requires card stock: %+v",paid)}
+	payload:=`{"inviteLink":"https://t.me/+single-use-link"}`
+	if err:=SaveOrderDeliveryPayload(ctx,db,"sqlite",order.ID,payload);err!=nil{t.Fatal(err)}
+	if err:=MarkOrderDeliveryFailed(ctx,db,"sqlite",order.ID,"Telegram send timeout");err!=nil{t.Fatal(err)}
+	retry,err:=GetOrderDelivery(ctx,db,"sqlite",order.ID)
+	if err!=nil{t.Fatal(err)}
+	if retry.Order.DeliveryType!="invite_link"||retry.Order.DeliveryConfigSnapshot!=product.DeliveryConfigJSON||retry.Order.DeliveryPayloadJSON!=payload||retry.SecretCiphertext!=""{t.Fatalf("non-card delivery retry snapshot mismatch: %+v",retry)}
+}
+
+func TestStockNotificationClaimsPreventConcurrentDuplicateDispatch(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	bot,err:=CreateBot(ctx,db,"sqlite","Stock Bot","stock_bot","cipher-token","stock-fp","")
+	if err!=nil{t.Fatal(err)}
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Restock item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1})
+	if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,"sqlite",product.ID,[]StockSecret{{Ciphertext:"stock-secret",Fingerprint:"stock-secret-fp"}});err!=nil{t.Fatal(err)}
+	if err:=SubscribeProductStock(ctx,db,"sqlite",product.ID,bot.ID,"telegram-1","chat-1");err!=nil{t.Fatal(err)}
+	claimed,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(claimed)!=1{t.Fatalf("expected one claimed notification, got %d",len(claimed))}
+	second,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(second)!=0{t.Fatalf("same notification was claimed twice: %+v",second)}
+	if err:=ReleaseProductStockNotificationClaim(ctx,db,"sqlite",claimed[0].ID);err!=nil{t.Fatal(err)}
+	retry,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(retry)!=1{t.Fatalf("released notification was not retryable: %+v",retry)}
+	if err:=MarkProductStockNotificationSent(ctx,db,"sqlite",retry[0].ID);err!=nil{t.Fatal(err)}
+	final,err:=ClaimPendingProductStockNotifications(ctx,db,"sqlite",product.ID,10,time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(final)!=0{t.Fatalf("sent notification became claimable again: %+v",final)}
+}
