@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"testing"
+	"time"
 	"github.com/seanldnet/TG-Card/internal/config"
 )
 
@@ -27,4 +28,17 @@ func TestBroadcastTaskExcludesOptedOutUsersAndTracksDelivery(t *testing.T) {
 	if err:=FinishBroadcastTask(ctx,db,cfg.DBDriver,task.ID,"completed",sent,failed);err!=nil{t.Fatal(err)}
 	items,err:=ListBroadcastTasks(ctx,db,cfg.DBDriver);if err!=nil{t.Fatal(err)}
 	if len(items)!=1||items[0].Status!="completed"{t.Fatalf("unexpected task state: %#v",items)}
+}
+
+func TestBroadcastTaskLeasePreventsConcurrentClaimsAndCanBeReclaimed(t *testing.T) {
+	ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"3001","three","Three","","lease-bot");err!=nil{t.Fatal(err)}
+	task,err:=CreateBroadcastTask(ctx,db,cfg.DBDriver,"lease-bot","Lease test","Hello","","admin");if err!=nil{t.Fatal(err)}
+	claimed,err:=ClaimDueBroadcastTasks(ctx,db,cfg.DBDriver,5);if err!=nil{t.Fatal(err)};if len(claimed)!=1{t.Fatalf("expected first claim, got %#v",claimed)}
+	claimed,err=ClaimDueBroadcastTasks(ctx,db,cfg.DBDriver,5);if err!=nil{t.Fatal(err)};if len(claimed)!=0{t.Fatalf("active lease must prevent duplicate claim: %#v",claimed)}
+	if err:=db.QueryRowContext(ctx,"SELECT lease_until FROM broadcast_tasks WHERE id=?",task.ID).Scan(new(string));err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"UPDATE broadcast_tasks SET lease_until=? WHERE id=?",time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano),task.ID);err!=nil{t.Fatal(err)}
+	claimed,err=ClaimDueBroadcastTasks(ctx,db,cfg.DBDriver,5);if err!=nil{t.Fatal(err)};if len(claimed)!=1{t.Fatalf("expired lease should be reclaimable: %#v",claimed)}
 }
