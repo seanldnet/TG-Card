@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,9 +35,21 @@ type Config struct {
  BusinessGroupURL string
 }
 
+type RuntimeStatus struct {
+	BotID string `json:"botId"`
+	Username string `json:"username"`
+	State string `json:"state"`
+	Running bool `json:"running"`
+	LastPollAt string `json:"lastPollAt,omitempty"`
+	LastUpdateAt string `json:"lastUpdateAt,omitempty"`
+	LastError string `json:"lastError,omitempty"`
+	LastErrorAt string `json:"lastErrorAt,omitempty"`
+}
+
 type Manager struct {
 	mu sync.Mutex
 	workers map[string]*worker
+	runtime map[string]RuntimeStatus
 	client *http.Client
 	db *sql.DB
 	driver string
@@ -113,6 +126,7 @@ type apiResult struct {
 func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error), paymentAddress string, paymentEnabled bool) *Manager {
 	return &Manager{
 		workers: make(map[string]*worker),
+		runtime: make(map[string]RuntimeStatus),
 		client: &http.Client{Timeout: 40 * time.Second},
 		db: db,
 		driver: driver,
@@ -328,7 +342,31 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 	_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在或已下架。")
 }
 
+func (m *Manager) setRuntimeStatus(botID string, status RuntimeStatus) {
+	m.mu.Lock()
+	if m.runtime == nil { m.runtime = make(map[string]RuntimeStatus) }
+	m.runtime[botID] = status
+	m.mu.Unlock()
+}
+
+// RuntimeStatuses returns a snapshot of live worker health without exposing Bot tokens.
+func (m *Manager) RuntimeStatuses() []RuntimeStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	items := make([]RuntimeStatus, 0, len(m.runtime))
+	for _, item := range m.runtime { items = append(items, item) }
+	sort.Slice(items, func(i, j int) bool { return items[i].BotID < items[j].BotID })
+	return items
+}
+
 func (m *Manager) run(ctx context.Context, cfg Config) {
+	status := RuntimeStatus{BotID: cfg.ID, Username: cfg.Username, State: "starting", Running: true}
+	m.setRuntimeStatus(cfg.ID, status)
+	defer func() {
+		status.State = "stopped"
+		status.Running = false
+		m.setRuntimeStatus(cfg.ID, status)
+	}()
 	m.configureMenu(ctx, cfg.Token)
 	var offset int64
 	for {
@@ -336,13 +374,26 @@ func (m *Manager) run(ctx context.Context, cfg Config) {
 		updates, err := m.getUpdates(ctx, cfg.Token, offset)
 		if err != nil {
 			if ctx.Err() != nil { return }
-			log.Printf("telegram polling error: bot_id=%s username=@%s error=%v", cfg.ID, cfg.Username, err)
+			status.State = "degraded"
+			status.Running = true
+			status.LastError = truncateButtonText(err.Error(), 300)
+			status.LastErrorAt = time.Now().UTC().Format(time.RFC3339)
 			if strings.Contains(err.Error(), "Conflict:") || strings.Contains(err.Error(), "terminated by other getUpdates request") {
+				status.State = "conflict"
 				log.Printf("telegram polling conflict: bot_id=%s username=@%s; ensure only one application instance polls this token", cfg.ID, cfg.Username)
 			}
+			m.setRuntimeStatus(cfg.ID, status)
+			log.Printf("telegram polling error: bot_id=%s username=@%s error=%v", cfg.ID, cfg.Username, err)
 			if !wait(ctx, 5*time.Second) { return }
 			continue
 		}
+		status.State = "online"
+		status.Running = true
+		status.LastPollAt = time.Now().UTC().Format(time.RFC3339)
+		status.LastError = ""
+		status.LastErrorAt = ""
+		if len(updates) > 0 { status.LastUpdateAt = status.LastPollAt }
+		m.setRuntimeStatus(cfg.ID, status)
 		for _, update := range updates {
 			if int64(update.UpdateID) >= offset { offset = int64(update.UpdateID) + 1 }
 			if update.Message != nil { m.handleMessage(ctx, cfg, *update.Message) }
