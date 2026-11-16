@@ -69,10 +69,20 @@ func ListBroadcastTasks(ctx context.Context,db *sql.DB,driver string)([]Broadcas
 
 func ClaimDueBroadcastTasks(ctx context.Context,db *sql.DB,driver string,limit int)([]string,error){
 	if limit<1||limit>50{limit=10}
-	rows,err:=db.QueryContext(ctx,"SELECT id FROM broadcast_tasks WHERE status='queued' AND scheduled_at<="+placeholder(driver,1)+" ORDER BY scheduled_at LIMIT "+fmt.Sprint(limit),time.Now().UTC().Format(time.RFC3339Nano))
-	if err!=nil{return nil,err};ids:=make([]string,0);for rows.Next(){var id string;if err:=rows.Scan(&id);err!=nil{rows.Close();return nil,err};ids=append(ids,id)};if err:=rows.Err();err!=nil{rows.Close();return nil,err};rows.Close()
+	now:=time.Now().UTC()
+	cutoff:=now.Add(-10*time.Minute).Format(time.RFC3339Nano)
+	rows,err:=db.QueryContext(ctx,"SELECT id FROM broadcast_tasks WHERE scheduled_at<="+placeholder(driver,1)+" AND (status='queued' OR (status='sending' AND started_at<="+placeholder(driver,2)+")) ORDER BY scheduled_at LIMIT "+fmt.Sprint(limit),now.Format(time.RFC3339Nano),cutoff)
+	if err!=nil{return nil,err}
+	ids:=make([]string,0)
+	for rows.Next(){var id string;if err:=rows.Scan(&id);err!=nil{rows.Close();return nil,err};ids=append(ids,id)}
+	if err:=rows.Err();err!=nil{rows.Close();return nil,err};rows.Close()
 	claimed:=make([]string,0,len(ids))
-	for _,id:=range ids{now:=time.Now().UTC().Format(time.RFC3339Nano);q:="UPDATE broadcast_tasks SET status='sending',started_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status='queued'";res,err:=db.ExecContext(ctx,q,now,now,id);if err!=nil{return claimed,err};n,_:=res.RowsAffected();if n==1{claimed=append(claimed,id)}}
+	for _,id:=range ids{
+		stamp:=time.Now().UTC().Format(time.RFC3339Nano)
+		q:="UPDATE broadcast_tasks SET status='sending',started_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND (status='queued' OR (status='sending' AND started_at<="+placeholder(driver,4)+"))"
+		res,err:=db.ExecContext(ctx,q,stamp,stamp,id,cutoff);if err!=nil{return claimed,err}
+		n,_:=res.RowsAffected();if n==1{claimed=append(claimed,id)}
+	}
 	return claimed,nil
 }
 
@@ -115,4 +125,11 @@ func IsBroadcastOptedOut(ctx context.Context,db *sql.DB,driver,botID,userID stri
 	q:="SELECT COUNT(1) FROM broadcast_opt_outs WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2)
 	err:=db.QueryRowContext(ctx,q,botID,userID).Scan(&count)
 	return count>0,err
+}
+
+func CountBroadcastRecipients(ctx context.Context,db *sql.DB,driver,taskID string)(int,int,error){
+	var sent,failed int
+	q:="SELECT SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END),SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) FROM broadcast_recipients WHERE task_id="+placeholder(driver,1)
+	err:=db.QueryRowContext(ctx,q,taskID).Scan(&sent,&failed)
+	return sent,failed,err
 }
