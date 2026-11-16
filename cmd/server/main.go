@@ -180,6 +180,7 @@ func main() {
 	api.HandleFunc("POST /api/admin/password", app.changePassword)
 	api.HandleFunc("GET /api/bots", app.listBots)
 	api.HandleFunc("POST /api/bots", app.createBot)
+	api.HandleFunc("PUT /api/bots/owner", app.updateBotOwnerID)
 	api.HandleFunc("PUT /api/bots/{id}", app.updateBot)
 	api.HandleFunc("DELETE /api/bots/{id}", app.deleteBot)
 	api.HandleFunc("GET /api/catalog/categories", app.listCategories)
@@ -705,6 +706,23 @@ func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.create","bot:"+item.ID,clientIP(r),r.UserAgent(),"telegram_username=@"+item.Username)
 	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after create: %v", err) }
 	writeSuccess(w,http.StatusCreated,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt})
+}
+
+func (a *application) updateBotOwnerID(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var input struct { TelegramOwnerID string `json:"telegramOwnerId"` }
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,4096)).Decode(&input);err!=nil { writeError(w,http.StatusBadRequest,"主人 Telegram ID 格式无效");return }
+	input.TelegramOwnerID=strings.TrimSpace(input.TelegramOwnerID)
+	if len(input.TelegramOwnerID)>32 { writeError(w,http.StatusBadRequest,"Telegram 主人 ID 长度无效");return }
+	for _,digit:=range input.TelegramOwnerID { if digit<'0'||digit>'9' { writeError(w,http.StatusBadRequest,"Telegram 主人 ID 只能填写数字");return } }
+	raw,err:=database.GetSiteSettings(r.Context(),a.db);if err!=nil { writeError(w,http.StatusInternalServerError,"读取机器人主人设置失败");return }
+	var settings siteSettings;if err:=json.Unmarshal([]byte(raw),&settings);err!=nil { writeError(w,http.StatusInternalServerError,"机器人主人设置数据无效");return }
+	settings.TelegramOwnerID=input.TelegramOwnerID
+	updated,err:=json.Marshal(settings);if err!=nil { writeError(w,http.StatusInternalServerError,"保存机器人主人设置失败");return }
+	if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(updated));err!=nil { writeError(w,http.StatusInternalServerError,"保存机器人主人设置失败");return }
+	a.botManager.SetOwnerID(input.TelegramOwnerID)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.owner.update","telegram:owner",clientIP(r),r.UserAgent(),"owner ID updated")
+	writeSuccess(w,http.StatusOK,map[string]string{"telegramOwnerId":input.TelegramOwnerID})
 }
 
 func (a *application) updateBot(w http.ResponseWriter, r *http.Request) {
