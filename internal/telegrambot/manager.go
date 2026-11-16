@@ -186,6 +186,7 @@ func (m *Manager) startExpiryLoop() {
 		defer ticker.Stop()
 		for {
 			expired, err := database.ExpirePendingOrders(ctx, m.db, m.driver, 100)
+		if recharges, rechargeErr := database.ExpirePendingWalletRecharges(ctx,m.db,m.driver); rechargeErr != nil && ctx.Err()==nil { log.Printf("expire wallet recharges failed: %v",rechargeErr) } else if recharges>0 { log.Printf("expired pending wallet recharges: count=%d",recharges) }
 			if err != nil && ctx.Err() == nil {
 				log.Printf("expire pending Telegram orders failed: %v", err)
 			} else if expired > 0 {
@@ -325,6 +326,16 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	switch {
+	case first=="/balance" || text=="💳 我的余额":
+		balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10))
+		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"暂时无法查询余额，请稍后再试。",mainMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard()) }
+	case first=="/recharge" || text=="💰 余额充值":
+		if len(command)>1 {
+			value,err:=strconv.ParseFloat(command[1],64)
+			if err==nil && value>=1 && value<=1000000 { amount:=int64(value*1_000_000+0.5);m.sendWalletRechargeInvoice(ctx,cfg,msg.Chat.ID,msg.From.ID,amount);return }
+		}
+		keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"充值 5 USDT","callback_data":"wallet:recharge:5000000"},{"text":"充值 10 USDT","callback_data":"wallet:recharge:10000000"}},{{"text":"充值 20 USDT","callback_data":"wallet:recharge:20000000"},{"text":"充值 50 USDT","callback_data":"wallet:recharge:50000000"}}}}
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"选择充值金额（最低 1 USDT），也可以发送 /recharge 10 自定义充值 10 USDT。",keyboard)
 	case first == "/start" || first == "/shop" || text == "🛍️ 商城":
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "主菜单已打开。你可以使用下方菜单随时进入商城、查看订单或联系售后。", mainMenuKeyboard())
 		m.showShop(ctx, cfg, msg.Chat.ID)
@@ -354,6 +365,7 @@ func mainMenuKeyboard() map[string]any {
 	return map[string]any{
 		"keyboard": [][]map[string]string{
 			{{"text":"🛍️ 商城"},{"text":"📦 我的订单"}},
+			{{"text":"💰 余额充值"},{"text":"💳 我的余额"}},
 			{{"text":"🧾 售后帮助"},{"text":"❓ 使用帮助"}},
 		},
 		"resize_keyboard": true,
@@ -370,6 +382,8 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 			{"command":"start","description":"打开主菜单"},
 			{"command":"shop","description":"浏览商城"},
 			{"command":"orders","description":"查看我的订单"},
+			{"command":"balance","description":"查看站内余额"},
+			{"command":"recharge","description":"充值站内余额"},
 			{"command":"support","description":"提交售后申请"},
 			{"command":"help","description":"查看使用帮助"},
 			{"command":"admin","description":"主人管理菜单"},
@@ -466,46 +480,54 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请核对订单信息")
 	case strings.HasPrefix(query.Data, "shop:buy:"):
 		productID := strings.TrimPrefix(query.Data, "shop:buy:")
-		order, err := database.CreateOrder(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID, 10), strconv.FormatInt(chatID, 10), productID, 20*time.Minute)
-		if err != nil {
-			_ = m.answerCallback(ctx, cfg.Token, query.ID, "下单失败："+err.Error())
-			_ = m.sendMessage(ctx, cfg.Token, chatID, "暂时无法创建订单："+err.Error())
-			return
-		}
-		_ = m.answerCallback(ctx, cfg.Token, query.ID, "订单已创建")
-		m.Notify("order_created", "新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor, order.Currency), strconv.FormatInt(chatID, 10))
-		text := `订单创建成功！
-订单号：` + order.OrderNo + `
-商品：` + order.ProductName + `
-商品金额：` + formatPrice(order.AmountMinor, order.Currency) + `
-状态：待付款
-有效期至：` + order.ExpiresAt
-		paymentAddress, paymentEnabled := m.paymentConfig()
-		if paymentEnabled && paymentAddress != "" && order.PaymentAmountAtomic > 0 {
-			text += `
-
-支付网络：TRON（TRC20）
-USDT 收款地址：` + paymentAddress + `
-请准确转账：` + formatUSDTAtomic(order.PaymentAmountAtomic) + ` USDT
-请勿使用其他网络或转账其他金额。系统仅在链上交易确认后自动发货。`
-		} else {
-			text += `
-
-支付功能尚未启用，请暂勿转账。`
-		}
-		inlineMenu := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"继续购物","callback_data":"shop:home"}}}}
-		if paymentEnabled && paymentAddress != "" && order.PaymentAmountAtomic > 0 {
-			text += "\n\n二维码内容为本订单 TRON 收款地址，请扫码后核对并填写上方准确金额。"
-			if err := m.sendPhotoMarkup(ctx, cfg.Token, chatID, text, paymentAddress, inlineMenu); err != nil {
-				log.Printf("telegram payment QR send failed: bot_id=%s order_no=%s error=%v", cfg.ID, order.OrderNo, err)
-				_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text+"\n（二维码暂时无法显示，请复制上方收款地址付款。）", inlineMenu)
-			}
-		} else {
-			_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, inlineMenu)
-		}
+		order, err := database.CreateOrder(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, 20*time.Minute)
+		if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
+		balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
+		text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
+		if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
+		keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
+		m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
+	case strings.HasPrefix(query.Data,"shop:walletpay:"):
+		orderID:=strings.TrimPrefix(query.Data,"shop:walletpay:")
+		delivery,balance,err:=database.PayOrderWithWallet(ctx,m.db,m.driver,orderID)
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付失败"); _ = m.sendMessage(ctx,cfg.Token,chatID,"余额支付失败："+err.Error()); return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付成功")
+		m.Notify("payment_success","站内余额付款成功：订单 "+delivery.Order.OrderNo+"\n剩余余额："+formatUSDTAtomic(balance)+" USDT",strconv.FormatInt(chatID,10))
+		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但自动发货遇到问题，管理员会尽快处理。") } else { _ = m.sendMessage(ctx,cfg.Token,chatID,"站内余额支付成功，商品已进入发货流程。") }
+	case strings.HasPrefix(query.Data,"shop:chainpay:"):
+		orderID:=strings.TrimPrefix(query.Data,"shop:chainpay:")
+		order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+		if err!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或已处理"); return }
+		address,enabled:=m.paymentConfig()
+		if !enabled || address=="" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"链上付款暂未启用"); _ = m.sendMessage(ctx,cfg.Token,chatID,"链上付款暂未启用，请联系管理员。"); return }
+		text:="订单号："+order.OrderNo+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
+		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
+		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
+	case strings.HasPrefix(query.Data,"wallet:recharge:"):
+		amount,err:=strconv.ParseInt(strings.TrimPrefix(query.Data,"wallet:recharge:"),10,64)
+		if err!=nil || amount<1_000_000 || amount>1_000_000_000_000 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"充值金额无效"); return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在创建充值单")
+		m.sendWalletRechargeInvoice(ctx,cfg,chatID,query.From.ID,amount)
+	case query.Data=="wallet:balance":
+		balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"查询失败") } else { _ = m.answerCallback(ctx,cfg.Token,query.ID,"余额 "+formatUSDTAtomic(balance)+" USDT") }
 	default:
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "未知操作")
 	}
+}
+
+
+func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatID,userID int64,amountAtomic int64) {
+	address,enabled:=m.paymentConfig()
+	if !enabled || address=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"充值功能暂未启用，请联系管理员。");return }
+	item,err:=database.CreateWalletRecharge(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(userID,10),strconv.FormatInt(chatID,10),amountAtomic,30*time.Minute)
+	if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"创建充值单失败："+err.Error());return }
+	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n到账余额："+formatUSDTAtomic(item.AmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+formatUSDTAtomic(item.PaymentAmountAtomic)+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
+	markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},{{"text":"🛍️ 返回商城","callback_data":"shop:home"}}}}
+	if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码暂不可用，请复制收款地址。",markup) }
 }
 
 func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
