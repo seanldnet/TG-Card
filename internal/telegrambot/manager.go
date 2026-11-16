@@ -871,7 +871,17 @@ func (m *Manager) showStartHome(ctx context.Context, cfg Config, chatID int64, u
 	welcome := welcomeMessage + "\n\n👋 " + displayName +
 		"\n👤 Telegram ID：" + strconv.FormatInt(user.ID, 10) +
 		"\n💰 当前余额：" + balanceText + "\n\n" + purchaseNotice
-	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, mainReplyKeyboard(m.isOwner(cfg,user.ID)))
+	// Keep both Telegram menu surfaces: inline actions attached to the welcome
+	// card, plus the persistent reply keyboard below the message input. Telegram
+	// accepts only one reply_markup per message, so these must be sent separately.
+	isOwner := m.isOwner(cfg, user.ID)
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, welcomeKeyboard(cfg, isOwner)); err != nil {
+		log.Printf("send Telegram welcome card with inline menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
+		return
+	}
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "👇 也可以使用输入框下方的常驻菜单快速操作。", mainReplyKeyboard(isOwner)); err != nil {
+		log.Printf("send Telegram persistent reply menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
+	}
 }
 
 // configureMenu publishes BotFather-style commands and explicitly selects the
