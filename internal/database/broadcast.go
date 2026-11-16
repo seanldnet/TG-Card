@@ -108,3 +108,11 @@ func SetBroadcastOptOut(ctx context.Context,db *sql.DB,driver,botID,userID strin
 	if optOut{q:="INSERT INTO broadcast_opt_outs(bot_id,telegram_user_id,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(bot_id,telegram_user_id) DO NOTHING";_,err:=db.ExecContext(ctx,q,botID,userID,time.Now().UTC().Format(time.RFC3339Nano));return err}
 	_,err:=db.ExecContext(ctx,"DELETE FROM broadcast_opt_outs WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2),botID,userID);return err
 }
+
+
+func IsBroadcastOptedOut(ctx context.Context,db *sql.DB,driver,botID,userID string)(bool,error){
+	var count int
+	q:="SELECT COUNT(1) FROM broadcast_opt_outs WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2)
+	err:=db.QueryRowContext(ctx,q,botID,userID).Scan(&count)
+	return count>0,err
+}
