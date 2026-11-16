@@ -1468,7 +1468,8 @@ func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
 	if current==nil { _=database.FinishBroadcastTask(ctx,m.db,m.driver,taskID,"failed",0,task.TotalCount);return }
 	recipients,err:=database.ListPendingBroadcastRecipients(ctx,m.db,m.driver,taskID)
 	if err!=nil { log.Printf("load broadcast recipients failed: task_id=%s error=%v",taskID,err);return }
-	var sent,failed int
+	sent,failed,countErr:=database.CountBroadcastRecipients(ctx,m.db,m.driver,taskID)
+	if countErr!=nil { log.Printf("count broadcast recipients failed: task_id=%s error=%v",taskID,countErr);return }
 	for _,recipient:=range recipients {
 		if ctx.Err()!=nil { return }
 		optedOut,optErr:=database.IsBroadcastOptedOut(ctx,m.db,m.driver,task.BotID,recipient.TelegramUserID)
