@@ -5,14 +5,14 @@ import { IconifyIcon } from '@vben/icons';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 interface SiteSettings {
- siteName:string;siteLogo:string;contactEmail:string;telegramCustomerServiceUrl:string;smtpHost:string;smtpPort:number;smtpUsername:string;smtpPassword:string;smtpFromName:string;smtpFromEmail:string;smtpUseTLS:boolean;
+ siteName:string;siteLogo:string;contactEmail:string;telegramCustomerServiceUrl:string;telegramOwnerId:string;smtpHost:string;smtpPort:number;smtpUsername:string;smtpPassword:string;smtpFromName:string;smtpFromEmail:string;smtpUseTLS:boolean;
  emailOrderCreated:boolean;emailPaymentSuccess:boolean;emailDeliverySuccess:boolean;emailSupportCreated:boolean;
  telegramAdminChatId:string;telegramGroupChatId:string;telegramNotifyOrderCreated:boolean;telegramNotifyPaymentSuccess:boolean;telegramNotifyDeliverySuccess:boolean;telegramNotifySupportCreated:boolean;
 }
 const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),activeTab=ref('basic');
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
-const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',telegramCustomerServiceUrl:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true});
+const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',telegramCustomerServiceUrl:'',telegramOwnerId:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true});
 async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;form.smtpPassword='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
 async function save(){saving.value=true;try{const data=await requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site',form);Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
 async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error('无法读取图标文件');return false;}if(image.size>10*1024*1024){message.warning('网站图标不能超过 10 MB');return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body);form.siteLogo=result.siteLogo;message.success('网站图标上传成功，请保存设置');}catch(error:any){message.error(error?.response?.data?.message||'网站图标上传失败');}finally{logoUploading.value=false;}return false;}
@@ -72,7 +72,8 @@ onMounted(load);
       <div class="mb-3 text-sm font-semibold">Telegram 私聊与群组通知</div>
       <a-alert class="mb-4" type="info" show-icon message="填写管理员私聊和通知群组 Chat ID；对应 Bot 必须能向该目标发送消息。" />
       <a-form layout="vertical"><a-row :gutter="16">
-       <a-col :xs="24" :md="12"><a-form-item label="管理员私聊 Chat ID"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item label="机器人主人 Telegram ID"><a-input v-model:value="form.telegramOwnerId" placeholder="填写数字 ID，允许主人在机器人内管理商品" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item label="管理员通知 Chat ID"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="通知群组 Chat ID"><a-input v-model:value="form.telegramGroupChatId" /></a-form-item></a-col>
       </a-row></a-form>
       <div class="mb-3 mt-2 text-sm font-semibold">通知事件</div>
