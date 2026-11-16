@@ -718,6 +718,7 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 	for currency, amount := range currencyTotals { totalLines = append(totalLines,formatPrice(amount,currency)) }
 	text := "🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计：\n"+strings.Join(totalLines,"\n")+"\n\n数量和库存会在结算时再次校验。"
 	rows = append(rows,[]map[string]string{{"text":"🧹 清空购物车","callback_data":"cart:clear"},{"text":"🛍️ 继续选购","callback_data":"shop:home"}})
+	rows = append(rows,[]map[string]string{{"text":"✅ 统一结算（一次付款）","callback_data":"cart:checkout"}})
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":rows})
 }
 
@@ -848,6 +849,18 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已更新")
 		m.showCart(ctx,cfg,chatID,query.From.ID)
+	case query.Data == "cart:checkout":
+		order, items, err := database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10),20*time.Minute)
+		if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法结算"); _ = m.sendMessage(ctx,cfg.Token,chatID,"购物车结算失败："+err.Error()); return }
+		_ = database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10))
+		lines:=make([]string,0,len(items));for _,item:=range items{lines=append(lines,item.ProductName+" × "+strconv.Itoa(item.Quantity)+" · "+formatPrice(item.LineTotalMinor,item.Currency))}
+		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
+		text:="✅ 购物车统一订单已创建！\n订单号："+order.OrderNo+"\n\n"+strings.Join(lines,"\n")+"\n\n合计："+formatPrice(order.AmountMinor,order.Currency)+"\n付款有效期：20 分钟\n请选择一种付款方式。"
+		if balanceErr==nil{text+="\n当前余额："+formatUSDTAtomic(balance)+" USDT"}
+		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"📦 我的订单","callback_data":"menu:orders"}}}}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"统一订单已创建")
+		m.Notify("order_created","购物车统一订单："+order.OrderNo+"\n商品种类："+strconv.Itoa(len(items))+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,markup)
 	case query.Data == "cart:clear":
 		_ = database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10))
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已清空")
