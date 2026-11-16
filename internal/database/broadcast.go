@@ -129,7 +129,7 @@ func IsBroadcastOptedOut(ctx context.Context,db *sql.DB,driver,botID,userID stri
 
 func CountBroadcastRecipients(ctx context.Context,db *sql.DB,driver,taskID string)(int,int,error){
 	var sent,failed int
-	q:="SELECT SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END),SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) FROM broadcast_recipients WHERE task_id="+placeholder(driver,1)
+	q:="SELECT COALESCE(SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) FROM broadcast_recipients WHERE task_id="+placeholder(driver,1)
 	err:=db.QueryRowContext(ctx,q,taskID).Scan(&sent,&failed)
 	return sent,failed,err
 }
