@@ -62,8 +62,8 @@ func RedeemTelegramCode(ctx context.Context,db *sql.DB,driver,botID,telegramUser
   ids:=make([]string,0,quantity);for rows.Next(){var key string;if e=rows.Scan(&key);e!=nil{rows.Close();return result,e};ids=append(ids,key)}
   if e=rows.Err();e!=nil{rows.Close();return result,e};rows.Close()
   if len(ids)!=quantity{return result,fmt.Errorf("商品库存不足，暂时无法兑换")}
-  orderID,e:=randomID();if e!=nil{return result,e};suffix,e:=randomID();if e!=nil{return result,e}
-  orderNo:="TC"+now.Format("20060102150405")+suffix[:6]
+  orderID,e:=randomID();if e!=nil{return result,e};suffix,e:=randomID();if e!=nil{return result,e};digits,e:=randomDigits(6);if e!=nil{return result,e}
+  orderNo:="TC"+now.Format("20060102150405")+digits
   paymentRef:="REDEEM"+suffix[:12]
   insertOrder:="INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,paid_at,payment_method,payment_reference,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json) VALUES("
   for i:=1;i<=22;i++{if i>1{insertOrder+=","};insertOrder+=placeholder(driver,i)};insertOrder+=")"
