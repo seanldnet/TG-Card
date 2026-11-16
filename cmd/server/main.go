@@ -185,6 +185,10 @@ func main() {
 	api.HandleFunc("POST /api/auth/logout", app.logout)
 	api.HandleFunc("POST /api/admin/password", app.changePassword)
 	api.HandleFunc("GET /api/bots", app.listBots)
+	api.HandleFunc("GET /api/bots/runtime", app.listBotRuntime)
+	api.HandleFunc("GET /api/broadcasts", app.listBroadcastTasks)
+	api.HandleFunc("POST /api/broadcasts", app.createBroadcastTask)
+	api.HandleFunc("POST /api/bots/{id}/restart", app.restartBotRuntime)
 	api.HandleFunc("POST /api/bots", app.createBot)
 	api.HandleFunc("PUT /api/bots/owner", app.updateBotOwnerID)
 	api.HandleFunc("PUT /api/bots/{id}", app.updateBot)
@@ -223,6 +227,10 @@ func main() {
 	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
 	api.HandleFunc("PUT /api/support/tickets/{id}", app.updateSupportTicket)
+	api.HandleFunc("GET /api/support/tickets/{id}/messages", app.listSupportTicketMessages)
+	api.HandleFunc("POST /api/support/tickets/{id}/messages", app.appendSupportTicketMessage)
+	api.HandleFunc("PUT /api/support/tickets/{id}/assign", app.assignSupportTicket)
+	api.HandleFunc("POST /api/support/tickets/{id}/refund", app.refundSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
@@ -547,6 +555,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "BotManagement", "path": "/bots", "component": "/bots/index",
 			"meta": map[string]any{"icon": "lucide:bot", "order": 1, "title": "机器人管理"},
+		},
+		{
+			"name": "Broadcasts", "path": "/broadcasts", "component": "/broadcasts/index",
+			"meta": map[string]any{"icon": "lucide:send", "order": 2, "title": "群发通知"},
 		},
 		{
 			"name": "Users", "path": "/users", "component": "/users/index",

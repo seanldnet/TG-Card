@@ -3,13 +3,16 @@ package telegrambot
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,9 +37,21 @@ type Config struct {
  BusinessGroupURL string
 }
 
+type RuntimeStatus struct {
+	BotID string `json:"botId"`
+	Username string `json:"username"`
+	State string `json:"state"`
+	Running bool `json:"running"`
+	LastPollAt string `json:"lastPollAt,omitempty"`
+	LastUpdateAt string `json:"lastUpdateAt,omitempty"`
+	LastError string `json:"lastError,omitempty"`
+	LastErrorAt string `json:"lastErrorAt,omitempty"`
+}
+
 type Manager struct {
 	mu sync.Mutex
 	workers map[string]*worker
+	runtime map[string]RuntimeStatus
 	client *http.Client
 	db *sql.DB
 	driver string
@@ -84,11 +99,18 @@ type Message struct {
 	From *TelegramUser `json:"from"`
 	NewChatMembers []TelegramUser `json:"new_chat_members"`
 	Document *TelegramDocument `json:"document"`
+	Photo []TelegramPhoto `json:"photo"`
 }
 type TelegramDocument struct {
 	FileID string `json:"file_id"`
 	FileName string `json:"file_name"`
 	MimeType string `json:"mime_type"`
+}
+type TelegramPhoto struct {
+	FileID string `json:"file_id"`
+	FileSize int64 `json:"file_size"`
+	Width int `json:"width"`
+	Height int `json:"height"`
 }
 
 type Chat struct {
@@ -113,6 +135,7 @@ type apiResult struct {
 func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error), paymentAddress string, paymentEnabled bool) *Manager {
 	return &Manager{
 		workers: make(map[string]*worker),
+		runtime: make(map[string]RuntimeStatus),
 		client: &http.Client{Timeout: 40 * time.Second},
 		db: db,
 		driver: driver,
@@ -155,17 +178,42 @@ func (m *Manager) Reconcile(configs []Config) {
 		if !exists || next != current.config {
 			current.cancel()
 			delete(m.workers, id)
+			stopped := m.runtime[id]
+			stopped.BotID = id
+			stopped.Username = current.config.Username
+			stopped.State = "stopped"
+			stopped.Running = false
+			m.runtime[id] = stopped
 			log.Printf("telegram bot worker stopped: bot_id=%s username=@%s", id, current.config.Username)
 		}
 	}
 	for id, cfg := range desired {
 		if _, exists := m.workers[id]; exists { continue }
 		ctx, cancel := context.WithCancel(context.Background())
-		m.workers[id] = &worker{config: cfg, cancel: cancel}
+		current := &worker{config: cfg, cancel: cancel}
+		m.workers[id] = current
 		go m.setBotDescription(context.Background(),cfg.Token,cfg.Description)
-		go m.run(ctx, cfg)
+		go m.run(ctx, cfg, current)
 		log.Printf("telegram bot worker starting: bot_id=%s username=@%s", id, cfg.Username)
 	}
+}
+
+// RestartBot replaces exactly one polling worker without disturbing other Bots.
+func (m *Manager) RestartBot(botID string) error {
+	m.mu.Lock()
+	current := m.workers[botID]
+	if current == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("bot worker not found")
+	}
+	current.cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	next := &worker{config: current.config, cancel: cancel}
+	m.workers[botID] = next
+	m.mu.Unlock()
+	log.Printf("telegram bot worker manually restarting: bot_id=%s username=@%s", next.config.ID, next.config.Username)
+	go m.run(ctx, next.config, next)
+	return nil
 }
 
 func (m *Manager) SetOwnerID(ownerID string) { m.mu.Lock(); m.ownerID = strings.TrimSpace(ownerID); m.mu.Unlock() }
@@ -201,6 +249,21 @@ func truncateButtonText(value string, limit int) string {
 }
 
 func (m *Manager) isOwner(cfg Config,telegramUserID int64) bool { return cfg.OwnerID!="" && strconv.FormatInt(telegramUserID,10)==cfg.OwnerID }
+
+func (m *Manager) sendOwnerOverview(ctx context.Context, cfg Config, chatID int64) {
+	if m.db == nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"数据库暂不可用。"); return }
+	var users, products, pending, paid, tickets int64
+	queries := []struct{ query string; target *int64 }{
+		{"SELECT COUNT(1) FROM telegram_users",&users},
+		{"SELECT COUNT(1) FROM products WHERE status=1",&products},
+		{"SELECT COUNT(1) FROM orders WHERE status IN ('pending_payment','pending')",&pending},
+		{"SELECT COUNT(1) FROM orders WHERE status IN ('paid','delivering','delivery_failed','delivered')",&paid},
+		{"SELECT COUNT(1) FROM support_tickets WHERE status IN ('open','in_progress','waiting_user')",&tickets},
+	}
+	for _, item := range queries { if err:=m.db.QueryRowContext(ctx,item.query).Scan(item.target); err!=nil { log.Printf("owner overview query failed: %v",err); _ = m.sendMessage(ctx,cfg.Token,chatID,"经营数据暂时无法读取，请稍后重试。"); return } }
+text := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n管理指令：\n/order 订单号（查询订单）\n/closeorder 订单号（关闭待付款订单）\n/userbalance Telegram用户ID（查询余额）\n/addstock 商品ID | 卡密1,卡密2（加密导入库存）\n/ban 或 /unban Telegram用户ID（封禁/解封）\n/broadcast 通知内容（向未退订用户群发）"
+	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,ownerMenuKeyboard())
+}
 
 func (m *Manager) SetPaymentConfig(address string, enabled bool) {
 	m.mu.Lock()
@@ -247,6 +310,7 @@ func (m *Manager) startExpiryLoop() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				m.processDueBroadcastTasks(ctx)
 			case <-stockTicker.C:
 				m.checkLowStock(ctx)
 			case <-dailyTicker.C:
@@ -328,7 +392,41 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 	_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在或已下架。")
 }
 
-func (m *Manager) run(ctx context.Context, cfg Config) {
+func (m *Manager) setRuntimeStatus(botID string, status RuntimeStatus) {
+	m.mu.Lock()
+	if m.runtime == nil { m.runtime = make(map[string]RuntimeStatus) }
+	m.runtime[botID] = status
+	m.mu.Unlock()
+}
+
+// setWorkerRuntimeStatus prevents an exited worker from overwriting the health
+// state of a newer worker started for the same Bot ID.
+func (m *Manager) setWorkerRuntimeStatus(botID string, current *worker, status RuntimeStatus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.workers[botID] != current { return }
+	if m.runtime == nil { m.runtime = make(map[string]RuntimeStatus) }
+	m.runtime[botID] = status
+}
+
+// RuntimeStatuses returns a snapshot of live worker health without exposing Bot tokens.
+func (m *Manager) RuntimeStatuses() []RuntimeStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	items := make([]RuntimeStatus, 0, len(m.runtime))
+	for _, item := range m.runtime { items = append(items, item) }
+	sort.Slice(items, func(i, j int) bool { return items[i].BotID < items[j].BotID })
+	return items
+}
+
+func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
+	status := RuntimeStatus{BotID: cfg.ID, Username: cfg.Username, State: "starting", Running: true}
+	m.setWorkerRuntimeStatus(cfg.ID, current, status)
+	defer func() {
+		status.State = "stopped"
+		status.Running = false
+		m.setWorkerRuntimeStatus(cfg.ID, current, status)
+	}()
 	m.configureMenu(ctx, cfg.Token)
 	var offset int64
 	for {
@@ -336,13 +434,26 @@ func (m *Manager) run(ctx context.Context, cfg Config) {
 		updates, err := m.getUpdates(ctx, cfg.Token, offset)
 		if err != nil {
 			if ctx.Err() != nil { return }
-			log.Printf("telegram polling error: bot_id=%s username=@%s error=%v", cfg.ID, cfg.Username, err)
+			status.State = "degraded"
+			status.Running = true
+			status.LastError = truncateButtonText(err.Error(), 300)
+			status.LastErrorAt = time.Now().UTC().Format(time.RFC3339)
 			if strings.Contains(err.Error(), "Conflict:") || strings.Contains(err.Error(), "terminated by other getUpdates request") {
+				status.State = "conflict"
 				log.Printf("telegram polling conflict: bot_id=%s username=@%s; ensure only one application instance polls this token", cfg.ID, cfg.Username)
 			}
+			m.setWorkerRuntimeStatus(cfg.ID, current, status)
+			log.Printf("telegram polling error: bot_id=%s username=@%s error=%v", cfg.ID, cfg.Username, err)
 			if !wait(ctx, 5*time.Second) { return }
 			continue
 		}
+		status.State = "online"
+		status.Running = true
+		status.LastPollAt = time.Now().UTC().Format(time.RFC3339)
+		status.LastError = ""
+		status.LastErrorAt = ""
+		if len(updates) > 0 { status.LastUpdateAt = status.LastPollAt }
+		m.setWorkerRuntimeStatus(cfg.ID, current, status)
 		for _, update := range updates {
 			if int64(update.UpdateID) >= offset { offset = int64(update.UpdateID) + 1 }
 			if update.Message != nil { m.handleMessage(ctx, cfg, *update.Message) }
@@ -383,10 +494,22 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if msg.Chat.Type != "private" || msg.From == nil { return }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
+		if !m.isOwner(cfg,msg.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",msg.From.ID,banErr);return };if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"你的账号当前无法使用此机器人服务。如有疑问，请联系平台客服。");return } }
 	}
-	if msg.Document != nil {
-		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文件 ID 查询仅对 Bot 主人开放。"); return }
-		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id（复制到后台商品文件配置）：\n"+msg.Document.FileID)
+	if msg.Document != nil || len(msg.Photo)>0 {
+		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
+		if strings.HasPrefix(pendingMedia,"support_followup:") {
+			ticketID := strings.TrimPrefix(pendingMedia,"support_followup:")
+			fileID, fileName := "", ""
+			if msg.Document != nil { fileID=msg.Document.FileID; fileName=msg.Document.FileName } else { photo:=msg.Photo[len(msg.Photo)-1]; fileID=photo.FileID; fileName="Telegram 图片" }
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),"用户提交了售后凭证",fileID,fileName);err!=nil {
+				_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证保存失败，请稍后重试。")
+			} else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证已添加到售后工单。你可以继续发送补充说明或图片；发送 /start 可结束本次补充。") }
+			m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia)
+			return
+		}
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"请先提交售后工单，再发送图片或文件作为凭证。"); return }
+		if msg.Document != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id：\n"+msg.Document.FileID) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到图片，可在 Telegram file_id 中查看凭证。\n"+msg.Photo[len(msg.Photo)-1].FileID) }
 		return
 	}
 	text := strings.TrimSpace(msg.Text)
@@ -428,6 +551,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			m.setPendingAction(cfg.ID, msg.Chat.ID, "support_description:"+orderNo)
 			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "已记录订单号："+orderNo+"\n请直接描述你遇到的问题，我会提交售后申请。")
 			return
+		case strings.HasPrefix(pending,"support_followup:"):
+			ticketID := strings.TrimPrefix(pending,"support_followup:")
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","");err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。") }
+			m.setPendingAction(cfg.ID,msg.Chat.ID,pending)
+			return
 		case strings.HasPrefix(pending, "support_description:"):
 			orderNo := strings.TrimPrefix(pending, "support_description:")
 			description := strings.TrimSpace(text)
@@ -441,8 +569,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error()+"\n你可以重新点击“申请售后”选择订单。", supportBackKeyboard())
 				return
 			}
+			if _, timelineErr := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,"",""); timelineErr != nil { log.Printf("append initial support message failed: ticket_id=%s error=%v",ticket.ID,timelineErr) }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
+			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
 			return
 		case pending == "wallet_custom_amount":
 			value, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
@@ -457,11 +587,62 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
-	if first == "/admin" {
-		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：此菜单仅对当前 Bot 主人开放。",ownerMenuKeyboard())
+	if first == "/unsubscribe" || first == "/subscribe" {
+		optOut:=first=="/unsubscribe"
+		if err:=database.SetBroadcastOptOut(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),optOut);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订阅设置失败，请稍后重试。") } else if optOut { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已退订本机器人群发通知。发送 /subscribe 可重新订阅。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已重新订阅本机器人通知。") }
 		return
 	}
+	if first=="/ban" || first=="/unban" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/ban Telegram用户ID 或 /unban Telegram用户ID");return }
+		if _,err:=strconv.ParseInt(command[1],10,64);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"Telegram 用户 ID 格式无效。");return }
+		banned:=first=="/ban";if err:=database.SetTelegramUserBanned(ctx,m.db,m.driver,command[1],banned);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"操作失败："+err.Error()) } else if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已封禁用户："+command[1]) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已解除封禁："+command[1]) };return
+	}
+	if first=="/order" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/order 订单号");return }
+		item,err:=database.GetOrderByOrderNo(ctx,m.db,m.driver,command[1]);if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"未找到该订单。");return }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n数量："+strconv.Itoa(item.Quantity)+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status+"\n创建时间："+item.CreatedAt);return
+	}
+	if first=="/closeorder" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/closeorder 订单号（仅关闭待付款订单）");return }
+		if err:=database.ClosePendingOrder(ctx,m.db,m.driver,command[1]);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"关闭订单失败："+err.Error()) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订单已关闭，预占库存和优惠名额已释放。") };return
+	}
+	if first=="/broadcast" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		body:=strings.TrimSpace(strings.TrimPrefix(text,command[0]));if body=="" { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/broadcast 通知内容");return }
+		task,err:=database.CreateBroadcastTask(ctx,m.db,m.driver,cfg.ID,"Telegram 管理员群发",body,"",strconv.FormatInt(msg.From.ID,10));if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"群发任务创建失败："+err.Error()) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"群发任务已加入队列。\n任务编号："+task.ID+"\n目标人数："+strconv.Itoa(task.TotalCount)) };return
+	}
+	if first == "/admin" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
+		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
+		return
+	}
+		if first == "/userbalance" {
+			if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对机器人主人开放。"); return }
+			if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/userbalance Telegram用户数字ID"); return }
+			balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,command[1])
+			if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用户不存在或余额暂不可查询。"); return }
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"Telegram 用户 ID："+command[1]+"\n站内余额："+formatUSDTAtomic(balance)+" USDT")
+			return
+		}
+		if first == "/addstock" {
+			if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对机器人主人开放。"); return }
+			parts:=strings.SplitN(text,"|",2)
+			if len(parts)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/addstock 商品ID | 卡密1,卡密2,卡密3"); return }
+			args:=strings.Fields(parts[0]);if len(args)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"请提供正确的商品 ID。"); return }
+			keys:=strings.FieldsFunc(parts[1],func(r rune)bool{return r==','||r=='\n'||r=='\r'})
+			if len(keys)==0||len(keys)>200 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"每次请导入 1 到 200 条卡密。"); return }
+			m.mu.Lock();encrypt:=m.encrypt;m.mu.Unlock()
+			if encrypt==nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"加密服务暂不可用，请在后台检查密钥配置。"); return }
+			secrets:=make([]database.StockSecret,0,len(keys))
+			for _,key:=range keys { key=strings.TrimSpace(key);if key==""{continue};cipher,err:=encrypt(key);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"卡密加密失败，未导入本批库存。");return};fingerprint:=sha256.Sum256([]byte(key));secrets=append(secrets,database.StockSecret{Ciphertext:cipher,Fingerprint:hex.EncodeToString(fingerprint[:])}) }
+			inserted,err:=database.ImportProductKeys(ctx,m.db,m.driver,args[1],secrets)
+			if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"库存导入失败："+err.Error());return }
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"库存导入完成。\n提交："+strconv.Itoa(len(secrets))+" 条\n新增："+strconv.Itoa(inserted)+" 条\n重复跳过："+strconv.Itoa(len(secrets)-inserted)+" 条")
+			return
+		}
 	if first == "/addproduct" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
 		parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(text,command[0])),"|",3)
@@ -537,6 +718,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
+		if _,timelineErr:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),strings.Join(command[2:]," "),"","");timelineErr!=nil{log.Printf("append support command timeline failed: ticket_id=%s error=%v",ticket.ID,timelineErr)}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",supportBackKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
@@ -613,6 +795,7 @@ func rechargeKeyboard() map[string]any {
 }
 
 func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
+	{{"text":"📊 经营数据总览","callback_data":"owner:stats"}},
 	{{"text":"📦 商品列表","callback_data":"owner:products"}},
 	{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}},
 	{{"text":"⬅️ 返回个人首页","callback_data":"owner:back"}},
@@ -771,13 +954,16 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID) }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
+		if !m.isOwner(cfg,query.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",query.From.ID,banErr);_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法验证账号状态");return };if banned { _ = m.answerCallback(ctx,cfg.Token,query.ID,"账号已被限制使用");return } }
 	}
 	switch {
 	case strings.HasPrefix(query.Data,"owner:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		switch query.Data {
 		case "owner:home":
-			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"主人管理菜单：请选择商品管理操作。",ownerMenuKeyboard())
+			m.sendOwnerOverview(ctx,cfg,chatID)
+		case "owner:stats":
+			m.sendOwnerOverview(ctx,cfg,chatID)
 		case "owner:back":
 			m.showStartHome(ctx, cfg, chatID, query.From)
 		case "owner:addproduct":
@@ -1278,6 +1464,73 @@ func (m *Manager) sendPhotoMarkup(ctx context.Context, token string, chatID int6
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return fmt.Errorf("decode sendPhoto response: %w", err) }
 	if response.StatusCode != http.StatusOK || !result.OK { return fmt.Errorf("Telegram sendPhoto HTTP %d: %s", response.StatusCode, result.Description) }
 	return nil
+}
+
+
+type broadcastTelegramResult struct {
+	OK bool `json:"ok"`
+	Description string `json:"description"`
+	Parameters struct { RetryAfter int `json:"retry_after"` } `json:"parameters"`
+}
+
+func (m *Manager) sendBroadcastMessage(ctx context.Context, token string, chatID int64, text string) (int,error) {
+	payload,_:=json.Marshal(map[string]any{"chat_id":chatID,"text":text})
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendMessage",bytes.NewReader(payload))
+	if err!=nil{return 0,err};req.Header.Set("Content-Type","application/json")
+	resp,err:=m.client.Do(req);if err!=nil{return 0,err};defer resp.Body.Close()
+	var result broadcastTelegramResult
+	if err:=json.NewDecoder(resp.Body).Decode(&result);err!=nil{return 0,err}
+	if resp.StatusCode!=http.StatusOK||!result.OK{return result.Parameters.RetryAfter,fmt.Errorf("Telegram sendMessage HTTP %d: %s",resp.StatusCode,result.Description)}
+	return 0,nil
+}
+
+func (m *Manager) processDueBroadcastTasks(ctx context.Context) {
+	ids,err:=database.ClaimDueBroadcastTasks(ctx,m.db,m.driver,5)
+	if err!=nil { if ctx.Err()==nil { log.Printf("claim due broadcast tasks failed: %v",err) }; return }
+	for _,id:=range ids { go m.processBroadcastTask(ctx,id) }
+}
+
+func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
+	task,err:=database.GetBroadcastTask(ctx,m.db,m.driver,taskID)
+	if err!=nil { log.Printf("load broadcast task failed: task_id=%s error=%v",taskID,err); return }
+	m.mu.Lock();current:=m.workers[task.BotID];m.mu.Unlock()
+	if current==nil { _=database.FinishBroadcastTask(ctx,m.db,m.driver,taskID,"failed",0,task.TotalCount);return }
+	recipients,err:=database.ListPendingBroadcastRecipients(ctx,m.db,m.driver,taskID)
+	if err!=nil { log.Printf("load broadcast recipients failed: task_id=%s error=%v",taskID,err);return }
+	sent,failed,countErr:=database.CountBroadcastRecipients(ctx,m.db,m.driver,taskID)
+	if countErr!=nil { log.Printf("count broadcast recipients failed: task_id=%s error=%v",taskID,countErr);return }
+	lastLeaseRenewal:=time.Now()
+	for _,recipient:=range recipients {
+		if ctx.Err()!=nil { return }
+		if time.Since(lastLeaseRenewal)>=30*time.Second { if err:=database.RenewBroadcastTaskLease(ctx,m.db,m.driver,taskID);err!=nil { log.Printf("broadcast lease renewal failed: task_id=%s error=%v",taskID,err);return };lastLeaseRenewal=time.Now() }
+		optedOut,optErr:=database.IsBroadcastOptedOut(ctx,m.db,m.driver,task.BotID,recipient.TelegramUserID)
+		if optErr!=nil {
+			_ = database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","无法核验退订状态，已阻止发送",recipient.Attempts)
+			failed++;continue
+		}
+		if optedOut {
+			_ = database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","用户已退订",recipient.Attempts)
+			failed++;continue
+		}
+		chatID,parseErr:=strconv.ParseInt(recipient.ChatID,10,64)
+		if parseErr!=nil { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","无效的 Telegram Chat ID",recipient.Attempts);failed++;continue }
+		var sendErr error
+		attempts:=recipient.Attempts
+		for retry:=0;retry<3;retry++ {
+			attempts++
+			retryAfter,err:=m.sendBroadcastMessage(ctx,current.config.Token,chatID,task.MessageText)
+			if err==nil { sendErr=nil;break }
+			sendErr=err
+			delay:=time.Duration(1<<retry)*time.Second
+			if retryAfter>0 { delay=time.Duration(retryAfter)*time.Second }
+			if retry<2&&!wait(ctx,delay){return}
+		}
+		if sendErr!=nil { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed",sendErr.Error(),attempts);failed++ } else { _=database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"sent","",attempts);sent++ }
+		if !wait(ctx,45*time.Millisecond) { return }
+	}
+	status:="completed";if failed>0&&sent>0{status="completed_with_errors"}else if failed>0{status="failed"}
+	if err:=database.FinishBroadcastTask(ctx,m.db,m.driver,taskID,status,sent,failed);err!=nil{log.Printf("finish broadcast task failed: task_id=%s error=%v",taskID,err)}
+	log.Printf("telegram broadcast completed: task_id=%s bot_id=%s sent=%d failed=%d",taskID,task.BotID,sent,failed)
 }
 
 func (m *Manager) sendMessage(ctx context.Context, token string, chatID int64, text string) error {

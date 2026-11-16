@@ -419,6 +419,9 @@ func UpsertTelegramUser(ctx context.Context, db *sql.DB, driver, telegramUserID,
 		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+",0,"+placeholder(driver,7)+","+placeholder(driver,8)+") "+
 		"ON CONFLICT(telegram_user_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_seen_bot_id=excluded.last_seen_bot_id,updated_at=excluded.updated_at"
 	_, err = db.ExecContext(ctx,query,id,telegramUserID,username,firstName,lastName,botID,now,now)
+	if err != nil { return err }
+	interaction := "INSERT INTO telegram_user_bots(bot_id,telegram_user_id,chat_id,last_seen_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+") ON CONFLICT(bot_id,telegram_user_id) DO UPDATE SET chat_id=excluded.chat_id,last_seen_at=excluded.last_seen_at"
+	_, err = db.ExecContext(ctx,interaction,botID,telegramUserID,telegramUserID,now)
 	return err
 }
 
@@ -490,4 +493,17 @@ func VerifyAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,co
 	if _,err:=tx.ExecContext(ctx,update,email,now,adminID);err!=nil{return err}
 	if _,err:=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1),adminID);err!=nil{return err}
 	return tx.Commit()
+}
+
+func SetTelegramUserBanned(ctx context.Context, db *sql.DB, driver, telegramUserID string, banned bool) error {
+	value:=0; if banned { value=1 }
+	q:="UPDATE telegram_users SET is_banned="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE telegram_user_id="+placeholder(driver,3)
+	res,err:=db.ExecContext(ctx,q,value,time.Now().UTC().Format(time.RFC3339Nano),telegramUserID);if err!=nil{return err}
+	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("Telegram 用户不存在")};return nil
+}
+
+func IsTelegramUserBanned(ctx context.Context, db *sql.DB, driver, telegramUserID string) (bool,error) {
+	var value int
+	err:=db.QueryRowContext(ctx,"SELECT is_banned FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),telegramUserID).Scan(&value)
+	if err==sql.ErrNoRows{return false,nil};return value!=0,err
 }
