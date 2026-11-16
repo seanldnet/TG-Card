@@ -15,7 +15,7 @@ RUN --mount=type=cache,id=tg-card-pnpm-store,target=/root/.local/share/pnpm/stor
 RUN pnpm --filter @vben/web-antd build
 
 # Build Go for the requested target architecture without emulating the target CPU.
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS go-builder
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /src
