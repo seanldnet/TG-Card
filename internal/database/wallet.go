@@ -23,9 +23,9 @@ type WalletRecharge struct {
 	PaidAt string `json:"paidAt,omitempty"`
 }
 
-func GetTelegramWalletBalance(ctx context.Context,db *sql.DB,telegramUserID string)(int64,error){
+func GetTelegramWalletBalance(ctx context.Context,db *sql.DB,driver,telegramUserID string)(int64,error){
 	var balance int64
-	err:=db.QueryRowContext(ctx,"SELECT balance_atomic FROM telegram_users WHERE telegram_user_id=?",telegramUserID).Scan(&balance)
+	err:=db.QueryRowContext(ctx,"SELECT balance_atomic FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),telegramUserID).Scan(&balance)
 	return balance,err
 }
 
