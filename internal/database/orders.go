@@ -73,7 +73,13 @@ func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, tel
 	var tiers []orderDiscountTier
 	if err := json.Unmarshal([]byte(discountJSON), &tiers); err != nil { return Order{}, fmt.Errorf("商品折扣配置无效") }
 	discountPercent := 0
-	for _, tier := range tiers { if quantity >= tier.MinQuantity && tier.MinQuantity >= 2 && tier.DiscountPercent >= 1 && tier.DiscountPercent <= 90 && tier.DiscountPercent > discountPercent { discountPercent = tier.DiscountPercent } }
+	selectedMinQuantity := 0
+	for _, tier := range tiers {
+		if quantity >= tier.MinQuantity && tier.MinQuantity >= 2 && tier.DiscountPercent >= 1 && tier.DiscountPercent <= 90 && tier.MinQuantity > selectedMinQuantity {
+			discountPercent = tier.DiscountPercent
+			selectedMinQuantity = tier.MinQuantity
+		}
+	}
 	if price > (1<<63-1)/int64(quantity) { return Order{}, fmt.Errorf("订单金额超出范围") }
 	grossAmount := price * int64(quantity)
 	amount := (grossAmount*int64(100-discountPercent)+50)/100
