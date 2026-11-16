@@ -186,6 +186,7 @@ func main() {
 	api.HandleFunc("POST /api/admin/password", app.changePassword)
 	api.HandleFunc("GET /api/bots", app.listBots)
 	api.HandleFunc("GET /api/bots/runtime", app.listBotRuntime)
+	api.HandleFunc("POST /api/bots/{id}/restart", app.restartBotRuntime)
 	api.HandleFunc("POST /api/bots", app.createBot)
 	api.HandleFunc("PUT /api/bots/owner", app.updateBotOwnerID)
 	api.HandleFunc("PUT /api/bots/{id}", app.updateBot)
