@@ -56,6 +56,7 @@ type siteSettings struct {
  SiteName string `json:"siteName"`
  SiteLogo string `json:"siteLogo"`
  ContactEmail string `json:"contactEmail"`
+ TelegramCustomerServiceURL string `json:"telegramCustomerServiceUrl"`
  SMTPHost string `json:"smtpHost"`
  SMTPPort int `json:"smtpPort"`
  SMTPUsername string `json:"smtpUsername"`
@@ -192,6 +193,7 @@ func main() {
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("PUT /api/user/profile", app.updateUserProfile)
 	api.HandleFunc("POST /api/user/avatar", app.uploadUserAvatar)
+	api.HandleFunc("POST /api/settings/site/logo", app.uploadSiteLogo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
 
 	root := http.NewServeMux()
@@ -432,6 +434,31 @@ func (a *application) uploadUserAvatar(w http.ResponseWriter, r *http.Request) {
 	avatarURL := "/uploads/avatars/" + filename
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.avatar.upload", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "avatar uploaded")
 	writeSuccess(w, http.StatusCreated, map[string]string{"avatar": avatarURL})
+}
+
+func (a *application) uploadSiteLogo(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w, r); !ok { return }
+	const maxLogoBytes = 10 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxLogoBytes+(1<<20))
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "网站图标上传无效，文件请控制在 10 MB 以内"); return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil { writeError(w, http.StatusBadRequest, "请选择网站图标文件"); return }
+	defer file.Close()
+	if header.Size > maxLogoBytes { writeError(w, http.StatusBadRequest, "网站图标不能超过 10 MB"); return }
+	content, err := io.ReadAll(io.LimitReader(file, maxLogoBytes+1))
+	if err != nil || len(content) == 0 || len(content) > maxLogoBytes { writeError(w, http.StatusBadRequest, "网站图标读取失败或超过 10 MB"); return }
+	formats := map[string]string{"image/jpeg":".jpg","image/png":".png","image/webp":".webp","image/gif":".gif","image/bmp":".bmp","image/tiff":".tif","image/avif":".avif"}
+	ext, ok := formats[http.DetectContentType(content)]
+	if !ok { writeError(w, http.StatusBadRequest, "请上传 JPG、PNG、WebP、GIF、BMP、TIFF 或 AVIF 图片"); return }
+	random := make([]byte,16)
+	if _, err := rand.Read(random); err != nil { writeError(w,http.StatusInternalServerError,"无法生成图标文件名"); return }
+	filename := hex.EncodeToString(random)+ext
+	directory := filepath.Join(a.dataDir,"uploads","site")
+	if err := os.MkdirAll(directory,0o750); err != nil { log.Printf("create site logo directory: %v",err); writeError(w,http.StatusInternalServerError,"无法保存网站图标"); return }
+	if err := os.WriteFile(filepath.Join(directory,filename),content,0o640); err != nil { log.Printf("save site logo: %v",err); writeError(w,http.StatusInternalServerError,"无法保存网站图标"); return }
+	writeSuccess(w,http.StatusCreated,map[string]string{"siteLogo":"/uploads/site/"+filename})
 }
 
 func (a *application) menus(w http.ResponseWriter, r *http.Request) {
@@ -980,12 +1007,15 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  var input siteSettings
  if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err != nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
  input.SiteName=strings.TrimSpace(input.SiteName); input.ContactEmail=strings.TrimSpace(input.ContactEmail)
+ input.TelegramCustomerServiceURL=strings.TrimSpace(input.TelegramCustomerServiceURL)
  input.SMTPHost=strings.TrimSpace(input.SMTPHost); input.SMTPUsername=strings.TrimSpace(input.SMTPUsername)
  input.SMTPFromEmail=strings.TrimSpace(input.SMTPFromEmail); input.SMTPFromName=strings.TrimSpace(input.SMTPFromName)
  input.TelegramAdminChatID=strings.TrimSpace(input.TelegramAdminChatID); input.TelegramGroupChatID=strings.TrimSpace(input.TelegramGroupChatID)
- if input.SiteName=="" || len(input.SiteName)>100 || len(input.ContactEmail)>254 || len(input.SiteLogo)>2048 || len(input.SMTPHost)>255 || len(input.SMTPUsername)>254 || len(input.SMTPFromEmail)>254 || len(input.SMTPPassword)>512 {
+ if input.SiteName=="" || len(input.SiteName)>100 || len(input.ContactEmail)>254 || len(input.TelegramCustomerServiceURL)>2048 || len(input.SiteLogo)>2048 || len(input.SMTPHost)>255 || len(input.SMTPUsername)>254 || len(input.SMTPFromEmail)>254 || len(input.SMTPPassword)>512 {
   writeError(w,http.StatusBadRequest,"Invalid site settings fields"); return
  }
+ if input.SiteLogo!="" && (!strings.HasPrefix(input.SiteLogo,"/uploads/site/") || strings.Contains(input.SiteLogo,"..")) { writeError(w,http.StatusBadRequest,"网站图标地址无效，请重新上传"); return }
+ if input.TelegramCustomerServiceURL!="" && !strings.HasPrefix(input.TelegramCustomerServiceURL,"https://t.me/") && !strings.HasPrefix(input.TelegramCustomerServiceURL,"https://telegram.me/") { writeError(w,http.StatusBadRequest,"Telegram 客服链接请使用 https://t.me/ 开头"); return }
  if input.SMTPPort==0 { input.SMTPPort=587 }; if input.SMTPPort<1 || input.SMTPPort>65535 { writeError(w,http.StatusBadRequest,"SMTP 端口无效"); return }
  oldRaw,err:=database.GetSiteSettings(r.Context(),a.db); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to load current site settings"); return }
  var old siteSettings; _=json.Unmarshal([]byte(oldRaw),&old)
