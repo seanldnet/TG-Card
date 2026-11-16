@@ -18,7 +18,7 @@ const form=reactive({
 });
 const columns=[
  {title:'活动名称',dataIndex:'name',key:'name',width:160},
- {title:'优惠码 / 兑换码',dataIndex:'code',key:'code',width:170},
+ {title:'优惠券代码',dataIndex:'code',key:'code',width:170},
  {title:'优惠规则',key:'discount',width:160},
  {title:'使用次数',key:'usage',width:110},
  {title:'有效期',key:'period',width:250},
@@ -30,7 +30,7 @@ function minorToMoney(value:number){return (value/100).toFixed(2)}
 async function load(){
  loading.value=true;
  try{items.value=await requestClient.get<Promotion[]>('/promotions')}
- catch(error:any){message.error(error?.response?.data?.message||'优惠活动加载失败')}
+ catch(error:any){message.error(error?.response?.data?.message||'优惠券加载失败')}
  finally{loading.value=false}
 }
 function reset(){editingId.value='';form.name='';form.code='';form.discountType='fixed';form.discountValue=5;form.minimumOrder='0.00';form.maximumDiscount='0.00';form.startsAt='';form.endsAt='';form.usageLimit=0;form.perUserLimit=1;form.enabled=true}
@@ -55,13 +55,13 @@ async function save(){
  try{
   if(editingId.value)await requestClient.put('/promotions/'+editingId.value,payload);
   else await requestClient.post('/promotions',payload);
-  message.success(editingId.value?'优惠活动已更新':'优惠活动已创建');modalOpen.value=false;await load();
- }catch(error:any){message.error(error?.response?.data?.message||'保存优惠活动失败')}
+  message.success(editingId.value?'优惠券已更新':'优惠券已创建');modalOpen.value=false;await load();
+ }catch(error:any){message.error(error?.response?.data?.message||'保存优惠券失败')}
  finally{saving.value=false}
 }
 function remove(item:Promotion){
- Modal.confirm({title:'删除优惠活动',content:'确定删除 '+item.code+' 吗？已生成订单的优惠快照不会改变。',okType:'danger',onOk:async()=>{
-  try{await requestClient.delete('/promotions/'+item.id);message.success('优惠活动已删除');await load()}
+ Modal.confirm({title:'删除优惠券',content:'确定删除 '+item.code+' 吗？已生成订单的优惠快照不会改变。',okType:'danger',onOk:async()=>{
+  try{await requestClient.delete('/promotions/'+item.id);message.success('优惠券已删除');await load()}
   catch(error:any){message.error(error?.response?.data?.message||'删除失败')}
  }});
 }
@@ -71,12 +71,12 @@ onMounted(load);
 </script>
 
 <template>
- <div class="p-4 md:p-6">
-  <a-card :bordered="false">
+ <div class="min-w-0 p-3 md:p-5">
+  <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
    <template #title>
     <div class="flex flex-wrap items-center justify-between gap-3">
-     <div><div class="text-lg font-semibold">优惠券与兑换码</div><div class="mt-1 text-sm text-gray-500">创建满减、固定金额优惠和折扣码；Telegram 用户可在下单时输入优惠码。</div></div>
-     <a-button type="primary" @click="add">新建优惠活动</a-button>
+     <div><div class="text-base font-semibold leading-6">优惠券管理</div><div class="mt-1 text-xs leading-5 text-gray-500">设置满减、固定金额立减和折扣优惠，Telegram 用户下单时可使用。</div></div>
+     <a-button size="small" type="primary" @click="add">新建优惠券</a-button>
     </div>
    </template>
    <a-table :columns="columns" :data-source="items" :loading="loading" :pagination="{pageSize:10}" row-key="id" :scroll="{x:1050}">
@@ -89,10 +89,10 @@ onMounted(load);
     </template>
    </a-table>
   </a-card>
-  <a-modal v-model:open="modalOpen" :title="editingId?'编辑优惠活动':'新建优惠活动'" :confirm-loading="saving" width="680px" @ok="save">
+  <a-modal v-model:open="modalOpen" :title="editingId?'编辑优惠券':'新建优惠券'" :confirm-loading="saving" width="680px" @ok="save">
    <a-form layout="vertical" class="grid grid-cols-1 gap-x-4 md:grid-cols-2">
     <a-form-item label="活动名称" required><a-input v-model:value="form.name" maxlength="120" placeholder="例如：新用户首单优惠"/></a-form-item>
-    <a-form-item label="优惠码 / 兑换码" required><a-input v-model:value="form.code" maxlength="40" placeholder="例如：WELCOME10"/></a-form-item>
+    <a-form-item label="优惠券代码" required><a-input v-model:value="form.code" maxlength="40" placeholder="例如：WELCOME10"/></a-form-item>
     <a-form-item label="优惠类型"><a-select v-model:value="form.discountType"><a-select-option value="fixed">固定金额立减（USDT）</a-select-option><a-select-option value="percent">订单折扣（百分比）</a-select-option></a-select></a-form-item>
     <a-form-item :label="form.discountType==='percent'?'折扣百分比':'立减金额'"><a-input-number v-model:value="form.discountValue" :min="1" :max="form.discountType==='percent'?90:1000000" class="w-full"/></a-form-item>
     <a-form-item label="最低订单金额（USDT）"><a-input v-model:value="form.minimumOrder" placeholder="0.00"/></a-form-item>

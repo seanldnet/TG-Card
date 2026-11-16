@@ -490,6 +490,31 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if err==nil && value>=1 && value<=1000000 { amount:=int64(value*1_000_000+0.5);m.sendWalletRechargeInvoice(ctx,cfg,msg.Chat.ID,msg.From.ID,amount);return }
 		}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请选择充值金额：",rechargeKeyboard())
+	case first == "/redeem":
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"兑换方式：/redeem 你的兑换码"); return }
+		result,redeemErr:=database.RedeemTelegramCode(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),strconv.FormatInt(msg.Chat.ID,10),command[1])
+		if redeemErr!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"兑换失败："+redeemErr.Error()); return }
+		switch result.RewardType {
+		case "balance":
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎉 兑换成功！已到账 "+formatUSDTAtomic(result.AmountAtomic)+" USDT 站内余额。")
+		case "package":
+			validity:="永久有效";if result.PackageDays>0{validity="有效期 "+strconv.Itoa(result.PackageDays)+" 天"}
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎉 套餐兑换成功！\n套餐："+result.PackageName+"\n数量："+strconv.Itoa(result.PackageQuantity)+"\n"+validity+"\n可发送 /mypackages 查看已兑换权益。")
+		case "product":
+			item,deliveryErr:=database.GetOrderDelivery(ctx,m.db,m.driver,result.ProductOrderID)
+			if deliveryErr!=nil { log.Printf("load redeemed product delivery failed: order_id=%s error=%v",result.ProductOrderID,deliveryErr);_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品兑换已登记，但自动交付暂时失败，请联系客服并提供订单号。");return }
+			if deliveryErr=m.DeliverPaidOrder(ctx,item);deliveryErr!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品兑换已成功，系统正在重试交付；如未收到商品，请在订单中查看状态。");return }
+			_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎉 商品兑换成功！商品已发送，请查收。")
+		}
+		return
+	case first == "/mypackages":
+		entitlements,entErr:=database.ListTelegramPackageEntitlements(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),cfg.ID)
+		if entErr!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法读取套餐权益，请稍后重试。");return }
+		if len(entitlements)==0 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"目前没有已兑换的套餐权益。");return }
+		var lines []string
+		for _,v:=range entitlements { validity:="永久";if v.ExpiresAt!=""{validity="到期："+v.ExpiresAt};lines=append(lines,v.PackageName+" × "+strconv.Itoa(v.Quantity)+" · "+validity) }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"🎁 我的套餐权益\n"+strings.Join(lines,"\n"))
+		return
 	case first == "/start":
 		// /start always opens the same customer home card. Bot owners receive
 		// one additional, owner-only management button on that card.
@@ -842,8 +867,17 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或已处理"); return }
 		address,enabled:=m.paymentConfig()
 		if !enabled || address=="" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"链上付款暂未启用"); _ = m.sendMessage(ctx,cfg.Token,chatID,"链上付款暂未启用，请联系管理员。"); return }
-		text:="订单号："+order.OrderNo+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
-		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}}
+		amountText:=formatUSDTAtomic(order.PaymentAmountAtomic)
+		orderAmountText:=formatPrice(order.AmountMinor,order.Currency)
+		text:="付款信息\n订单号："+order.OrderNo+"\n商品订单金额："+orderAmountText+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+amountText+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
+		markup:=map[string]any{"inline_keyboard":[][]map[string]any{
+			{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
+			{{"text":"📋 复制订单金额","copy_text":map[string]string{"text":orderAmountText}}},
+			{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
+			{{"text":"📋 复制订单号","copy_text":map[string]string{"text":order.OrderNo}}},
+			{{"text":"我的订单","callback_data":"shop:orders"}},
+			{{"text":"返回商城","callback_data":"shop:home"}},
+		}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
 	case query.Data=="wallet:openrecharge":
@@ -892,8 +926,15 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 	if !enabled || address=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"充值功能暂未启用，请联系管理员。");return }
 	item,err:=database.CreateWalletRecharge(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(userID,10),strconv.FormatInt(chatID,10),amountAtomic,30*time.Minute)
 	if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"创建充值单失败："+err.Error());return }
-	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n预计赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n预计到账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+formatUSDTAtomic(item.PaymentAmountAtomic)+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
-	markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},{{"text":"🛍️ 返回商城","callback_data":"shop:home"}}}}
+	amountText:=formatUSDTAtomic(item.PaymentAmountAtomic)
+	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n预计赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n预计到账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+amountText+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
+	markup:=map[string]any{"inline_keyboard":[][]map[string]any{
+		{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
+		{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
+		{{"text":"📋 复制充值单号","copy_text":map[string]string{"text":item.RechargeNo}}},
+		{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},
+		{{"text":"🛍️ 返回商城","callback_data":"shop:home"}},
+	}}
 	if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码暂不可用，请复制收款地址。",markup) }
 }
 

@@ -110,7 +110,7 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 
 	id, err := randomID()
 	if err != nil { return Order{}, err }
-	orderSuffix, err := randomID()
+	orderSuffix, err := randomDigits(6)
 	if err != nil { return Order{}, err }
 	expires := now.Add(ttl)
 	// USDT TRC20 uses six decimal places. Product prices use two decimal places;
@@ -130,7 +130,7 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 	}
 	if paymentAmountAtomic == 0 { return Order{}, fmt.Errorf("unable to allocate unique payment amount") }
 	order := Order{
-		ID:id, OrderNo:"TC"+now.Format("20060102150405")+orderSuffix[:6],
+		ID:id, OrderNo:"TC"+now.Format("20060102150405")+orderSuffix,
 		BotID:botID, TelegramUserID:telegramUserID, TelegramChatID:telegramChatID,
 		ProductID:productID, ProductName:productName, UnitPriceMinor:price, Quantity:quantity,
 		AmountMinor:amount, PaymentAmountAtomic:paymentAmountAtomic, Currency:currency, Status:"pending_payment",
