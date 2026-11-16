@@ -534,22 +534,26 @@ func walletBalanceKeyboard() map[string]any {
 // NotifyProductRestocked sends one availability message per pending subscription.
 // The subscription is acknowledged only after Telegram accepts the message.
 func (m *Manager) NotifyProductRestocked(ctx context.Context,productID string) {
-  products,err:=database.ListProducts(ctx,m.db);if err!=nil{return}
-  var product *database.Product
-  for i:=range products { if products[i].ID==productID { product=&products[i];break } }
-  if product==nil || product.StockCount<1 { return }
-  subscribers,err:=database.ListPendingProductStockNotifications(ctx,m.db,m.driver,productID);if err!=nil { log.Printf("load stock notification subscribers failed: product_id=%s error=%v",productID,err);return }
-  for _,sub:=range subscribers {
-    m.mu.Lock();worker:=m.workers[sub.BotID];m.mu.Unlock()
-    if worker==nil { continue }
-    chatID,err:=strconv.ParseInt(sub.TelegramChatID,10,64);if err!=nil{continue}
-    text:="🔔 你关注的商品已经补货！\n商品："+product.Name+"\n价格："+formatPrice(product.PriceMinor,product.Currency)+"\n当前库存："+strconv.Itoa(product.StockCount)
-    markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"立即查看商品","callback_data":"shop:product:"+product.ID}}}}
-    if err:=m.sendMessageMarkup(ctx,worker.config.Token,chatID,text,markup);err!=nil { log.Printf("send stock notification failed: product_id=%s subscriber_id=%s error=%v",productID,sub.ID,err);continue }
-    if err:=database.MarkProductStockNotificationSent(ctx,m.db,m.driver,sub.ID);err!=nil { log.Printf("mark stock notification sent failed: subscription_id=%s error=%v",sub.ID,err) }
-  }
+	products,err:=database.ListProducts(ctx,m.db);if err!=nil{return}
+	var product *database.Product
+	for i:=range products { if products[i].ID==productID { product=&products[i];break } }
+	if product==nil || product.StockCount<1 { return }
+	subscribers,err:=database.ClaimPendingProductStockNotifications(ctx,m.db,m.driver,productID,100,2*time.Minute)
+	if err!=nil { log.Printf("claim stock notification subscribers failed: product_id=%s error=%v",productID,err);return }
+	for _,sub:=range subscribers {
+		m.mu.Lock();worker:=m.workers[sub.BotID];m.mu.Unlock()
+		if worker==nil { _=database.ReleaseProductStockNotificationClaim(ctx,m.db,m.driver,sub.ID); continue }
+		chatID,err:=strconv.ParseInt(sub.TelegramChatID,10,64);if err!=nil{_ = database.ReleaseProductStockNotificationClaim(ctx,m.db,m.driver,sub.ID);continue}
+		text:="🔔 你关注的商品已经补货！\n商品："+product.Name+"\n价格："+formatPrice(product.PriceMinor,product.Currency)+"\n当前库存："+strconv.Itoa(product.StockCount)
+		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"立即查看商品","callback_data":"shop:product:"+product.ID}}}}
+		if err:=m.sendMessageMarkup(ctx,worker.config.Token,chatID,text,markup);err!=nil {
+			log.Printf("send stock notification failed: product_id=%s subscriber_id=%s error=%v",productID,sub.ID,err)
+			_ = database.ReleaseProductStockNotificationClaim(ctx,m.db,m.driver,sub.ID)
+			continue
+		}
+		if err:=database.MarkProductStockNotificationSent(ctx,m.db,m.driver,sub.ID);err!=nil { log.Printf("mark stock notification sent failed: subscription_id=%s error=%v",sub.ID,err) }
+	}
 }
-
 func rechargeKeyboard() map[string]any {
 	return map[string]any{"inline_keyboard": [][]map[string]string{
 		{{"text": "5 USDT", "callback_data": "wallet:recharge:5000000"}, {"text": "10 USDT", "callback_data": "wallet:recharge:10000000"}},
