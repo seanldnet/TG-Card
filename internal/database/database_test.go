@@ -404,7 +404,7 @@ func TestWalletRechargeCreditsExactlyOnce(t *testing.T) {
 	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
 	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"777001","walletbuyer","Wallet","Buyer","bot-1");err!=nil{t.Fatal(err)}
 	item,err:=CreateWalletRecharge(ctx,db,cfg.DBDriver,"bot-1","777001","777001",5_000_000,30*time.Minute);if err!=nil{t.Fatal(err)}
-	matched,err:=MatchPendingWalletRecharge(ctx,db,cfg.DBDriver,item.PaymentAmountAtomic,time.Now().UnixMilli());if err!=nil{t.Fatal(err)}
+	matched,err:=MatchPendingWalletRecharge(ctx,db,cfg.DBDriver,item.PaymentAmountAtomic,time.Now().Add(time.Second).UnixMilli());if err!=nil{t.Fatal(err)}
 	if matched.ID!=item.ID{t.Fatalf("matched recharge=%s, want %s",matched.ID,item.ID)}
 	txID:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	confirmed,balance,err:=ConfirmWalletRecharge(ctx,db,cfg.DBDriver,item.ID,txID);if err!=nil{t.Fatal(err)}
