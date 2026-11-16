@@ -23,7 +23,7 @@ function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='�
 function handleAddBot(){editingId.value='';resetBotForm();botModalOpen.value=true}
 function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
 async function loadBots(){loading.value=true;try{const [items,settings]=await Promise.all([requestClient.get<Bot[]>('/bots'),requestClient.get<{telegramOwnerId?:string}>('/settings/site')]);bots.value=items;ownerID.value=settings.telegramOwnerId||''}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
-async function saveOwnerID(){const value=ownerID.value.trim();if(value&&!/^\\d{1,32}$/.test(value)){message.warning('请输入有效的 Telegram 数字 ID');return;}ownerSaving.value=true;try{await requestClient.put('/bots/owner',{telegramOwnerId:value});message.success(value?'机器人主人 ID 已保存':'机器人主人 ID 已清空');}catch(error:any){message.error(error?.response?.data?.message||'保存主人 ID 失败');}finally{ownerSaving.value=false;}}
+async function saveOwnerID(){const value=ownerID.value.trim();if(value&&!/^\d{1,32}$/.test(value)){message.warning('请输入有效的 Telegram 数字 ID');return;}ownerSaving.value=true;try{await requestClient.put('/bots/owner',{telegramOwnerId:value});message.success(value?'机器人主人 ID 已保存':'机器人主人 ID 已清空');}catch(error:any){message.error(error?.response?.data?.message||'保存主人 ID 失败');}finally{ownerSaving.value=false;}}
 async function submit(){
  try{await botFormRef.value?.validate()}catch{return}
  if(!editingId.value&&!botForm.token.trim()){message.warning('请填写 Bot Token');return}
