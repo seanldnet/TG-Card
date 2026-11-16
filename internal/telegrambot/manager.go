@@ -402,7 +402,8 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 				}
 			}
 			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", shopBackKeyboard()); return }
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows))+"）：", map[string]any{"inline_keyboard": rows})
+			rows = append(rows,[]map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows)-1)+"）：", map[string]any{"inline_keyboard": rows})
 			return
 		case pending == "support_order_manual":
 			orderNo := strings.TrimSpace(text)
@@ -511,7 +512,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "暂时无法查询你的订单，请稍后再试。")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "暂时无法查询你的订单，请稍后再试。", supportBackKeyboard())
 		return
 	}
 	rows := make([][]map[string]string, 0)
@@ -527,6 +528,7 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 		message = "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。"
 	}
 	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
+	rows = append(rows, []map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, message, map[string]any{"inline_keyboard": rows})
 }
 
@@ -702,14 +704,16 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"owner:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		switch query.Data {
+		case "owner:home":
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"主人管理菜单：请选择商品管理操作。",ownerMenuKeyboard())
 		case "owner:addproduct":
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号")
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号",ownerMenuKeyboard())
 		case "owner:products":
 			products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
 			var lines []string
 			for _,p:=range products{lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+strconv.Itoa(p.StockCount))}
 			if len(lines)==0{lines=append(lines,"暂无商品")}
-			_ = m.sendMessage(ctx,cfg.Token,chatID,strings.Join(lines,"\n"))
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
 	case strings.HasPrefix(query.Data,"stock:subscribe:"):
@@ -824,10 +828,10 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
 		log.Printf("telegram user orders failed: bot_id=%s user_id=%d error=%v", cfg.ID, user.ID, err)
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。", shopBackKeyboard())
 		return
 	}
-	if len(orders) == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, "你还没有订单。"); return }
+	if len(orders) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "你还没有订单。", shopBackKeyboard()); return }
 	var b strings.Builder
 	b.WriteString("最近订单：")
 	paymentAddress, paymentEnabled := m.paymentConfig()
