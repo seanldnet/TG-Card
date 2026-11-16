@@ -5,12 +5,11 @@ import { useWindowSize } from '@vueuse/core';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
 
-interface Bot { id:string; name:string; username:string; status:number; welcomeText:string; createdAt:string; updatedAt:string }
+interface Bot { id:string; name:string; username:string; status:number; welcomeText:string; ownerId:string; customerServiceUrl:string; businessGroupUrl:string; createdAt:string; updatedAt:string }
 const loading=ref(false),saving=ref(false),botModalOpen=ref(false),editingId=ref('');
-const ownerID=ref(''),ownerSaving=ref(false);
 const bots=ref<Bot[]>([]);
 const botFormRef=ref();
-const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',enabled:true});
+const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',ownerId:'',customerServiceUrl:'',businessGroupUrl:'',enabled:true});
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const activeCount=computed(()=>bots.value.filter(item=>item.status===1).length);
@@ -19,21 +18,20 @@ const botRules={
  name:[{required:true,whitespace:true,message:'请输入机器人名称',trigger:'blur'}],
  token:[{validator:(_rule:any,value:string)=>editingId.value||String(value||'').trim()?Promise.resolve():Promise.reject(new Error('请输入 Telegram Bot Token')),trigger:'blur'}],
 };
-function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.enabled=true}
+function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.ownerId='';botForm.customerServiceUrl='';botForm.businessGroupUrl='';botForm.enabled=true}
 function handleAddBot(){editingId.value='';resetBotForm();botModalOpen.value=true}
-function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
-async function loadBots(){loading.value=true;try{const [items,settings]=await Promise.all([requestClient.get<Bot[]>('/bots'),requestClient.get<{telegramOwnerId?:string}>('/settings/site')]);bots.value=items;ownerID.value=settings.telegramOwnerId||''}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
-async function saveOwnerID(){const value=ownerID.value.trim();if(value&&!/^\d{1,32}$/.test(value)){message.warning('请输入有效的 Telegram 数字 ID');return;}ownerSaving.value=true;try{await requestClient.put('/bots/owner',{telegramOwnerId:value});message.success(value?'机器人主人 ID 已保存':'机器人主人 ID 已清空');}catch(error:any){message.error(error?.response?.data?.message||'保存主人 ID 失败');}finally{ownerSaving.value=false;}}
+function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.ownerId=bot.ownerId||'';botForm.customerServiceUrl=bot.customerServiceUrl||'';botForm.businessGroupUrl=bot.businessGroupUrl||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
+async function loadBots(){loading.value=true;try{bots.value=await requestClient.get<Bot[]>('/bots')}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
 async function submit(){
  try{await botFormRef.value?.validate()}catch{return}
  if(!editingId.value&&!botForm.token.trim()){message.warning('请填写 Bot Token');return}
  saving.value=true;
  try{
   if(editingId.value){
-   await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0});
+   await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
    message.success('机器人资料已保存');
   }else{
-   await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText});
+   await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
    message.success('机器人添加成功');
   }
   botModalOpen.value=false;await loadBots();
@@ -49,9 +47,7 @@ onMounted(loadBots);
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">机器人管理</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一管理 Telegram 商城机器人及运行状态</p></div>
    <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-    <a-input v-model:value="ownerID" class="w-full sm:w-56" size="middle" inputmode="numeric" placeholder="主人 Telegram 数字 ID"/>
-    <a-button size="middle" :loading="ownerSaving" @click="saveOwnerID">保存主人 ID</a-button>
-    <a-button type="primary" size="middle" @click="handleAddBot">＋添加机器人</a-button>
+<a-button type="primary" size="middle" @click="handleAddBot">＋添加机器人</a-button>
    </div>
   </div>
   <a-row :gutter="[12,12]">
@@ -85,6 +81,10 @@ onMounted(loadBots);
      <a-form-item label="机器人名称" name="name"><a-input v-model:value="botForm.name" size="large" :maxlength="100" placeholder="例如：主商城机器人"/></a-form-item>
      <a-form-item label="Bot Token" name="token" :extra="editingId?'留空表示不修改现有 Token。':'从 Telegram 的 @BotFather 获取。'"><a-input-password v-model:value="botForm.token" size="large" autocomplete="new-password" placeholder="输入 Bot Token"/></a-form-item>
      <a-form-item label="欢迎语"><a-textarea v-model:value="botForm.welcomeText" :rows="4" :maxlength="4000" show-count placeholder="输入用户打开机器人时看到的欢迎内容"/></a-form-item>
+     <a-divider class="my-2">机器人专属设置</a-divider>
+     <a-form-item label="主人 Telegram 数字 ID"><a-input v-model:value="botForm.ownerId" inputmode="numeric" placeholder="填写此机器人的主人 ID"/></a-form-item>
+     <a-form-item label="客服链接"><a-input v-model:value="botForm.customerServiceUrl" placeholder="https://t.me/客服用户名"/></a-form-item>
+     <a-form-item label="业务通知群链接"><a-input v-model:value="botForm.businessGroupUrl" placeholder="https://t.me/业务通知群"/></a-form-item>
      <a-form-item label="运行状态"><a-switch v-model:checked="botForm.enabled" checked-children="启用" un-checked-children="停用"/></a-form-item>
     </a-form>
    </div>
