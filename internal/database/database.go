@@ -264,6 +264,9 @@ func UpdateBot(ctx context.Context, db *sql.DB, driver, id, name, welcome string
 	return nil
 }
 
+func UpdateBotMenuConfig(ctx context.Context, db *sql.DB, driver, id, menuConfig string) error {
+ now:=time.Now().UTC().Format(time.RFC3339Nano);res,err:=db.ExecContext(ctx,"UPDATE bots SET menu_config="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3),menuConfig,now,id);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
+}
 func DeleteBot(ctx context.Context, db *sql.DB, driver, id string) error {
 	result, err := db.ExecContext(ctx, "DELETE FROM bots WHERE id="+placeholder(driver,1), id)
 	if err != nil { return err }
