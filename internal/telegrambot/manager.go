@@ -235,6 +235,21 @@ func truncateButtonText(value string, limit int) string {
 
 func (m *Manager) isOwner(cfg Config,telegramUserID int64) bool { return cfg.OwnerID!="" && strconv.FormatInt(telegramUserID,10)==cfg.OwnerID }
 
+func (m *Manager) sendOwnerOverview(ctx context.Context, cfg Config, chatID int64) {
+	if m.db == nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"数据库暂不可用。"); return }
+	var users, products, pending, paid, tickets int64
+	queries := []struct{ query string; target *int64 }{
+		{"SELECT COUNT(1) FROM telegram_users",&users},
+		{"SELECT COUNT(1) FROM products WHERE status=1",&products},
+		{"SELECT COUNT(1) FROM orders WHERE status IN ('pending_payment','pending')",&pending},
+		{"SELECT COUNT(1) FROM orders WHERE status IN ('paid','delivering','delivery_failed','delivered')",&paid},
+		{"SELECT COUNT(1) FROM support_tickets WHERE status IN ('open','in_progress','waiting_user')",&tickets},
+	}
+	for _, item := range queries { if err:=m.db.QueryRowContext(ctx,item.query).Scan(item.target); err!=nil { log.Printf("owner overview query failed: %v",err); _ = m.sendMessage(ctx,cfg.Token,chatID,"经营数据暂时无法读取，请稍后重试。"); return } }
+	text := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n可继续使用下方管理操作。"
+	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,ownerMenuKeyboard())
+}
+
 func (m *Manager) SetPaymentConfig(address string, enabled bool) {
 	m.mu.Lock()
 	m.paymentAddress = address
@@ -539,7 +554,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	first := strings.SplitN(command[0], "@", 2)[0]
 	if first == "/admin" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：此菜单仅对当前 Bot 主人开放。",ownerMenuKeyboard())
+		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
 		return
 	}
 	if first == "/addproduct" {
@@ -693,6 +708,7 @@ func rechargeKeyboard() map[string]any {
 }
 
 func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
+	{{"text":"📊 经营数据总览","callback_data":"owner:stats"}},
 	{{"text":"📦 商品列表","callback_data":"owner:products"}},
 	{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}},
 	{{"text":"⬅️ 返回个人首页","callback_data":"owner:back"}},
@@ -857,7 +873,9 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		switch query.Data {
 		case "owner:home":
-			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"主人管理菜单：请选择商品管理操作。",ownerMenuKeyboard())
+			m.sendOwnerOverview(ctx,cfg,chatID)
+		case "owner:stats":
+			m.sendOwnerOverview(ctx,cfg,chatID)
 		case "owner:back":
 			m.showStartHome(ctx, cfg, chatID, query.From)
 		case "owner:addproduct":
