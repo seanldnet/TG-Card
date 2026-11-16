@@ -494,3 +494,16 @@ func VerifyAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,co
 	if _,err:=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1),adminID);err!=nil{return err}
 	return tx.Commit()
 }
+
+func SetTelegramUserBanned(ctx context.Context, db *sql.DB, driver, telegramUserID string, banned bool) error {
+	value:=0; if banned { value=1 }
+	q:="UPDATE telegram_users SET is_banned="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE telegram_user_id="+placeholder(driver,3)
+	res,err:=db.ExecContext(ctx,q,value,time.Now().UTC().Format(time.RFC3339Nano),telegramUserID);if err!=nil{return err}
+	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("Telegram 用户不存在")};return nil
+}
+
+func IsTelegramUserBanned(ctx context.Context, db *sql.DB, driver, telegramUserID string) (bool,error) {
+	var value int
+	err:=db.QueryRowContext(ctx,"SELECT is_banned FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),telegramUserID).Scan(&value)
+	if err==sql.ErrNoRows{return false,nil};return value!=0,err
+}
