@@ -100,10 +100,10 @@ func MatchPendingWalletRecharge(ctx context.Context,db *sql.DB,driver string,amo
 func ConfirmWalletRecharge(ctx context.Context,db *sql.DB,driver,rechargeID,transactionID string)(WalletRecharge,int64,error){
 	if rechargeID==""||len(transactionID)!=64{return WalletRecharge{},0,fmt.Errorf("invalid recharge payment confirmation")}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return WalletRecharge{},0,err};defer tx.Rollback()
-	query:="SELECT recharge_no,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,status,COALESCE(payment_reference,''),expires_at,created_at,bot_id FROM wallet_recharges WHERE id="+placeholder(driver,1)
+	query:="SELECT recharge_no,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,bonus_amount_atomic,status,COALESCE(payment_reference,''),expires_at,created_at,bot_id FROM wallet_recharges WHERE id="+placeholder(driver,1)
 	if driver=="postgres"{query+=" FOR UPDATE"}
 	var v WalletRecharge;var existingRef,botID string
-	if err:=tx.QueryRowContext(ctx,query,rechargeID).Scan(&v.RechargeNo,&v.TelegramUserID,&v.TelegramChatID,&v.AmountAtomic,&v.PaymentAmountAtomic,&v.Status,&existingRef,&v.ExpiresAt,&v.CreatedAt,&botID);err!=nil{return WalletRecharge{},0,err}
+	if err:=tx.QueryRowContext(ctx,query,rechargeID).Scan(&v.RechargeNo,&v.TelegramUserID,&v.TelegramChatID,&v.AmountAtomic,&v.PaymentAmountAtomic,&v.BonusAmountAtomic,&v.Status,&existingRef,&v.ExpiresAt,&v.CreatedAt,&botID);err!=nil{return WalletRecharge{},0,err}
 	if v.Status=="paid"{if existingRef!=transactionID{return WalletRecharge{},0,fmt.Errorf("充值单已由其他交易确认")};var balance int64;err:=tx.QueryRowContext(ctx,"SELECT balance_atomic FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),v.TelegramUserID).Scan(&balance);if err!=nil{return WalletRecharge{},0,err};if err:=tx.Commit();err!=nil{return WalletRecharge{},0,err};v.ID=rechargeID;v.Status="paid";v.PaymentReference=transactionID;return v,balance,nil}
 	if v.Status!="pending_payment"{return WalletRecharge{},0,fmt.Errorf("充值单状态不允许入账：%s",v.Status)}
 	expires,err:=time.Parse(time.RFC3339Nano,v.ExpiresAt);if err!=nil||!time.Now().UTC().Before(expires){return WalletRecharge{},0,fmt.Errorf("充值单已过期，需人工核对")}
