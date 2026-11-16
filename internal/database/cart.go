@@ -25,8 +25,7 @@ type CartItem struct {
 
 func ListCartItems(ctx context.Context, db *sql.DB, driver, botID, telegramUserID string) ([]CartItem, error) {
 	query := `SELECT c.id,c.bot_id,c.telegram_user_id,c.product_id,p.name,p.price_minor,p.currency,p.delivery_type,c.quantity,
-	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),
-	p.price_minor
+	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0)
 	FROM shopping_cart_items c JOIN products p ON p.id=c.product_id
 	WHERE c.bot_id=` + placeholder(driver, 1) + ` AND c.telegram_user_id=` + placeholder(driver, 2) + `
 	ORDER BY c.created_at,c.id`
