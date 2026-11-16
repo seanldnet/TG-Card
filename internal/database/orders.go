@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -43,26 +45,42 @@ type OrderListItem struct {
 // PostgreSQL uses SKIP LOCKED to prevent concurrent buyers selecting the same key;
 // SQLite serializes this transaction through the single configured connection.
 func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, ttl time.Duration) (Order, error) {
+	return CreateOrderWithQuantity(ctx, db, driver, botID, telegramUserID, telegramChatID, productID, 1, ttl)
+}
+
+type orderDiscountTier struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
+
+func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, quantity int, ttl time.Duration) (Order, error) {
+	if quantity < 1 || quantity > 100 { return Order{}, fmt.Errorf("购买数量必须为 1-100") }
 	if ttl <= 0 { ttl = 20 * time.Minute }
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return Order{}, err }
 	defer tx.Rollback()
 
-	var productName, currency string
+	var productName, currency, discountJSON string
 	var price int64
 	var status int
-	query := "SELECT name,price_minor,currency,status FROM products WHERE id=" + placeholder(driver, 1)
-	if err := tx.QueryRowContext(ctx, query, productID).Scan(&productName, &price, &currency, &status); err != nil { return Order{}, err }
+	query := "SELECT name,price_minor,currency,status,COALESCE(bulk_discount_json,'[]') FROM products WHERE id=" + placeholder(driver, 1)
+	if err := tx.QueryRowContext(ctx, query, productID).Scan(&productName, &price, &currency, &status, &discountJSON); err != nil { return Order{}, err }
 	if status != 1 { return Order{}, fmt.Errorf("product is unavailable") }
 	if price <= 0 { return Order{}, fmt.Errorf("product price must be greater than zero") }
-
-	var keyID string
-	keyQuery := "SELECT id FROM product_keys WHERE product_id=" + placeholder(driver, 1) + " AND status=0 ORDER BY created_at,id LIMIT 1"
+	var tiers []orderDiscountTier
+	if err := json.Unmarshal([]byte(discountJSON), &tiers); err != nil { return Order{}, fmt.Errorf("商品折扣配置无效") }
+	discountPercent := 0
+	for _, tier := range tiers { if quantity >= tier.MinQuantity && tier.MinQuantity >= 2 && tier.DiscountPercent >= 1 && tier.DiscountPercent <= 90 && tier.DiscountPercent > discountPercent { discountPercent = tier.DiscountPercent } }
+	if price > (1<<63-1)/int64(quantity) { return Order{}, fmt.Errorf("订单金额超出范围") }
+	grossAmount := price * int64(quantity)
+	amount := (grossAmount*int64(100-discountPercent)+50)/100
+	if amount <= 0 { return Order{}, fmt.Errorf("订单金额无效") }
+	keyQuery := "SELECT id FROM product_keys WHERE product_id=" + placeholder(driver, 1) + " AND status=0 ORDER BY created_at,id LIMIT " + fmt.Sprint(quantity)
 	if driver == "postgres" { keyQuery += " FOR UPDATE SKIP LOCKED" }
-	if err := tx.QueryRowContext(ctx, keyQuery, productID).Scan(&keyID); err != nil {
-		if err == sql.ErrNoRows { return Order{}, fmt.Errorf("out of stock") }
-		return Order{}, err
-	}
+	keyRows, err := tx.QueryContext(ctx, keyQuery, productID)
+	if err != nil { return Order{}, err }
+	keyIDs := make([]string, 0, quantity)
+	for keyRows.Next() { var keyID string; if err := keyRows.Scan(&keyID); err != nil { keyRows.Close(); return Order{}, err }; keyIDs = append(keyIDs, keyID) }
+	if err := keyRows.Err(); err != nil { keyRows.Close(); return Order{}, err }
+	if err := keyRows.Close(); err != nil { return Order{}, err }
+	if len(keyIDs) != quantity { return Order{}, fmt.Errorf("库存不足：当前可售 %d 件，所需 %d 件", len(keyIDs), quantity) }
 
 	id, err := randomID()
 	if err != nil { return Order{}, err }
@@ -72,7 +90,7 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 	expires := now.Add(ttl)
 	// USDT TRC20 uses six decimal places. Product prices use two decimal places;
 	// a small random atomic-unit suffix uniquely identifies concurrent invoices.
-	baseAtomic := price * 10000
+	baseAtomic := amount * 10000
 	var paymentAmountAtomic int64
 	for attempt := 0; attempt < 20; attempt++ {
 		suffix, err := rand.Int(rand.Reader, big.NewInt(9999))
@@ -89,17 +107,19 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 	order := Order{
 		ID:id, OrderNo:"TC"+now.Format("20060102150405")+orderSuffix[:6],
 		BotID:botID, TelegramUserID:telegramUserID, TelegramChatID:telegramChatID,
-		ProductID:productID, ProductName:productName, UnitPriceMinor:price, Quantity:1,
-		AmountMinor:price, PaymentAmountAtomic:paymentAmountAtomic, Currency:currency, Status:"pending_payment",
+		ProductID:productID, ProductName:productName, UnitPriceMinor:price, Quantity:quantity,
+		AmountMinor:amount, PaymentAmountAtomic:paymentAmountAtomic, Currency:currency, Status:"pending_payment",
 		ExpiresAt:expires.Format(time.RFC3339Nano), CreatedAt:now.Format(time.RFC3339Nano),
 		UpdatedAt:now.Format(time.RFC3339Nano),
 	}
 	update := "UPDATE product_keys SET status=1,order_id=" + placeholder(driver,1) + " WHERE id=" + placeholder(driver,2) + " AND status=0"
-	result, err := tx.ExecContext(ctx, update, order.ID, keyID)
-	if err != nil { return Order{}, err }
-	affected, err := result.RowsAffected()
-	if err != nil { return Order{}, err }
-	if affected != 1 { return Order{}, fmt.Errorf("stock reservation conflict") }
+	for _, keyID := range keyIDs {
+		result, err := tx.ExecContext(ctx, update, order.ID, keyID)
+		if err != nil { return Order{}, err }
+		affected, err := result.RowsAffected()
+		if err != nil { return Order{}, err }
+		if affected != 1 { return Order{}, fmt.Errorf("stock reservation conflict") }
+	}
 
 	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic) VALUES("
 	for i:=1;i<=16;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
