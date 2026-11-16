@@ -162,7 +162,7 @@ func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
 
 // ListOrdersByTelegramUser returns a user's recent orders for one Bot only.
 func ListOrdersByTelegramUser(ctx context.Context, db *sql.DB, driver, telegramUserID, botID string) ([]Order, error) {
-	query := `SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic
+	query := `SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic,COALESCE(delivery_type,'card')
 		FROM orders WHERE telegram_user_id=` + placeholder(driver, 1) + " AND bot_id=" + placeholder(driver, 2) + " ORDER BY created_at DESC LIMIT 20"
 	rows, err := db.QueryContext(ctx, query, telegramUserID, botID)
 	if err != nil { return nil, err }
@@ -170,7 +170,7 @@ func ListOrdersByTelegramUser(ctx context.Context, db *sql.DB, driver, telegramU
 	items := make([]Order, 0)
 	for rows.Next() {
 		var item Order
-		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic,&item.DeliveryType); err != nil { return nil, err }
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -533,8 +533,8 @@ func ClearOrderData(ctx context.Context,db *sql.DB,driver string)(OrderCleanupRe
 
 func GetOrderByID(ctx context.Context, db *sql.DB, driver, orderID string) (Order, error) {
 	var item Order
-	q := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic,COALESCE(payment_method,''),COALESCE(payment_reference,''),delivery_attempts,delivery_error FROM orders WHERE id=" + placeholder(driver, 1)
-	err := db.QueryRowContext(ctx, q, orderID).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.DeliveryAttempts,&item.DeliveryError)
+	q := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),payment_amount_atomic,COALESCE(payment_method,''),COALESCE(payment_reference,''),delivery_attempts,delivery_error,COALESCE(delivery_type,'card') FROM orders WHERE id=" + placeholder(driver, 1)
+	err := db.QueryRowContext(ctx, q, orderID).Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.DeliveryAttempts,&item.DeliveryError,&item.DeliveryType)
 	return item, err
 }
 
