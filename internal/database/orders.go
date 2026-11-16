@@ -221,10 +221,11 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return OrderDelivery{}, err }
 	defer tx.Rollback()
-	query := "SELECT status, expires_at, COALESCE(payment_reference,''), COALESCE(payment_method,'') FROM orders WHERE id=" + placeholder(driver, 1)
+	query := "SELECT status, expires_at, COALESCE(payment_reference,''), COALESCE(payment_method,''), quantity FROM orders WHERE id=" + placeholder(driver, 1)
 	if driver == "postgres" { query += " FOR UPDATE" }
 	var status, expiresAt, existingReference, existingMethod string
-	if err := tx.QueryRowContext(ctx, query, orderID).Scan(&status, &expiresAt, &existingReference, &existingMethod); err != nil { return OrderDelivery{}, err }
+	var expectedQuantity int
+	if err := tx.QueryRowContext(ctx, query, orderID).Scan(&status, &expiresAt, &existingReference, &existingMethod, &expectedQuantity); err != nil { return OrderDelivery{}, err }
 	now := time.Now().UTC()
 	alreadyPaid := status == "paid" || status == "delivering" || status == "delivery_failed" || status == "delivered"
 	if alreadyPaid {
@@ -246,15 +247,22 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 		if err != nil { return OrderDelivery{}, err }
 		affected, err = result.RowsAffected()
 		if err != nil { return OrderDelivery{}, err }
-		if affected != 1 { return OrderDelivery{}, fmt.Errorf("reserved stock missing; payment requires reconciliation") }
+		if affected != int64(expectedQuantity) { return OrderDelivery{}, fmt.Errorf("reserved stock missing: expected %d keys, found %d; payment requires reconciliation", expectedQuantity, affected) }
 	}
 	var delivery OrderDelivery
 	delivery.AlreadyPaid = alreadyPaid
 	delivery.PaymentMethod = paymentMethod
 	delivery.PaymentReference = paymentReference
 	if status != "delivered" {
-		keyQuery := "SELECT k.secret_ciphertext FROM product_keys k WHERE k.order_id=" + placeholder(driver, 1) + " AND k.status=2 LIMIT 1"
-		if err := tx.QueryRowContext(ctx, keyQuery, orderID).Scan(&delivery.SecretCiphertext); err != nil { return OrderDelivery{}, fmt.Errorf("load paid card key: %w", err) }
+		keyQuery := "SELECT secret_ciphertext FROM product_keys WHERE order_id=" + placeholder(driver, 1) + " AND status=2 ORDER BY created_at,id"
+		keyRows, err := tx.QueryContext(ctx, keyQuery, orderID)
+		if err != nil { return OrderDelivery{}, err }
+		var secrets []string
+		for keyRows.Next() { var secret string; if err := keyRows.Scan(&secret); err != nil { keyRows.Close(); return OrderDelivery{}, err }; secrets = append(secrets, secret) }
+		if err := keyRows.Err(); err != nil { keyRows.Close(); return OrderDelivery{}, err }
+		if err := keyRows.Close(); err != nil { return OrderDelivery{}, err }
+		if len(secrets) != expectedQuantity { return OrderDelivery{}, fmt.Errorf("load paid card keys: expected %d, found %d", expectedQuantity, len(secrets)) }
+		delivery.SecretCiphertext = strings.Join(secrets, "\n")
 	}
 	orderQuery := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver, 1)
 	if err := tx.QueryRowContext(ctx, orderQuery, orderID).Scan(&delivery.Order.ID,&delivery.Order.OrderNo,&delivery.Order.BotID,&delivery.Order.TelegramUserID,&delivery.Order.TelegramChatID,&delivery.Order.ProductID,&delivery.Order.ProductName,&delivery.Order.UnitPriceMinor,&delivery.Order.Quantity,&delivery.Order.AmountMinor,&delivery.Order.Currency,&delivery.Order.Status,&delivery.Order.ExpiresAt,&delivery.Order.CreatedAt,&delivery.Order.UpdatedAt,&delivery.Order.PaidAt,&delivery.Order.DeliveredAt); err != nil { return OrderDelivery{}, err }
@@ -327,9 +335,18 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 // GetOrderDelivery recovers a paid card for retry after a process interruption.
 func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, error) {
 	var item OrderDelivery
-	query := "SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.payment_method,COALESCE(o.payment_reference,''),k.secret_ciphertext FROM orders o JOIN product_keys k ON k.order_id=o.id AND k.status=2 WHERE o.id=" + placeholder(driver, 1) + " AND o.status IN ('paid','delivering','delivery_failed') LIMIT 1"
-	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.PaymentMethod,&item.PaymentReference,&item.SecretCiphertext)
-	return item, err
+	query := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(payment_method,''),COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver, 1) + " AND status IN ('paid','delivering','delivery_failed')"
+	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.PaymentMethod,&item.PaymentReference)
+	if err != nil { return item, err }
+	rows, err := db.QueryContext(ctx, "SELECT secret_ciphertext FROM product_keys WHERE order_id="+placeholder(driver,1)+" AND status=2 ORDER BY created_at,id", orderID)
+	if err != nil { return item, err }
+	defer rows.Close()
+	var secrets []string
+	for rows.Next() { var secret string; if err := rows.Scan(&secret); err != nil { return item, err }; secrets = append(secrets, secret) }
+	if err := rows.Err(); err != nil { return item, err }
+	if len(secrets) != item.Order.Quantity { return item, fmt.Errorf("recover paid card keys: expected %d, found %d", item.Order.Quantity, len(secrets)) }
+	item.SecretCiphertext = strings.Join(secrets, "\n")
+	return item, nil
 }
 
 // MarkOrderDelivered finalizes a successful Telegram delivery.
