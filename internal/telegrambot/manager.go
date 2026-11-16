@@ -261,7 +261,7 @@ func (m *Manager) sendOwnerOverview(ctx context.Context, cfg Config, chatID int6
 		{"SELECT COUNT(1) FROM support_tickets WHERE status IN ('open','in_progress','waiting_user')",&tickets},
 	}
 	for _, item := range queries { if err:=m.db.QueryRowContext(ctx,item.query).Scan(item.target); err!=nil { log.Printf("owner overview query failed: %v",err); _ = m.sendMessage(ctx,cfg.Token,chatID,"经营数据暂时无法读取，请稍后重试。"); return } }
-\ttext := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n管理指令：\n/order 订单号（查询订单）\n/closeorder 订单号（关闭待付款订单）\n/userbalance Telegram用户ID（查询余额）\n/addstock 商品ID | 卡密1,卡密2（加密导入库存）\n/ban 或 /unban Telegram用户ID（封禁/解封）\n/broadcast 通知内容（向未退订用户群发）"
+text := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n管理指令：\n/order 订单号（查询订单）\n/closeorder 订单号（关闭待付款订单）\n/userbalance Telegram用户ID（查询余额）\n/addstock 商品ID | 卡密1,卡密2（加密导入库存）\n/ban 或 /unban Telegram用户ID（封禁/解封）\n/broadcast 通知内容（向未退订用户群发）"
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,ownerMenuKeyboard())
 }
 
