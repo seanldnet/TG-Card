@@ -20,6 +20,8 @@ type SupportTicket struct {
 	Description string `json:"description"`
 	Status string `json:"status"`
 	AdminReply string `json:"adminReply,omitempty"`
+	AssignedTo string `json:"assignedTo,omitempty"`
+	SLADueAt string `json:"slaDueAt,omitempty"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 	ResolvedAt string `json:"resolvedAt,omitempty"`
@@ -104,14 +106,14 @@ func CreateSupportTicket(ctx context.Context, db *sql.DB, driver, botID, telegra
 }
 
 func GetSupportTicket(ctx context.Context, db *sql.DB, driver, id string) (SupportTicket, error) {
-	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,'') FROM support_tickets WHERE id=" + placeholder(driver,1)
+	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets WHERE id=" + placeholder(driver,1)
 	var item SupportTicket
-	err := db.QueryRowContext(ctx,query,id).Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt)
+	err := db.QueryRowContext(ctx,query,id).Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt)
 	return item,err
 }
 
 func ListSupportTickets(ctx context.Context, db *sql.DB, driver string) ([]SupportTicket,error) {
-	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,'') FROM support_tickets ORDER BY created_at DESC LIMIT 500"
+	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets ORDER BY created_at DESC LIMIT 500"
 	rows,err:=db.QueryContext(ctx,query); if err!=nil{return nil,err}; defer rows.Close()
 	items:=make([]SupportTicket,0)
 	for rows.Next(){ var item SupportTicket; if err:=rows.Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt);err!=nil{return nil,err}; items=append(items,item) }
