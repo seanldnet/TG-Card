@@ -819,8 +819,8 @@ type productInput struct {
 	DeliveryType string `json:"deliveryType"`
 	Status int `json:"status"`
 	BulkDiscount json.RawMessage `json:"bulkDiscount"`
-}
 	DeliveryConfig json.RawMessage `json:"deliveryConfig"`
+}
 
 type bulkDiscountTier struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
 func normalizeDeliveryConfig(deliveryType string, raw json.RawMessage) (string,error) {
