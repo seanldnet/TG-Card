@@ -493,7 +493,7 @@ func welcomeKeyboard(cfg Config) map[string]any {
 // configureMenu publishes BotFather-style commands and explicitly selects the
 // commands menu button beside Telegram's message input.
 func (m *Manager) setBotDescription(ctx context.Context,token,description string) {
- description=strings.TrimSpace(description);if description==""{return}
+ description=strings.TrimSpace(description)
  payload,_:=json.Marshal(map[string]any{"description":description})
  req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/setMyDescription",bytes.NewReader(payload));if err!=nil{return};req.Header.Set("Content-Type","application/json")
  resp,err:=m.client.Do(req);if err==nil{resp.Body.Close()}
