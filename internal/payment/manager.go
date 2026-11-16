@@ -103,6 +103,21 @@ func (m *Manager) scan(ctx context.Context) error {
 			if existingStatus == "matched" || existingStatus == "reconciliation_required" {
 				continue
 			}
+			recharge,rechargeErr:=database.MatchPendingWalletRecharge(scanCtx,m.db,m.driver,transfer.AmountAtomic,transfer.BlockTimestamp)
+			if rechargeErr==nil {
+				confirmedRecharge,balance,confirmErr:=database.ConfirmWalletRecharge(scanCtx,m.db,m.driver,recharge.ID,transfer.TransactionID)
+				if confirmErr!=nil { _=database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required","",confirmErr.Error());log.Printf("TRC20 wallet recharge confirmation requires review: recharge=%s tx=%s error=%v",recharge.RechargeNo,transfer.TransactionID,confirmErr);continue }
+				if err:=database.ClassifyTRC20RechargeTransfer(scanCtx,m.db,m.driver,transfer.TransactionID,recharge.ID,"Wallet recharge "+recharge.RechargeNo);err!=nil{return err}
+				m.bots.Notify("payment_success","余额充值到账：充值单 "+confirmedRecharge.RechargeNo+"\n充值金额："+fmt.Sprintf("%d.%06d",confirmedRecharge.AmountAtomic/1_000_000,confirmedRecharge.AmountAtomic%1_000_000)+" USDT\n当前余额："+fmt.Sprintf("%d.%06d",balance/1_000_000,balance%1_000_000)+" USDT",confirmedRecharge.TelegramChatID)
+				confirmed++
+				log.Printf("TRC20 wallet recharge confirmed: recharge=%s tx=%s",confirmedRecharge.RechargeNo,transfer.TransactionID)
+				continue
+			}
+			if !errors.Is(rechargeErr,sql.ErrNoRows) {
+				_ = database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required","",rechargeErr.Error())
+				log.Printf("TRC20 wallet recharge requires reconciliation: tx=%s error=%v",transfer.TransactionID,rechargeErr)
+				continue
+			}
 			order, err := database.MatchPendingTRC20Order(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
 			if errors.Is(err, sql.ErrNoRows) {
 				lateOrder, lateErr := database.FindExpiredTRC20OrderByAmount(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
