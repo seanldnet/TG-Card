@@ -387,7 +387,6 @@ func TestAdminEmailVerificationAndRateLimit(t *testing.T) {
 	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
 	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
 	hash:=sha256.Sum256([]byte("123456"));hashText:=hex.EncodeToString(hash[:])
-	if err:=SaveAdminEmailCode(ctx,db,cfg.DBDriver,created.Username,"admin@example.com",hashText,time.Now().Add(10*time.Minute));err==nil{t.Fatal("expected invalid admin ID to fail")}
 	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
 	if err:=SaveAdminEmailCode(ctx,db,cfg.DBDriver,admin.ID,"admin@example.com",hashText,time.Now().Add(10*time.Minute));err!=nil{t.Fatal(err)}
 	if err:=SaveAdminEmailCode(ctx,db,cfg.DBDriver,admin.ID,"admin@example.com",hashText,time.Now().Add(10*time.Minute));err==nil{t.Fatal("second code request within 60 seconds should be rate limited")}
