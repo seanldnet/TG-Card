@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 )
 
@@ -50,6 +49,7 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		if total> (1<<63-1)-line{return Order{},nil,fmt.Errorf("购物车总金额超出范围")}
 		total+=line;totalQty+=x.Quantity
 	}
+	if totalQty>500{return Order{},nil,fmt.Errorf("购物车总数量最多 500 件")}
 	if total<=0||total> (1<<63-1)/10000{return Order{},nil,fmt.Errorf("购物车总金额无效")}
 	now:=time.Now().UTC();expires:=now.Add(ttl)
 	id,err:=randomID();if err!=nil{return Order{},nil,err};suffixID,err:=randomID();if err!=nil{return Order{},nil,err}
@@ -62,7 +62,6 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		if n==0&&rn==0{invoice=candidate;break}
 	}
 	if invoice==0{return Order{},nil,fmt.Errorf("暂时无法生成唯一付款金额，请稍后重试")}
-	names:=make([]string,0,len(live));for _,x:=range live{names=append(names,x.ProductName+" × "+fmt.Sprint(x.Quantity))}
 	order:=Order{ID:id,OrderNo:"TC"+now.Format("20060102150405")+suffixID[:6],BotID:botID,TelegramUserID:telegramUserID,TelegramChatID:telegramChatID,ProductID:live[0].ProductID,ProductName:"购物车（"+fmt.Sprint(len(live))+" 种商品）",UnitPriceMinor:total,Quantity:totalQty,AmountMinor:total,PaymentAmountAtomic:invoice,Currency:currency,Status:"pending_payment",ExpiresAt:expires.Format(time.RFC3339Nano),CreatedAt:now.Format(time.RFC3339Nano),UpdatedAt:now.Format(time.RFC3339Nano),DeliveryType:deliveryType,DeliveryConfigSnapshot:deliveryConfig,DeliveryPayloadJSON:"{}"}
 	insert:="INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json) VALUES("
 	for i:=1;i<=19;i++{if i>1{insert+=","};insert+=placeholder(driver,i)};insert+=")"
@@ -83,8 +82,8 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		_,e=tx.ExecContext(ctx,"INSERT INTO cart_checkout_items(id,order_id,product_id,product_name,quantity,unit_price_minor,line_total_minor,currency,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")",itemID,order.ID,item.ProductID,item.ProductName,item.Quantity,item.UnitPriceMinor,item.LineTotalMinor,item.Currency,now.Format(time.RFC3339Nano))
 		if e!=nil{return Order{},nil,e};items=append(items,item)
 	}
+	if _,err=tx.ExecContext(ctx,"DELETE FROM shopping_cart_items WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2),botID,telegramUserID);err!=nil{return Order{},nil,err}
 	if err=tx.Commit();err!=nil{return Order{},nil,err}
-	_ = strings.Join(names,", ")
 	return order,items,nil
 }
 
