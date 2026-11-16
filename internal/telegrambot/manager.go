@@ -175,9 +175,10 @@ func (m *Manager) Reconcile(configs []Config) {
 	for id, cfg := range desired {
 		if _, exists := m.workers[id]; exists { continue }
 		ctx, cancel := context.WithCancel(context.Background())
-		m.workers[id] = &worker{config: cfg, cancel: cancel}
+		current := &worker{config: cfg, cancel: cancel}
+		m.workers[id] = current
 		go m.setBotDescription(context.Background(),cfg.Token,cfg.Description)
-		go m.run(ctx, cfg)
+		go m.run(ctx, cfg, current)
 		log.Printf("telegram bot worker starting: bot_id=%s username=@%s", id, cfg.Username)
 	}
 }
@@ -349,6 +350,16 @@ func (m *Manager) setRuntimeStatus(botID string, status RuntimeStatus) {
 	m.mu.Unlock()
 }
 
+// setWorkerRuntimeStatus prevents an exited worker from overwriting the health
+// state of a newer worker started for the same Bot ID.
+func (m *Manager) setWorkerRuntimeStatus(botID string, current *worker, status RuntimeStatus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.workers[botID] != current { return }
+	if m.runtime == nil { m.runtime = make(map[string]RuntimeStatus) }
+	m.runtime[botID] = status
+}
+
 // RuntimeStatuses returns a snapshot of live worker health without exposing Bot tokens.
 func (m *Manager) RuntimeStatuses() []RuntimeStatus {
 	m.mu.Lock()
@@ -359,13 +370,13 @@ func (m *Manager) RuntimeStatuses() []RuntimeStatus {
 	return items
 }
 
-func (m *Manager) run(ctx context.Context, cfg Config) {
+func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
 	status := RuntimeStatus{BotID: cfg.ID, Username: cfg.Username, State: "starting", Running: true}
-	m.setRuntimeStatus(cfg.ID, status)
+	m.setWorkerRuntimeStatus(cfg.ID, current, status)
 	defer func() {
 		status.State = "stopped"
 		status.Running = false
-		m.setRuntimeStatus(cfg.ID, status)
+		m.setWorkerRuntimeStatus(cfg.ID, current, status)
 	}()
 	m.configureMenu(ctx, cfg.Token)
 	var offset int64
@@ -382,7 +393,7 @@ func (m *Manager) run(ctx context.Context, cfg Config) {
 				status.State = "conflict"
 				log.Printf("telegram polling conflict: bot_id=%s username=@%s; ensure only one application instance polls this token", cfg.ID, cfg.Username)
 			}
-			m.setRuntimeStatus(cfg.ID, status)
+			m.setWorkerRuntimeStatus(cfg.ID, current, status)
 			log.Printf("telegram polling error: bot_id=%s username=@%s error=%v", cfg.ID, cfg.Username, err)
 			if !wait(ctx, 5*time.Second) { return }
 			continue
@@ -393,7 +404,7 @@ func (m *Manager) run(ctx context.Context, cfg Config) {
 		status.LastError = ""
 		status.LastErrorAt = ""
 		if len(updates) > 0 { status.LastUpdateAt = status.LastPollAt }
-		m.setRuntimeStatus(cfg.ID, status)
+		m.setWorkerRuntimeStatus(cfg.ID, current, status)
 		for _, update := range updates {
 			if int64(update.UpdateID) >= offset { offset = int64(update.UpdateID) + 1 }
 			if update.Message != nil { m.handleMessage(ctx, cfg, *update.Message) }
