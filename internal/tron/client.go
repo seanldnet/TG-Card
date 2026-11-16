@@ -119,9 +119,10 @@ func (c *Client) FetchConfirmedIncoming(ctx context.Context, fingerprint string,
 	for _, row := range payload.Data {
 		if row.Type != "Transfer" || row.To != c.address || len(row.TransactionID) != 64 { continue }
 		if _, err := hex.DecodeString(row.TransactionID); err != nil { continue }
-		if row.TokenInfo.Address != "" && !strings.EqualFold(row.TokenInfo.Address, c.contract) { continue }
+		// Never trust a transfer whose token contract is missing or differs from the configured USDT contract.
+		if !strings.EqualFold(row.TokenInfo.Address, c.contract) { continue }
 		if row.TokenInfo.Symbol != "" && !strings.EqualFold(row.TokenInfo.Symbol, "USDT") { continue }
-		if row.TokenInfo.Decimals != 6 { continue }
+		if row.TokenInfo.Decimals != 6 || row.BlockTimestamp <= 0 { continue }
 		amount, err := strconv.ParseInt(row.Value, 10, 64)
 		if err != nil || amount <= 0 { continue }
 		items = append(items, Transfer{
