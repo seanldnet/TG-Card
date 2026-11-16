@@ -4,6 +4,9 @@ import { onMounted, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 
+interface BonusTier { minAmountAtomic: number; bonusType: 'fixed' | 'percent'; bonusValue: number; }
+interface BonusRule { enabled: boolean; tiers: BonusTier[]; }
+
 interface PaymentSettings {
   apiKeyConfigured: boolean;
   receiveAddress: string;
@@ -12,6 +15,8 @@ interface PaymentSettings {
 }
 
 const loading = ref(false);
+const bonusSaving = ref(false);
+const bonusRule = reactive<BonusRule>({enabled:false,tiers:[]});
 const saving = ref(false);
 const apiKey = ref('');
 const clearApiKey = ref(false);
@@ -21,6 +26,19 @@ const settings = reactive<PaymentSettings>({
   usdtContract: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
   enabled: false,
 });
+
+async function loadBonusRule(){
+  try { const data=await requestClient.get<BonusRule>('/settings/recharge-bonus'); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; }
+  catch { message.error('充值赠送规则加载失败'); }
+}
+async function saveBonusRule(){
+  bonusSaving.value=true;
+  try { const data=await requestClient.put<BonusRule>('/settings/recharge-bonus',bonusRule); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; message.success('充值赠送规则已保存'); }
+  catch(error:any){ message.error(error?.response?.data?.message||'保存充值赠送规则失败'); }
+  finally { bonusSaving.value=false; }
+}
+function addBonusTier(){bonusRule.tiers.push({minAmountAtomic:10000000,bonusType:'fixed',bonusValue:1000000});}
+function removeBonusTier(index:number){bonusRule.tiers.splice(index,1);}
 
 async function loadSettings() {
   loading.value = true;
@@ -55,7 +73,7 @@ async function saveSettings() {
   }
 }
 
-onMounted(loadSettings);
+onMounted(()=>{void loadSettings();void loadBonusRule()});
 </script>
 
 <template>
@@ -119,6 +137,18 @@ onMounted(loadSettings);
           </a-space>
         </div>
       </a-form>
+    </a-card>
+    <a-card class="mt-4" :bordered="false" title="充值赠送规则">
+      <a-alert class="mb-4" type="info" show-icon message="规则按充值本金匹配最高门槛；固定赠送填写 USDT 金额，百分比赠送填写百分数。创建充值单时会锁定赠送金额，支付确认时与本金在同一事务中入账，重复回调不会重复赠送。"/>
+      <div class="mb-4 flex flex-wrap items-center gap-3"><a-switch v-model:checked="bonusRule.enabled"/><span>启用充值赠送</span><a-button size="small" @click="addBonusTier">添加阶梯</a-button></div>
+      <div v-for="(tier,index) in bonusRule.tiers" :key="index" class="mb-3 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 md:grid-cols-3">
+       <a-form-item label="充值满（USDT）" class="mb-0"><a-input-number v-model:value="tier.minAmountAtomic" :min="1000000" :step="1000000" class="w-full" :formatter="(v:any)=>String(Number(v||0)/1000000)" :parser="(v:any)=>Number(v)*1000000"/></a-form-item>
+       <a-form-item label="赠送方式" class="mb-0"><a-select v-model:value="tier.bonusType"><a-select-option value="fixed">固定赠送</a-select-option><a-select-option value="percent">按比例赠送</a-select-option></a-select></a-form-item>
+       <a-form-item :label="tier.bonusType==='fixed'?'赠送金额（USDT）':'赠送比例（%）'" class="mb-0"><a-input-number v-model:value="tier.bonusValue" :min="1" :max="tier.bonusType==='percent'?100:100000000" class="w-full" :formatter="(v:any)=>tier.bonusType==='fixed'?String(Number(v||0)/1000000):String(Number(v||0)/100)" :parser="(v:any)=>Math.round(Number(v)*(tier.bonusType==='fixed'?1000000:100))"/></a-form-item>
+       <div class="md:col-span-3 flex justify-end"><a-button danger size="small" @click="removeBonusTier(index)">删除此阶梯</a-button></div>
+      </div>
+      <a-empty v-if="bonusRule.tiers.length===0" description="尚未配置阶梯规则，开启后添加至少一档规则"/>
+      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="bonusSaving" @click="saveBonusRule">保存充值赠送规则</a-button></div>
     </a-card>
   </div>
 </template>
