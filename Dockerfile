@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS web-builder
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS web-builder
 WORKDIR /src
 RUN corepack enable && corepack prepare pnpm@11.16.0 --activate
 COPY web/vben-admin/ ./web/vben-admin/
