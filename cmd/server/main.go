@@ -210,6 +210,8 @@ func main() {
 	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
+	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
+	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
 	api.HandleFunc("PUT /api/support/tickets/{id}", app.updateSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
@@ -241,6 +243,21 @@ type paymentSettingsView struct {
 	ReceiveAddress string `json:"receiveAddress"`
 	USDTContract string `json:"usdtContract"`
 	Enabled bool `json:"enabled"`
+}
+
+func (a *application) getRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
+ if _,ok:=a.authenticate(w,r);!ok{return}
+ rule,err:=database.GetWalletRechargeBonusRule(r.Context(),a.db);if err!=nil{log.Printf("load recharge bonus rule: %v",err);writeError(w,http.StatusInternalServerError,"无法读取充值赠送规则");return}
+ writeSuccess(w,http.StatusOK,rule)
+}
+func (a *application) updateRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
+ claims,ok:=a.authenticate(w,r);if !ok{return}
+ var rule database.WalletRechargeBonusRule
+ if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&rule);err!=nil{writeError(w,http.StatusBadRequest,"充值赠送规则格式无效");return}
+ if err:=database.SaveWalletRechargeBonusRule(r.Context(),a.db,a.driver,rule);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.recharge_bonus.update","wallet:recharge_bonus",clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t tiers=%d",rule.Enabled,len(rule.Tiers)))
+ saved,err:=database.GetWalletRechargeBonusRule(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"保存成功但读取配置失败");return}
+ writeSuccess(w,http.StatusOK,saved)
 }
 
 func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request) {
