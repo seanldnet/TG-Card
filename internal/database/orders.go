@@ -37,6 +37,9 @@ type Order struct {
 	DeliveryType string `json:"deliveryType"`
 	DeliveryConfigSnapshot string `json:"deliveryConfigSnapshot,omitempty"`
 	DeliveryPayloadJSON string `json:"deliveryPayloadJson,omitempty"`
+	PromotionID string `json:"promotionId,omitempty"`
+	PromotionCode string `json:"promotionCode,omitempty"`
+	PromotionDiscountMinor int64 `json:"promotionDiscountMinor"`
 }
 
 type OrderListItem struct {
@@ -54,6 +57,10 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 type orderDiscountTier struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
 
 func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, quantity int, ttl time.Duration) (Order, error) {
+	return CreateOrderWithPromotion(ctx, db, driver, botID, telegramUserID, telegramChatID, productID, quantity, "", ttl)
+}
+
+func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, quantity int, promotionCode string, ttl time.Duration) (Order, error) {
 	if quantity < 1 || quantity > 100 { return Order{}, fmt.Errorf("购买数量必须为 1-100") }
 	if ttl <= 0 { ttl = 20 * time.Minute }
 	tx, err := db.BeginTx(ctx, nil)
@@ -84,6 +91,11 @@ func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, tel
 	grossAmount := price * int64(quantity)
 	amount := (grossAmount*int64(100-discountPercent)+50)/100
 	if amount <= 0 { return Order{}, fmt.Errorf("订单金额无效") }
+	now := time.Now().UTC()
+	promotion, promotionDiscount, err := CalculatePromotionDiscount(ctx, tx, driver, promotionCode, telegramUserID, amount, now)
+	if err != nil { return Order{}, err }
+	if promotionDiscount >= amount { return Order{}, fmt.Errorf("优惠金额不能达到或超过订单金额") }
+	amount -= promotionDiscount
 	keyQuery := "SELECT id FROM product_keys WHERE product_id=" + placeholder(driver, 1) + " AND status=0 ORDER BY created_at,id LIMIT " + fmt.Sprint(quantity)
 	if driver == "postgres" { keyQuery += " FOR UPDATE SKIP LOCKED" }
 	keyIDs := make([]string, 0, quantity)
@@ -100,7 +112,6 @@ func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, tel
 	if err != nil { return Order{}, err }
 	orderSuffix, err := randomID()
 	if err != nil { return Order{}, err }
-	now := time.Now().UTC()
 	expires := now.Add(ttl)
 	// USDT TRC20 uses six decimal places. Product prices use two decimal places;
 	// a small random atomic-unit suffix uniquely identifies concurrent invoices.
@@ -125,6 +136,7 @@ func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, tel
 		AmountMinor:amount, PaymentAmountAtomic:paymentAmountAtomic, Currency:currency, Status:"pending_payment",
 		ExpiresAt:expires.Format(time.RFC3339Nano), CreatedAt:now.Format(time.RFC3339Nano),
 		UpdatedAt:now.Format(time.RFC3339Nano), DeliveryType:deliveryType, DeliveryConfigSnapshot:deliveryConfig, DeliveryPayloadJSON:"{}",
+		PromotionID:promotion.ID, PromotionCode:promotion.Code, PromotionDiscountMinor:promotionDiscount,
 	}
 	update := "UPDATE product_keys SET status=1,order_id=" + placeholder(driver,1) + " WHERE id=" + placeholder(driver,2) + " AND status=0"
 	for _, keyID := range keyIDs {
@@ -135,11 +147,12 @@ func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, tel
 		if affected != 1 { return Order{}, fmt.Errorf("stock reservation conflict") }
 	}
 
-	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json) VALUES("
-	for i:=1;i<=19;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
+	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json,promotion_id,promotion_code,promotion_discount_minor) VALUES("
+	for i:=1;i<=22;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
 	insert += ")"
-	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON)
+	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON,order.PromotionID,order.PromotionCode,order.PromotionDiscountMinor)
 	if err != nil { return Order{}, err }
+	if promotion.ID != "" { if err := ReservePromotion(ctx, tx, driver, promotion, order.ID, telegramUserID, promotionDiscount, now); err != nil { return Order{}, err } }
 	if err := tx.Commit(); err != nil { return Order{}, err }
 	return order, nil
 }
@@ -211,6 +224,7 @@ func ExpirePendingOrders(ctx context.Context, db *sql.DB, driver string, limit i
 		if affected == 0 { continue }
 		release := "UPDATE product_keys SET status=0, order_id=NULL WHERE order_id=" + placeholder(driver, 1) + " AND status=1"
 		if _, err := tx.ExecContext(ctx, release, id); err != nil { return 0, err }
+		if err := ReleaseOrderPromotion(ctx, tx, driver, id, time.Now().UTC()); err != nil { return 0, err }
 		expired += int(affected)
 	}
 	if err := tx.Commit(); err != nil { return 0, err }
@@ -264,6 +278,7 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 			if err != nil { return OrderDelivery{}, err }
 			if affected != int64(expectedQuantity) { return OrderDelivery{}, fmt.Errorf("reserved stock missing: expected %d keys, found %d; payment requires reconciliation", expectedQuantity, affected) }
 		}
+		if err := RedeemOrderPromotion(ctx, tx, driver, orderID, now); err != nil { return OrderDelivery{}, err }
 	}
 	var delivery OrderDelivery
 	delivery.AlreadyPaid = alreadyPaid
@@ -572,6 +587,7 @@ func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string)
 	if err != nil { return OrderDelivery{}, 0, err }
 	n, err = res.RowsAffected()
 	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单状态已变化，请刷新订单") }
+	if err:=RedeemOrderPromotion(ctx,tx,driver,orderID,time.Now().UTC());err!=nil{return OrderDelivery{},0,err}
 	needsKeys := deliveryType == "" || deliveryType == "card" || deliveryType == "file_card"
 	var delivery OrderDelivery
 	if needsKeys {

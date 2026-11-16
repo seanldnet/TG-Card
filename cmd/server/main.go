@@ -198,6 +198,10 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("GET /api/promotions", app.listPromotions)
+	api.HandleFunc("POST /api/promotions", app.savePromotion)
+	api.HandleFunc("PUT /api/promotions/{id}", app.savePromotion)
+	api.HandleFunc("DELETE /api/promotions/{id}", app.deletePromotion)
 	api.HandleFunc("POST /api/orders/cleanup", app.clearOrderData)
 	api.HandleFunc("GET /api/users", app.listTelegramUsers)
 	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
@@ -555,6 +559,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
 			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
+		},
+		{
+			"name": "Promotions", "path": "/promotions", "component": "/promotions/index",
+			"meta": map[string]any{"icon": "lucide:ticket-percent", "order": 4, "title": "优惠券与兑换码"},
 		},
 		{
 			"name": "Support", "path": "/support", "component": "/support/index",
