@@ -910,7 +910,9 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		b.WriteString("\n金额：" + formatPrice(order.AmountMinor, order.Currency))
 		b.WriteString("\n状态：" + orderStatusLabel(order.Status))
 		buttons := []map[string]string{{"text":"查看详情","callback_data":"order:detail:"+order.ID}}
-		if order.Status == "delivered" {
+		if order.Status == "delivered" && order.DeliveryType == "invite_link" {
+			buttons = append(buttons, map[string]string{"text":"联系客服核实","callback_data":"support:order:"+order.OrderNo})
+		} else if order.Status == "delivered" {
 			buttons = append(buttons, map[string]string{"text":"📥 再次获取","callback_data":"order:redeliver:"+order.ID})
 		} else if order.Status == "pending_payment" {
 			buttons = append(buttons, map[string]string{"text":"💳 继续付款","callback_data":"order:payment:"+order.ID})
