@@ -10,7 +10,7 @@ RUN ./scripts/apply-vben-overrides.sh
 WORKDIR /src/web/vben-admin
 # The upstream Vben submodule pins npmmirror.com in its project .npmrc.
 # Override it inside the image build so GitHub Actions uses the official npm registry.
-RUN printf 'registry=https://registry.npmjs.org/\\n' > .npmrc
+RUN printf 'registry=https://registry.npmjs.org/\n' > .npmrc
 RUN --mount=type=cache,id=tg-card-pnpm-store,target=/root/.local/share/pnpm/store CI=true pnpm install --frozen-lockfile --fetch-retries=5 --fetch-timeout=120000
 RUN pnpm --filter @vben/web-antd build
 
