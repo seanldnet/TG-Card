@@ -50,3 +50,43 @@ func TestShoppingCartDoesNotStackNonKeyEntitlements(t *testing.T) {
 		t.Fatalf("unexpected non-key cart item: %+v", items)
 	}
 }
+
+
+func TestCartCheckoutCreatesOneOrderAndConsumesCart(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"}
+	db, err := Open(ctx,cfg); if err != nil { t.Fatal(err) }; defer db.Close()
+	if err := Migrate(ctx,db,cfg.DBDriver); err != nil { t.Fatal(err) }
+	first,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Card A",PriceMinor:250,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	second,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Card B",PriceMinor:400,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,first.ID,[]StockSecret{{Ciphertext:"a1",Fingerprint:"a1"}});err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,second.ID,[]StockSecret{{Ciphertext:"b1",Fingerprint:"b1"}});err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot-a","user-a",first.ID,1);err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot-a","user-a",second.ID,1);err!=nil{t.Fatal(err)}
+	order,items,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot-a","user-a","chat-a",20*time.Minute)
+	if err!=nil{t.Fatal(err)}
+	if len(items)!=2||order.Quantity!=2||order.AmountMinor!=650||order.Status!="pending_payment"{t.Fatalf("unexpected checkout: order=%+v items=%+v",order,items)}
+	cart,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot-a","user-a");if err!=nil{t.Fatal(err)}
+	if len(cart)!=0{t.Fatalf("cart must be consumed after checkout: %+v",cart)}
+	var reserved int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE order_id=? AND status=1",order.ID).Scan(&reserved);err!=nil{t.Fatal(err)}
+	if reserved!=2{t.Fatalf("expected both product keys reserved by one order, got %d",reserved)}
+	saved,err:=ListCartCheckoutItems(ctx,db,cfg.DBDriver,order.ID);if err!=nil{t.Fatal(err)}
+	if len(saved)!=2{t.Fatalf("expected two order line snapshots, got %+v",saved)}
+}
+
+func TestCartCheckoutRejectsMixedCurrenciesWithoutConsumingCart(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	a,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"USDT item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	b,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"USD item",PriceMinor:100,Currency:"USD",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,a.ID,[]StockSecret{{Ciphertext:"a",Fingerprint:"a"}});err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,b.ID,[]StockSecret{{Ciphertext:"b",Fingerprint:"b"}});err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot-a","user-a",a.ID,1);err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot-a","user-a",b.ID,1);err!=nil{t.Fatal(err)}
+	if _,_,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot-a","user-a","chat-a",20*time.Minute);err==nil{t.Fatal("mixed currencies must be rejected")}
+	cart,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot-a","user-a");if err!=nil{t.Fatal(err)}
+	if len(cart)!=2{t.Fatalf("failed checkout must retain cart items, got %+v",cart)}
+}
