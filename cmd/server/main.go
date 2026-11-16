@@ -230,6 +230,7 @@ func main() {
 	api.HandleFunc("GET /api/support/tickets/{id}/messages", app.listSupportTicketMessages)
 	api.HandleFunc("POST /api/support/tickets/{id}/messages", app.appendSupportTicketMessage)
 	api.HandleFunc("PUT /api/support/tickets/{id}/assign", app.assignSupportTicket)
+	api.HandleFunc("POST /api/support/tickets/{id}/refund", app.refundSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
