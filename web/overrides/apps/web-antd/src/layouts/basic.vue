@@ -30,6 +30,12 @@ const { isDark } = usePreferences();
 const { width } = useWindowSize();
 const showDot = computed(() => notifications.value.some((item) => !item.isRead));
 
+// Keep the navigation drawer available after route changes, including the profile page.
+watch(
+  () => router.currentRoute.value.fullPath,
+  () => updatePreferences({ sidebar: { enable: true, hidden: false } }),
+);
+
 // Preserve the user's desktop widget preferences and switch the official Vben
 // layout to a compact, mobile-first header without touching the drawer toggle.
 const desktopWidgetSettings = { ...preferences.widget };
