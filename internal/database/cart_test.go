@@ -1,7 +1,8 @@
 package database
 
 import (
-	"context"\n\t"strings"
+	"context"
+	"strings"
 	"testing"
 	"time"
 
