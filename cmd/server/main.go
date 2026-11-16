@@ -451,88 +451,46 @@ func (a *application) updateUserProfile(w http.ResponseWriter, r *http.Request) 
 	writeSuccess(w, http.StatusOK, map[string]string{"realName": input.RealName, "avatar": input.AvatarURL})
 }
 
-func (a *application) uploadUserAvatar(w http.ResponseWriter, r *http.Request) {
-	claims, ok := a.authenticate(w, r)
-	if !ok { return }
-	// Avatar uploads are no longer restricted to 2 MB. Keep a generous 20 MB
-	// request ceiling to protect the service from oversized upload abuse.
-	const maxAvatarBytes = 20 << 20
-	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+(1<<20))
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "头像上传请求无效，单个图片请控制在 20 MB 以内")
-		return
+func detectSupportedImageExtension(content []byte) (string, bool) {
+	if len(content)>=3 && content[0]==0xff && content[1]==0xd8 && content[2]==0xff { return ".jpg",true }
+	if len(content)>=8 && bytes.Equal(content[:8],[]byte{137,80,78,71,13,10,26,10}) { return ".png",true }
+	if len(content)>=6 && (string(content[:6])=="GIF87a"||string(content[:6])=="GIF89a") { return ".gif",true }
+	if len(content)>=2 && string(content[:2])=="BM" { return ".bmp",true }
+	if len(content)>=4 && (string(content[:4])=="II*\x00"||string(content[:4])=="MM\x00*") { return ".tif",true }
+	if len(content)>=12 && string(content[:4])=="RIFF" && string(content[8:12])=="WEBP" { return ".webp",true }
+	if len(content)>=12 && string(content[4:8])=="ftyp" {
+		brand:=string(content[8:12])
+		switch brand { case "avif","avis": return ".avif",true; case "heic","heix","hevc","hevx": return ".heic",true; case "mif1","msf1": return ".heif",true }
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "请选择头像文件")
-		return
-	}
-	defer file.Close()
-	if header.Size > maxAvatarBytes {
-		writeError(w, http.StatusBadRequest, "头像文件不能超过 20 MB")
-		return
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maxAvatarBytes+1))
-	if err != nil || len(content) == 0 || len(content) > maxAvatarBytes {
-		writeError(w, http.StatusBadRequest, "头像文件读取失败或超过 20 MB")
-		return
-	}
-	contentType := http.DetectContentType(content)
-	extensions := map[string]string{
-		"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
-		"image/gif": ".gif", "image/bmp": ".bmp", "image/tiff": ".tif",
-		"image/avif": ".avif", "image/heic": ".heic", "image/heif": ".heif",
-	}
-	extension, supported := extensions[contentType]
-	if !supported {
-		writeError(w, http.StatusBadRequest, "文件内容不是受支持的图片格式，请上传 JPG、PNG、WebP、GIF、BMP、TIFF 或 AVIF 图片")
-		return
-	}
-	random := make([]byte, 16)
-	if _, err := rand.Read(random); err != nil {
-		writeError(w, http.StatusInternalServerError, "Unable to generate avatar filename")
-		return
-	}
-	filename := hex.EncodeToString(random) + extension
-	directory := filepath.Join(a.dataDir, "uploads", "avatars")
-	if err := os.MkdirAll(directory, 0o750); err != nil {
-		log.Printf("create avatar directory: %v", err)
-		writeError(w, http.StatusInternalServerError, "Unable to store avatar")
-		return
-	}
-	if err := os.WriteFile(filepath.Join(directory, filename), content, 0o640); err != nil {
-		log.Printf("save avatar: %v", err)
-		writeError(w, http.StatusInternalServerError, "Unable to store avatar")
-		return
-	}
-	avatarURL := "/uploads/avatars/" + filename
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.avatar.upload", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "avatar uploaded")
-	writeSuccess(w, http.StatusCreated, map[string]string{"avatar": avatarURL})
+	return "",false
 }
-
-func (a *application) uploadSiteLogo(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.authenticate(w, r); !ok { return }
-	const maxLogoBytes = 10 << 20
-	r.Body = http.MaxBytesReader(w, r.Body, maxLogoBytes+(1<<20))
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "网站图标上传无效，文件请控制在 10 MB 以内"); return
+func storeUploadedImage(w http.ResponseWriter,r *http.Request,dataDir,folder,label string,maxBytes int64) (string,bool) {
+	r.Body=http.MaxBytesReader(w,r.Body,maxBytes+(1<<20))
+	if err:=r.ParseMultipartForm(2<<20);err!=nil {
+		log.Printf("%s multipart upload parse failed: content_type=%q content_length=%d error=%v",label,r.Header.Get("Content-Type"),r.ContentLength,err)
+		if maxErr,ok:=err.(*http.MaxBytesError);ok { _=maxErr;writeError(w,http.StatusRequestEntityTooLarge,label+"文件超过大小限制");return "",false }
+		writeError(w,http.StatusBadRequest,label+"上传请求无效，请重新选择图片后上传");return "",false
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil { writeError(w, http.StatusBadRequest, "请选择网站图标文件"); return }
-	defer file.Close()
-	if header.Size > maxLogoBytes { writeError(w, http.StatusBadRequest, "网站图标不能超过 10 MB"); return }
-	content, err := io.ReadAll(io.LimitReader(file, maxLogoBytes+1))
-	if err != nil || len(content) == 0 || len(content) > maxLogoBytes { writeError(w, http.StatusBadRequest, "网站图标读取失败或超过 10 MB"); return }
-	formats := map[string]string{"image/jpeg":".jpg","image/png":".png","image/webp":".webp","image/gif":".gif","image/bmp":".bmp","image/tiff":".tif","image/avif":".avif"}
-	ext, ok := formats[http.DetectContentType(content)]
-	if !ok { writeError(w, http.StatusBadRequest, "请上传 JPG、PNG、WebP、GIF、BMP、TIFF 或 AVIF 图片"); return }
-	random := make([]byte,16)
-	if _, err := rand.Read(random); err != nil { writeError(w,http.StatusInternalServerError,"无法生成图标文件名"); return }
-	filename := hex.EncodeToString(random)+ext
-	directory := filepath.Join(a.dataDir,"uploads","site")
-	if err := os.MkdirAll(directory,0o750); err != nil { log.Printf("create site logo directory: %v",err); writeError(w,http.StatusInternalServerError,"无法保存网站图标"); return }
-	if err := os.WriteFile(filepath.Join(directory,filename),content,0o640); err != nil { log.Printf("save site logo: %v",err); writeError(w,http.StatusInternalServerError,"无法保存网站图标"); return }
-	writeSuccess(w,http.StatusCreated,map[string]string{"siteLogo":"/uploads/site/"+filename})
+	file,header,err:=r.FormFile("file");if err!=nil { writeError(w,http.StatusBadRequest,"请选择"+label+"图片文件");return "",false };defer file.Close()
+	if header.Size<=0||header.Size>maxBytes { writeError(w,http.StatusRequestEntityTooLarge,label+"文件不能超过 20 MB");return "",false }
+	content,err:=io.ReadAll(io.LimitReader(file,maxBytes+1));if err!=nil||len(content)==0||int64(len(content))>maxBytes { writeError(w,http.StatusBadRequest,label+"图片读取失败或超过 20 MB");return "",false }
+	ext,ok:=detectSupportedImageExtension(content);if !ok { writeError(w,http.StatusBadRequest,"图片格式无法识别，请上传 JPG、PNG、WebP、GIF、BMP、TIFF、AVIF 或 HEIC 图片");return "",false }
+	random:=make([]byte,16);if _,err:=rand.Read(random);err!=nil { writeError(w,http.StatusInternalServerError,"无法生成图片文件名");return "",false }
+	filename:=hex.EncodeToString(random)+ext;directory:=filepath.Join(dataDir,"uploads",folder)
+	if err:=os.MkdirAll(directory,0o750);err!=nil { log.Printf("create %s directory: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
+	if err:=os.WriteFile(filepath.Join(directory,filename),content,0o640);err!=nil { log.Printf("save %s: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
+	return "/uploads/"+folder+"/"+filename,true
+}
+func (a *application) uploadUserAvatar(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	avatarURL,ok:=storeUploadedImage(w,r,a.dataDir,"avatars","头像",20<<20);if !ok{return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.avatar.upload","admin:"+claims.Username,clientIP(r),r.UserAgent(),"avatar uploaded")
+	writeSuccess(w,http.StatusCreated,map[string]string{"avatar":avatarURL})
+}
+func (a *application) uploadSiteLogo(w http.ResponseWriter,r *http.Request) {
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	logoURL,ok:=storeUploadedImage(w,r,a.dataDir,"site","网站图标",20<<20);if !ok{return}
+	writeSuccess(w,http.StatusCreated,map[string]string{"siteLogo":logoURL})
 }
 
 func (a *application) menus(w http.ResponseWriter, r *http.Request) {
