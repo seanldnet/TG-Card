@@ -529,6 +529,8 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
 	case strings.HasPrefix(query.Data,"shop:walletpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:walletpay:")
+		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+		if orderErr!=nil||order.TelegramUserID!=strconv.FormatInt(query.From.ID,10){_ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作此订单");return}
 		delivery,balance,err:=database.PayOrderWithWallet(ctx,m.db,m.driver,orderID)
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付失败"); _ = m.sendMessage(ctx,cfg.Token,chatID,"余额支付失败："+err.Error()); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付成功")
@@ -557,6 +559,14 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	}
 }
 
+
+func (m *Manager) SendWalletRechargeNotice(ctx context.Context,item database.WalletRecharge,balance int64) error {
+	m.mu.Lock();current:=m.workers[item.BotID];m.mu.Unlock()
+	if current==nil{return fmt.Errorf("Telegram bot for recharge is not running")}
+	chatID,err:=strconv.ParseInt(item.TelegramChatID,10,64);if err!=nil{return fmt.Errorf("invalid recharge chat ID: %w",err)}
+	text:="站内余额充值成功！\n充值单号："+item.RechargeNo+"\n本次入账："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n当前余额："+formatUSDTAtomic(balance)+" USDT"
+	return m.sendMessage(ctx,current.config.Token,chatID,text)
+}
 
 func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatID,userID int64,amountAtomic int64) {
 	address,enabled:=m.paymentConfig()
