@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +43,8 @@ func (a *application) appendSupportTicketMessage(w http.ResponseWriter, r *http.
 	item, err := database.AppendSupportTicketMessage(r.Context(), a.db, a.driver, ticketID, "admin", claims.AdminID, input.Message, input.AttachmentFileID, input.AttachmentName)
 	if err != nil { writeError(w, http.StatusBadRequest, err.Error()); return }
 	if strings.TrimSpace(input.Message) != "" {
+		ticket, err = database.UpdateSupportTicket(r.Context(), a.db, a.driver, ticketID, ticket.Status, input.Message)
+		if err != nil { writeError(w, http.StatusInternalServerError, "沟通记录已保存，但工单回复状态更新失败"); return }
 		ticket.AdminReply = input.Message
 		if err := a.botManager.SendSupportReply(r.Context(), ticket); err != nil {
 			// The message remains in the timeline; the UI can retry notification without losing the reply.
@@ -68,4 +69,3 @@ func (a *application) assignSupportTicket(w http.ResponseWriter, r *http.Request
 	writeSuccess(w, http.StatusOK, item)
 }
 
-var _ = strconv.Itoa
