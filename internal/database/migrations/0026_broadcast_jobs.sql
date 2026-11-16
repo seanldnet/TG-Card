@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS broadcast_tasks (
   status TEXT NOT NULL DEFAULT 'queued',
   scheduled_at TEXT NOT NULL,
   started_at TEXT NOT NULL DEFAULT '',
+  lease_until TEXT NOT NULL DEFAULT '',
   completed_at TEXT NOT NULL DEFAULT '',
   total_count INTEGER NOT NULL DEFAULT 0,
   sent_count INTEGER NOT NULL DEFAULT 0,
