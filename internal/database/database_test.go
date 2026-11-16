@@ -611,3 +611,35 @@ func TestWalletCheckoutSupportsNonCardAndMultiKeyDelivery(t *testing.T) {
 	if err!=nil{t.Fatal(err)}
 	if filePaid.Order.DeliveryType!="file_card"||filePaid.Order.DeliveryConfigSnapshot!=fileCard.DeliveryConfigJSON||filePaid.SecretCiphertext!="file-card-one\nfile-card-two"{t.Fatalf("file+card wallet checkout mismatch: %+v",filePaid)}
 }
+
+
+func TestOrderRedeliveryLeaseOnlyAllowsOneRecentDeliveredOrderClaim(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+
+	product, err := CreateProduct(ctx, db, "sqlite", Product{
+		Name:"Re-delivery card", PriceMinor:250, Currency:"USDT", DeliveryType:"card", Status:1,
+	})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, "sqlite", product.ID, []StockSecret{{Ciphertext:"encrypted-redelivery", Fingerprint:"redelivery-fp"}}); err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, "sqlite", "redelivery-bot", "redelivery-user", "redelivery-chat", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	paid, err := ConfirmOrderPayment(ctx, db, "sqlite", order.ID, "test", "redelivery-payment-reference")
+	if err != nil { t.Fatal(err) }
+	if err := MarkOrderDelivered(ctx, db, "sqlite", order.ID); err != nil { t.Fatal(err) }
+
+	recovered, err := GetOrderDelivery(ctx, db, "sqlite", order.ID)
+	if err != nil { t.Fatalf("delivered order should remain retrievable: %v", err) }
+	if recovered.Order.Status != "delivered" || recovered.SecretCiphertext != paid.SecretCiphertext {
+		t.Fatalf("unexpected recovered delivery snapshot: %+v", recovered)
+	}
+	claimed, err := ClaimOrderRedelivery(ctx, db, "sqlite", order.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if !claimed { t.Fatal("first re-delivery request should acquire the lease") }
+	claimed, err = ClaimOrderRedelivery(ctx, db, "sqlite", order.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if claimed { t.Fatal("duplicate re-delivery request should be rate-limited") }
+}

@@ -752,6 +752,17 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
+	case strings.HasPrefix(query.Data,"order:detail:"):
+		orderID := strings.TrimPrefix(query.Data, "order:detail:")
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "正在读取订单")
+		m.showOrderDetail(ctx, cfg, chatID, query.From, orderID)
+	case strings.HasPrefix(query.Data,"order:payment:"):
+		orderID := strings.TrimPrefix(query.Data, "order:payment:")
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "正在读取付款信息")
+		m.showOrderPayment(ctx, cfg, chatID, query.From, orderID)
+	case strings.HasPrefix(query.Data,"order:redeliver:"):
+		orderID := strings.TrimPrefix(query.Data, "order:redeliver:")
+		m.redeliverOrder(ctx, cfg, query, chatID, orderID)
 	case strings.HasPrefix(query.Data,"stock:subscribe:"):
 		productID:=strings.TrimPrefix(query.Data,"stock:subscribe:")
 		err:=database.SubscribeProductStock(ctx,m.db,m.driver,productID,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10))
@@ -866,6 +877,18 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 	if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码暂不可用，请复制收款地址。",markup) }
 }
 
+func orderStatusLabel(status string) string {
+	switch status {
+	case "pending_payment": return "待付款"
+	case "paid", "delivering": return "处理中"
+	case "delivery_failed": return "发货异常，系统重试中"
+	case "delivered": return "已交付"
+	case "expired": return "已关闭"
+	case "refunded": return "已退款"
+	default: return status
+	}
+}
+
 func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
@@ -873,37 +896,142 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "订单暂时无法查询，请稍后再试。", shopBackKeyboard())
 		return
 	}
-	if len(orders) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "你还没有订单。", shopBackKeyboard()); return }
-	var b strings.Builder
-	b.WriteString("最近订单：")
-	paymentAddress, paymentEnabled := m.paymentConfig()
-		for _, order := range orders {
-		details := `
-
-订单号：`+order.OrderNo+`
-商品：`+order.ProductName+`
-商品金额：`+formatPrice(order.AmountMinor, order.Currency)+`
-状态：`+order.Status
-		if order.Status == "pending_payment" {
-			if paymentEnabled && paymentAddress != "" && order.PaymentAmountAtomic > 0 {
-				details += `
-网络：TRON（TRC20）
-收款地址：`+paymentAddress+`
-应付：`+formatUSDTAtomic(order.PaymentAmountAtomic)+` USDT`
-			} else {
-				details += "\n此订单没有有效的链上付款金额，请重新下单，切勿转账。"
-			}
-		}
-		b.WriteString(details)
+	if len(orders) == 0 {
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "你还没有订单。", shopBackKeyboard())
+		return
 	}
-	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, b.String(), map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
+	var b strings.Builder
+	b.WriteString("📦 我的订单（最近 20 笔）")
+	rows := make([][]map[string]string, 0, len(orders))
+	for _, order := range orders {
+		b.WriteString("\n\n订单号：" + order.OrderNo)
+		b.WriteString("\n商品：" + order.ProductName)
+		b.WriteString("\n数量：" + strconv.Itoa(order.Quantity))
+		b.WriteString("\n金额：" + formatPrice(order.AmountMinor, order.Currency))
+		b.WriteString("\n状态：" + orderStatusLabel(order.Status))
+		buttons := []map[string]string{{"text":"查看详情","callback_data":"order:detail:"+order.ID}}
+		if order.Status == "delivered" && order.DeliveryType == "invite_link" {
+			buttons = append(buttons, map[string]string{"text":"联系客服核实","callback_data":"support:order:"+order.OrderNo})
+		} else if order.Status == "delivered" {
+			buttons = append(buttons, map[string]string{"text":"📥 再次获取","callback_data":"order:redeliver:"+order.ID})
+		} else if order.Status == "pending_payment" {
+			buttons = append(buttons, map[string]string{"text":"💳 继续付款","callback_data":"order:payment:"+order.ID})
+		}
+		rows = append(rows, buttons)
+	}
+	rows = append(rows, []map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, b.String(), map[string]any{"inline_keyboard":rows})
 }
 
+func (m *Manager) getOwnedOrder(ctx context.Context, cfg Config, user TelegramUser, orderID string) (database.Order, error) {
+	order, err := database.GetOrderByID(ctx, m.db, m.driver, orderID)
+	if err != nil { return database.Order{}, err }
+	if order.BotID != cfg.ID || order.TelegramUserID != strconv.FormatInt(user.ID, 10) {
+		return database.Order{}, fmt.Errorf("无权查看此订单")
+	}
+	return order, nil
+}
+
+func (m *Manager) showOrderDetail(ctx context.Context, cfg Config, chatID int64, user TelegramUser, orderID string) {
+	order, err := m.getOwnedOrder(ctx, cfg, user, orderID)
+	if err != nil {
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "订单不存在或无权查看。", supportBackKeyboard())
+		return
+	}
+	text := "订单详情\n订单号：" + order.OrderNo +
+		"\n商品：" + order.ProductName +
+		"\n数量：" + strconv.Itoa(order.Quantity) +
+		"\n金额：" + formatPrice(order.AmountMinor, order.Currency) +
+		"\n状态：" + orderStatusLabel(order.Status) +
+		"\n创建时间：" + order.CreatedAt
+	buttons := make([][]map[string]string, 0, 3)
+	switch order.Status {
+	case "pending_payment":
+		buttons = append(buttons, []map[string]string{{"text":"💳 继续付款","callback_data":"order:payment:"+order.ID}})
+	case "delivered":
+		if order.DeliveryType == "invite_link" {
+			text += "\n\n该商品使用一次性邀请链接交付。为避免重复发放入群名额，请联系客服核实后处理。"
+			buttons = append(buttons, []map[string]string{{"text":"🧾 联系客服申请核实","callback_data":"support:order:"+order.OrderNo}})
+		} else {
+			buttons = append(buttons, []map[string]string{{"text":"📥 再次获取商品","callback_data":"order:redeliver:"+order.ID}})
+		}
+	case "delivery_failed":
+		text += "\n\n系统正在自动重试发货；如果长时间未收到，请申请售后。"
+		buttons = append(buttons, []map[string]string{{"text":"🧾 申请售后","callback_data":"support:order:"+order.OrderNo}})
+	}
+	buttons = append(buttons, []map[string]string{{"text":"⬅️ 返回订单列表","callback_data":"menu:orders"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
+}
+
+func (m *Manager) showOrderPayment(ctx context.Context, cfg Config, chatID int64, user TelegramUser, orderID string) {
+	order, err := m.getOwnedOrder(ctx, cfg, user, orderID)
+	if err != nil || order.Status != "pending_payment" {
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "该订单不存在、已付款或已关闭。", supportBackKeyboard())
+		return
+	}
+	text := "继续支付订单\n订单号：" + order.OrderNo +
+		"\n商品：" + order.ProductName +
+		"\n应付金额：" + formatPrice(order.AmountMinor, order.Currency) +
+		"\n链上准确转账金额：" + formatUSDTAtomic(order.PaymentAmountAtomic) + " USDT" +
+		"\n支付截止：" + order.ExpiresAt
+	buttons := [][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}}}
+	_, enabled := m.paymentConfig()
+	if enabled {
+		buttons = append(buttons, []map[string]string{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}})
+	}
+	buttons = append(buttons, []map[string]string{{"text":"查看订单详情","callback_data":"order:detail:"+order.ID}})
+	buttons = append(buttons, []map[string]string{{"text":"⬅️ 返回订单列表","callback_data":"menu:orders"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
+}
+
+func (m *Manager) redeliverOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, orderID string) {
+	order, err := m.getOwnedOrder(ctx, cfg, query.From, orderID)
+	if err != nil || order.Status != "delivered" {
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "订单不存在或暂不可重新获取")
+		return
+	}
+	if order.DeliveryType == "invite_link" {
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "一次性邀请链接请联系客服核实")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "该商品为一次性入群邀请链接。为避免重复发放入群名额，请联系客服核实后处理。", supportBackKeyboard())
+		return
+	}
+	claimed, err := database.ClaimOrderRedelivery(ctx, m.db, m.driver, order.ID, 45*time.Second)
+	if err != nil || !claimed {
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请勿重复点击，稍后再试")
+		return
+	}
+	item, err := database.GetOrderDelivery(ctx, m.db, m.driver, order.ID)
+	if err != nil {
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "暂时无法读取交付内容")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "暂时无法读取该订单的交付内容，请联系客服处理。")
+		return
+	}
+	if err := m.RedeliverPaidOrder(ctx, item); err != nil {
+		log.Printf("Telegram order re-delivery failed: bot_id=%s order_id=%s error=%v", cfg.ID, order.ID, err)
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "重新发送失败")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "重新发送商品失败，请联系客服处理。")
+		return
+	}
+	_ = m.answerCallback(ctx, cfg.Token, query.ID, "商品已重新发送")
+	_ = m.sendMessage(ctx, cfg.Token, chatID, "已重新发送该订单的商品，请查收上方消息。")
+}
 
 // DeliverPaidOrder sends the card associated with a verified, paid order.
 // Payment adapters must call this only after independently verifying settlement.
 func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
-	if item.Order.Status == "delivered" { return nil }
+	return m.deliverPaidOrder(ctx, item, false)
+}
+
+// RedeliverPaidOrder sends the already-purchased entitlement again without changing
+// the delivered order state. One-time invite links are deliberately excluded.
+func (m *Manager) RedeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
+	if item.Order.Status != "delivered" { return fmt.Errorf("order is not delivered") }
+	if item.Order.DeliveryType == "invite_link" { return fmt.Errorf("one-time invite links cannot be reissued automatically") }
+	return m.deliverPaidOrder(ctx, item, true)
+}
+
+func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDelivery, allowDelivered bool) error {
+	if item.Order.Status == "delivered" && !allowDelivered { return nil }
 	m.mu.Lock()
 	current := m.workers[item.Order.BotID]
 	m.mu.Unlock()
@@ -993,15 +1121,21 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		deliveryErr=fmt.Errorf("unsupported delivery mode: %s",mode)
 	}
 	if deliveryErr != nil {
-		_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error())
+		if item.Order.Status != "delivered" {
+			_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error())
+		}
 		return fmt.Errorf("send paid order delivery: %w",deliveryErr)
 	}
-	if err := database.MarkOrderDelivered(ctx, m.db, m.driver, item.Order.ID); err != nil {
-		log.Printf("Telegram delivery sent but order state update failed: order_id=%s error=%v", item.Order.ID, err)
-		return err
+	if item.Order.Status != "delivered" {
+		if err := database.MarkOrderDelivered(ctx, m.db, m.driver, item.Order.ID); err != nil {
+			log.Printf("Telegram delivery sent but order state update failed: order_id=%s error=%v", item.Order.ID, err)
+			return err
+		}
+		m.Notify("delivery_success", "自动发货成功：订单 "+item.Order.OrderNo, item.Order.TelegramChatID)
+		log.Printf("Telegram order delivered: bot_id=%s order_id=%s mode=%s", item.Order.BotID, item.Order.ID, mode)
+	} else {
+		log.Printf("Telegram order re-delivered: bot_id=%s order_id=%s mode=%s", item.Order.BotID, item.Order.ID, mode)
 	}
-	m.Notify("delivery_success", "自动发货成功：订单 "+item.Order.OrderNo, item.Order.TelegramChatID)
-	log.Printf("Telegram order delivered: bot_id=%s order_id=%s mode=%s", item.Order.BotID, item.Order.ID, mode)
 	return nil
 }
 

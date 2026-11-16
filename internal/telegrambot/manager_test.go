@@ -1,6 +1,11 @@
 package telegrambot
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"github.com/seanldnet/TG-Card/internal/database"
+)
 
 func TestRenderWelcomeReplacesSupportedVariables(t *testing.T) {
 	got := renderWelcome("Hi {first_name} (@{username}) in {group}; id={telegram_id}; bot={bot_name}; balance={balance}", Config{Name:"Shop Bot"}, Chat{Title:"VIP Group"}, TelegramUser{ID:42, Username:"alice", FirstName:"Alice"})
@@ -61,5 +66,21 @@ func TestIsOwnerUsesConfiguredBotOwnerID(t *testing.T) {
 	}
 	if m.isOwner(Config{}, 123456) {
 		t.Fatal("missing owner configuration must not grant owner access")
+	}
+}
+
+func TestRedeliverPaidOrderRejectsOneTimeInviteLinks(t *testing.T) {
+	m := &Manager{}
+	item := database.OrderDelivery{Order: database.Order{Status:"delivered", DeliveryType:"invite_link"}}
+	if err := m.RedeliverPaidOrder(context.Background(), item); err == nil {
+		t.Fatal("one-time invite links must not be automatically reissued")
+	}
+}
+
+func TestRedeliverPaidOrderRequiresDeliveredOrder(t *testing.T) {
+	m := &Manager{}
+	item := database.OrderDelivery{Order: database.Order{Status:"delivery_failed", DeliveryType:"card"}}
+	if err := m.RedeliverPaidOrder(context.Background(), item); err == nil {
+		t.Fatal("only delivered orders may use the customer re-delivery action")
 	}
 }
