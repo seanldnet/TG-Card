@@ -431,3 +431,32 @@ func AdjustTelegramUserBalance(ctx context.Context, db *sql.DB, driver, userID, 
 	_,err=tx.ExecContext(ctx,insert,id,userID,adminID,direction,amountAtomic,balance,note,time.Now().UTC().Format(time.RFC3339Nano));if err!=nil{return 0,err}
 	if err:=tx.Commit();err!=nil{return 0,err};return balance,nil
 }
+
+
+func GetAdminEmail(ctx context.Context,db *sql.DB,driver,adminID string)(string,bool,error){
+	var email string;var verified int
+	err:=db.QueryRowContext(ctx,"SELECT email,email_verified FROM admins WHERE id="+placeholder(driver,1),adminID).Scan(&email,&verified)
+	return email,verified==1,err
+}
+
+func SaveAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,codeHash string,expiresAt time.Time)error{
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	if _,err:=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1),adminID);err!=nil{return err}
+	id,err:=randomID();if err!=nil{return err}
+	query:="INSERT INTO admin_email_verification_codes(id,admin_id,email,code_hash,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	if _,err:=tx.ExecContext(ctx,query,id,adminID,email,codeHash,expiresAt.UTC().Format(time.RFC3339Nano),now);err!=nil{return err}
+	return tx.Commit()
+}
+
+func VerifyAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,codeHash string)error{
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	query:="SELECT id FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1)+" AND email="+placeholder(driver,2)+" AND code_hash="+placeholder(driver,3)+" AND expires_at>"+placeholder(driver,4)
+	var codeID string
+	if err:=tx.QueryRowContext(ctx,query,adminID,email,codeHash,now).Scan(&codeID);err!=nil{return fmt.Errorf("验证码错误或已过期")}
+	update:="UPDATE admins SET email="+placeholder(driver,1)+",email_verified=1,updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)
+	if _,err:=tx.ExecContext(ctx,update,email,now,adminID);err!=nil{return err}
+	if _,err:=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1),adminID);err!=nil{return err}
+	return tx.Commit()
+}
