@@ -8,6 +8,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -164,6 +165,14 @@ func randomID() (string, error) {
 	value := make([]byte, 16)
 	if _, err := rand.Read(value); err != nil { return "", fmt.Errorf("generate identifier: %w", err) }
 	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+func randomDigits(length int) (string, error) {
+	if length < 1 || length > 18 { return "", fmt.Errorf("invalid numeric identifier length") }
+	limit := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(length)), nil)
+	value, err := rand.Int(rand.Reader, limit)
+	if err != nil { return "", fmt.Errorf("generate numeric identifier: %w", err) }
+	return fmt.Sprintf("%0*d", length, value.Int64()), nil
 }
 
 func randomPassword() (string, error) {
