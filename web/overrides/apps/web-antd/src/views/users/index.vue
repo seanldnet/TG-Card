@@ -11,6 +11,7 @@ interface TelegramBuyer {
 }
 const loading=ref(false),users=ref<TelegramBuyer[]>([]),keyword=ref('');
 const modalOpen=ref(false),saving=ref(false),selected=ref<TelegramBuyer|null>(null);
+const ledgerOpen=ref(false),ledgerLoading=ref(false),ledger=ref<any[]>([]);
 const direction=ref<'credit'|'debit'>('credit'),amount=ref(''),note=ref('');
 const filtered=computed(()=>{const q=keyword.value.trim().toLowerCase();return users.value.filter(u=>!q||[u.telegramUserId,u.username,u.firstName,u.lastName].join(' ').toLowerCase().includes(q));});
 const totalSpent=computed(()=>users.value.reduce((sum,u)=>sum+u.totalSpentAtomic,0));
@@ -22,6 +23,7 @@ function formatTime(value:string){if(!value)return '-';const d=new Date(value);r
 function copy(value:string){navigator.clipboard?.writeText(value).then(()=>message.success('已复制')).catch(()=>message.error('复制失败'));}
 async function load(){loading.value=true;try{users.value=await requestClient.get<TelegramBuyer[]>('/users');}catch{message.error('用户列表加载失败');}finally{loading.value=false;}}
 function openBalance(u:TelegramBuyer,kind:'credit'|'debit'){selected.value=u;direction.value=kind;amount.value='';note.value='';modalOpen.value=true;}
+async function openLedger(u:TelegramBuyer){selected.value=u;ledgerOpen.value=true;ledgerLoading.value=true;try{ledger.value=await requestClient.get<any[]>('/users/'+u.id+'/wallet');}catch(error:any){message.error(error?.response?.data?.message||'余额流水加载失败');ledger.value=[];}finally{ledgerLoading.value=false;}}
 async function submitBalance(){
  const value=Number(amount.value);
  if(!selected.value||!Number.isFinite(value)||value<=0||value>1_000_000_000){message.warning('请输入有效的 USDT 金额');return;}
@@ -52,10 +54,19 @@ onMounted(load);
     <a-table-column title="累计消费" key="spent" :width="150"><template #default="{record}">{{usdt(record.totalSpentAtomic)}}</template></a-table-column>
     <a-table-column title="订单数" data-index="orderCount" key="orders" :width="90"/>
     <a-table-column title="最近互动" key="updated" :width="190"><template #default="{record}">{{formatTime(record.updatedAt)}}</template></a-table-column>
-    <a-table-column title="余额操作" key="actions" :width="180" fixed="right"><template #default="{record}"><a-space><a-button size="small" type="link" @click="openBalance(record,'credit')">增加</a-button><a-button size="small" type="link" danger @click="openBalance(record,'debit')">扣减</a-button></a-space></template></a-table-column>
+    <a-table-column title="余额操作" key="actions" :width="180" fixed="right"><template #default="{record}"><a-space><a-button size="small" type="link" @click="openLedger(record)">流水</a-button><a-button size="small" type="link" @click="openBalance(record,'credit')">增加</a-button><a-button size="small" type="link" danger @click="openBalance(record,'debit')">扣减</a-button></a-space></template></a-table-column>
    </a-table>
    <a-empty v-if="!loading&&users.length===0" description="还没有用户互动记录。用户向机器人发送消息或点击菜单后会自动收录。"/>
   </a-card>
+  <a-modal v-model:open="ledgerOpen" title="用户余额流水" :footer="null" width="min(720px, 94vw)">
+   <a-spin :spinning="ledgerLoading"><a-table :data-source="ledger" row-key="createdAt" size="small" :pagination="{pageSize:10}">
+    <a-table-column title="类型" key="direction" :width="90"><template #default="{record}"><a-tag :color="record.direction==='credit'?'success':'warning'">{{record.direction==='credit'?'入账':'支出'}}</a-tag></template></a-table-column>
+    <a-table-column title="金额" key="amount" :width="150"><template #default="{record}">{{usdt(record.amountAtomic)}}</template></a-table-column>
+    <a-table-column title="变动后余额" key="balance" :width="150"><template #default="{record}">{{usdt(record.balanceAfterAtomic)}}</template></a-table-column>
+    <a-table-column title="备注" data-index="note" key="note"/>
+    <a-table-column title="时间" key="createdAt" :width="180"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
+   </a-table><a-empty v-if="!ledgerLoading&&ledger.length===0" description="暂无余额流水"/></a-spin>
+  </a-modal>
   <a-modal v-model:open="modalOpen" :title="direction==='credit'?'增加用户余额':'扣减用户余额'" :confirm-loading="saving" @ok="submitBalance">
    <template v-if="selected">
     <div class="mb-3 rounded-lg bg-gray-50 p-3 text-sm"><div>{{displayName(selected)}} <span v-if="selected.username" class="text-gray-500">@{{selected.username}}</span></div><div class="mt-1 text-gray-500">当前余额：{{usdt(selected.balanceAtomic)}}</div></div>
