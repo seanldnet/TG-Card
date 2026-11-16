@@ -261,7 +261,7 @@ func (m *Manager) sendOwnerOverview(ctx context.Context, cfg Config, chatID int6
 		{"SELECT COUNT(1) FROM support_tickets WHERE status IN ('open','in_progress','waiting_user')",&tickets},
 	}
 	for _, item := range queries { if err:=m.db.QueryRowContext(ctx,item.query).Scan(item.target); err!=nil { log.Printf("owner overview query failed: %v",err); _ = m.sendMessage(ctx,cfg.Token,chatID,"经营数据暂时无法读取，请稍后重试。"); return } }
-	text := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n可继续使用下方管理操作。\n\n快捷指令：\n/userbalance Telegram用户ID（查询余额）\n/addstock 商品ID | 卡密1,卡密2（加密导入库存）"
+\ttext := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n管理指令：\n/order 订单号（查询订单）\n/closeorder 订单号（关闭待付款订单）\n/userbalance Telegram用户ID（查询余额）\n/addstock 商品ID | 卡密1,卡密2（加密导入库存）\n/ban 或 /unban Telegram用户ID（封禁/解封）\n/broadcast 通知内容（向未退订用户群发）"
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,ownerMenuKeyboard())
 }
 
@@ -494,6 +494,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if msg.Chat.Type != "private" || msg.From == nil { return }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
+		if !m.isOwner(cfg,msg.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",msg.From.ID,banErr);return };if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"你的账号当前无法使用此机器人服务。如有疑问，请联系平台客服。");return } }
 	}
 	if msg.Document != nil || len(msg.Photo)>0 {
 		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
@@ -590,6 +591,28 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		optOut:=first=="/unsubscribe"
 		if err:=database.SetBroadcastOptOut(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),optOut);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订阅设置失败，请稍后重试。") } else if optOut { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已退订本机器人群发通知。发送 /subscribe 可重新订阅。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已重新订阅本机器人通知。") }
 		return
+	}
+	if first=="/ban" || first=="/unban" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/ban Telegram用户ID 或 /unban Telegram用户ID");return }
+		if _,err:=strconv.ParseInt(command[1],10,64);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"Telegram 用户 ID 格式无效。");return }
+		banned:=first=="/ban";if err:=database.SetTelegramUserBanned(ctx,m.db,m.driver,command[1],banned);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"操作失败："+err.Error()) } else if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已封禁用户："+command[1]) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已解除封禁："+command[1]) };return
+	}
+	if first=="/order" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/order 订单号");return }
+		item,err:=database.GetOrderByOrderNo(ctx,m.db,m.driver,command[1]);if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"未找到该订单。");return }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n数量："+strconv.Itoa(item.Quantity)+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status+"\n创建时间："+item.CreatedAt);return
+	}
+	if first=="/closeorder" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		if len(command)!=2 { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/closeorder 订单号（仅关闭待付款订单）");return }
+		if err:=database.ClosePendingOrder(ctx,m.db,m.driver,command[1]);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"关闭订单失败："+err.Error()) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订单已关闭，预占库存和优惠名额已释放。") };return
+	}
+	if first=="/broadcast" {
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无权执行此操作。");return }
+		body:=strings.TrimSpace(strings.TrimPrefix(text,command[0]));if body=="" { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用法：/broadcast 通知内容");return }
+		task,err:=database.CreateBroadcastTask(ctx,m.db,m.driver,cfg.ID,"Telegram 管理员群发",body,"",strconv.FormatInt(msg.From.ID,10));if err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"群发任务创建失败："+err.Error()) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"群发任务已加入队列。\n任务编号："+task.ID+"\n目标人数："+strconv.Itoa(task.TotalCount)) };return
 	}
 	if first == "/admin" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
