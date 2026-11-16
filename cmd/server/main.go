@@ -178,6 +178,7 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
@@ -959,6 +960,34 @@ func (a *application) listPaymentTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeSuccess(w, http.StatusOK, items)
+}
+
+type orderDetailView struct {
+	Order orderView `json:"order"`
+	PaymentFromAddress string `json:"paymentFromAddress"`
+	PaymentToAddress string `json:"paymentToAddress"`
+	PaymentTransactionID string `json:"paymentTransactionId"`
+	PaymentBlockTimestampMS int64 `json:"paymentBlockTimestampMs"`
+}
+
+func (a *application) getOrderDetail(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w, r); !ok { return }
+	id := strings.TrimSpace(r.PathValue("id"))
+	items, err := database.ListOrders(r.Context(), a.db)
+	if err != nil { log.Printf("load order details: %v", err); writeError(w,http.StatusInternalServerError,"Unable to load order details"); return }
+	var selected *database.OrderListItem
+	for i := range items { if items[i].ID == id { selected = &items[i]; break } }
+	if selected == nil { writeError(w,http.StatusNotFound,"订单不存在"); return }
+	item := selected
+	view := orderView{ID:item.ID,OrderNo:item.OrderNo,BotID:item.BotID,TelegramUserID:item.TelegramUserID,TelegramChatID:item.TelegramChatID,ProductName:item.ProductName,UnitPriceMinor:item.UnitPriceMinor,Quantity:item.Quantity,AmountMinor:item.AmountMinor,PaymentAmount:formatUSDTAtomic(item.PaymentAmountAtomic),Currency:item.Currency,Status:item.Status,ExpiresAt:item.ExpiresAt,CreatedAt:item.CreatedAt,PaidAt:item.PaidAt,DeliveredAt:item.DeliveredAt,PaymentMethod:item.PaymentMethod,PaymentReference:item.PaymentReference,DeliveryAttempts:item.DeliveryAttempts,DeliveryError:item.DeliveryError,StockReserved:item.StockReserved}
+	detail := orderDetailView{Order:view}
+	query := "SELECT from_address,to_address,transaction_id,block_timestamp_ms FROM payment_transactions WHERE order_id="+database.PlaceholderForAPI(a.driver)+" ORDER BY block_timestamp_ms DESC LIMIT 1"
+	var from,to,txid string
+	var blockTime int64
+	if err := a.db.QueryRowContext(r.Context(),query,id).Scan(&from,&to,&txid,&blockTime); err == nil {
+		detail.PaymentFromAddress=from; detail.PaymentToAddress=to; detail.PaymentTransactionID=txid; detail.PaymentBlockTimestampMS=blockTime
+	} else if !errors.Is(err,sql.ErrNoRows) { log.Printf("load order payment detail: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load payment details"); return }
+	writeSuccess(w,http.StatusOK,detail)
 }
 
 func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
