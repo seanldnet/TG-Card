@@ -561,6 +561,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
 		},
 		{
+			"name": "Promotions", "path": "/promotions", "component": "/promotions/index",
+			"meta": map[string]any{"icon": "lucide:ticket-percent", "order": 4, "title": "优惠券与兑换码"},
+		},
+		{
 			"name": "Support", "path": "/support", "component": "/support/index",
 			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 5, "title": "售后工单"},
 		},
