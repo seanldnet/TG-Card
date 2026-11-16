@@ -704,7 +704,7 @@ func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
 	var input botCreateRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err != nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
 	input.Name=strings.TrimSpace(input.Name); input.Token=strings.TrimSpace(input.Token)
-	if input.Name=="" || len(input.Name)>100 || input.Token=="" || len(input.Token)>512 || len(input.WelcomeText)>4000 { writeError(w,http.StatusBadRequest,"Name, valid Bot Token, and welcome text are required"); return }
+	if input.Name=="" || len(input.Name)>100 || input.Token=="" || len(input.Token)>512 || len(input.WelcomeText)>4000 || len(input.WelcomeMessage)>2000 || len(input.PurchaseNotice)>2000 || len(input.Description)>512 { writeError(w,http.StatusBadRequest,"Name, valid Bot Token, and welcome text are required"); return }
  input.OwnerID=strings.TrimSpace(input.OwnerID);input.CustomerServiceURL=strings.TrimSpace(input.CustomerServiceURL);input.BusinessGroupURL=strings.TrimSpace(input.BusinessGroupURL);if err:=validateBotMenuSettings(input.OwnerID,input.CustomerServiceURL,input.BusinessGroupURL);err!=nil{writeError(w,400,err.Error());return}
 	info, err := telegramGetMe(r.Context(),input.Token)
 	if err != nil { writeError(w,http.StatusBadRequest,"Telegram Bot Token validation failed: "+err.Error()); return }
@@ -740,7 +740,7 @@ func (a *application) updateBot(w http.ResponseWriter, r *http.Request) {
 	var input botUpdateRequest
 	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input); err!=nil { writeError(w,http.StatusBadRequest,"Invalid request body"); return }
 	input.Name=strings.TrimSpace(input.Name)
-	if input.Name=="" || len(input.Name)>100 || len(input.WelcomeText)>4000 || (input.Status!=0 && input.Status!=1) { writeError(w,http.StatusBadRequest,"Invalid Bot settings"); return }
+	if input.Name=="" || len(input.Name)>100 || len(input.WelcomeText)>4000 || len(input.WelcomeMessage)>2000 || len(input.PurchaseNotice)>2000 || len(input.Description)>512 || (input.Status!=0 && input.Status!=1) { writeError(w,http.StatusBadRequest,"Invalid Bot settings"); return }
  input.OwnerID=strings.TrimSpace(input.OwnerID);input.CustomerServiceURL=strings.TrimSpace(input.CustomerServiceURL);input.BusinessGroupURL=strings.TrimSpace(input.BusinessGroupURL);if err:=validateBotMenuSettings(input.OwnerID,input.CustomerServiceURL,input.BusinessGroupURL);err!=nil{writeError(w,400,err.Error());return}
 	id:=r.PathValue("id")
 	if err:=database.UpdateBot(r.Context(),a.db,a.driver,id,input.Name,input.WelcomeText,input.Status); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to update Bot") }; return }
