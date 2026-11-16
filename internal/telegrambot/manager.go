@@ -434,8 +434,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	first := strings.SplitN(command[0], "@", 2)[0]
 	if first == "/admin" {
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"此功能仅对已设置的机器人主人开放。"); return }
-		menu := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 商品列表","callback_data":"owner:products"}},{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}}}}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：可直接在机器人内查看商品或新增商品。",menu)
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"主人管理菜单：此菜单仅对当前 Bot 主人开放。",ownerMenuKeyboard())
 		return
 	}
 	if first == "/addproduct" {
@@ -467,6 +466,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请选择充值金额：",rechargeKeyboard())
 	case first == "/start":
+		if m.isOwner(cfg,msg.From.ID) {
+			_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"欢迎回来，Bot 主人。请选择商品管理操作。",ownerMenuKeyboard())
+			return
+		}
 		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));balanceText:="暂不可查询";if balanceErr==nil{balanceText=formatUSDTAtomic(balance)+" USDT"}
 		welcomeMessage:=strings.TrimSpace(cfg.WelcomeMessage);if welcomeMessage==""{welcomeMessage="🎉 欢迎来到我们的商城！"}
 		purchaseNotice:=strings.TrimSpace(cfg.PurchaseNotice);if purchaseNotice==""{purchaseNotice="📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密"}
@@ -562,6 +565,12 @@ func rechargeKeyboard() map[string]any {
 	}}
 }
 
+func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
+	{{"text":"📦 商品列表","callback_data":"owner:products"}},
+	{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}},
+}}}
+func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
+func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
  {{"text":"🛍️ 商品中心","callback_data":"menu:shop"},{"text":"🔎 搜索商品","callback_data":"menu:search"}},
  {{"text":"📦 我的订单","callback_data":"menu:orders"},{"text":"💳 我的余额","callback_data":"menu:balance"}},
