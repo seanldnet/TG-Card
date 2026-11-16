@@ -868,9 +868,11 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		address,enabled:=m.paymentConfig()
 		if !enabled || address=="" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"链上付款暂未启用"); _ = m.sendMessage(ctx,cfg.Token,chatID,"链上付款暂未启用，请联系管理员。"); return }
 		amountText:=formatUSDTAtomic(order.PaymentAmountAtomic)
-		text:="付款信息\n订单号："+order.OrderNo+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+amountText+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
+		orderAmountText:=formatPrice(order.AmountMinor,order.Currency)
+		text:="付款信息\n订单号："+order.OrderNo+"\n商品订单金额："+orderAmountText+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+amountText+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
 		markup:=map[string]any{"inline_keyboard":[][]map[string]any{
 			{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
+			{{"text":"📋 复制订单金额","copy_text":map[string]string{"text":orderAmountText}}},
 			{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
 			{{"text":"📋 复制订单号","copy_text":map[string]string{"text":order.OrderNo}}},
 			{{"text":"我的订单","callback_data":"shop:orders"}},
