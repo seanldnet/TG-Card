@@ -1037,7 +1037,6 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			for _,p:=range products{lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+strconv.Itoa(p.StockCount))}
 			if len(lines)==0{lines=append(lines,"暂无商品")}
 				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
-			}
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
 	case strings.HasPrefix(query.Data,"order:detail:"):
