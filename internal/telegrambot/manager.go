@@ -484,15 +484,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请选择充值金额：",rechargeKeyboard())
 	case first == "/start":
-		if m.isOwner(cfg,msg.From.ID) {
-			_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"欢迎回来，Bot 主人。请选择商品管理操作。",ownerMenuKeyboard())
-			return
-		}
-		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));balanceText:="暂不可查询";if balanceErr==nil{balanceText=formatUSDTAtomic(balance)+" USDT"}
-		welcomeMessage:=strings.TrimSpace(cfg.WelcomeMessage);if welcomeMessage==""{welcomeMessage="🎉 欢迎来到我们的商城！"}
-		purchaseNotice:=strings.TrimSpace(cfg.PurchaseNotice);if purchaseNotice==""{purchaseNotice="📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密"}
-		welcome:=welcomeMessage+"\n\n👤 Telegram ID："+strconv.FormatInt(msg.From.ID,10)+"\n💰 当前余额："+balanceText+"\n\n"+purchaseNotice
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,welcome,welcomeKeyboard(cfg))
+		// /start always opens the same customer home card. Bot owners receive
+		// one additional, owner-only management button on that card.
+		m.takePendingAction(cfg.ID, msg.Chat.ID)
+		m.showStartHome(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
@@ -588,6 +583,7 @@ func rechargeKeyboard() map[string]any {
 func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
 	{{"text":"📦 商品列表","callback_data":"owner:products"}},
 	{{"text":"➕ 添加商品","callback_data":"owner:addproduct"}},
+	{{"text":"⬅️ 返回个人首页","callback_data":"owner:back"}},
 }}}
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
@@ -597,11 +593,33 @@ func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard"
  {{"text":"💰 余额充值","callback_data":"menu:recharge"},{"text":"🧾 申请售后","callback_data":"menu:support"}},
  {{"text":"❓ 使用帮助","callback_data":"menu:help"}},
 }}}
-func welcomeKeyboard(cfg Config) map[string]any {
+func welcomeKeyboard(cfg Config, isOwner bool) map[string]any {
  rows:=mainMenuKeyboard()["inline_keyboard"].([][]map[string]string)
  if cfg.CustomerServiceURL!=""{rows=append([][]map[string]string{{{"text":"👩‍💻 联系客服","url":cfg.CustomerServiceURL}}},rows...)}
  if cfg.BusinessGroupURL!=""{rows=append([][]map[string]string{{{"text":"📢 业务通知群","url":cfg.BusinessGroupURL}}},rows...)}
+ if isOwner { rows=append(rows, []map[string]string{{"text":"🛠️ 主人管理","callback_data":"owner:home"}}) }
  return map[string]any{"inline_keyboard":rows}
+}
+
+// showStartHome is shared by /start and the owner's return-to-home action.
+// Ownership changes available controls, never the identity/balance home card.
+func (m *Manager) showStartHome(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
+	balanceText := "暂不可查询"
+	if m.db != nil {
+		if balance, err := database.GetTelegramWalletBalance(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10)); err == nil {
+			balanceText = formatUSDTAtomic(balance) + " USDT"
+		}
+	}
+	welcomeMessage := strings.TrimSpace(cfg.WelcomeMessage)
+	if welcomeMessage == "" { welcomeMessage = "🎉 欢迎来到我们的商城！" }
+	purchaseNotice := strings.TrimSpace(cfg.PurchaseNotice)
+	if purchaseNotice == "" { purchaseNotice = "📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密" }
+	displayName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+	if displayName == "" { displayName = "用户" }
+	welcome := welcomeMessage + "\n\n👋 " + displayName +
+		"\n👤 Telegram ID：" + strconv.FormatInt(user.ID, 10) +
+		"\n💰 当前余额：" + balanceText + "\n\n" + purchaseNotice
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, welcomeKeyboard(cfg, m.isOwner(cfg, user.ID)))
 }
 
 // configureMenu publishes BotFather-style commands and explicitly selects the
@@ -722,6 +740,8 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		switch query.Data {
 		case "owner:home":
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"主人管理菜单：请选择商品管理操作。",ownerMenuKeyboard())
+		case "owner:back":
+			m.showStartHome(ctx, cfg, chatID, query.From)
 		case "owner:addproduct":
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"添加商品格式：\n/addproduct 商品名称 | 价格 | 商品说明\n例如：\n/addproduct Netflix 会员 | 5.99 | 30 天账号",ownerMenuKeyboard())
 		case "owner:products":
@@ -751,6 +771,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
 		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
 		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击“商品中心”浏览商品，或使用下方返回按钮回到商城。",shopBackKeyboard())
+		case "home": m.showStartHome(ctx, cfg, chatID, query.From)
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开")
 		return
