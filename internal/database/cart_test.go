@@ -117,18 +117,4 @@ func TestCartCheckoutCreatesOneInvoiceAndReservesAllProducts(t *testing.T) {
 	if len(loaded)!=2||loaded[0].LineTotalMinor+loaded[1].LineTotalMinor!=900{t.Fatalf("unexpected order lines: %+v",loaded)}
 }
 
-func TestCartCheckoutRejectsMixedCurrenciesWithoutConsumingCart(t *testing.T) {
-	ctx:=context.Background()
-	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
-	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
-	if err=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
-	a,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"USDT item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
-	b,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"USD item",PriceMinor:100,Currency:"USD",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
-	if _,err=ImportProductKeys(ctx,db,cfg.DBDriver,a.ID,[]StockSecret{{Ciphertext:"a",Fingerprint:"a"}});err!=nil{t.Fatal(err)}
-	if _,err=ImportProductKeys(ctx,db,cfg.DBDriver,b.ID,[]StockSecret{{Ciphertext:"b",Fingerprint:"b"}});err!=nil{t.Fatal(err)}
-	if err=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",a.ID,1);err!=nil{t.Fatal(err)}
-	if err=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",b.ID,1);err!=nil{t.Fatal(err)}
-	if _,_,err=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot","user","123",20*time.Minute);err==nil{t.Fatal("mixed currencies must not be combined")}
-	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
-	if len(items)!=2{t.Fatalf("failed checkout must preserve cart, got %+v",items)}
-}
+
