@@ -395,16 +395,40 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", mainMenuKeyboard()); return }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows))+"）：", map[string]any{"inline_keyboard": rows})
 			return
-		case "support":
-			parts := strings.SplitN(text, "|", 2)
-			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "格式不正确，请发送：订单号 | 问题描述", mainMenuKeyboard())
+		case "support_order_manual":
+			orderNo := strings.TrimSpace(text)
+			if orderNo == "" || len(orderNo) > 80 {
+				_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "订单号格式不正确，请重新发送订单号。")
+				m.setPendingAction(cfg.ID, msg.Chat.ID, "support_order_manual")
 				return
 			}
-			ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), strings.TrimSpace(parts[0]), "other", strings.TrimSpace(parts[1]))
-			if err != nil { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error(), mainMenuKeyboard()); return }
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", mainMenuKeyboard())
+			m.setPendingAction(cfg.ID, msg.Chat.ID, "support_description:"+orderNo)
+			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "已记录订单号："+orderNo+"\n请直接描述你遇到的问题，我会提交售后申请。")
+			return
+		case strings.HasPrefix(pending, "support_description:"):
+			orderNo := strings.TrimPrefix(pending, "support_description:")
+			description := strings.TrimSpace(text)
+			if description == "" {
+				m.setPendingAction(cfg.ID, msg.Chat.ID, pending)
+				_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "问题描述不能为空，请再发送一次。")
+				return
+			}
+			ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), orderNo, "other", description)
+			if err != nil {
+				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error()+"\n你可以重新点击“申请售后”选择订单。", mainMenuKeyboard())
+				return
+			}
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", mainMenuKeyboard())
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
+			return
+		case "wallet_custom_amount":
+			value, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+			if err != nil || value < 1 || value > 1000000 {
+				m.setPendingAction(cfg.ID, msg.Chat.ID, "wallet_custom_amount")
+				_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "金额无效，请发送 1 至 1000000 之间的数字（单位：USDT）。")
+				return
+			}
+			m.sendWalletRechargeInvoice(ctx, cfg, msg.Chat.ID, msg.From.ID, int64(value*1_000_000+0.5))
 			return
 		}
 	}
@@ -435,8 +459,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		m.setPendingAction(cfg.ID, msg.Chat.ID, "search")
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", mainMenuKeyboard())
 	case text == "🧾 申请售后":
-		m.setPendingAction(cfg.ID, msg.Chat.ID, "support")
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请按下面格式发送售后信息：\n订单号 | 问题描述\n例如：TC202611150001 | 卡密无法使用", mainMenuKeyboard())
+		m.startSupportFlow(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first=="/balance" || text=="💳 我的余额":
 		balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10))
 		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"暂时无法查询余额，请稍后再试。",mainMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard()) }
@@ -445,8 +468,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			value,err:=strconv.ParseFloat(command[1],64)
 			if err==nil && value>=1 && value<=1000000 { amount:=int64(value*1_000_000+0.5);m.sendWalletRechargeInvoice(ctx,cfg,msg.Chat.ID,msg.From.ID,amount);return }
 		}
-		keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"充值 5 USDT","callback_data":"wallet:recharge:5000000"},{"text":"充值 10 USDT","callback_data":"wallet:recharge:10000000"}},{{"text":"充值 20 USDT","callback_data":"wallet:recharge:20000000"},{"text":"充值 50 USDT","callback_data":"wallet:recharge:50000000"}}}}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"选择充值金额（最低 1 USDT），也可以发送 /recharge 10 自定义充值 10 USDT。",keyboard)
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请选择充值金额：",rechargeKeyboard())
 	case first == "/start":
 		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));balanceText:="暂不可查询";if balanceErr==nil{balanceText=formatUSDTAtomic(balance)+" USDT"}
 		welcomeMessage:=strings.TrimSpace(cfg.WelcomeMessage);if welcomeMessage==""{welcomeMessage="🎉 欢迎来到我们的商城！"}
@@ -475,6 +497,32 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",mainMenuKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
+}
+
+func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
+	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
+	if err != nil {
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "暂时无法查询你的订单，请稍后再试。")
+		return
+	}
+	rows := make([][]map[string]string, 0)
+	for _, order := range orders {
+		switch order.Status {
+		case "paid", "delivering", "delivery_failed", "delivered":
+			label := truncateButtonText(order.OrderNo+" · "+order.ProductName, 48)
+			rows = append(rows, []map[string]string{{"text": label, "callback_data": "support:order:"+order.OrderNo}})
+		}
+	}
+	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "请选择需要申请售后的订单：", map[string]any{"inline_keyboard": rows})
+}
+
+func rechargeKeyboard() map[string]any {
+	return map[string]any{"inline_keyboard": [][]map[string]string{
+		{{"text": "5 USDT", "callback_data": "wallet:recharge:5000000"}, {"text": "10 USDT", "callback_data": "wallet:recharge:10000000"}},
+		{{"text": "20 USDT", "callback_data": "wallet:recharge:20000000"}, {"text": "50 USDT", "callback_data": "wallet:recharge:50000000"}},
+		{{"text": "100 USDT", "callback_data": "wallet:recharge:100000000"}, {"text": "自定义金额", "callback_data": "wallet:custom"}},
+	}}
 }
 
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
@@ -598,8 +646,8 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",mainMenuKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
 		case "balance": balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额。",mainMenuKeyboard())}else{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard())}
-		case "recharge": keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"充值 5 USDT","callback_data":"wallet:recharge:5000000"},{"text":"充值 10 USDT","callback_data":"wallet:recharge:10000000"}},{{"text":"充值 20 USDT","callback_data":"wallet:recharge:20000000"},{"text":"充值 50 USDT","callback_data":"wallet:recharge:50000000"}}}};_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",keyboard)
-		case "support": m.setPendingAction(cfg.ID,chatID,"support");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送：订单号 | 问题描述",mainMenuKeyboard())
+		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
+		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
 		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击消息中的按钮即可浏览商品、查询订单和余额、充值或申请售后。",mainMenuKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开")
@@ -641,6 +689,19 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
+	case query.Data == "wallet:custom":
+		m.setPendingAction(cfg.ID, chatID, "wallet_custom_amount")
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入充值金额")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "请输入充值金额（USDT），最低 1 USDT，例如：25")
+	case query.Data == "support:manual":
+		m.setPendingAction(cfg.ID, chatID, "support_order_manual")
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入订单号")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "目前没有可直接选择的订单，请发送你的订单号。发送后我会让你描述问题。")
+	case strings.HasPrefix(query.Data,"support:order:"):
+		orderNo := strings.TrimSpace(strings.TrimPrefix(query.Data, "support:order:"))
+		m.setPendingAction(cfg.ID, chatID, "support_description:"+orderNo)
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "已选择订单")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "已选择订单："+orderNo+"\n请直接描述你遇到的问题，我会提交售后申请。")
 	case strings.HasPrefix(query.Data,"wallet:recharge:"):
 		amount,err:=strconv.ParseInt(strings.TrimPrefix(query.Data,"wallet:recharge:"),10,64)
 		if err!=nil || amount<1_000_000 || amount>1_000_000_000_000 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"充值金额无效"); return }
