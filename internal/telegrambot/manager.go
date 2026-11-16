@@ -183,6 +183,24 @@ func (m *Manager) Reconcile(configs []Config) {
 	}
 }
 
+// RestartBot replaces exactly one polling worker without disturbing other Bots.
+func (m *Manager) RestartBot(botID string) error {
+	m.mu.Lock()
+	current := m.workers[botID]
+	if current == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("bot worker not found")
+	}
+	current.cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	next := &worker{config: current.config, cancel: cancel}
+	m.workers[botID] = next
+	m.mu.Unlock()
+	log.Printf("telegram bot worker manually restarting: bot_id=%s username=@%s", next.config.ID, next.config.Username)
+	go m.run(ctx, next.config, next)
+	return nil
+}
+
 func (m *Manager) SetOwnerID(ownerID string) { m.mu.Lock(); m.ownerID = strings.TrimSpace(ownerID); m.mu.Unlock() }
 func (m *Manager) SetCustomerServiceURL(value string) { m.mu.Lock(); m.customerServiceURL = strings.TrimSpace(value); m.mu.Unlock() }
 func (m *Manager) customerServiceLink() string { m.mu.Lock(); defer m.mu.Unlock(); return m.customerServiceURL }
