@@ -26,6 +26,9 @@ type Config struct {
 	Token string
 	Fingerprint string
 	WelcomeText string
+ WelcomeMessage string
+ PurchaseNotice string
+ Description string
  OwnerID string
  CustomerServiceURL string
  BusinessGroupURL string
@@ -445,9 +448,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"选择充值金额（最低 1 USDT），也可以发送 /recharge 10 自定义充值 10 USDT。",keyboard)
 	case first == "/start":
 		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));balanceText:="暂不可查询";if balanceErr==nil{balanceText=formatUSDTAtomic(balance)+" USDT"}
-		welcome:="🎉 欢迎来到自动发卡商城！\n\n👤 Telegram ID："+strconv.FormatInt(msg.From.ID,10)+"\n💰 当前余额："+balanceText+"\n\n📌 购买须知：\n• 虚拟商品发货后不支持无理由退款\n• 请确认商品信息及库存后再下单"
-		if cfg.CustomerServiceURL!=""{welcome+="\n\n👩‍💻 客服："+cfg.CustomerServiceURL};if cfg.BusinessGroupURL!=""{welcome+="\n📢 业务通知群："+cfg.BusinessGroupURL}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,welcome,mainMenuKeyboard())
+		welcomeMessage:=strings.TrimSpace(cfg.WelcomeMessage);if welcomeMessage==""{welcomeMessage="🎉 欢迎来到我们的商城！"}
+		purchaseNotice:=strings.TrimSpace(cfg.PurchaseNotice);if purchaseNotice==""{purchaseNotice="📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密"}
+		welcome:=welcomeMessage+"\n\n👤 Telegram ID："+strconv.FormatInt(msg.From.ID,10)+"\n💰 当前余额："+balanceText+"\n\n"+purchaseNotice
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,welcome,welcomeKeyboard(cfg))
 	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
@@ -478,9 +482,21 @@ func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard"
  {{"text":"💰 余额充值","callback_data":"menu:recharge"},{"text":"🧾 申请售后","callback_data":"menu:support"}},
  {{"text":"❓ 使用帮助","callback_data":"menu:help"}},
 }}}
+func welcomeKeyboard(cfg Config) map[string]any {
+ rows:=mainMenuKeyboard()["inline_keyboard"].([][]map[string]string)
+ if cfg.CustomerServiceURL!=""{rows=append([][]map[string]string{{{"text":"👩‍💻 联系客服","url":cfg.CustomerServiceURL}}},rows...)}
+ if cfg.BusinessGroupURL!=""{rows=append([][]map[string]string{{{"text":"📢 业务通知群","url":cfg.BusinessGroupURL}}},rows...)}
+ return map[string]any{"inline_keyboard":rows}
+}
 
 // configureMenu publishes BotFather-style commands and explicitly selects the
 // commands menu button beside Telegram's message input.
+func (m *Manager) setBotDescription(ctx context.Context,token,description string) {
+ description=strings.TrimSpace(description);if description==""{return}
+ payload,_:=json.Marshal(map[string]any{"description":description})
+ req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/setMyDescription",bytes.NewReader(payload));if err!=nil{return};req.Header.Set("Content-Type","application/json")
+ resp,err:=m.client.Do(req);if err==nil{resp.Body.Close()}
+}
 func (m *Manager) configureMenu(ctx context.Context, token string) {
 	requests := []struct { method string; payload map[string]any }{
 		{"setMyCommands", map[string]any{"commands": []map[string]string{
