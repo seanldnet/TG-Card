@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"math/big"
@@ -41,8 +42,8 @@ func CreateWalletRecharge(ctx context.Context,db *sql.DB,driver,botID,telegramUs
 	now:=time.Now().UTC();expires:=now.Add(ttl)
 	var invoice int64
 	for attempt:=0;attempt<40;attempt++{
-		suffix,err:=big.NewInt(0).SetString(suffixID[:8],16);if !err{return WalletRecharge{},fmt.Errorf("generate invoice suffix failed")}
-		suffix.Mod(suffix,big.NewInt(9999));candidate:=amountAtomic+suffix.Int64()+1+int64(attempt)
+		suffix,err:=rand.Int(rand.Reader,big.NewInt(9999));if err!=nil{return WalletRecharge{},fmt.Errorf("generate invoice suffix: %w",err)}
+		candidate:=amountAtomic+suffix.Int64()+1+int64(attempt)
 		var orderCount,rechargeCount int
 		if err:=tx.QueryRowContext(ctx,"SELECT COUNT(1) FROM orders WHERE status='pending_payment' AND payment_amount_atomic="+placeholder(driver,1),candidate).Scan(&orderCount);err!=nil{return WalletRecharge{},err}
 		if err:=tx.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_recharges WHERE status='pending_payment' AND payment_amount_atomic="+placeholder(driver,1),candidate).Scan(&rechargeCount);err!=nil{return WalletRecharge{},err}
