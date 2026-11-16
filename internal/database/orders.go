@@ -659,12 +659,13 @@ func ClaimOrderRedelivery(ctx context.Context, db *sql.DB, driver, orderID strin
 func RefundOrderToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,note string)(int64,error){
 	note=strings.TrimSpace(note);if len(note)>500{note=note[:500]}
 	tx,err:=db.BeginTx(ctx,&sql.TxOptions{Isolation:sql.LevelSerializable});if err!=nil{return 0,err};defer tx.Rollback()
-	query:="SELECT status,telegram_user_id,amount_minor,order_no FROM orders WHERE id="+placeholder(driver,1)
+	query:="SELECT status,telegram_user_id,amount_minor,order_no,currency FROM orders WHERE id="+placeholder(driver,1)
 	if driver=="postgres"{query+=" FOR UPDATE"}
-	var status,userID,orderNo string;var amountMinor int64
-	if err:=tx.QueryRowContext(ctx,query,orderID).Scan(&status,&userID,&amountMinor,&orderNo);err!=nil{return 0,err}
+	var status,userID,orderNo,currency string;var amountMinor int64
+	if err:=tx.QueryRowContext(ctx,query,orderID).Scan(&status,&userID,&amountMinor,&orderNo,&currency);err!=nil{return 0,err}
 	if status=="refunded"{return 0,fmt.Errorf("order has already been refunded")}
 	switch status{case "paid","delivering","delivery_failed","delivered":default:return 0,fmt.Errorf("order status %s cannot be refunded",status)}
+	if !strings.EqualFold(currency,"USDT"){ return 0,fmt.Errorf("仅支持 USDT 订单退款，当前订单币种为 %s",currency) }
 	if amountMinor<=0||amountMinor>922337203685477{ return 0,fmt.Errorf("order refund amount is invalid") }
 	amountAtomic:=amountMinor*10000
 	updateBalance:="UPDATE telegram_users SET balance_atomic=balance_atomic+"+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE telegram_user_id="+placeholder(driver,3)
