@@ -663,10 +663,12 @@ func (a *application) changePassword(w http.ResponseWriter, r *http.Request) {
 
 type botCreateRequest struct {
  Name string `json:"name"`; Token string `json:"token"`; WelcomeText string `json:"welcomeText"`
+ WelcomeMessage string `json:"welcomeMessage"`; PurchaseNotice string `json:"purchaseNotice"`; Description string `json:"description"`
  OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"`
 }
 type botUpdateRequest struct {
  Name string `json:"name"`; WelcomeText string `json:"welcomeText"`; Status int `json:"status"`
+ WelcomeMessage string `json:"welcomeMessage"`; PurchaseNotice string `json:"purchaseNotice"`; Description string `json:"description"`
  OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"`
 }
 type telegramGetMeResponse struct {
@@ -679,20 +681,21 @@ type telegramGetMeResponse struct {
 }
 type botView struct {
  ID string `json:"id"`; Name string `json:"name"`; Username string `json:"username"`; Status int `json:"status"`; WelcomeText string `json:"welcomeText"`
+ WelcomeMessage string `json:"welcomeMessage"`; PurchaseNotice string `json:"purchaseNotice"`; Description string `json:"description"`
  OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"`
  CreatedAt string `json:"createdAt"`; UpdatedAt string `json:"updatedAt"`
 }
-type botMenuSettings struct { OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"` }
+type botMenuSettings struct { OwnerID string `json:"ownerId"`; CustomerServiceURL string `json:"customerServiceUrl"`; BusinessGroupURL string `json:"businessGroupUrl"`; WelcomeMessage string `json:"welcomeMessage"`; PurchaseNotice string `json:"purchaseNotice"`; Description string `json:"description"` }
 func decodeBotMenuSettings(raw string) botMenuSettings { var v botMenuSettings; _=json.Unmarshal([]byte(raw),&v); return v }
 func validateBotMenuSettings(owner,customer,group string) error { if len(owner)>32{return fmt.Errorf("主人 Telegram ID 长度无效")};for _,d:=range owner{if d<'0'||d>'9'{return fmt.Errorf("主人 Telegram ID 只能填写数字")}};valid:=func(v string)bool{return v==""||strings.HasPrefix(v,"https://t.me/")||strings.HasPrefix(v,"https://telegram.me/")};if !valid(customer)||!valid(group){return fmt.Errorf("客服和业务通知群链接必须使用 Telegram 链接")};return nil }
-func saveBotMenuSettings(ctx context.Context,a *application,id,owner,customer,group string) error { b,e:=json.Marshal(botMenuSettings{strings.TrimSpace(owner),strings.TrimSpace(customer),strings.TrimSpace(group)});if e!=nil{return e};return database.UpdateBotMenuConfig(ctx,a.db,a.driver,id,string(b)) }
+func saveBotMenuSettings(ctx context.Context,a *application,id string,v botMenuSettings) error { b,e:=json.Marshal(v);if e!=nil{return e};return database.UpdateBotMenuConfig(ctx,a.db,a.driver,id,string(b)) }
 
 func (a *application) listBots(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w,r); !ok { return }
 	items, err := database.ListBots(r.Context(), a.db)
 	if err != nil { log.Printf("list bots: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load bots"); return }
 	result := make([]botView,0,len(items))
-	for _, item := range items { v:=decodeBotMenuSettings(item.MenuConfig);result=append(result,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,OwnerID:v.OwnerID,CustomerServiceURL:v.CustomerServiceURL,BusinessGroupURL:v.BusinessGroupURL,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt}) }
+	for _, item := range items { v:=decodeBotMenuSettings(item.MenuConfig);result=append(result,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,WelcomeMessage:v.WelcomeMessage,PurchaseNotice:v.PurchaseNotice,Description:v.Description,OwnerID:v.OwnerID,CustomerServiceURL:v.CustomerServiceURL,BusinessGroupURL:v.BusinessGroupURL,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt}) }
 	writeSuccess(w,http.StatusOK,result)
 }
 
@@ -709,10 +712,10 @@ func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
 	if err != nil { log.Printf("encrypt bot token: %v",err); writeError(w,http.StatusInternalServerError,"Unable to securely store Bot Token"); return }
 	item, err := database.CreateBot(r.Context(),a.db,a.driver,input.Name,info.Result.Username,encrypted,secret.Fingerprint(input.Token),input.WelcomeText)
 	if err != nil { log.Printf("create bot: %v",err); writeError(w,http.StatusConflict,"Bot already exists or could not be saved"); return }
- if err:=saveBotMenuSettings(r.Context(),a,item.ID,input.OwnerID,input.CustomerServiceURL,input.BusinessGroupURL);err!=nil{writeError(w,500,"机器人配置保存失败");return}
+ if err:=saveBotMenuSettings(r.Context(),a,item.ID,botMenuSettings{OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,WelcomeMessage:input.WelcomeMessage,PurchaseNotice:input.PurchaseNotice,Description:input.Description});err!=nil{writeError(w,500,"机器人配置保存失败");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.create","bot:"+item.ID,clientIP(r),r.UserAgent(),"telegram_username=@"+item.Username)
 	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after create: %v", err) }
-	writeSuccess(w,http.StatusCreated,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt})
+	writeSuccess(w,http.StatusCreated,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,WelcomeMessage:input.WelcomeMessage,PurchaseNotice:input.PurchaseNotice,Description:input.Description,OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt})
 }
 
 func (a *application) updateBotOwnerID(w http.ResponseWriter,r *http.Request) {
@@ -741,7 +744,7 @@ func (a *application) updateBot(w http.ResponseWriter, r *http.Request) {
  input.OwnerID=strings.TrimSpace(input.OwnerID);input.CustomerServiceURL=strings.TrimSpace(input.CustomerServiceURL);input.BusinessGroupURL=strings.TrimSpace(input.BusinessGroupURL);if err:=validateBotMenuSettings(input.OwnerID,input.CustomerServiceURL,input.BusinessGroupURL);err!=nil{writeError(w,400,err.Error());return}
 	id:=r.PathValue("id")
 	if err:=database.UpdateBot(r.Context(),a.db,a.driver,id,input.Name,input.WelcomeText,input.Status); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to update Bot") }; return }
- if err:=saveBotMenuSettings(r.Context(),a,id,input.OwnerID,input.CustomerServiceURL,input.BusinessGroupURL);err!=nil{writeError(w,500,"机器人配置保存失败");return}
+ if err:=saveBotMenuSettings(r.Context(),a,id,botMenuSettings{OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,WelcomeMessage:input.WelcomeMessage,PurchaseNotice:input.PurchaseNotice,Description:input.Description});err!=nil{writeError(w,500,"机器人配置保存失败");return}
 	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after update: %v", err) }
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.update","bot:"+id,clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,http.StatusOK,map[string]bool{"updated":true})
@@ -783,7 +786,7 @@ func (a *application) syncBots(ctx context.Context) error {
 			log.Printf("decrypt Telegram Bot Token failed: bot_id=%s username=@%s error=%v", item.ID, item.Username, err)
 			continue
 		}
-		v:=decodeBotMenuSettings(item.MenuConfig);configs=append(configs,telegrambot.Config{ID:item.ID,Name:item.Name,Username:item.Username,Token:token,Fingerprint:item.TokenFingerprint,WelcomeText:item.WelcomeText,OwnerID:v.OwnerID,CustomerServiceURL:v.CustomerServiceURL,BusinessGroupURL:v.BusinessGroupURL})
+		v:=decodeBotMenuSettings(item.MenuConfig);configs=append(configs,telegrambot.Config{ID:item.ID,Name:item.Name,Username:item.Username,Token:token,Fingerprint:item.TokenFingerprint,WelcomeText:item.WelcomeText,WelcomeMessage:v.WelcomeMessage,PurchaseNotice:v.PurchaseNotice,Description:v.Description,OwnerID:v.OwnerID,CustomerServiceURL:v.CustomerServiceURL,BusinessGroupURL:v.BusinessGroupURL,WelcomeMessage:v.WelcomeMessage,PurchaseNotice:v.PurchaseNotice,Description:v.Description})
 	}
 	a.botManager.Reconcile(configs)
 	return nil
