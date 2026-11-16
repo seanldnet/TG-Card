@@ -183,6 +183,8 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("GET /api/users", app.listTelegramUsers)
+	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
@@ -487,6 +489,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "BotManagement", "path": "/bots", "component": "/bots/index",
 			"meta": map[string]any{"icon": "lucide:bot", "order": 1, "title": "机器人管理"},
+		},
+		{
+			"name": "Users", "path": "/users", "component": "/users/index",
+			"meta": map[string]any{"icon": "lucide:users", "order": 2, "title": "用户管理"},
 		},
 		{
 			"name": "Orders", "path": "/orders", "component": "/orders/index",
@@ -973,6 +979,30 @@ type orderDetailView struct {
 	PaymentToAddress string `json:"paymentToAddress"`
 	PaymentTransactionID string `json:"paymentTransactionId"`
 	PaymentBlockTimestampMS int64 `json:"paymentBlockTimestampMs"`
+}
+
+type userBalanceAdjustmentRequest struct {
+	AmountAtomic int64 `json:"amountAtomic"`
+	Direction string `json:"direction"`
+	Note string `json:"note"`
+}
+
+func (a *application) listTelegramUsers(w http.ResponseWriter,r *http.Request) {
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	items,err:=database.ListTelegramUsers(r.Context(),a.db)
+	if err!=nil{log.Printf("list Telegram users: %v",err);writeError(w,http.StatusInternalServerError,"Unable to load Telegram users");return}
+	writeSuccess(w,http.StatusOK,items)
+}
+
+func (a *application) adjustTelegramUserBalance(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var input userBalanceAdjustmentRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil{writeError(w,http.StatusBadRequest,"Invalid request body");return}
+	if input.AmountAtomic<=0||input.AmountAtomic>1_000_000_000_000_000||(input.Direction!="credit"&&input.Direction!="debit"){writeError(w,http.StatusBadRequest,"余额金额或操作类型无效");return}
+	balance,err:=database.AdjustTelegramUserBalance(r.Context(),a.db,a.driver,r.PathValue("id"),claims.AdminID,input.AmountAtomic,input.Direction,strings.TrimSpace(input.Note))
+	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"user.balance.adjust","telegram-user:"+r.PathValue("id"),clientIP(r),r.UserAgent(),input.Direction+" amount_atomic="+fmt.Sprint(input.AmountAtomic))
+	writeSuccess(w,http.StatusOK,map[string]int64{"balanceAtomic":balance})
 }
 
 func (a *application) getOrderDetail(w http.ResponseWriter, r *http.Request) {
