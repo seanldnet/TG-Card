@@ -45,7 +45,7 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		var tiers []orderDiscountTier
 		if err:=json.Unmarshal([]byte(x.discountJSON),&tiers);err!=nil{return Order{},nil,fmt.Errorf("商品 %s 的批量折扣配置无效",x.ProductName)}
 		bestMin,bestPct:=0,0;for _,tier:=range tiers{if tier.MinQuantity>=2&&x.Quantity>=tier.MinQuantity&&tier.DiscountPercent>=1&&tier.DiscountPercent<=90&&tier.MinQuantity>bestMin{bestMin,bestPct=tier.MinQuantity,tier.DiscountPercent}}
-		if bestPct>0{line=(line*int64(100-bestPct)+50)/100}
+		if bestPct>0{factor:=int64(100-bestPct);line=(line/100)*factor+((line%100)*factor+50)/100}
 		x.LineTotalMinor=line
 		if total> (1<<63-1)-line{return Order{},nil,fmt.Errorf("购物车总金额超出范围")}
 		total+=line;totalQty+=x.Quantity
