@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"embed"
 	"encoding/base64"
@@ -441,9 +442,14 @@ func GetAdminEmail(ctx context.Context,db *sql.DB,driver,adminID string)(string,
 
 func SaveAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,codeHash string,expiresAt time.Time)error{
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	var previous string
+	lookup:="SELECT created_at FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1)+" ORDER BY created_at DESC LIMIT 1"
+	if err:=tx.QueryRowContext(ctx,lookup,adminID).Scan(&previous);err==nil{
+		if sent,parseErr:=time.Parse(time.RFC3339Nano,previous);parseErr==nil&&time.Since(sent)<time.Minute{return fmt.Errorf("验证码发送过于频繁，请 60 秒后再试")}
+	}else if err!=sql.ErrNoRows{return err}
 	if _,err:=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1),adminID);err!=nil{return err}
 	id,err:=randomID();if err!=nil{return err}
-	query:="INSERT INTO admin_email_verification_codes(id,admin_id,email,code_hash,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
+	query:="INSERT INTO admin_email_verification_codes(id,admin_id,email,code_hash,expires_at,created_at,attempts) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+",0)"
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
 	if _,err:=tx.ExecContext(ctx,query,id,adminID,email,codeHash,expiresAt.UTC().Format(time.RFC3339Nano),now);err!=nil{return err}
 	return tx.Commit()
@@ -451,10 +457,19 @@ func SaveAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,code
 
 func VerifyAdminEmailCode(ctx context.Context,db *sql.DB,driver,adminID,email,codeHash string)error{
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	query:="SELECT id,code_hash,expires_at,attempts FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1)+" AND email="+placeholder(driver,2)
+	var codeID,savedHash,expires string;var attempts int
+	if err:=tx.QueryRowContext(ctx,query,adminID,email).Scan(&codeID,&savedHash,&expires,&attempts);err!=nil{return fmt.Errorf("验证码错误或已过期")}
+	if attempts>=5{return fmt.Errorf("验证码错误次数过多，请重新获取验证码")}
+	expiresAt,parseErr:=time.Parse(time.RFC3339Nano,expires)
+	if parseErr!=nil||!time.Now().UTC().Before(expiresAt){_,_=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE id="+placeholder(driver,1),codeID);_ = tx.Commit();return fmt.Errorf("验证码已过期，请重新获取")}
+	if subtle.ConstantTimeCompare([]byte(savedHash),[]byte(codeHash))!=1{
+		updateAttempts:="UPDATE admin_email_verification_codes SET attempts=attempts+1 WHERE id="+placeholder(driver,1)
+		if _,err:=tx.ExecContext(ctx,updateAttempts,codeID);err!=nil{return err}
+		if err:=tx.Commit();err!=nil{return err}
+		return fmt.Errorf("验证码错误")
+	}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	query:="SELECT id FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1)+" AND email="+placeholder(driver,2)+" AND code_hash="+placeholder(driver,3)+" AND expires_at>"+placeholder(driver,4)
-	var codeID string
-	if err:=tx.QueryRowContext(ctx,query,adminID,email,codeHash,now).Scan(&codeID);err!=nil{return fmt.Errorf("验证码错误或已过期")}
 	update:="UPDATE admins SET email="+placeholder(driver,1)+",email_verified=1,updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)
 	if _,err:=tx.ExecContext(ctx,update,email,now,adminID);err!=nil{return err}
 	if _,err:=tx.ExecContext(ctx,"DELETE FROM admin_email_verification_codes WHERE admin_id="+placeholder(driver,1),adminID);err!=nil{return err}
