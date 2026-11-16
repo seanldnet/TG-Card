@@ -644,12 +644,31 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 
 价格：` + formatPrice(p.PriceMinor, p.Currency) + `
 库存：` + strconv.Itoa(p.StockCount)
-		buttons := [][]map[string]string{{{"text":"确认购买","callback_data":"shop:confirm:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
-		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
+		buttons := make([][]map[string]string,0)
+		if p.StockCount < 1 {
+			buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}}}
+		} else {
+			for _, quantity := range []int{1,2,3,5,10} {
+				if quantity <= p.StockCount { label := "购买 "+strconv.Itoa(quantity)+" 件"; buttons = append(buttons, []map[string]string{{"text":label,"callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}}) }
+			}
+		}
+		buttons = append(buttons, []map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
 		return
 	}
 	_ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在、已下架或暂不可购买。")
+}
+
+func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int) {
+	order, err := database.CreateOrderWithQuantity(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, 20*time.Minute)
+	if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
+	balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
+	text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)+"\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
+	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
+	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
+	_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
+	m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
+	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
 }
 
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
@@ -701,17 +720,15 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data, "shop:confirm:"):
 		m.showPurchaseConfirmation(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:confirm:"))
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请核对订单信息")
+	case strings.HasPrefix(query.Data, "shop:buyqty:"):
+		parts := strings.Split(strings.TrimPrefix(query.Data,"shop:buyqty:"),":")
+		if len(parts)!=2 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买参数无效"); return }
+		quantity, parseErr := strconv.Atoi(parts[1])
+		if parseErr!=nil || quantity<1 || quantity>100 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买数量无效"); return }
+		m.createPurchaseOrder(ctx,cfg,query,chatID,parts[0],quantity)
 	case strings.HasPrefix(query.Data, "shop:buy:"):
 		productID := strings.TrimPrefix(query.Data, "shop:buy:")
-		order, err := database.CreateOrder(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, 20*time.Minute)
-		if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
-		balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
-		text := "订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
-		if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
-		keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
-		m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
+		m.createPurchaseOrder(ctx,cfg,query,chatID,productID,1)
 	case strings.HasPrefix(query.Data,"shop:walletpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:walletpay:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
@@ -834,11 +851,18 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
 		return err
 	}
-	cardKey, err := m.decrypt(item.SecretCiphertext)
-	if err != nil {
-		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "decrypt card key: "+err.Error())
-		return err
+	var deliveredKeys []string
+	for _, ciphertext := range strings.Split(item.SecretCiphertext,"\n") {
+		if ciphertext=="" { continue }
+		cardKey, decryptErr := m.decrypt(ciphertext)
+		if decryptErr != nil {
+			_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "decrypt card key: "+decryptErr.Error())
+			return decryptErr
+		}
+		deliveredKeys = append(deliveredKeys,cardKey)
 	}
+	if len(deliveredKeys)!=item.Order.Quantity { err:=fmt.Errorf("paid order key count mismatch: expected %d, got %d",item.Order.Quantity,len(deliveredKeys));_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,err.Error());return err }
+	cardKey := strings.Join(deliveredKeys,"\n")
 	chatID, err := strconv.ParseInt(item.Order.TelegramChatID, 10, 64)
 	if err != nil {
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "invalid Telegram chat ID")
