@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 )
 
 func (a *application) listBotRuntime(w http.ResponseWriter, r *http.Request) {
