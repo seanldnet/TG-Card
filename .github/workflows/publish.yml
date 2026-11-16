@@ -27,7 +27,7 @@ concurrency:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout source and Vben submodule
         uses: actions/checkout@v4
