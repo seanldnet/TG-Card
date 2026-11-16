@@ -999,16 +999,37 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
 	orderID := r.PathValue("id")
+	order, err := database.GetOrderByID(r.Context(), a.db, a.driver, orderID)
+	if errors.Is(err, sql.ErrNoRows) { writeError(w, http.StatusNotFound, "Order not found"); return }
+	if err != nil { log.Printf("load order for delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to load order"); return }
+
+	// Delivered orders use a separate idempotent re-delivery lease. The normal
+	// delivery lease intentionally rejects delivered orders to prevent duplicate fulfillment.
+	if order.Status == "delivered" {
+		if order.DeliveryType == "invite_link" { writeError(w, http.StatusConflict, "一次性邀请链接不能自动重复发放，请人工核实"); return }
+		claimed, claimErr := database.ClaimOrderRedelivery(r.Context(), a.db, a.driver, orderID, 45*time.Second)
+		if claimErr != nil { log.Printf("claim order re-delivery: order_id=%s error=%v", orderID, claimErr); writeError(w, http.StatusInternalServerError, "Unable to claim order re-delivery"); return }
+		if !claimed { writeError(w, http.StatusConflict, "订单正在重新发送，请稍后再试"); return }
+		item, loadErr := database.GetOrderDelivery(r.Context(), a.db, a.driver, orderID)
+		if loadErr != nil { writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
+		if err := a.botManager.RedeliverPaidOrder(r.Context(), item); err != nil {
+			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver", "order:"+orderID, clientIP(r), r.UserAgent(), "failed: "+err.Error())
+			writeError(w, http.StatusBadGateway, "商品重新发送失败："+err.Error()); return
+		}
+		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver", "order:"+orderID, clientIP(r), r.UserAgent(), "redelivered")
+		writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true, "redelivered": true})
+		return
+	}
+
 	claimed, err := database.ClaimOrderDelivery(r.Context(), a.db, a.driver, orderID, 2*time.Minute)
 	if err != nil { log.Printf("claim order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to claim order delivery"); return }
-	if !claimed { writeError(w, http.StatusConflict, "Order is already being delivered or is not retryable"); return }
+	if !claimed { writeError(w, http.StatusConflict, "订单正在发货或当前状态不可重试"); return }
 	item, err := database.GetOrderDelivery(r.Context(), a.db, a.driver, orderID)
-	if errors.Is(err, sql.ErrNoRows) { writeError(w, http.StatusConflict, "Order is not awaiting delivery or is not retryable"); return }
+	if errors.Is(err, sql.ErrNoRows) { writeError(w, http.StatusConflict, "订单当前不处于待发货状态"); return }
 	if err != nil { log.Printf("load order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
 	if err := a.botManager.DeliverPaidOrder(r.Context(), item); err != nil {
 		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, clientIP(r), r.UserAgent(), "failed: "+err.Error())
-		writeError(w, http.StatusBadGateway, "Delivery failed; order remains retryable")
-		return
+		writeError(w, http.StatusBadGateway, "Delivery failed; order remains retryable"); return
 	}
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, clientIP(r), r.UserAgent(), "delivered")
 	writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true})
