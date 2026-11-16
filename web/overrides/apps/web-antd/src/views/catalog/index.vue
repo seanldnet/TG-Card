@@ -134,10 +134,10 @@ onMounted(loadAll);
      <a-empty v-if="!loading&&products.length===0" description="还没有商品，点击“新增商品”创建第一个商品"/>
     </div>
     <a-table v-else :data-source="products" :loading="loading" row-key="id" :scroll="{x:900}">
-     <a-table-column title="商品名称" data-index="name" key="name"/>
+     <a-table-column title="商品名称" data-index="name" key="name" :width="260"><template #default="{record}"><div class="whitespace-normal break-words leading-5">{{record.name}}</div></template></a-table-column>
      <a-table-column title="分类" data-index="categoryName" key="categoryName"><template #default="{record}">{{record.categoryName||'未分类'}}</template></a-table-column>
      <a-table-column title="售价" key="price"><template #default="{record}">{{money(record)}}</template></a-table-column>
-     <a-table-column title="可售库存" data-index="stockCount" key="stockCount"/>
+     <a-table-column title="可售库存" data-index="stockCount" key="stockCount" :width="110"/>
      <a-table-column title="状态" key="status"><template #default="{record}"><a-tag :color="record.status===1?'success':'default'">{{record.status===1?'销售中':'已下架'}}</a-tag></template></a-table-column>
      <a-table-column title="操作" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button type="link" size="small" @click="openImport(record)">导入卡密</a-button><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeProduct(record)">删除</a-button></a-space></template></a-table-column>
      <template #emptyText><a-empty description="还没有商品，点击“新增商品”创建第一个商品"/></template>
