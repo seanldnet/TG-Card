@@ -55,17 +55,31 @@ function handleAddProduct(){
  productModalOpen.value=true;
 }
 function openEdit(item:Product){
- editingId.value=item.id;productForm.name=item.name;productForm.categoryId=item.categoryId||'';
- productForm.price=(item.priceMinor/100).toFixed(2);productForm.description=item.description||'';
- productForm.enabled=item.status===1;\n  try{productForm.discountText=(JSON.parse(item.bulkDiscountJson||'[]') as Array<{minQuantity:number;discountPercent:number}>).map(t=>t.minQuantity+':'+t.discountPercent).join('\\n')}catch{productForm.discountText=''}\n  productModalOpen.value=true;
+  editingId.value=item.id;productForm.name=item.name;productForm.categoryId=item.categoryId||'';
+  productForm.price=(item.priceMinor/100).toFixed(2);productForm.description=item.description||'';
+  productForm.enabled=item.status===1;
+  try {
+   productForm.discountText=(JSON.parse(item.bulkDiscountJson||'[]') as Array<{minQuantity:number;discountPercent:number}>).map(t=>t.minQuantity+':'+t.discountPercent).join('\n');
+  } catch { productForm.discountText=''; }
+  productModalOpen.value=true;
 }
 async function saveProduct(){
- try{await productFormRef.value?.validate()}catch{return}
- const price=Number(productForm.price);
- if(!Number.isFinite(price)||price<0){message.warning('请输入有效的商品价格');return}
- saving.value=true;
- try{
-  const tiers=[] as Array<{minQuantity:number;discountPercent:number}>;\n  for(const line of productForm.discountText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean)){const parts=line.split(/[:：,，]/).map(v=>Number(v.trim()));if(parts.length!==2||!Number.isInteger(parts[0])||!Number.isInteger(parts[1])||parts[0]<2||parts[0]>100||parts[1]<1||parts[1]>90){message.warning('阶梯折扣请按“购买数量:折扣百分比”填写，例如 2:10');return}tiers.push({minQuantity:parts[0],discountPercent:parts[1]})}\n  tiers.sort((a,b)=>a.minQuantity-b.minQuantity);if(tiers.some((t,i)=>i>0&&t.minQuantity===tiers[i-1].minQuantity)){message.warning('同一购买数量不能重复配置折扣');return}\n  const payload={categoryId:productForm.categoryId||'',name:productForm.name.trim(),description:productForm.description,priceMinor:Math.round(price*100),currency:'USDT',deliveryType:'card',status:productForm.enabled?1:0,bulkDiscount:tiers};
+  try{await productFormRef.value?.validate()}catch{return}
+  const price=Number(productForm.price);
+  if(!Number.isFinite(price)||price<0){message.warning('请输入有效的商品价格');return}
+  const tiers=[] as Array<{minQuantity:number;discountPercent:number}>;
+  for(const line of productForm.discountText.split(/\r?\n/).map(v=>v.trim()).filter(Boolean)){
+   const parts=line.split(/[:：,，]/).map(v=>Number(v.trim()));
+   if(parts.length!==2||!Number.isInteger(parts[0])||!Number.isInteger(parts[1])||parts[0]<2||parts[0]>100||parts[1]<1||parts[1]>90){
+    message.warning('阶梯折扣请按“购买数量:折扣百分比”填写，例如 2:10');return;
+   }
+   tiers.push({minQuantity:parts[0],discountPercent:parts[1]});
+  }
+  tiers.sort((a,b)=>a.minQuantity-b.minQuantity);
+  if(tiers.some((t,i)=>i>0&&t.minQuantity===tiers[i-1].minQuantity)){message.warning('同一购买数量不能重复配置折扣');return}
+  saving.value=true;
+  try{
+   const payload={categoryId:productForm.categoryId||'',name:productForm.name.trim(),description:productForm.description,priceMinor:Math.round(price*100),currency:'USDT',deliveryType:'card',status:productForm.enabled?1:0,bulkDiscount:tiers};
   if(editingId.value){await requestClient.put('/catalog/products/'+editingId.value,payload);message.success('商品修改成功')}
   else{await requestClient.post('/catalog/products',payload);message.success('商品创建成功')}
   productModalOpen.value=false;await loadAll();
