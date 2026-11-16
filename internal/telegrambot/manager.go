@@ -752,6 +752,17 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
+	case strings.HasPrefix(query.Data,"order:detail:"):
+		orderID := strings.TrimPrefix(query.Data, "order:detail:")
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "正在读取订单")
+		m.showOrderDetail(ctx, cfg, chatID, query.From, orderID)
+	case strings.HasPrefix(query.Data,"order:payment:"):
+		orderID := strings.TrimPrefix(query.Data, "order:payment:")
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "正在读取付款信息")
+		m.showOrderPayment(ctx, cfg, chatID, query.From, orderID)
+	case strings.HasPrefix(query.Data,"order:redeliver:"):
+		orderID := strings.TrimPrefix(query.Data, "order:redeliver:")
+		m.redeliverOrder(ctx, cfg, query, chatID, orderID)
 	case strings.HasPrefix(query.Data,"stock:subscribe:"):
 		productID:=strings.TrimPrefix(query.Data,"stock:subscribe:")
 		err:=database.SubscribeProductStock(ctx,m.db,m.driver,productID,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10))
