@@ -1475,8 +1475,10 @@ func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
 	if err!=nil { log.Printf("load broadcast recipients failed: task_id=%s error=%v",taskID,err);return }
 	sent,failed,countErr:=database.CountBroadcastRecipients(ctx,m.db,m.driver,taskID)
 	if countErr!=nil { log.Printf("count broadcast recipients failed: task_id=%s error=%v",taskID,countErr);return }
+	lastLeaseRenewal:=time.Now()
 	for _,recipient:=range recipients {
 		if ctx.Err()!=nil { return }
+		if time.Since(lastLeaseRenewal)>=30*time.Second { if err:=database.RenewBroadcastTaskLease(ctx,m.db,m.driver,taskID);err!=nil { log.Printf("broadcast lease renewal failed: task_id=%s error=%v",taskID,err);return };lastLeaseRenewal=time.Now() }
 		optedOut,optErr:=database.IsBroadcastOptedOut(ctx,m.db,m.driver,task.BotID,recipient.TelegramUserID)
 		if optErr!=nil {
 			_ = database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","无法核验退订状态，已阻止发送",recipient.Attempts)
