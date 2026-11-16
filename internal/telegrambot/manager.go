@@ -461,8 +461,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	case text == "🧾 申请售后":
 		m.startSupportFlow(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first=="/balance" || text=="💳 我的余额":
-		balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10))
-		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"暂时无法查询余额，请稍后再试。",mainMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard()) }
+		m.showWalletBalance(ctx,cfg,msg.Chat.ID,msg.From.ID)
 	case first=="/recharge" || text=="💰 余额充值":
 		if len(command)>1 {
 			value,err:=strconv.ParseFloat(command[1],64)
@@ -517,6 +516,40 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 	}
 	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, message, map[string]any{"inline_keyboard": rows})
+}
+
+
+// showWalletBalance keeps the balance interaction focused: identity, balance and two actions only.
+func (m *Manager) showWalletBalance(ctx context.Context,cfg Config,chatID,userID int64) {
+  balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(userID,10))
+  if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额，请稍后再试。",walletBalanceKeyboard()); return }
+  text:="👤 Telegram 用户 ID："+strconv.FormatInt(userID,10)+"\n💰 账户余额："+formatUSDTAtomic(balance)+" USDT"
+  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,walletBalanceKeyboard())
+}
+
+func walletBalanceKeyboard() map[string]any {
+  return map[string]any{"inline_keyboard":[][]map[string]string{
+    {{"text":"💰 充值余额","callback_data":"wallet:openrecharge"},{"text":"🔄 刷新账户","callback_data":"wallet:refresh"}},
+  }}
+}
+
+// NotifyProductRestocked sends one availability message per pending subscription.
+// The subscription is acknowledged only after Telegram accepts the message.
+func (m *Manager) NotifyProductRestocked(ctx context.Context,productID string) {
+  products,err:=database.ListProducts(ctx,m.db);if err!=nil{return}
+  var product *database.Product
+  for i:=range products { if products[i].ID==productID { product=&products[i];break } }
+  if product==nil || product.StockCount<1 { return }
+  subscribers,err:=database.ListPendingProductStockNotifications(ctx,m.db,m.driver,productID);if err!=nil { log.Printf("load stock notification subscribers failed: product_id=%s error=%v",productID,err);return }
+  for _,sub:=range subscribers {
+    m.mu.Lock();worker:=m.workers[sub.BotID];m.mu.Unlock()
+    if worker==nil { continue }
+    chatID,err:=strconv.ParseInt(sub.TelegramChatID,10,64);if err!=nil{continue}
+    text:="🔔 你关注的商品已经补货！\n商品："+product.Name+"\n价格："+formatPrice(product.PriceMinor,product.Currency)+"\n当前库存："+strconv.Itoa(product.StockCount)
+    markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"立即查看商品","callback_data":"shop:product:"+product.ID}}}}
+    if err:=m.sendMessageMarkup(ctx,worker.config.Token,chatID,text,markup);err!=nil { log.Printf("send stock notification failed: product_id=%s subscriber_id=%s error=%v",productID,sub.ID,err);continue }
+    if err:=database.MarkProductStockNotificationSent(ctx,m.db,m.driver,sub.ID);err!=nil { log.Printf("mark stock notification sent failed: subscription_id=%s error=%v",sub.ID,err) }
+  }
 }
 
 func rechargeKeyboard() map[string]any {
@@ -611,7 +644,7 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 价格：` + formatPrice(p.PriceMinor, p.Currency) + `
 库存：` + strconv.Itoa(p.StockCount)
 		buttons := [][]map[string]string{{{"text":"确认购买","callback_data":"shop:confirm:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}}
-		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"暂时缺货，不能购买","callback_data":"shop:home"}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
+		if p.StockCount < 1 { buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}},{{"text":"返回商品列表","callback_data":"shop:home"}}} }
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
 		return
 	}
@@ -638,6 +671,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.sendMessage(ctx,cfg.Token,chatID,strings.Join(lines,"\n"))
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
+	case strings.HasPrefix(query.Data,"stock:subscribe:"):
+		productID:=strings.TrimPrefix(query.Data,"stock:subscribe:")
+		err:=database.SubscribeProductStock(ctx,m.db,m.driver,productID,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10))
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订阅失败，请稍后重试"); return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
 	case query.Data == "shop:home":
 		m.showShop(ctx,cfg,chatID)
 	case strings.HasPrefix(query.Data,"shop:category:"):
@@ -647,7 +686,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "shop": m.showShop(ctx,cfg,chatID)
 		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",mainMenuKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
-		case "balance": balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额。",mainMenuKeyboard())}else{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard())}
+		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
 		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
 		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
 		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击消息中的按钮即可浏览商品、查询订单和余额、充值或申请售后。",mainMenuKeyboard())
@@ -691,6 +730,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
+	case query.Data=="wallet:openrecharge":
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"请选择充值金额")
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
+	case query.Data=="wallet:refresh":
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"账户信息已刷新")
+		m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "wallet:custom":
 		m.setPendingAction(cfg.ID, chatID, "wallet_custom_amount")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入充值金额")

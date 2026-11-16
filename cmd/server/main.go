@@ -870,6 +870,7 @@ func (a *application) importProductKeys(w http.ResponseWriter,r *http.Request) {
 	inserted,err:=database.ImportProductKeys(r.Context(),a.db,a.driver,r.PathValue("id"),items)
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,500,"Unable to import card keys");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.keys.import","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),fmt.Sprintf("submitted=%d inserted=%d",len(items),inserted))
+	if inserted>0 && a.botManager!=nil { go a.botManager.NotifyProductRestocked(context.Background(),r.PathValue("id")) }
 	writeSuccess(w,200,map[string]int{"submitted":len(items),"inserted":inserted,"duplicates":len(items)-inserted})
 }
 
