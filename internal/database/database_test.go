@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"golang.org/x/crypto/bcrypt"
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -393,4 +394,70 @@ func TestAdminEmailVerificationAndRateLimit(t *testing.T) {
 	if err:=VerifyAdminEmailCode(ctx,db,cfg.DBDriver,admin.ID,"admin@example.com",hashText);err!=nil{t.Fatal(err)}
 	email,verified,err:=GetAdminEmail(ctx,db,cfg.DBDriver,admin.ID);if err!=nil{t.Fatal(err)}
 	if email!="admin@example.com"||!verified{t.Fatalf("email verification not saved: email=%s verified=%v",email,verified)}
+}
+
+
+func TestWalletRechargeCreditsExactlyOnce(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"777001","walletbuyer","Wallet","Buyer","bot-1");err!=nil{t.Fatal(err)}
+	item,err:=CreateWalletRecharge(ctx,db,cfg.DBDriver,"bot-1","777001","777001",5_000_000,30*time.Minute);if err!=nil{t.Fatal(err)}
+	matched,err:=MatchPendingWalletRecharge(ctx,db,cfg.DBDriver,item.PaymentAmountAtomic,time.Now().UnixMilli());if err!=nil{t.Fatal(err)}
+	if matched.ID!=item.ID{t.Fatalf("matched recharge=%s, want %s",matched.ID,item.ID)}
+	txID:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	confirmed,balance,err:=ConfirmWalletRecharge(ctx,db,cfg.DBDriver,item.ID,txID);if err!=nil{t.Fatal(err)}
+	if balance!=5_000_000||confirmed.Status!="paid"{t.Fatalf("unexpected recharge result: balance=%d recharge=%+v",balance,confirmed)}
+	_,balance,err=ConfirmWalletRecharge(ctx,db,cfg.DBDriver,item.ID,txID);if err!=nil{t.Fatal(err)}
+	if balance!=5_000_000{t.Fatalf("duplicate confirmation credited twice: balance=%d",balance)}
+	ledger,err:=ListWalletTransactions(ctx,db,cfg.DBDriver,"777001");if err!=nil{t.Fatal(err)}
+	if len(ledger)!=1{t.Fatalf("ledger entries=%d, want 1",len(ledger))}
+}
+
+func TestPayOrderWithWalletIsAtomic(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"777002","walletbuyer","Wallet","Buyer","bot-1");err!=nil{t.Fatal(err)}
+	users,err:=ListTelegramUsers(ctx,db);if err!=nil{t.Fatal(err)}
+	if _,err:=AdjustTelegramUserBalance(ctx,db,cfg.DBDriver,users[0].ID,"admin",2_000_000,"credit","test funding");err!=nil{t.Fatal(err)}
+	now:=time.Now().UTC();orderID,err:=randomID();if err!=nil{t.Fatal(err)};keyID,err:=randomID();if err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO products(id,name,description,price_minor,currency,delivery_type,status,created_at,updated_at) VALUES('p1','Test product','','100','USDT','card',1,?,?)",now.Format(time.RFC3339Nano),now.Format(time.RFC3339Nano));err!=nil{t.Fatal(err)}
+	expires:=now.Add(10*time.Minute).Format(time.RFC3339Nano)
+	if _,err:=db.ExecContext(ctx,"INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",orderID,"TCWALLET001","bot-1","777002","777002","p1","Test product",100,1,100,"USDT","pending_payment",expires,now.Format(time.RFC3339Nano),now.Format(time.RFC3339Nano),1_000_001);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO product_keys(id,product_id,secret_ciphertext,secret_fingerprint,status,order_id,created_at) VALUES(?,?,?,?,1,?,?)",keyID,"p1","encrypted-test-key","fingerprint-test",orderID,now.Format(time.RFC3339Nano));err!=nil{t.Fatal(err)}
+	delivery,balance,err:=PayOrderWithWallet(ctx,db,cfg.DBDriver,orderID);if err!=nil{t.Fatal(err)}
+	if balance!=1_000_000||delivery.PaymentMethod!="wallet"||delivery.SecretCiphertext!="encrypted-test-key"{t.Fatalf("unexpected wallet checkout result: balance=%d delivery=%+v",balance,delivery)}
+	if _,_,err:=PayOrderWithWallet(ctx,db,cfg.DBDriver,orderID);err==nil{t.Fatal("repeated wallet payment should be rejected")}
+	balance,err=GetTelegramWalletBalance(ctx,db,cfg.DBDriver,"777002");if err!=nil{t.Fatal(err)}
+	if balance!=1_000_000{t.Fatalf("wallet was debited more than once: %d",balance)}
+}
+
+func TestClearOrderDataResetsHistoryWithoutResellingDeliveredKeys(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"777003","buyer","Test","Buyer","bot-1");err!=nil{t.Fatal(err)}
+	users,err:=ListTelegramUsers(ctx,db);if err!=nil{t.Fatal(err)}
+	if _,err:=AdjustTelegramUserBalance(ctx,db,cfg.DBDriver,users[0].ID,"admin",9_000_000,"credit","before cleanup");err!=nil{t.Fatal(err)}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	if _,err:=db.ExecContext(ctx,"INSERT INTO products(id,name,description,price_minor,currency,delivery_type,status,created_at,updated_at) VALUES('p2','Test','','100','USDT','card',1,?,?)",now,now);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO product_keys(id,product_id,secret_ciphertext,secret_fingerprint,status,order_id,created_at) VALUES('sold','p2','cipher','sold-fp',2,'old-order',?)",now);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO product_keys(id,product_id,secret_ciphertext,secret_fingerprint,status,order_id,created_at) VALUES('reserved','p2','cipher2','reserved-fp',1,'pending-order',?)",now);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic) VALUES('old-order','TCOLD','777003','777003','Old',100,1,100,'USDT','delivered',?, ?, ?,1000000)",now,now,now);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO payment_transactions(id,provider,transaction_id,amount_atomic,token_decimals,block_timestamp_ms,status,first_seen_at,updated_at) VALUES('pt','trc20-usdt',?,1000000,6,1,'matched',?,?)", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",now,now);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO support_tickets(id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,description,created_at,updated_at) VALUES('st','ST1','old-order','TCOLD','bot-1','777003','777003','issue',?,?)",now,now);err!=nil{t.Fatal(err)}
+	result,err:=ClearOrderData(ctx,db,cfg.DBDriver);if err!=nil{t.Fatal(err)}
+	if result.Orders!=1||result.PaymentTransactions!=1||result.SupportTickets!=1{t.Fatalf("unexpected cleanup counts: %+v",result)}
+	balance,err:=GetTelegramWalletBalance(ctx,db,cfg.DBDriver,"777003");if err!=nil{t.Fatal(err)}
+	if balance!=0{t.Fatalf("wallet balance should reset to zero: %d",balance)}
+	var soldStatus,reservedStatus int
+	var soldOrderID,reservedOrderID sql.NullString
+	if err:=db.QueryRowContext(ctx,"SELECT status,order_id FROM product_keys WHERE id='sold'").Scan(&soldStatus,&soldOrderID);err!=nil{t.Fatal(err)}
+	if err:=db.QueryRowContext(ctx,"SELECT status,order_id FROM product_keys WHERE id='reserved'").Scan(&reservedStatus,&reservedOrderID);err!=nil{t.Fatal(err)}
+	if soldStatus!=2||soldOrderID.Valid{t.Fatalf("delivered key must remain sold and detached: status=%d order=%v",soldStatus,soldOrderID)}
+	if reservedStatus!=0||reservedOrderID.Valid{t.Fatalf("pending reservation should be released: status=%d order=%v",reservedStatus,reservedOrderID)}
 }
