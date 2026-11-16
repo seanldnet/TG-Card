@@ -30,7 +30,8 @@ type WalletRecharge struct {
 
 type WalletRechargeBonusTier struct { MinAmountAtomic int64 `json:"minAmountAtomic"`; BonusType string `json:"bonusType"`; BonusValue int64 `json:"bonusValue"` }
 type WalletRechargeBonusRule struct { Enabled bool `json:"enabled"`; Tiers []WalletRechargeBonusTier `json:"tiers"`; UpdatedAt string `json:"updatedAt,omitempty"` }
-func GetWalletRechargeBonusRule(ctx context.Context,db *sql.DB)(WalletRechargeBonusRule,error){
+type walletRuleReader interface { QueryRowContext(context.Context,string,...any)*sql.Row }
+func GetWalletRechargeBonusRule(ctx context.Context,db walletRuleReader)(WalletRechargeBonusRule,error){
  var v WalletRechargeBonusRule;var enabled int;var raw string
  err:=db.QueryRowContext(ctx,"SELECT enabled,tiers_json,updated_at FROM wallet_recharge_bonus_rules ORDER BY updated_at DESC LIMIT 1").Scan(&enabled,&raw,&v.UpdatedAt)
  if errors.Is(err,sql.ErrNoRows){v.Tiers=[]WalletRechargeBonusTier{};return v,nil};if err!=nil{return v,err}
@@ -78,7 +79,7 @@ func CreateWalletRecharge(ctx context.Context,db *sql.DB,driver,botID,telegramUs
 		if orderCount==0&&rechargeCount==0{invoice=candidate;break}
 	}
 	if invoice==0{return WalletRecharge{},fmt.Errorf("暂时无法生成唯一充值金额，请稍后重试")}
-	rule,ruleErr:=GetWalletRechargeBonusRule(ctx,db);if ruleErr!=nil{return WalletRecharge{},ruleErr}
+	rule,ruleErr:=GetWalletRechargeBonusRule(ctx,tx);if ruleErr!=nil{return WalletRecharge{},ruleErr}
  bonusAmount:=calculateRechargeBonus(amountAtomic,rule)
  item:=WalletRecharge{ID:id,RechargeNo:"TR"+now.Format("20060102150405")+suffixID[:6],BotID:botID,TelegramUserID:telegramUserID,TelegramChatID:telegramChatID,AmountAtomic:amountAtomic,PaymentAmountAtomic:invoice,BonusAmountAtomic:bonusAmount,Status:"pending_payment",ExpiresAt:expires.Format(time.RFC3339Nano),CreatedAt:now.Format(time.RFC3339Nano)}
 	query:="INSERT INTO wallet_recharges(id,recharge_no,bot_id,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,bonus_amount_atomic,status,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+","+placeholder(driver,11)+")"
