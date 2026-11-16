@@ -56,11 +56,12 @@ func AddCartItem(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	query := "INSERT INTO shopping_cart_items(id,bot_id,telegram_user_id,product_id,quantity,created_at,updated_at) VALUES("+
 		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+") "+
-		"ON CONFLICT(bot_id,telegram_user_id,product_id) DO UPDATE SET quantity=shopping_cart_items.quantity+excluded.quantity,updated_at=excluded.updated_at"
-	if _, err := db.ExecContext(ctx,query,id,botID,telegramUserID,productID,quantity,now,now); err != nil { return err }
-	// Enforce the maximum after the upsert; revert rather than silently clipping.
-	_, err = db.ExecContext(ctx, "UPDATE shopping_cart_items SET quantity=100 WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2)+" AND product_id="+placeholder(driver,3)+" AND quantity>100", botID,telegramUserID,productID)
+		"ON CONFLICT(bot_id,telegram_user_id,product_id) DO UPDATE SET quantity=shopping_cart_items.quantity+excluded.quantity,updated_at=excluded.updated_at WHERE shopping_cart_items.quantity+excluded.quantity<=100"
+	result, err := db.ExecContext(ctx,query,id,botID,telegramUserID,productID,quantity,now,now)
 	if err != nil { return err }
+	affected, err := result.RowsAffected()
+	if err != nil { return err }
+	if affected != 1 { return fmt.Errorf("购物车中该商品数量最多为 100 件") }
 	return nil
 }
 
