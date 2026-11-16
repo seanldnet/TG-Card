@@ -67,7 +67,7 @@ func CreateWalletRecharge(ctx context.Context,db *sql.DB,driver,botID,telegramUs
 	if err:=tx.QueryRowContext(ctx,"SELECT COUNT(1) FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),telegramUserID).Scan(&exists);err!=nil{return WalletRecharge{},err}
 	if exists!=1{return WalletRecharge{},fmt.Errorf("请先向机器人发送 /start 再充值")}
 	id,err:=randomID();if err!=nil{return WalletRecharge{},err}
-	suffixID,err:=randomID();if err!=nil{return WalletRecharge{},err}
+	suffixID,err:=randomDigits(6);if err!=nil{return WalletRecharge{},err}
 	now:=time.Now().UTC();expires:=now.Add(ttl)
 	var invoice int64
 	for attempt:=0;attempt<40;attempt++{
@@ -81,7 +81,7 @@ func CreateWalletRecharge(ctx context.Context,db *sql.DB,driver,botID,telegramUs
 	if invoice==0{return WalletRecharge{},fmt.Errorf("暂时无法生成唯一充值金额，请稍后重试")}
 	rule,ruleErr:=GetWalletRechargeBonusRule(ctx,tx);if ruleErr!=nil{return WalletRecharge{},ruleErr}
  bonusAmount:=calculateRechargeBonus(amountAtomic,rule)
- item:=WalletRecharge{ID:id,RechargeNo:"TR"+now.Format("20060102150405")+suffixID[:6],BotID:botID,TelegramUserID:telegramUserID,TelegramChatID:telegramChatID,AmountAtomic:amountAtomic,PaymentAmountAtomic:invoice,BonusAmountAtomic:bonusAmount,Status:"pending_payment",ExpiresAt:expires.Format(time.RFC3339Nano),CreatedAt:now.Format(time.RFC3339Nano)}
+ item:=WalletRecharge{ID:id,RechargeNo:"TR"+now.Format("20060102150405")+suffixID,BotID:botID,TelegramUserID:telegramUserID,TelegramChatID:telegramChatID,AmountAtomic:amountAtomic,PaymentAmountAtomic:invoice,BonusAmountAtomic:bonusAmount,Status:"pending_payment",ExpiresAt:expires.Format(time.RFC3339Nano),CreatedAt:now.Format(time.RFC3339Nano)}
 	query:="INSERT INTO wallet_recharges(id,recharge_no,bot_id,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,bonus_amount_atomic,status,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+","+placeholder(driver,11)+")"
 	if _,err:=tx.ExecContext(ctx,query,item.ID,item.RechargeNo,item.BotID,item.TelegramUserID,item.TelegramChatID,item.AmountAtomic,item.PaymentAmountAtomic,item.BonusAmountAtomic,item.Status,item.ExpiresAt,item.CreatedAt);err!=nil{return WalletRecharge{},err}
 	if err:=tx.Commit();err!=nil{return WalletRecharge{},err};return item,nil
