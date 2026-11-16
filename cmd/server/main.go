@@ -162,6 +162,7 @@ func main() {
 	}
 	paymentsEnabled := paymentSettings.TronEnabled && apiKey != "" && paymentSettings.TronReceiveAddress != ""
 	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
+	botManager.SetEncryptor(secrets.Encrypt)
 	if rawSite, siteErr := database.GetSiteSettings(ctx, db); siteErr == nil {
 		var initialSite siteSettings
 		if json.Unmarshal([]byte(rawSite), &initialSite) == nil { botManager.SetOwnerID(initialSite.TelegramOwnerID); botManager.SetCustomerServiceURL(initialSite.TelegramCustomerServiceURL); botManager.SetCommunityLinks(initialSite.TelegramCommunityURL, initialSite.TelegramSupportGroupURL) }
