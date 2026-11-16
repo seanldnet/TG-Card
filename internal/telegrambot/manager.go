@@ -756,6 +756,32 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 	_ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在、已下架或暂不可购买。")
 }
 
+func (m *Manager) createCartCheckout(ctx context.Context, cfg Config, query CallbackQuery, chatID int64) {
+	userID := strconv.FormatInt(query.From.ID, 10)
+	order, items, err := database.CreateCartCheckout(ctx, m.db, m.driver, cfg.ID, userID, strconv.FormatInt(chatID, 10), 20*time.Minute)
+	if err != nil {
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "暂时无法结算")
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "购物车结算失败："+err.Error()+"\n购物车内容已保留，你可以调整商品后重试。")
+		return
+	}
+	var lines []string
+	for _, item := range items {
+		lines = append(lines, fmt.Sprintf("%s × %d · %s", item.ProductName, item.Quantity, formatPrice(item.LineTotalMinor, item.Currency)))
+	}
+	balance, balanceErr := database.GetTelegramWalletBalance(ctx, m.db, m.driver, userID)
+	text := "✅ 购物车统一订单已创建！\n订单号："+order.OrderNo+"\n\n"+strings.Join(lines, "\n")+"\n\n应付总额："+formatPrice(order.AmountMinor, order.Currency)+"\n链上准确付款金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n支付有效期：20 分钟"
+	if balanceErr == nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
+	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{
+		{{"text":"💳 使用站内余额一次支付","callback_data":"shop:walletpay:"+order.ID}},
+		{{"text":"💵 使用 TRC20 USDT 一次支付","callback_data":"shop:chainpay:"+order.ID}},
+		{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}},
+		{{"text":"📦 查看我的订单","callback_data":"menu:orders"}},
+	}}
+	_ = m.answerCallback(ctx, cfg.Token, query.ID, "统一订单已创建")
+	m.Notify("order_created", "购物车统一订单："+order.OrderNo+"\n商品种类："+strconv.Itoa(len(items))+"\n金额："+formatPrice(order.AmountMinor,order.Currency), strconv.FormatInt(chatID,10))
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, keyboard)
+}
+
 func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int) {
 	m.createPurchaseOrderWithPromotion(ctx,cfg,query,chatID,productID,quantity,"")
 }
@@ -864,6 +890,8 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10))
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已清空")
 		m.showCart(ctx,cfg,chatID,query.From.ID)
+	case query.Data == "cart:checkout":
+		m.createCartCheckout(ctx,cfg,query,chatID)
 	case query.Data == "shop:home":
 		m.showShop(ctx,cfg,chatID)
 	case strings.HasPrefix(query.Data,"shop:category:"):
