@@ -40,6 +40,7 @@ type Manager struct {
 	paymentEnabled bool
 	ownerID string
 	customerServiceURL string
+	stockAlerted map[string]time.Time
 	notifier func(event, details, userChatID string)
 }
 
@@ -102,6 +103,7 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 		decrypt: decrypt,
 		paymentAddress: paymentAddress,
 		paymentEnabled: paymentEnabled,
+		stockAlerted: make(map[string]time.Time),
 	}
 }
 
@@ -183,7 +185,11 @@ func (m *Manager) startExpiryLoop() {
 	m.expiryCancel = cancel
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
+		stockTicker := time.NewTicker(5*time.Minute)
+		dailyTicker := time.NewTicker(24*time.Hour)
 		defer ticker.Stop()
+		defer stockTicker.Stop()
+		defer dailyTicker.Stop()
 		for {
 			expired, err := database.ExpirePendingOrders(ctx, m.db, m.driver, 100)
 		if recharges, rechargeErr := database.ExpirePendingWalletRecharges(ctx,m.db,m.driver); rechargeErr != nil && ctx.Err()==nil { log.Printf("expire wallet recharges failed: %v",rechargeErr) } else if recharges>0 { log.Printf("expired pending wallet recharges: count=%d",recharges) }
@@ -196,10 +202,42 @@ func (m *Manager) startExpiryLoop() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+			case <-stockTicker.C:
+				m.checkLowStock(ctx)
+			case <-dailyTicker.C:
+				m.sendDailyOperationsReport(ctx)
 			}
 			m.retryDueDeliveries(ctx)
 		}
 	}()
+}
+
+
+func (m *Manager) checkLowStock(ctx context.Context) {
+	products,err:=database.ListProducts(ctx,m.db)
+	if err!=nil{log.Printf("low stock scan failed: %v",err);return}
+	m.mu.Lock();ownerID:=m.ownerID
+	if m.stockAlerted==nil{m.stockAlerted=make(map[string]time.Time)}
+	m.mu.Unlock()
+	if ownerID==""{return}
+	now:=time.Now()
+	for _,p:=range products{
+		if p.Status!=1||p.StockCount>5{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
+		m.mu.Lock();last:=m.stockAlerted[p.ID];due:=last.IsZero()||now.Sub(last)>=6*time.Hour
+		if due{m.stockAlerted[p.ID]=now}
+		m.mu.Unlock()
+		if due{m.Notify("stock_low",fmt.Sprintf("商品：%s\n当前可售库存：%d\n提醒阈值：5 件，请及时补充卡密。",p.Name,p.StockCount),ownerID)}
+	}
+}
+
+func (m *Manager) sendDailyOperationsReport(ctx context.Context) {
+	m.mu.Lock();ownerID:=m.ownerID;m.mu.Unlock()
+	if ownerID==""{return}
+	summary,err:=database.GetDailyOperationsSummary(ctx,m.db,m.driver,time.Now().UTC())
+	if err!=nil{log.Printf("daily operations summary failed: %v",err);return}
+	revenue:=fmt.Sprintf("%d.%02d",summary.RevenueMinor/100,summary.RevenueMinor%100)
+	details:=fmt.Sprintf("日期（UTC）：%s\n新增订单：%d\n付款订单：%d\n成功发货：%d\n当日销售额：%s USDT\n未结售后：%d\n待核对/未匹配链上交易：%d",time.Now().UTC().Format("2006-01-02"),summary.OrderCount,summary.PaidOrderCount,summary.DeliveredOrderCount,revenue,summary.OpenSupportCount,summary.PaymentRiskCount)
+	m.Notify("daily_report",details,ownerID)
 }
 
 // retryDueDeliveries leases paid orders and recovers deliveries interrupted by a restart.
