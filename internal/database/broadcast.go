@@ -67,25 +67,31 @@ func ListBroadcastTasks(ctx context.Context,db *sql.DB,driver string)([]Broadcas
 	return items,rows.Err()
 }
 
-func ClaimDueBroadcastTasks(ctx context.Context,db *sql.DB,driver string,limit int)([]string,error){
-	if limit<1||limit>50{limit=10}
-	now:=time.Now().UTC()
-	cutoff:=now.Add(-10*time.Minute).Format(time.RFC3339Nano)
-	rows,err:=db.QueryContext(ctx,"SELECT id FROM broadcast_tasks WHERE scheduled_at<="+placeholder(driver,1)+" AND (status='queued' OR (status='sending' AND started_at<="+placeholder(driver,2)+")) ORDER BY scheduled_at LIMIT "+fmt.Sprint(limit),now.Format(time.RFC3339Nano),cutoff)
-	if err!=nil{return nil,err}
-	ids:=make([]string,0)
-	for rows.Next(){var id string;if err:=rows.Scan(&id);err!=nil{rows.Close();return nil,err};ids=append(ids,id)}
-	if err:=rows.Err();err!=nil{rows.Close();return nil,err};rows.Close()
-	claimed:=make([]string,0,len(ids))
-	for _,id:=range ids{
-		stamp:=time.Now().UTC().Format(time.RFC3339Nano)
-		q:="UPDATE broadcast_tasks SET status='sending',started_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND (status='queued' OR (status='sending' AND started_at<="+placeholder(driver,4)+"))"
-		res,err:=db.ExecContext(ctx,q,stamp,stamp,id,cutoff);if err!=nil{return claimed,err}
-		n,_:=res.RowsAffected();if n==1{claimed=append(claimed,id)}
+func ClaimDueBroadcastTasks(ctx context.Context, db *sql.DB, driver string, limit int) ([]string, error) {
+	if limit < 1 || limit > 50 { limit = 10 }
+	now := time.Now().UTC()
+	stamp := now.Format(time.RFC3339Nano)
+	lease := now.Add(5*time.Minute).Format(time.RFC3339Nano)
+	query := "SELECT id FROM broadcast_tasks WHERE scheduled_at<="+placeholder(driver,1)+" AND status IN ('queued','sending') AND (lease_until='' OR lease_until<="+placeholder(driver,2)+") ORDER BY scheduled_at LIMIT "+fmt.Sprint(limit)
+	rows, err := db.QueryContext(ctx, query, stamp, stamp); if err != nil { return nil, err }
+	ids := make([]string,0)
+	for rows.Next() { var id string; if err := rows.Scan(&id); err != nil { rows.Close(); return nil, err }; ids=append(ids,id) }
+	if err := rows.Err(); err != nil { rows.Close(); return nil, err }; rows.Close()
+	claimed := make([]string,0,len(ids))
+	for _, id := range ids {
+		q := "UPDATE broadcast_tasks SET status='sending',started_at=CASE WHEN started_at='' THEN "+placeholder(driver,1)+" ELSE started_at END,lease_until="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)+" AND status IN ('queued','sending') AND (lease_until='' OR lease_until<="+placeholder(driver,5)+")"
+		res, err := db.ExecContext(ctx,q,stamp,lease,stamp,id,stamp); if err != nil { return claimed,err }
+		n, _ := res.RowsAffected(); if n==1 { claimed=append(claimed,id) }
 	}
 	return claimed,nil
 }
 
+func RenewBroadcastTaskLease(ctx context.Context, db *sql.DB, driver, taskID string) error {
+	now := time.Now().UTC()
+	q := "UPDATE broadcast_tasks SET lease_until="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status='sending'"
+	res,err := db.ExecContext(ctx,q,now.Add(5*time.Minute).Format(time.RFC3339Nano),now.Format(time.RFC3339Nano),taskID); if err != nil { return err }
+	n,err := res.RowsAffected(); if err != nil { return err }; if n!=1 { return fmt.Errorf("broadcast task lease was lost") }; return nil
+}
 func GetBroadcastTask(ctx context.Context,db *sql.DB,driver,id string)(BroadcastTask,error){
 	var v BroadcastTask
 	err:=db.QueryRowContext(ctx,"SELECT id,bot_id,title,message_text,audience_type,status,scheduled_at,started_at,completed_at,total_count,sent_count,failed_count,created_at FROM broadcast_tasks WHERE id="+placeholder(driver,1),id).Scan(&v.ID,&v.BotID,&v.Title,&v.MessageText,&v.AudienceType,&v.Status,&v.ScheduledAt,&v.StartedAt,&v.CompletedAt,&v.TotalCount,&v.SentCount,&v.FailedCount,&v.CreatedAt)
@@ -109,7 +115,7 @@ func UpdateBroadcastRecipient(ctx context.Context,db *sql.DB,driver,id,status,la
 func FinishBroadcastTask(ctx context.Context,db *sql.DB,driver,id,status string,sent,failed int)error{
 	if status!="completed"&&status!="completed_with_errors"&&status!="failed"{return fmt.Errorf("invalid broadcast task status")}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	q:="UPDATE broadcast_tasks SET status="+placeholder(driver,1)+",sent_count="+placeholder(driver,2)+",failed_count="+placeholder(driver,3)+",completed_at="+placeholder(driver,4)+",updated_at="+placeholder(driver,5)+" WHERE id="+placeholder(driver,6)
+	q:="UPDATE broadcast_tasks SET status="+placeholder(driver,1)+",lease_until='',sent_count="+placeholder(driver,2)+",failed_count="+placeholder(driver,3)+",completed_at="+placeholder(driver,4)+",updated_at="+placeholder(driver,5)+" WHERE id="+placeholder(driver,6)
 	_,err:=db.ExecContext(ctx,q,status,sent,failed,now,now,id);return err
 }
 
