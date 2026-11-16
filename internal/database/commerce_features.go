@@ -42,8 +42,8 @@ func ClaimPendingProductStockNotifications(ctx context.Context, db *sql.DB, driv
 	if limit<=0||limit>500 { limit=100 }; if lease<=0 { lease=2*time.Minute }
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return nil,err};defer tx.Rollback()
 	now:=time.Now().UTC();nowText:=now.Format(time.RFC3339Nano);until:=now.Add(lease).Format(time.RFC3339Nano)
-	dueExpr:="(claim_until IS NULL OR julianday(claim_until)<=julianday("+placeholder(driver,1)+"))"
-	if driver=="postgres" { dueExpr="(claim_until IS NULL OR CAST(claim_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,1)+" AS TIMESTAMPTZ))" }
+	dueExpr:="(claim_until IS NULL OR julianday(claim_until)<=julianday("+placeholder(driver,2)+"))"
+	if driver=="postgres" { dueExpr="(claim_until IS NULL OR CAST(claim_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ))" }
 	query:="SELECT id,product_id,bot_id,telegram_user_id,telegram_chat_id FROM product_stock_notifications WHERE product_id="+placeholder(driver,1)+" AND notified_at IS NULL AND "+dueExpr+" ORDER BY created_at LIMIT "+fmt.Sprint(limit)
 	if driver=="postgres" { query+=" FOR UPDATE SKIP LOCKED" }
 	rows,err:=tx.QueryContext(ctx,query,productID,nowText);if err!=nil{return nil,err}
