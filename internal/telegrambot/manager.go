@@ -41,6 +41,7 @@ type Manager struct {
 	ownerID string
 	customerServiceURL string
 	stockAlerted map[string]time.Time
+	pendingActions map[string]string
 	notifier func(event, details, userChatID string)
 }
 
@@ -104,6 +105,7 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 		paymentAddress: paymentAddress,
 		paymentEnabled: paymentEnabled,
 		stockAlerted: make(map[string]time.Time),
+		pendingActions: make(map[string]string),
 	}
 }
 
@@ -151,6 +153,32 @@ func (m *Manager) Reconcile(configs []Config) {
 func (m *Manager) SetOwnerID(ownerID string) { m.mu.Lock(); m.ownerID = strings.TrimSpace(ownerID); m.mu.Unlock() }
 func (m *Manager) SetCustomerServiceURL(value string) { m.mu.Lock(); m.customerServiceURL = strings.TrimSpace(value); m.mu.Unlock() }
 func (m *Manager) customerServiceLink() string { m.mu.Lock(); defer m.mu.Unlock(); return m.customerServiceURL }
+
+func (m *Manager) pendingKey(botID string, chatID int64) string {
+	return botID + ":" + strconv.FormatInt(chatID, 10)
+}
+
+func (m *Manager) setPendingAction(botID string, chatID int64, action string) {
+	m.mu.Lock()
+	if m.pendingActions == nil { m.pendingActions = make(map[string]string) }
+	m.pendingActions[m.pendingKey(botID, chatID)] = action
+	m.mu.Unlock()
+}
+
+func (m *Manager) takePendingAction(botID string, chatID int64) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := m.pendingKey(botID, chatID)
+	action := m.pendingActions[key]
+	delete(m.pendingActions, key)
+	return action
+}
+
+func truncateButtonText(value string, limit int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= limit { return string(runes) }
+	return string(runes[:limit-1]) + "…"
+}
 
 func (m *Manager) isOwner(telegramUserID int64) bool {
 	m.mu.Lock(); ownerID := m.ownerID; m.mu.Unlock()
@@ -341,6 +369,37 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
+	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
+	if pending != "" && !strings.HasPrefix(text, "/") {
+		switch pending {
+		case "search":
+			products, err := database.ListProducts(ctx, m.db)
+			if err != nil { _ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "商品搜索暂时不可用，请稍后重试。"); return }
+			needle := strings.ToLower(text)
+			rows := make([][]map[string]string, 0)
+			for _, product := range products {
+				if product.Status != 1 || product.StockCount < 1 { continue }
+				if strings.Contains(strings.ToLower(product.Name+" "+product.Description), needle) {
+					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
+					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
+				}
+			}
+			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", mainMenuKeyboard()); return }
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows))+"）：", map[string]any{"inline_keyboard": rows})
+			return
+		case "support":
+			parts := strings.SplitN(text, "|", 2)
+			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "格式不正确，请发送：订单号 | 问题描述", mainMenuKeyboard())
+				return
+			}
+			ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), strings.TrimSpace(parts[0]), "other", strings.TrimSpace(parts[1]))
+			if err != nil { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error(), mainMenuKeyboard()); return }
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", mainMenuKeyboard())
+			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
+			return
+		}
+	}
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
 	if first == "/admin" {
@@ -364,6 +423,12 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	switch {
+	case text == "🔎 搜索商品":
+		m.setPendingAction(cfg.ID, msg.Chat.ID, "search")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", mainMenuKeyboard())
+	case text == "🧾 申请售后":
+		m.setPendingAction(cfg.ID, msg.Chat.ID, "support")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请按下面格式发送售后信息：\n订单号 | 问题描述\n例如：TC202611150001 | 卡密无法使用", mainMenuKeyboard())
 	case first=="/balance" || text=="💳 我的余额":
 		balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10))
 		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"暂时无法查询余额，请稍后再试。",mainMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"你的站内余额："+formatUSDTAtomic(balance)+" USDT",mainMenuKeyboard()) }
@@ -402,9 +467,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 func mainMenuKeyboard() map[string]any {
 	return map[string]any{
 		"keyboard": [][]map[string]string{
-			{{"text":"🛍️ 商城"},{"text":"📦 我的订单"}},
-			{{"text":"💰 余额充值"},{"text":"💳 我的余额"}},
-			{{"text":"🧾 售后帮助"},{"text":"❓ 使用帮助"}},
+			{{"text":"🛍️ 商品中心"},{"text":"🔎 搜索商品"}},
+			{{"text":"📦 我的订单"},{"text":"💳 我的余额"}},
+			{{"text":"💰 余额充值"},{"text":"🧾 申请售后"}},
+			{{"text":"❓ 使用帮助"}},
 		},
 		"resize_keyboard": true,
 		"is_persistent": true,
@@ -455,15 +521,15 @@ func (m *Manager) showShop(ctx context.Context, cfg Config, chatID int64) {
 	rows := make([][]map[string]string, 0)
 	for _, product := range products {
 		if product.Status != 1 || product.StockCount < 1 { continue }
-		label := product.Name + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
+		label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
 		rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:" + product.ID}})
 	}
 	rows = append(rows, []map[string]string{{"text": "📦 我的订单", "callback_data": "shop:orders"}})
 	if len(rows) == 1 {
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n目前暂无可购买的商品。", mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "目前暂无可购买的商品。", mainMenuKeyboard())
 		return
 	}
-	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "欢迎来到 "+cfg.Name+"！\n请选择要购买的商品：", map[string]any{"inline_keyboard": rows}); err != nil {
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "🛍️ 商品中心\n请选择商品；商品名称过长时会自动缩短，详情页会完整显示名称、价格和库存。", map[string]any{"inline_keyboard": rows}); err != nil {
 		log.Printf("telegram shop menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
 	}
 }
