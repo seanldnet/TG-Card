@@ -461,3 +461,45 @@ func TestClearOrderDataResetsHistoryWithoutResellingDeliveredKeys(t *testing.T) 
 	if soldStatus!=2||soldOrderID.Valid{t.Fatalf("delivered key must remain sold and detached: status=%d order=%v",soldStatus,soldOrderID)}
 	if reservedStatus!=0||reservedOrderID.Valid{t.Fatalf("pending reservation should be released: status=%d order=%v",reservedStatus,reservedOrderID)}
 }
+
+func TestCreateBulkOrderAppliesDiscountAndDeliversAllReservedKeys(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+
+	product, err := CreateProduct(ctx, db, "sqlite", Product{
+		Name:"Bulk card", PriceMinor:1000, Currency:"USDT", DeliveryType:"card", Status:1,
+		BulkDiscountJSON:`[{"minQuantity":2,"discountPercent":10},{"minQuantity":5,"discountPercent":20}]`,
+	})
+	if err != nil { t.Fatal(err) }
+	if _, err := ImportProductKeys(ctx, db, "sqlite", product.ID, []StockSecret{
+		{Ciphertext:"cipher-one",Fingerprint:"bulk-one"},
+		{Ciphertext:"cipher-two",Fingerprint:"bulk-two"},
+		{Ciphertext:"cipher-three",Fingerprint:"bulk-three"},
+	}); err != nil { t.Fatal(err) }
+
+	order, err := CreateOrderWithQuantity(ctx, db, "sqlite", "bot-bulk", "user-bulk", "chat-bulk", product.ID, 2, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if order.Quantity != 2 || order.UnitPriceMinor != 1000 || order.AmountMinor != 1800 {
+		t.Fatalf("bulk price snapshot incorrect: %+v", order)
+	}
+	if _, err := CreateOrderWithQuantity(ctx, db, "sqlite", "bot-other", "user-other", "chat-other", product.ID, 2, time.Minute); err == nil {
+		t.Fatal("insufficient inventory must reject the whole order")
+	}
+	products, err := ListProducts(ctx, db)
+	if err != nil { t.Fatal(err) }
+	if len(products)!=1 || products[0].StockCount!=1 { t.Fatalf("failed bulk reservation partially consumed inventory: %+v",products) }
+
+	paid, err := ConfirmOrderPayment(ctx, db, "sqlite", order.ID, "test-adapter", "bulk-payment-reference")
+	if err != nil { t.Fatal(err) }
+	want := "cipher-one\ncipher-two"
+	if paid.SecretCiphertext != want { t.Fatalf("paid order did not load all card keys: %q",paid.SecretCiphertext) }
+	recovered, err := GetOrderDelivery(ctx, db, "sqlite", order.ID)
+	if err != nil { t.Fatal(err) }
+	if recovered.SecretCiphertext != want || recovered.Order.Quantity != 2 {
+		t.Fatalf("bulk delivery recovery mismatch: %+v",recovered)
+	}
+}
+
