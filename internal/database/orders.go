@@ -78,10 +78,12 @@ func CreateOrder(ctx context.Context, db *sql.DB, driver, botID, telegramUserID,
 		suffix, err := rand.Int(rand.Reader, big.NewInt(9999))
 		if err != nil { return Order{}, fmt.Errorf("generate unique payment amount: %w", err) }
 		candidate := baseAtomic + suffix.Int64() + 1
-		var exists int
+		var exists, rechargeExists int
 		check := "SELECT COUNT(1) FROM orders WHERE status='pending_payment' AND payment_amount_atomic=" + placeholder(driver, 1)
 		if err := tx.QueryRowContext(ctx, check, candidate).Scan(&exists); err != nil { return Order{}, err }
-		if exists == 0 { paymentAmountAtomic = candidate; break }
+		rechargeCheck := "SELECT COUNT(1) FROM wallet_recharges WHERE status='pending_payment' AND payment_amount_atomic=" + placeholder(driver, 1)
+		if err := tx.QueryRowContext(ctx, rechargeCheck, candidate).Scan(&rechargeExists); err != nil { return Order{}, err }
+		if exists == 0 && rechargeExists == 0 { paymentAmountAtomic = candidate; break }
 	}
 	if paymentAmountAtomic == 0 { return Order{}, fmt.Errorf("unable to allocate unique payment amount") }
 	order := Order{
