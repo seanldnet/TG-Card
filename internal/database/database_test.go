@@ -503,3 +503,29 @@ func TestCreateBulkOrderAppliesDiscountAndDeliversAllReservedKeys(t *testing.T) 
 	}
 }
 
+
+func TestWalletRechargeBonusIsSnapshottedAndCreditedExactlyOnce(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ if _,err:=db.ExecContext(ctx,"INSERT INTO telegram_users(id,telegram_user_id,created_at,updated_at) VALUES('u1','10001',?,?)",now,now);err!=nil{t.Fatal(err)}
+ rule:=WalletRechargeBonusRule{Enabled:true,Tiers:[]WalletRechargeBonusTier{{MinAmountAtomic:10_000_000,BonusType:"fixed",BonusValue:1_000_000},{MinAmountAtomic:50_000_000,BonusType:"percent",BonusValue:1000}}}
+ if err:=SaveWalletRechargeBonusRule(ctx,db,"sqlite",rule);err!=nil{t.Fatal(err)}
+ invoice,err:=CreateWalletRecharge(ctx,db,"sqlite","bot1","10001","10001",10_000_000,30*time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if invoice.BonusAmountAtomic!=1_000_000{t.Fatalf("bonus was not snapshotted: %+v",invoice)}
+ txID:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+ paid,balance,err:=ConfirmWalletRecharge(ctx,db,"sqlite",invoice.ID,txID)
+ if err!=nil{t.Fatal(err)}
+ if paid.BonusAmountAtomic!=1_000_000||balance!=11_000_000{t.Fatalf("unexpected credited amount: paid=%+v balance=%d",paid,balance)}
+ _,balance,err=ConfirmWalletRecharge(ctx,db,"sqlite",invoice.ID,txID)
+ if err!=nil{t.Fatal(err)}
+ if balance!=11_000_000{t.Fatalf("duplicate confirmation changed balance: %d",balance)}
+ var ledgerCount int
+ if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE telegram_user_id='10001'").Scan(&ledgerCount);err!=nil{t.Fatal(err)}
+ if ledgerCount!=2{t.Fatalf("expected principal and bonus ledger entries exactly once, got %d",ledgerCount)}
+}
+
