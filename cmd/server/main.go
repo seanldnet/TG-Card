@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -11,8 +12,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"encoding/base64"
 	"os"
@@ -99,6 +102,8 @@ type userInfo struct {
 	Username string `json:"username"`
 	RealName string `json:"realName"`
 	Avatar string `json:"avatar"`
+	Email string `json:"email"`
+	EmailVerified bool `json:"emailVerified"`
 	Roles []string `json:"roles"`
 	HomePath string `json:"homePath"`
 }
@@ -201,6 +206,8 @@ func main() {
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("PUT /api/user/profile", app.updateUserProfile)
 	api.HandleFunc("POST /api/user/avatar", app.uploadUserAvatar)
+	api.HandleFunc("POST /api/user/email/send-code", app.sendAdminEmailCode)
+	api.HandleFunc("POST /api/user/email/verify", app.verifyAdminEmail)
 	api.HandleFunc("POST /api/settings/site/logo", app.uploadSiteLogo)
 	api.HandleFunc("GET /api/menu/all", app.menus)
 
@@ -347,10 +354,50 @@ func (a *application) userInfo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Administrator account is unavailable")
 		return
 	}
+	email,emailVerified,emailErr := database.GetAdminEmail(r.Context(),a.db,a.driver,admin.ID)
+	if emailErr != nil { log.Printf("load administrator email: %v",emailErr); writeError(w,http.StatusInternalServerError,"Unable to load administrator email"); return }
 	writeSuccess(w, http.StatusOK, userInfo{
 		ID: admin.ID, Username: admin.Username, RealName: admin.RealName,
-		Avatar: admin.AvatarURL, Roles: []string{admin.Role}, HomePath: "/dashboard/analytics",
+		Avatar: admin.AvatarURL, Email:email, EmailVerified:emailVerified, Roles: []string{admin.Role}, HomePath: "/dashboard/analytics",
 	})
+}
+
+type adminEmailRequest struct { Email string `json:"email"`; Code string `json:"code"` }
+
+func (a *application) sendAdminEmailCode(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var input adminEmailRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil{writeError(w,http.StatusBadRequest,"Invalid request body");return}
+	input.Email=strings.TrimSpace(input.Email)
+	parsed,err:=mail.ParseAddress(input.Email)
+	if err!=nil||parsed.Address!=input.Email||len(input.Email)>254{writeError(w,http.StatusBadRequest,"邮箱地址格式无效");return}
+	raw,err:=database.GetSiteSettings(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"无法读取邮件服务设置");return}
+	var settings siteSettings
+	if err:=json.Unmarshal([]byte(raw),&settings);err!=nil{writeError(w,http.StatusInternalServerError,"邮件服务设置无效");return}
+	if settings.SMTPHost==""||settings.SMTPUsername==""||settings.SMTPFromEmail==""||settings.SMTPPasswordCiphertext==""{writeError(w,http.StatusBadRequest,"请先在网站设置中完成 SMTP 邮件服务配置");return}
+	password,err:=a.secrets.Decrypt(settings.SMTPPasswordCiphertext);if err!=nil{writeError(w,http.StatusInternalServerError,"无法读取 SMTP 密码");return}
+	n,err:=rand.Int(rand.Reader,big.NewInt(900000));if err!=nil{writeError(w,http.StatusInternalServerError,"无法生成验证码");return}
+	code:=fmt.Sprintf("%06d",100000+n.Int64())
+	hash:=sha256.Sum256([]byte(code))
+	if err:=database.SaveAdminEmailCode(r.Context(),a.db,a.driver,claims.AdminID,input.Email,hex.EncodeToString(hash[:] ),time.Now().Add(10*time.Minute));err!=nil{log.Printf("save admin email verification code: %v",err);writeError(w,http.StatusInternalServerError,"验证码保存失败");return}
+	port:=settings.SMTPPort;if port==0{port=587}
+	body:="To: "+input.Email+"\r\nFrom: "+settings.SMTPFromName+" <"+settings.SMTPFromEmail+">\r\nSubject: TG-Card 邮箱绑定验证码\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n你的邮箱绑定验证码是："+code+"，10 分钟内有效。若非本人操作，请忽略此邮件。"
+	auth:=smtp.PlainAuth("",settings.SMTPUsername,password,settings.SMTPHost)
+	if err:=smtp.SendMail(fmt.Sprintf("%s:%d",settings.SMTPHost,port),auth,settings.SMTPFromEmail,[]string{input.Email},[]byte(body));err!=nil{log.Printf("send admin email verification: %v",err);writeError(w,http.StatusBadGateway,"验证码邮件发送失败，请检查 SMTP 配置");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.code.send","email:"+input.Email,clientIP(r),r.UserAgent(),"verification code sent")
+	writeSuccess(w,http.StatusOK,map[string]int{"expiresInSeconds":600})
+}
+
+func (a *application) verifyAdminEmail(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var input adminEmailRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil{writeError(w,http.StatusBadRequest,"Invalid request body");return}
+	input.Email=strings.TrimSpace(input.Email);input.Code=strings.TrimSpace(input.Code)
+	if len(input.Code)!=6{writeError(w,http.StatusBadRequest,"请输入 6 位邮箱验证码");return}
+	hash:=sha256.Sum256([]byte(input.Code))
+	if err:=database.VerifyAdminEmailCode(r.Context(),a.db,a.driver,claims.AdminID,input.Email,hex.EncodeToString(hash[:]));err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.bind","email:"+input.Email,clientIP(r),r.UserAgent(),"email verified")
+	writeSuccess(w,http.StatusOK,map[string]any{"email":input.Email,"emailVerified":true})
 }
 
 type userProfileUpdateRequest struct {
