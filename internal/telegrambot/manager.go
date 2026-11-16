@@ -41,6 +41,7 @@ type Manager struct {
 	db *sql.DB
 	driver string
 	decrypt func(string) (string, error)
+	encrypt func(string) (string, error)
 	expiryCancel context.CancelFunc
 	paymentAddress string
 	paymentEnabled bool
@@ -125,6 +126,8 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 
 
 // SetNotifier attaches the application-level notification dispatcher.
+func (m *Manager) SetEncryptor(encrypt func(string) (string, error)) { m.mu.Lock(); m.encrypt=encrypt; m.mu.Unlock() }
+
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
  m.mu.Lock()
  m.notifier = notifier
@@ -930,13 +933,19 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	case "invite_link":
 		if strings.TrimSpace(config.ChatID)=="" { deliveryErr=fmt.Errorf("invite link target chat is not configured"); break }
 		var payload struct { InviteLink string `json:"inviteLink"` }
-		_ = json.Unmarshal([]byte(item.Order.DeliveryPayloadJSON),&payload)
+		if item.Order.DeliveryPayloadJSON!="" && item.Order.DeliveryPayloadJSON!="{}" {
+			if m.decrypt==nil { deliveryErr=fmt.Errorf("delivery payload decryptor is not configured");break }
+			plain,decryptErr:=m.decrypt(item.Order.DeliveryPayloadJSON);if decryptErr!=nil{deliveryErr=fmt.Errorf("decrypt saved invite link: %w",decryptErr);break}
+			if deliveryErr=json.Unmarshal([]byte(plain),&payload);deliveryErr!=nil{break}
+		}
 		if payload.InviteLink=="" {
 			minutes:=config.ExpireMinutes;if minutes<5||minutes>10080{minutes=60}
 			payload.InviteLink,deliveryErr=m.createOneTimeInviteLink(ctx,current.config.Token,config.ChatID,time.Now().Add(time.Duration(minutes)*time.Minute))
 			if deliveryErr!=nil { break }
 			encoded,_:=json.Marshal(payload)
-			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,string(encoded));deliveryErr!=nil { break }
+			if m.encrypt==nil { deliveryErr=fmt.Errorf("delivery payload encryptor is not configured");break }
+			encrypted,encryptErr:=m.encrypt(string(encoded));if encryptErr!=nil{deliveryErr=encryptErr;break}
+			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,encrypted);deliveryErr!=nil { break }
 		}
 		deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
 	case "file":
