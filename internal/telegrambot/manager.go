@@ -178,6 +178,12 @@ func (m *Manager) Reconcile(configs []Config) {
 		if !exists || next != current.config {
 			current.cancel()
 			delete(m.workers, id)
+			stopped := m.runtime[id]
+			stopped.BotID = id
+			stopped.Username = current.config.Username
+			stopped.State = "stopped"
+			stopped.Running = false
+			m.runtime[id] = stopped
 			log.Printf("telegram bot worker stopped: bot_id=%s username=@%s", id, current.config.Username)
 		}
 	}
