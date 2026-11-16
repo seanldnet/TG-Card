@@ -499,6 +499,16 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	if msg.Document != nil || len(msg.Photo)>0 {
 		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
+		if strings.HasPrefix(pendingMedia,"support_description:") {
+			orderNo:=strings.TrimPrefix(pendingMedia,"support_description:")
+			fileID,fileName:="","";if msg.Document!=nil{fileID=msg.Document.FileID;fileName=msg.Document.FileName}else{photo:=msg.Photo[len(msg.Photo)-1];fileID=photo.FileID;fileName="Telegram 图片"}
+			description:=strings.TrimSpace(msg.Caption);if description==""{description="用户提交了图片/文件作为售后凭证"}
+			ticket,err:=database.CreateSupportTicket(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),strconv.FormatInt(msg.Chat.ID,10),orderNo,"other",description)
+			if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单创建失败："+err.Error(),supportBackKeyboard());m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia);return}
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,fileID,fileName);err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单已创建，但附件保存失败，请重新发送附件。")}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n文字说明和附件已一起保存。你可以继续补充文字、图片或文件。",supportBackKeyboard())}
+			m.Notify("support_created","新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
+			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID);return
+		}
 		if strings.HasPrefix(pendingMedia,"support_followup:") {
 			ticketID := strings.TrimPrefix(pendingMedia,"support_followup:")
 			fileID, fileName := "", ""
