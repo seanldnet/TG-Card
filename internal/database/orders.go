@@ -587,6 +587,7 @@ func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string)
 	if err != nil { return OrderDelivery{}, 0, err }
 	n, err = res.RowsAffected()
 	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单状态已变化，请刷新订单") }
+	if err:=RedeemOrderPromotion(ctx,tx,driver,orderID,time.Now().UTC());err!=nil{return OrderDelivery{},0,err}
 	needsKeys := deliveryType == "" || deliveryType == "card" || deliveryType == "file_card"
 	var delivery OrderDelivery
 	if needsKeys {
