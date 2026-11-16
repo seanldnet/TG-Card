@@ -671,6 +671,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	switch {
+	case text == "🛍️ 商品中心":
+		m.showShop(ctx,cfg,msg.Chat.ID)
+	case text == "🏠 主菜单":
+		m.showStartHome(ctx,cfg,msg.Chat.ID,*msg.From)
 	case text == "🔎 搜索商品":
 		m.setPendingAction(cfg.ID, msg.Chat.ID, "search")
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", shopBackKeyboard())
@@ -1001,9 +1005,9 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "owner:broadcast":
 			m.setPendingAction(cfg.ID,chatID,"owner_broadcast")
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送群发通知正文。提交后将加入发送队列。",ownerMenuKeyboard())
-		case "owner:ban","owner:unban","owner:closeorder","owner:addproduct":
+		case "owner:ban","owner:unban","owner:closeorder":
 			m.setPendingAction(cfg.ID,chatID,strings.TrimPrefix(query.Data,"owner:"))
-			prompts:=map[string]string{"owner:ban":"请发送要封禁的 Telegram 用户 ID。","owner:unban":"请发送要解除封禁的 Telegram 用户 ID。","owner:closeorder":"请发送需要关闭的待付款订单号。","owner:addproduct":"请在后台“商品管理”创建商品；创建完成后回到这里添加库存。"}
+			prompts:=map[string]string{"owner:ban":"请发送要封禁的 Telegram 用户 ID。","owner:unban":"请发送要解除封禁的 Telegram 用户 ID。","owner:closeorder":"请发送需要关闭的待付款订单号。"}
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,prompts[query.Data],ownerMenuKeyboard())
 		case "owner:products":
 			products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
@@ -1012,15 +1016,18 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			if len(lines)==0{lines=append(lines,"暂无商品")}
 				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
 			}
-		case strings.HasPrefix(query.Data,"owner:order:"):
-			id:=strings.TrimPrefix(query.Data,"owner:order:");item,err:=database.GetOrderByID(ctx,m.db,m.driver,id)
-			if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单不存在。",ownerMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status,ownerMenuKeyboard()) }
-		case strings.HasPrefix(query.Data,"owner:product:"):
-			id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboard());break };for _,p:=range products { if p.ID==id { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品："+p.Name+"\n当前库存："+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"➕ 为此商品添加库存","callback_data":"owner:stockadd:"+p.ID}},{{"text":"⬅️ 返回商品列表","callback_data":"owner:addstock"}}}});break } }
-		case strings.HasPrefix(query.Data,"owner:stockadd:"):
-			id:=strings.TrimPrefix(query.Data,"owner:stockadd:");m.setPendingAction(cfg.ID,chatID,"owner_stockadd:"+id);_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送要导入的卡密，每行一条或用逗号分隔（最多 200 条）。",ownerMenuKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
+	case strings.HasPrefix(query.Data,"owner:order:"):
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
+		id:=strings.TrimPrefix(query.Data,"owner:order:");item,err:=database.GetOrderByID(ctx,m.db,m.driver,id)
+		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单不存在。",ownerMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status,ownerMenuKeyboard()) }
+	case strings.HasPrefix(query.Data,"owner:product:"):
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
+		id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboard());break };for _,p:=range products { if p.ID==id { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品："+p.Name+"\n当前库存："+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"➕ 为此商品添加库存","callback_data":"owner:stockadd:"+p.ID}},{{"text":"⬅️ 返回商品列表","callback_data":"owner:addstock"}}}});break } }
+	case strings.HasPrefix(query.Data,"owner:stockadd:"):
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
+		id:=strings.TrimPrefix(query.Data,"owner:stockadd:");m.setPendingAction(cfg.ID,chatID,"owner_stockadd:"+id);_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送要导入的卡密，每行一条或用逗号分隔（最多 200 条）。",ownerMenuKeyboard())
 	case strings.HasPrefix(query.Data,"order:detail:"):
 		orderID := strings.TrimPrefix(query.Data, "order:detail:")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "正在读取订单")
