@@ -1478,7 +1478,11 @@ func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
 	for _,recipient:=range recipients {
 		if ctx.Err()!=nil { return }
 		optedOut,optErr:=database.IsBroadcastOptedOut(ctx,m.db,m.driver,task.BotID,recipient.TelegramUserID)
-		if optErr==nil&&optedOut {
+		if optErr!=nil {
+			_ = database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","无法核验退订状态，已阻止发送",recipient.Attempts)
+			failed++;continue
+		}
+		if optedOut {
 			_ = database.UpdateBroadcastRecipient(ctx,m.db,m.driver,recipient.ID,"failed","用户已退订",recipient.Attempts)
 			failed++;continue
 		}
