@@ -390,7 +390,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
 				}
 			}
-			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", mainMenuKeyboard()); return }
+			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", shopBackKeyboard()); return }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "🔎 搜索结果（"+strconv.Itoa(len(rows))+"）：", map[string]any{"inline_keyboard": rows})
 			return
 		case pending == "support_order_manual":
@@ -413,10 +413,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			}
 			ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), orderNo, "other", description)
 			if err != nil {
-				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error()+"\n你可以重新点击“申请售后”选择订单。", mainMenuKeyboard())
+				_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请未能提交："+err.Error()+"\n你可以重新点击“申请售后”选择订单。", supportBackKeyboard())
 				return
 			}
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", mainMenuKeyboard())
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
 			return
 		case pending == "wallet_custom_amount":
@@ -454,7 +454,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	switch {
 	case text == "🔎 搜索商品":
 		m.setPendingAction(cfg.ID, msg.Chat.ID, "search")
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", mainMenuKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "请输入商品名称或关键词，我会直接帮你筛选商品。", shopBackKeyboard())
 	case text == "🧾 申请售后":
 		m.startSupportFlow(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first=="/balance" || text=="💳 我的余额":
@@ -487,7 +487,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "点击“申请售后”后，选择订单并直接描述问题即可；如果列表里没有订单，也可以手动输入订单号。", mainMenuKeyboard())
 	case first == "/support":
 		if len(command) < 3 {
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请发送：/support 订单号 问题描述\n例如：/support TC202611150001 卡密无法使用", mainMenuKeyboard())
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "提交售后请点击“申请售后”，选择订单并描述问题。", supportBackKeyboard())
 			return
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
@@ -714,12 +714,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"menu:"):
 		switch strings.TrimPrefix(query.Data,"menu:") {
 		case "shop": m.showShop(ctx,cfg,chatID)
-		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",mainMenuKeyboard())
+		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",shopBackKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
 		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
 		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
 		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
-		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击消息中的按钮即可浏览商品、查询订单和余额、充值或申请售后。",mainMenuKeyboard())
+		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击“商品中心”浏览商品，或使用下方返回按钮回到商城。",shopBackKeyboard())
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开")
 		return
