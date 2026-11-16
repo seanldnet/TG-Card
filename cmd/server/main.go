@@ -192,6 +192,7 @@ func main() {
 	api.HandleFunc("DELETE /api/catalog/products/{id}", app.deleteProduct)
 	api.HandleFunc("POST /api/catalog/products/{id}/keys", app.importProductKeys)
 	api.HandleFunc("GET /api/orders", app.listOrders)
+	api.HandleFunc("POST /api/orders/cleanup", app.clearOrderData)
 	api.HandleFunc("GET /api/users", app.listTelegramUsers)
 	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
@@ -1065,6 +1066,15 @@ func (a *application) getOrderDetail(w http.ResponseWriter, r *http.Request) {
 		detail.PaymentFromAddress=from; detail.PaymentToAddress=to; detail.PaymentTransactionID=txid; detail.PaymentBlockTimestampMS=blockTime
 	} else if !errors.Is(err,sql.ErrNoRows) { log.Printf("load order payment detail: %v",err); writeError(w,http.StatusInternalServerError,"Unable to load payment details"); return }
 	writeSuccess(w,http.StatusOK,detail)
+}
+
+func (a *application) clearOrderData(w http.ResponseWriter,r *http.Request){
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var input struct{Confirmation string `json:"confirmation"`}
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,4096)).Decode(&input);err!=nil||input.Confirmation!="CLEAR_ALL_ORDERS" { writeError(w,http.StatusBadRequest,"请输入正确的确认口令后再执行");return }
+	result,err:=database.ClearOrderData(r.Context(),a.db,a.driver);if err!=nil { log.Printf("clear commercial order data failed: %v",err);writeError(w,http.StatusInternalServerError,"清理订单数据失败，未完成清理");return }
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"orders.clear_all","orders:all",clientIP(r),r.UserAgent(),fmt.Sprintf("orders=%d payment_transactions=%d recharges=%d support_tickets=%d wallet_transactions=%d",result.Orders,result.PaymentTransactions,result.WalletRecharges,result.SupportTickets,result.WalletTransactions))
+	writeSuccess(w,http.StatusOK,result)
 }
 
 func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
