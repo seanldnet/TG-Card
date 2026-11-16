@@ -711,6 +711,7 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 			}
 		} else {
 			buttons = append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}})
+			buttons = append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})
 		}
 		buttons = append(buttons, []map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
@@ -734,7 +735,7 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 	text+="\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
 	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
 	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
-	_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")
+	if query.ID!=""{_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")}
 	m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
 }
