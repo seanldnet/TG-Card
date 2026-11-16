@@ -116,6 +116,7 @@ func TestRefundOrderToWalletIsAtomicAndIdempotent(t *testing.T) {
 	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,product.ID,[]StockSecret{{Ciphertext:"encrypted-card",Fingerprint:"refund-fp"}});err!=nil{t.Fatal(err)}
 	order,err:=CreateOrder(ctx,db,cfg.DBDriver,"refund-bot","refund-user","refund-user",product.ID,time.Minute);if err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='delivered' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"UPDATE product_keys SET status=2 WHERE order_id=?",order.ID);err!=nil{t.Fatal(err)}
 	if _,err:=CreateSupportTicket(ctx,db,cfg.DBDriver,"refund-bot","refund-user","refund-user",order.OrderNo,"invalid_key","Card was invalid");err!=nil{t.Fatal(err)}
 	balance,err:=RefundOrderToWallet(ctx,db,cfg.DBDriver,order.ID,"admin-1","invalid key");if err!=nil{t.Fatal(err)}
 	if balance!=12500000{t.Fatalf("expected 12.500000 USDT atomic balance, got %d",balance)}
