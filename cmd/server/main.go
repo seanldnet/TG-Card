@@ -820,7 +820,38 @@ type productInput struct {
 	Status int `json:"status"`
 	BulkDiscount json.RawMessage `json:"bulkDiscount"`
 }
+	DeliveryConfig json.RawMessage `json:"deliveryConfig"`
+
 type bulkDiscountTier struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
+func normalizeDeliveryConfig(deliveryType string, raw json.RawMessage) (string,error) {
+	var config map[string]any
+	if len(raw)>0 && string(raw)!="null" {
+		if err:=json.Unmarshal(raw,&config);err!=nil{return "",fmt.Errorf("商品交付配置格式无效")}
+	}
+	if config==nil { config=map[string]any{} }
+	switch deliveryType {
+	case "card":
+		config=map[string]any{}
+	case "fixed_text":
+		value,_:=config["text"].(string);value=strings.TrimSpace(value)
+		if value==""||len(value)>4000{return "",fmt.Errorf("固定文本交付内容必须为 1-4000 个字符")}
+		config=map[string]any{"text":value}
+	case "invite_link":
+		chatID,_:=config["chatId"].(string);chatID=strings.TrimSpace(chatID)
+		if chatID==""||len(chatID)>32{return "",fmt.Errorf("邀请链接必须配置目标 Telegram 群组 Chat ID")}
+		expiry:=60
+		if v,ok:=config["expireMinutes"].(float64);ok { expiry=int(v) }
+		if expiry<5||expiry>10080{return "",fmt.Errorf("邀请链接有效期必须为 5-10080 分钟")}
+		config=map[string]any{"chatId":chatID,"expireMinutes":expiry}
+	case "file","file_card":
+		fileID,_:=config["fileId"].(string);fileID=strings.TrimSpace(fileID)
+		if fileID==""||len(fileID)>1000{return "",fmt.Errorf("文件交付必须配置 Telegram file_id")}
+		config=map[string]any{"fileId":fileID}
+	default:
+		return "",fmt.Errorf("不支持的商品交付方式")
+	}
+	encoded,err:=json.Marshal(config);if err!=nil{return "",err};return string(encoded),nil
+}
 func normalizeBulkDiscount(raw json.RawMessage) (string,error) {
 	if len(raw)==0 || string(raw)=="null" { return "[]",nil }
 	var tiers []bulkDiscountTier
@@ -861,9 +892,10 @@ func (a *application) createProduct(w http.ResponseWriter,r *http.Request) {
 	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency))
 	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||in.PriceMinor>9_000_000_000_000||len(in.Description)>4000||(in.Status!=0&&in.Status!=1){writeError(w,400,"Invalid product fields");return}
 	if in.Currency==""{in.Currency="USDT"};if in.Currency!="USDT"{writeError(w,400,"Only USDT pricing is currently supported");return}
-	if in.DeliveryType==""{in.DeliveryType="card"};if in.DeliveryType!="card"{writeError(w,400,"Unsupported delivery type");return}
+	if in.DeliveryType==""{in.DeliveryType="card"}
 	discountJSON,discountErr:=normalizeBulkDiscount(in.BulkDiscount);if discountErr!=nil{writeError(w,400,discountErr.Error());return}
-	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON})
+	deliveryJSON,deliveryErr:=normalizeDeliveryConfig(in.DeliveryType,in.DeliveryConfig);if deliveryErr!=nil{writeError(w,400,deliveryErr.Error());return}
+	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON,DeliveryConfigJSON:deliveryJSON})
 	if err!=nil{writeError(w,400,"Unable to save product; check the category");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.create","product:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
 	writeSuccess(w,201,item)
@@ -872,9 +904,10 @@ func (a *application) updateProduct(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
 	var in productInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
 	in.Name=strings.TrimSpace(in.Name);in.Currency=strings.ToUpper(strings.TrimSpace(in.Currency));if in.Currency==""{in.Currency="USDT"};if in.DeliveryType==""{in.DeliveryType="card"}
-	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||len(in.Description)>4000||(in.Status!=0&&in.Status!=1)||in.Currency!="USDT"||in.DeliveryType!="card"{writeError(w,400,"Invalid product fields");return}
+	if in.Name==""||len(in.Name)>160||in.PriceMinor<0||len(in.Description)>4000||(in.Status!=0&&in.Status!=1)||in.Currency!="USDT"{writeError(w,400,"Invalid product fields");return}
 	discountJSON,discountErr:=normalizeBulkDiscount(in.BulkDiscount);if discountErr!=nil{writeError(w,400,discountErr.Error());return}
-	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON})
+	deliveryJSON,deliveryErr:=normalizeDeliveryConfig(in.DeliveryType,in.DeliveryConfig);if deliveryErr!=nil{writeError(w,400,deliveryErr.Error());return}
+	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON,DeliveryConfigJSON:deliveryJSON})
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,400,"Unable to update product");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.update","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,200,map[string]bool{"updated":true})
