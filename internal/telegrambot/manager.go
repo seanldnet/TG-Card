@@ -837,7 +837,6 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 // Payment adapters must call this only after independently verifying settlement.
 func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
 	if item.Order.Status == "delivered" { return nil }
-	if item.SecretCiphertext == "" { return fmt.Errorf("paid order has no recoverable card key") }
 	m.mu.Lock()
 	current := m.workers[item.Order.BotID]
 	m.mu.Unlock()
@@ -846,39 +845,112 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
 		return err
 	}
-	if m.decrypt == nil {
-		err := fmt.Errorf("card-key decryptor is not configured")
-		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
-		return err
-	}
-	var deliveredKeys []string
-	for _, ciphertext := range strings.Split(item.SecretCiphertext,"\n") {
-		if ciphertext=="" { continue }
-		cardKey, decryptErr := m.decrypt(ciphertext)
-		if decryptErr != nil {
-			_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "decrypt card key: "+decryptErr.Error())
-			return decryptErr
-		}
-		deliveredKeys = append(deliveredKeys,cardKey)
-	}
-	if len(deliveredKeys)!=item.Order.Quantity { err:=fmt.Errorf("paid order key count mismatch: expected %d, got %d",item.Order.Quantity,len(deliveredKeys));_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,err.Error());return err }
-	cardKey := strings.Join(deliveredKeys,"\n")
 	chatID, err := strconv.ParseInt(item.Order.TelegramChatID, 10, 64)
 	if err != nil {
 		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, "invalid Telegram chat ID")
 		return fmt.Errorf("invalid Telegram chat ID: %w", err)
 	}
-	message := "订单：" + item.Order.OrderNo + "\n卡密：\n" + cardKey + "\n请妥善保存，不要转发给他人。"
-	if err := m.sendMessage(ctx, current.config.Token, chatID, message); err != nil {
-		_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
-		return fmt.Errorf("send paid order delivery: %w", err)
+	mode := item.Order.DeliveryType
+	if mode == "" { mode = "card" }
+	var config struct {
+		Text string `json:"text"`
+		ChatID string `json:"chatId"`
+		ExpireMinutes int `json:"expireMinutes"`
+		FileID string `json:"fileId"`
+	}
+	if err := json.Unmarshal([]byte(item.Order.DeliveryConfigSnapshot), &config); err != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,"invalid delivery configuration snapshot")
+		return fmt.Errorf("decode delivery configuration: %w",err)
+	}
+	var deliveredKeys []string
+	if mode == "card" || mode == "file_card" {
+		if m.decrypt == nil {
+			err := fmt.Errorf("card-key decryptor is not configured")
+			_ = database.MarkOrderDeliveryFailed(ctx, m.db, m.driver, item.Order.ID, err.Error())
+			return err
+		}
+		for _, ciphertext := range strings.Split(item.SecretCiphertext,"\n") {
+			if ciphertext == "" { continue }
+			cardKey, decryptErr := m.decrypt(ciphertext)
+			if decryptErr != nil {
+				_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,"decrypt card key: "+decryptErr.Error())
+				return decryptErr
+			}
+			deliveredKeys = append(deliveredKeys,cardKey)
+		}
+		if len(deliveredKeys) != item.Order.Quantity {
+			err := fmt.Errorf("paid order key count mismatch: expected %d, got %d",item.Order.Quantity,len(deliveredKeys))
+			_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,err.Error())
+			return err
+		}
+	}
+	var deliveryErr error
+	switch mode {
+	case "card":
+		message := "订单：" + item.Order.OrderNo + "\n卡密：\n" + strings.Join(deliveredKeys,"\n") + "\n请妥善保存，不要转发给他人。"
+		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,message)
+	case "fixed_text":
+		if strings.TrimSpace(config.Text)=="" { deliveryErr=fmt.Errorf("fixed text delivery is not configured") } else {
+			deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n"+config.Text)
+		}
+	case "invite_link":
+		if strings.TrimSpace(config.ChatID)=="" { deliveryErr=fmt.Errorf("invite link target chat is not configured"); break }
+		var payload struct { InviteLink string `json:"inviteLink"` }
+		_ = json.Unmarshal([]byte(item.Order.DeliveryPayloadJSON),&payload)
+		if payload.InviteLink=="" {
+			minutes:=config.ExpireMinutes;if minutes<5||minutes>10080{minutes=60}
+			payload.InviteLink,deliveryErr=m.createOneTimeInviteLink(ctx,current.config.Token,config.ChatID,time.Now().Add(time.Duration(minutes)*time.Minute))
+			if deliveryErr!=nil { break }
+			encoded,_:=json.Marshal(payload)
+			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,string(encoded));deliveryErr!=nil { break }
+		}
+		deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
+	case "file":
+		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
+			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+		}
+	case "file_card":
+		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
+			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+			if deliveryErr==nil {
+				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+strings.Join(deliveredKeys,"\n")+"\n请妥善保存，不要转发给他人。")
+			}
+		}
+	default:
+		deliveryErr=fmt.Errorf("unsupported delivery mode: %s",mode)
+	}
+	if deliveryErr != nil {
+		_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error())
+		return fmt.Errorf("send paid order delivery: %w",deliveryErr)
 	}
 	if err := database.MarkOrderDelivered(ctx, m.db, m.driver, item.Order.ID); err != nil {
-		log.Printf("Telegram card sent but order delivery state update failed: order_id=%s error=%v", item.Order.ID, err)
+		log.Printf("Telegram delivery sent but order state update failed: order_id=%s error=%v", item.Order.ID, err)
 		return err
 	}
 	m.Notify("delivery_success", "自动发货成功：订单 "+item.Order.OrderNo, item.Order.TelegramChatID)
-	log.Printf("Telegram order delivered: bot_id=%s order_id=%s", item.Order.BotID, item.Order.ID)
+	log.Printf("Telegram order delivered: bot_id=%s order_id=%s mode=%s", item.Order.BotID, item.Order.ID, mode)
+	return nil
+}
+
+func (m *Manager) createOneTimeInviteLink(ctx context.Context, token, targetChatID string, expiresAt time.Time) (string,error) {
+	payload,_:=json.Marshal(map[string]any{"chat_id":targetChatID,"member_limit":1,"expire_date":expiresAt.Unix()})
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/createChatInviteLink",bytes.NewReader(payload))
+	if err!=nil{return "",err};req.Header.Set("Content-Type","application/json")
+	response,err:=m.client.Do(req);if err!=nil{return "",err};defer response.Body.Close()
+	var result struct { OK bool `json:"ok"`; Description string `json:"description"`; Result struct { InviteLink string `json:"invite_link"` } `json:"result"` }
+	if err:=json.NewDecoder(response.Body).Decode(&result);err!=nil{return "",err}
+	if response.StatusCode!=http.StatusOK||!result.OK||result.Result.InviteLink==""{return "",fmt.Errorf("Telegram createChatInviteLink failed: %s",result.Description)}
+	return result.Result.InviteLink,nil
+}
+
+func (m *Manager) sendDocument(ctx context.Context, token string, chatID int64, fileID, caption string) error {
+	payload,_:=json.Marshal(map[string]any{"chat_id":chatID,"document":fileID,"caption":caption})
+	req,err:=http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendDocument",bytes.NewReader(payload))
+	if err!=nil{return err};req.Header.Set("Content-Type","application/json")
+	response,err:=m.client.Do(req);if err!=nil{return err};defer response.Body.Close()
+	var result apiResult
+	if err:=json.NewDecoder(response.Body).Decode(&result);err!=nil{return err}
+	if response.StatusCode!=http.StatusOK||!result.OK{return fmt.Errorf("Telegram sendDocument HTTP %d: %s",response.StatusCode,result.Description)}
 	return nil
 }
 
