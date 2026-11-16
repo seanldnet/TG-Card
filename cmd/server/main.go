@@ -82,6 +82,9 @@ type siteSettings struct {
  TelegramNotifyPaymentSuccess bool `json:"telegramNotifyPaymentSuccess"`
  TelegramNotifyDeliverySuccess bool `json:"telegramNotifyDeliverySuccess"`
  TelegramNotifySupportCreated bool `json:"telegramNotifySupportCreated"`
+ TelegramNotifyStockLow bool `json:"telegramNotifyStockLow"`
+ TelegramNotifyDailyReport bool `json:"telegramNotifyDailyReport"`
+ TelegramNotifyRiskAlert bool `json:"telegramNotifyRiskAlert"`
 }
 type siteSettingsView struct {
  siteSettings
@@ -1187,6 +1190,9 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  case "payment_success": emailEnabled,telegramEnabled=s.EmailPaymentSuccess,s.TelegramNotifyPaymentSuccess; title="付款成功通知"
  case "delivery_success": emailEnabled,telegramEnabled=s.EmailDeliverySuccess,s.TelegramNotifyDeliverySuccess; title="自动发货通知"
  case "support_created": emailEnabled,telegramEnabled=s.EmailSupportCreated,s.TelegramNotifySupportCreated; title="售后工单通知"
+ case "stock_low": telegramEnabled=s.TelegramNotifyStockLow; title="商品库存不足提醒"
+ case "daily_report": telegramEnabled=s.TelegramNotifyDailyReport; title="每日经营报告"
+ case "risk_alert": telegramEnabled=s.TelegramNotifyRiskAlert; title="支付风险提醒"
  default: return
  }
  body:=s.SiteName+"\n"+title+"\n"+details
@@ -1205,6 +1211,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  }
  if telegramEnabled {
   targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
+  if event=="stock_low"||event=="daily_report"||event=="risk_alert"{targets=append(targets,s.TelegramOwnerID)}
   sent:=map[string]bool{}
   bots,err:=database.ListBots(ctx,a.db)
   if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }
