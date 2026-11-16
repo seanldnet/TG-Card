@@ -378,7 +378,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "主菜单已打开。你可以使用下方菜单随时进入商城、查看订单或联系售后。", mainMenuKeyboard())
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
-		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
+		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 通过 TRC20 USDT 充值\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/balance - 查看余额\n/recharge 10 - 充值 10 USDT\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
 		if link:=m.customerServiceLink();link!=""{help+="\n\nTelegram 客服："+link}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboard())
 	case first == "/orders" || text == "📦 我的订单":
