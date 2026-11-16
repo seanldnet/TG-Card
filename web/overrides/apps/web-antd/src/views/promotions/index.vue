@@ -75,7 +75,7 @@ onMounted(load);
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
    <template #title>
     <div class="flex flex-wrap items-center justify-between gap-3">
-     <div><div class="text-base font-semibold leading-6">优惠券管理</div><div class="mt-1 text-xs leading-5 text-gray-500">设置满减、固定金额立减和折扣优惠，Telegram 用户下单时可使用。</div></div>
+     <div><div class="text-base font-semibold leading-6">优惠券管理</div><div class="mt-1 max-w-2xl whitespace-normal break-words text-xs leading-5 text-gray-500">设置满减、固定金额立减和折扣优惠，Telegram 用户下单时可使用。</div></div>
      <a-button size="small" type="primary" @click="add">新建优惠券</a-button>
     </div>
    </template>

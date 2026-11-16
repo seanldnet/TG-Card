@@ -49,7 +49,7 @@ onMounted(load);
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
    <template #title>
     <div class="flex min-w-0 flex-wrap items-center justify-between gap-3 py-1">
-     <div class="min-w-0"><div class="text-base font-semibold leading-6">兑换码管理</div><div class="mt-1 text-xs leading-5 text-gray-500">创建可兑换 USDT 余额、套餐权益或指定商品的兑换码，独立于优惠券使用。</div></div>
+     <div class="min-w-0"><div class="text-base font-semibold leading-6">兑换码管理</div><div class="mt-1 max-w-2xl whitespace-normal break-words text-xs leading-5 text-gray-500">创建可兑换 USDT 余额、套餐权益或指定商品的兑换码，独立于优惠券使用。</div></div>
      <a-button size="small" type="primary" @click="add">新建兑换码</a-button>
     </div>
    </template>

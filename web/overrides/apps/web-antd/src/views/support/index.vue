@@ -3,24 +3,14 @@ import { computed, onMounted, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
-import { useVbenModal } from '@vben/common-ui';
-import { useVbenForm } from '#/adapter/form';
 import { requestClient } from '#/api/request';
 interface Ticket{id:string;ticketNo:string;orderId:string;orderNo:string;botId:string;telegramUserId:string;category:string;description:string;status:string;adminReply:string;assignedTo?:string;slaDueAt?:string;createdAt:string;updatedAt:string;resolvedAt?:string}
 interface TicketMessage{id:string;ticketId:string;senderType:string;senderId:string;message:string;attachmentFileId?:string;attachmentName?:string;createdAt:string}
-const loading=ref(false),saving=ref(false),tickets=ref<Ticket[]>([]),selected=ref<Ticket|null>(null);
+const loading=ref(false),saving=ref(false),tickets=ref<Ticket[]>([]),selected=ref<Ticket|null>(null),ticketModalOpen=ref(false),editStatus=ref('open');
 const timeline=ref<TicketMessage[]>([]),replyText=ref(''),slaHours=ref(24),timelineLoading=ref(false);
 const {width}=useWindowSize(),isMobile=computed(()=>width.value<768);
 const openCount=computed(()=>tickets.value.filter(x=>['open','in_progress','waiting_user'].includes(x.status)).length);
 const resolvedCount=computed(()=>tickets.value.filter(x=>x.status==='resolved').length);
-const [TicketForm,ticketFormApi]=useVbenForm({
- commonConfig:{componentProps:{class:'w-full'}},layout:'vertical',showDefaultActions:false,wrapperClass:'grid-cols-1',
- schema:[
-  {component:'Select',fieldName:'status',label:'工单状态',componentProps:{options:[{label:'待受理',value:'open'},{label:'处理中',value:'in_progress'},{label:'待用户补充',value:'waiting_user'},{label:'已解决',value:'resolved'},{label:'已拒绝',value:'rejected'},{label:'已关闭',value:'closed'}]}},
-  {component:'Textarea',fieldName:'adminReply',label:'管理员回复',componentProps:{rows:4,maxlength:2000,showCount:true,placeholder:'填写后会通过原 Telegram Bot 私聊发送给用户'}},
- ],
-});
-const [TicketModal,ticketModalApi]=useVbenModal({title:'处理售后工单',onConfirm:save});
 function statusLabel(v:string){return ({open:'待受理',in_progress:'处理中',waiting_user:'待用户补充',resolved:'已解决',rejected:'已拒绝',closed:'已关闭'} as Record<string,string>)[v]||v}
 function statusColor(v:string){if(v==='resolved')return 'success';if(v==='rejected'||v==='closed')return 'default';if(v==='waiting_user')return 'warning';return 'processing'}
 function categoryLabel(v:string){return ({not_received:'未收到货',invalid_key:'卡密无效',duplicate_payment:'重复付款',other:'其他问题'} as Record<string,string>)[v]||v}
@@ -28,8 +18,8 @@ function formatTime(v:string){const d=new Date(v);return Number.isNaN(d.getTime(
 async function loadTickets(){loading.value=true;try{tickets.value=await requestClient.get<Ticket[]>('/support/tickets')}catch{message.error('售后工单加载失败')}finally{loading.value=false}}
 async function openEdit(item:Ticket){
  selected.value=item;replyText.value='';slaHours.value=24;
- await ticketFormApi.setValues({status:item.status,adminReply:''});
- ticketModalApi.open();timelineLoading.value=true;
+ editStatus.value=item.status;
+ ticketModalOpen.value=true;timelineLoading.value=true;
  try{timeline.value=await requestClient.get<TicketMessage[]>('/support/tickets/'+item.id+'/messages')}
  catch{timeline.value=[];message.warning('沟通记录暂时无法加载')}
  finally{timelineLoading.value=false}
@@ -53,10 +43,9 @@ function resendOrder(item:Ticket){
 }
 async function save(){
  if(!selected.value)return;
- const {valid}=await ticketFormApi.validate();if(!valid)return;
- const values=await ticketFormApi.getValues();saving.value=true;
+ saving.value=true;
  try{
-  await requestClient.put('/support/tickets/'+selected.value.id,{status:values.status,adminReply:''});
+  await requestClient.put('/support/tickets/'+selected.value.id,{status:editStatus.value,adminReply:''});
   let notifyFailed=false;
   if(replyText.value.trim()){
    const response=await requestClient.post<any>('/support/tickets/'+selected.value.id+'/messages',{message:replyText.value.trim()});
@@ -64,8 +53,8 @@ async function save(){
   }
   if(notifyFailed)message.warning('工单已保存，但 Telegram 通知发送失败');
   else message.success('工单状态和沟通记录已保存');
-  ticketModalApi.close();await loadTickets();
- }catch{message.error('工单更新失败')}finally{saving.value=false}
+  ticketModalOpen.value=false;await loadTickets();
+ }catch(error:any){message.error(error?.response?.data?.message||error?.message||'工单更新失败')}finally{saving.value=false}
 }
 onMounted(loadTickets);
 </script>
@@ -93,7 +82,7 @@ onMounted(loadTickets);
     <a-table-column title="操作" key="action" :width="210" fixed="right"><template #default="{record}"><a-space><a-button type="link" size="small" @click="resendOrder(record)">重发</a-button><a-button type="link" danger size="small" @click="refundTicket(record)">退款</a-button><a-button type="link" size="small" @click="openEdit(record)">处理</a-button></a-space></template></a-table-column>
    </a-table>
   </a-card>
-  <TicketModal class="w-full max-w-xl" :confirm-loading="saving">
+  <a-modal v-model:open="ticketModalOpen" title="处理售后工单" :confirm-loading="saving" width="min(720px, 96vw)" ok-text="保存处理" cancel-text="取消" @ok="save">
    <div class="p-4 sm:p-6">
     <div v-if="selected" class="mb-4 break-words rounded-lg bg-gray-50 p-3 text-sm"><div><b>工单号：</b>{{selected.ticketNo}}</div><div><b>订单号：</b>{{selected.orderNo}}</div><div class="mt-1"><b>问题：</b>{{selected.description}}</div></div>
     <div class="mb-4">
@@ -108,9 +97,9 @@ onMounted(loadTickets);
      </div>
     </div>
     <div class="mb-4"><b class="mb-2 block">分配与 SLA</b><div class="flex flex-wrap items-center gap-2"><a-select v-model:value="slaHours" class="w-36" :options="[{label:'4 小时',value:4},{label:'8 小时',value:8},{label:'24 小时',value:24},{label:'48 小时',value:48},{label:'72 小时',value:72}]"/><a-button size="small" @click="assignTicket">分配给我并设置 SLA</a-button></div><div v-if="selected?.assignedTo" class="mt-1 text-xs text-gray-500">当前负责人：{{selected.assignedTo}} · SLA 截止：{{selected.slaDueAt?formatTime(selected.slaDueAt):'未设置'}}</div></div>
-    <TicketForm/>
+    <a-form-item label="工单状态"><a-select v-model:value="editStatus" class="w-full" :options="[{label:'待受理',value:'open'},{label:'处理中',value:'in_progress'},{label:'待用户补充',value:'waiting_user'},{label:'已解决',value:'resolved'},{label:'已拒绝',value:'rejected'},{label:'已关闭',value:'closed'}]"/></a-form-item>
     <a-form-item label="发送给用户的回复"><a-textarea v-model:value="replyText" :rows="3" :maxlength="5000" show-count placeholder="回复会记录在时间线，并通过原 Telegram Bot 私聊通知用户"/></a-form-item>
    </div>
-  </TicketModal>
+  </a-modal>
  </div>
 </template>
