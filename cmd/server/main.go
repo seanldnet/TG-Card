@@ -156,7 +156,7 @@ func main() {
 	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
 	if rawSite, siteErr := database.GetSiteSettings(ctx, db); siteErr == nil {
 		var initialSite siteSettings
-		if json.Unmarshal([]byte(rawSite), &initialSite) == nil { botManager.SetOwnerID(initialSite.TelegramOwnerID) }
+		if json.Unmarshal([]byte(rawSite), &initialSite) == nil { botManager.SetOwnerID(initialSite.TelegramOwnerID); botManager.SetCustomerServiceURL(initialSite.TelegramCustomerServiceURL) }
 	}
 	defer botManager.Stop()
 	cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract = "", "", paymentSettings.TronUSDTContract
@@ -1138,6 +1138,7 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  raw,err:=json.Marshal(input); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encode site settings"); return }
  if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(raw)); err!=nil { log.Printf("save site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to save site settings"); return }
  a.botManager.SetOwnerID(input.TelegramOwnerID)
+ a.botManager.SetCustomerServiceURL(input.TelegramCustomerServiceURL)
  database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",clientIP(r),r.UserAgent(),"updated")
  configured:=input.SMTPPasswordCiphertext!=""
  input.SMTPPasswordCiphertext=""
