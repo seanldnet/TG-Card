@@ -70,7 +70,7 @@ onMounted(loadOrders);
     <a-empty v-if="!loading&&orders.length===0" description="暂无订单数据"/>
     <div v-if="orders.length>mobilePageSize" class="flex justify-center py-3"><a-pagination v-model:current="mobilePage" :page-size="mobilePageSize" :total="orders.length" size="small" show-less-items /></div>
    </div>
-   <a-table v-else :data-source="orders" :loading="loading" row-key="id" :pagination="{pageSize:10,showSizeChanger:true,showTotal:(total:number)=>`共 ${total} 笔订单`}" :scroll="{x:1100}">
+   <a-table v-else :data-source="orders" :loading="loading" row-key="id" :pagination="{pageSize:10,showSizeChanger:true}" :scroll="{x:1100}">
     <a-table-column title="订单号" key="orderNo" :width="220"><template #default="{record}"><a-button type="link" size="small" class="p-0" @click="openOrderDetail(record)">{{record.orderNo}}</a-button></template></a-table-column>
     <a-table-column title="商品" data-index="productName" key="productName"/>
     <a-table-column title="商品金额" key="amount" :width="130"><template #default="{record}">{{(record.amountMinor/100).toFixed(2)}} {{record.currency}}</template></a-table-column>
