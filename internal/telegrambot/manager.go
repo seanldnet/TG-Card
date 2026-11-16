@@ -718,7 +718,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
-		_ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),strings.Join(command[2:]," "),"","")
+		if _,timelineErr:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),strings.Join(command[2:]," "),"","");timelineErr!=nil{log.Printf("append support command timeline failed: ticket_id=%s error=%v",ticket.ID,timelineErr)}
 		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",supportBackKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
