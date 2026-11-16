@@ -115,7 +115,20 @@ func (m *Manager) scan(ctx context.Context) error {
 			}
 			if !errors.Is(rechargeErr,sql.ErrNoRows) {
 				_ = database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required","",rechargeErr.Error())
+				m.bots.Notify("risk_alert","充值交易无法唯一匹配，请人工核对。交易："+transfer.TransactionID+"\n原因："+rechargeErr.Error(),"")
 				log.Printf("TRC20 wallet recharge requires reconciliation: tx=%s error=%v",transfer.TransactionID,rechargeErr)
+				continue
+			}
+			lateRecharge,lateRechargeErr:=database.FindExpiredWalletRechargeByAmount(scanCtx,m.db,m.driver,transfer.AmountAtomic,transfer.BlockTimestamp)
+			if lateRechargeErr==nil{
+				note:="Confirmed TRC20 transfer arrived after wallet recharge invoice expiry; manual credit review required"
+				if flagErr:=database.FlagTRC20RechargeTransfer(scanCtx,m.db,m.driver,transfer.TransactionID,lateRecharge.ID,note);flagErr!=nil{return flagErr}
+				m.bots.Notify("risk_alert","发现充值过期后到账，需要人工核实后再入账。充值单："+lateRecharge.RechargeNo+"\n交易："+transfer.TransactionID,"")
+				continue
+			}
+			if !errors.Is(lateRechargeErr,sql.ErrNoRows){
+				_ = database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required","",lateRechargeErr.Error())
+				m.bots.Notify("risk_alert","链上充值交易存在歧义，需要人工核对。交易："+transfer.TransactionID+"\n原因："+lateRechargeErr.Error(),"")
 				continue
 			}
 			order, err := database.MatchPendingTRC20Order(scanCtx, m.db, m.driver, transfer.AmountAtomic, transfer.BlockTimestamp)
@@ -124,11 +137,13 @@ func (m *Manager) scan(ctx context.Context) error {
 				if lateErr == nil {
 					note := "Confirmed transfer arrived after the order payment window; manual reconciliation required"
 					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", lateOrder.ID, note); classifyErr != nil { return classifyErr }
+					m.bots.Notify("risk_alert","订单付款在有效期结束后到账，需要人工核对。订单："+lateOrder.OrderNo+"\n交易："+transfer.TransactionID,"")
 					log.Printf("late TRC20 payment requires manual reconciliation: order_id=%s tx=%s", lateOrder.ID, transfer.TransactionID)
 					continue
 				}
 				if !errors.Is(lateErr, sql.ErrNoRows) {
 					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", "", lateErr.Error()); classifyErr != nil { return classifyErr }
+					m.bots.Notify("risk_alert","链上交易无法唯一匹配过期订单。交易："+transfer.TransactionID+"\n原因："+lateErr.Error(),"")
 					log.Printf("TRC20 transfer could not be uniquely matched to an expired order: tx=%s error=%v", transfer.TransactionID, lateErr)
 					continue
 				}
@@ -138,11 +153,13 @@ func (m *Manager) scan(ctx context.Context) error {
 					received := fmt.Sprintf("%d.%06d", transfer.AmountAtomic/1_000_000, transfer.AmountAtomic%1_000_000)
 					note := fmt.Sprintf("Possible %s: received %s USDT, invoice %s USDT. Amount mismatch is not auto-accepted; verify the payer and order manually.", mismatchKind, received, invoice)
 					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", mismatchOrder.ID, note); classifyErr != nil { return classifyErr }
+					m.bots.Notify("risk_alert",fmt.Sprintf("检测到订单金额不符（%s），已阻止自动发货。订单：%s\n交易：%s",mismatchKind,mismatchOrder.OrderNo,transfer.TransactionID),"")
 					log.Printf("TRC20 amount mismatch requires manual review: kind=%s order_id=%s tx=%s", mismatchKind, mismatchOrder.ID, transfer.TransactionID)
 					continue
 				}
 				if !errors.Is(mismatchErr, sql.ErrNoRows) {
 					if classifyErr := database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", "", mismatchErr.Error()); classifyErr != nil { return classifyErr }
+					m.bots.Notify("risk_alert","检测到金额异常且无法唯一匹配订单。交易："+transfer.TransactionID+"\n原因："+mismatchErr.Error(),"")
 					log.Printf("TRC20 amount mismatch is ambiguous: tx=%s error=%v", transfer.TransactionID, mismatchErr)
 					continue
 				}
@@ -151,12 +168,14 @@ func (m *Manager) scan(ctx context.Context) error {
 			}
 			if err != nil {
 				_ = database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", "", err.Error())
+				m.bots.Notify("risk_alert","链上交易需要人工核对。交易："+transfer.TransactionID+"\n原因："+err.Error(),"")
 				log.Printf("TRC20 transfer requires reconciliation: tx=%s error=%v", transfer.TransactionID, err)
 				continue
 			}
 			_, err = database.ConfirmOrderPayment(scanCtx, m.db, m.driver, order.ID, "trc20-usdt", transfer.TransactionID)
 			if err != nil {
 				_ = database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", order.ID, err.Error())
+				m.bots.Notify("risk_alert","链上付款未能自动确认，已阻止发货。订单："+order.OrderNo+"\n交易："+transfer.TransactionID+"\n原因："+err.Error(),"")
 				log.Printf("TRC20 order payment confirmation rejected: order_id=%s tx=%s error=%v", order.ID, transfer.TransactionID, err)
 				continue
 			}
