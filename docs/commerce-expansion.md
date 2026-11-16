@@ -25,12 +25,13 @@
 - card: encrypted stock key(s), quantity-aware.
 - fixed_text: configured text sent after payment.
 - invite_link: create a Telegram invite link after payment with member_limit=1 and expiry; never reuse an entitlement.
-- file: send configured Telegram document/file.
+- file: send the configured Telegram document `file_id`.
 - file_card: send configured file together with reserved card key(s).
-- Unique assets are atomically claimed by an order and use the existing delivery lease/retry framework. Paid entitlements are never released for a second buyer after a Telegram send failure.
+- The Bot owner can send a document to the Bot in a private chat; the Bot replies with its Telegram `file_id` for the product editor. The file must be sent to the same Bot that will fulfill the order.
+- Card keys are atomically reserved and consumed by order. Invite links are created with `member_limit=1` and an expiry, then encrypted and persisted before delivery so retries reuse the same link. Paid entitlements are never released for a second buyer after a Telegram send failure.
 
 ## Admin UI and acceptance
-- Product editor includes optional discount tiers, delivery mode selector and mode-specific settings.
+- Product editor includes optional discount tiers, delivery mode selector and mode-specific settings; the Telegram Bot owner can retrieve a document `file_id` by sending the file to the Bot.
 - Marketing settings include recharge bonus enable/disable and threshold tiers.
 - Product stock view shows notification subscribers.
 - All settings are database-backed; no new environment variables or manual SQL.
