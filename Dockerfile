@@ -19,13 +19,14 @@ FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS go-builder
 ARG TARGETOS=linux
 ARG TARGETARCH
 WORKDIR /src
-# The repository intentionally tracks go.mod without a committed go.sum.
-# Let Go resolve and verify module checksums during the image build.
-COPY go.mod ./
+# Use the exact dependency graph validated by Go CI; do not run go mod tidy in
+# the image build (it also resolves test-only dependencies and adds an avoidable
+# dependency on checksum-database availability during multi-arch builds).
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /src/web/vben-admin/apps/web-antd/dist ./web/dist
-RUN go mod tidy && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata && addgroup -S tgcard && adduser -S -G tgcard tgcard
