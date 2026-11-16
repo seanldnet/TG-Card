@@ -82,6 +82,7 @@ func (a *application) refundSupportTicket(w http.ResponseWriter,r *http.Request)
 	updated,updateErr:=database.UpdateSupportTicket(r.Context(),a.db,a.driver,ticketID,"resolved",reply)
 	if updateErr==nil{ticket=updated}
 	_,timelineErr:=database.AppendSupportTicketMessage(r.Context(),a.db,a.driver,ticketID,"admin",claims.AdminID,reply,"","")
+	ticket.AdminReply=reply
 	notifyErr:=a.botManager.SendSupportReply(r.Context(),ticket)
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.refund","ticket:"+ticket.TicketNo,clientIP(r),r.UserAgent(),"order_id="+ticket.OrderID)
 	result:=map[string]any{"ticket":ticket,"balanceAtomic":balance}
