@@ -12,7 +12,8 @@ interface Order {
   status: string; expiresAt: string; createdAt: string; paidAt?: string; deliveredAt?: string;
   deliveryAttempts: number; deliveryError?: string; stockReserved: boolean;
 }
-const loading=ref(false), orders=ref<Order[]>([]), retryingId=ref('');
+interface OrderDetail { order: Order; paymentFromAddress:string; paymentToAddress:string; paymentTransactionId:string; paymentBlockTimestampMs:number; }
+const loading=ref(false), orders=ref<Order[]>([]), retryingId=ref(''), detailLoading=ref(false), detailOpen=ref(false), selectedDetail=ref<OrderDetail|null>(null);
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const pendingCount=computed(()=>orders.value.filter(x=>x.status==='pending_payment').length);
@@ -23,6 +24,7 @@ function statusColor(status:string){if(status==='delivered')return 'success';if(
 function formatTime(value:string){if(!value)return '-';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString()}
 function copy(value:string){if(!value)return;navigator.clipboard?.writeText(value).then(()=>message.success('已复制')).catch(()=>message.error('复制失败'))}
 async function loadOrders(){loading.value=true;try{orders.value=await requestClient.get<Order[]>('/orders')}catch{message.error('订单列表加载失败')}finally{loading.value=false}}
+async function openOrderDetail(order:Order){detailOpen.value=true;detailLoading.value=true;selectedDetail.value=null;try{selectedDetail.value=await requestClient.get<OrderDetail>('/orders/'+order.id)}catch{message.error('订单详情加载失败')}finally{detailLoading.value=false}}
 async function retryDelivery(order:Order){retryingId.value=order.id;try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货重试');await loadOrders()}catch{message.error('发货重试失败，请检查机器人状态及错误信息');await loadOrders()}finally{retryingId.value=''}}
 onMounted(loadOrders);
 </script>
@@ -54,6 +56,7 @@ onMounted(loadOrders);
      </div>
      <div v-if="item.deliveryError" class="mt-3 rounded-md bg-red-50 p-3 text-xs text-red-700 break-words">{{item.deliveryError}}</div>
      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <a-button size="small" @click="openOrderDetail(item)">查看详情</a-button>
       <a-tag :color="item.stockReserved?'processing':'default'">{{item.stockReserved?'已预留库存':'未预留库存'}}</a-tag>
       <a-button v-if="item.status==='paid'||item.status==='delivery_failed'" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">重试发货</a-button>
      </div>
@@ -62,7 +65,7 @@ onMounted(loadOrders);
     <a-empty v-if="!loading&&orders.length===0" description="暂无订单数据"/>
    </div>
    <a-table v-else :data-source="orders" :loading="loading" row-key="id" :scroll="{x:1100}">
-    <a-table-column title="订单号" data-index="orderNo" key="orderNo" :width="190"/>
+    <a-table-column title="订单号" key="orderNo" :width="220"><template #default="{record}"><a-button type="link" size="small" class="p-0" @click="openOrderDetail(record)">{{record.orderNo}}</a-button></template></a-table-column>
     <a-table-column title="商品" data-index="productName" key="productName"/>
     <a-table-column title="商品金额" key="amount" :width="130"><template #default="{record}">{{(record.amountMinor/100).toFixed(2)}} {{record.currency}}</template></a-table-column>
     <a-table-column title="链上应付金额" key="paymentAmount" :width="150"><template #default="{record}">{{record.paymentAmount==='0.000000'?'-':record.paymentAmount+' USDT'}}</template></a-table-column>
@@ -79,5 +82,26 @@ onMounted(loadOrders);
    </a-table>
    <a-alert class="mx-1 mb-2 mt-7 rounded-lg" type="info" show-icon message="TRC20 USDT 经 TronGrid 确认后自动核验，付款成功进入自动发货队列；失败时可在此重试。"/>
   </a-card>
+  <a-modal v-model:open="detailOpen" title="订单详情" :footer="null" width="min(720px, 94vw)">
+   <a-spin :spinning="detailLoading">
+    <template v-if="selectedDetail">
+     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">订单编号</div><div class="mt-1 break-all font-semibold">{{selectedDetail.order.orderNo}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">订单状态</div><div class="mt-1"><a-tag :color="statusColor(selectedDetail.order.status)">{{statusLabel(selectedDetail.order.status)}}</a-tag></div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">Telegram 用户 ID</div><div class="mt-1 break-all">{{selectedDetail.order.telegramUserId}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">Telegram 聊天 ID</div><div class="mt-1 break-all">{{selectedDetail.order.telegramChatId}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">商品</div><div class="mt-1">{{selectedDetail.order.productName}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">应付金额</div><div class="mt-1 font-semibold">{{selectedDetail.order.paymentAmount}} USDT</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">订单创建时间</div><div class="mt-1">{{formatTime(selectedDetail.order.createdAt)}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">系统付款确认时间</div><div class="mt-1">{{formatTime(selectedDetail.order.paidAt||'')}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">链上到账时间</div><div class="mt-1">{{selectedDetail.paymentBlockTimestampMs?formatTime(selectedDetail.paymentBlockTimestampMs):'-'}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">发货完成时间</div><div class="mt-1">{{formatTime(selectedDetail.order.deliveredAt||'')}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500">付款人地址</div><div class="mt-1 break-all">{{selectedDetail.paymentFromAddress||'-'}} <a-button v-if="selectedDetail.paymentFromAddress" size="small" type="link" @click="copy(selectedDetail.paymentFromAddress)">复制</a-button></div></div>
+      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500">平台收款地址</div><div class="mt-1 break-all">{{selectedDetail.paymentToAddress||'-'}} <a-button v-if="selectedDetail.paymentToAddress" size="small" type="link" @click="copy(selectedDetail.paymentToAddress)">复制</a-button></div></div>
+      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500">链上交易哈希</div><div class="mt-1 break-all">{{selectedDetail.paymentTransactionId||selectedDetail.order.paymentReference||'-'}}</div><a v-if="selectedDetail.paymentTransactionId" class="mt-1 inline-block" :href="'https://tronscan.org/#/transaction/'+selectedDetail.paymentTransactionId" target="_blank" rel="noreferrer">在 Tronscan 查看</a></div>
+     </div>
+    </template>
+   </a-spin>
+  </a-modal>
  </div>
 </template>
