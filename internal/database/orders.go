@@ -542,11 +542,12 @@ func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return OrderDelivery{}, 0, err }
 	defer tx.Rollback()
-	q := "SELECT status,expires_at,telegram_user_id,amount_minor,order_no FROM orders WHERE id=" + placeholder(driver, 1)
+	q := "SELECT status,expires_at,telegram_user_id,amount_minor,order_no,quantity,COALESCE(delivery_type,'card') FROM orders WHERE id=" + placeholder(driver, 1)
 	if driver == "postgres" { q += " FOR UPDATE" }
-	var status, expiresAt, userID, orderNo string
+	var status, expiresAt, userID, orderNo, deliveryType string
 	var amountMinor int64
-	if err := tx.QueryRowContext(ctx, q, orderID).Scan(&status,&expiresAt,&userID,&amountMinor,&orderNo); err != nil { return OrderDelivery{}, 0, err }
+	var quantity int
+	if err := tx.QueryRowContext(ctx, q, orderID).Scan(&status,&expiresAt,&userID,&amountMinor,&orderNo,&quantity,&deliveryType); err != nil { return OrderDelivery{}, 0, err }
 	if status != "pending_payment" { return OrderDelivery{}, 0, fmt.Errorf("订单当前状态不允许余额支付：%s", status) }
 	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
 	if err != nil || !time.Now().UTC().Before(expires) { return OrderDelivery{}, 0, fmt.Errorf("订单已过期，请重新下单") }
@@ -571,21 +572,29 @@ func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string)
 	if err != nil { return OrderDelivery{}, 0, err }
 	n, err = res.RowsAffected()
 	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单状态已变化，请刷新订单") }
-	sell := "UPDATE product_keys SET status=2,sold_at=" + placeholder(driver,1) + " WHERE order_id=" + placeholder(driver,2) + " AND status=1"
-	res, err = tx.ExecContext(ctx, sell, now, orderID)
-	if err != nil { return OrderDelivery{}, 0, err }
-	n, err = res.RowsAffected()
-	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单库存预留异常，已阻止扣款") }
+	needsKeys := deliveryType == "" || deliveryType == "card" || deliveryType == "file_card"
 	var delivery OrderDelivery
+	if needsKeys {
+		sell := "UPDATE product_keys SET status=2,sold_at=" + placeholder(driver,1) + " WHERE order_id=" + placeholder(driver,2) + " AND status=1"
+		res, err = tx.ExecContext(ctx, sell, now, orderID)
+		if err != nil { return OrderDelivery{}, 0, err }
+		n, err = res.RowsAffected()
+		if err != nil || n != int64(quantity) { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单库存预留异常：应有 %d 条卡密，实际 %d 条，已阻止扣款",quantity,n) }
+		rows,err:=tx.QueryContext(ctx,"SELECT secret_ciphertext FROM product_keys WHERE order_id="+placeholder(driver,1)+" AND status=2 ORDER BY created_at,id",orderID)
+		if err!=nil{return OrderDelivery{},0,err}
+		var secrets []string
+		for rows.Next(){var value string;if err:=rows.Scan(&value);err!=nil{rows.Close();return OrderDelivery{},0,err};secrets=append(secrets,value)}
+		if err:=rows.Err();err!=nil{rows.Close();return OrderDelivery{},0,err};if err:=rows.Close();err!=nil{return OrderDelivery{},0,err}
+		if len(secrets)!=quantity{return OrderDelivery{},0,fmt.Errorf("订单卡密数量异常：应有 %d 条，实际 %d 条",quantity,len(secrets))}
+		delivery.SecretCiphertext=strings.Join(secrets,"\n")
+	}
 	delivery.PaymentMethod = "wallet"
 	delivery.PaymentReference = ref
-	if err := tx.QueryRowContext(ctx, "SELECT secret_ciphertext FROM product_keys WHERE order_id=" + placeholder(driver,1) + " AND status=2 LIMIT 1", orderID).Scan(&delivery.SecretCiphertext); err != nil { return OrderDelivery{}, 0, err }
-	load := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,'') FROM orders WHERE id=" + placeholder(driver,1)
-	if err := tx.QueryRowContext(ctx, load, orderID).Scan(&delivery.Order.ID,&delivery.Order.OrderNo,&delivery.Order.BotID,&delivery.Order.TelegramUserID,&delivery.Order.TelegramChatID,&delivery.Order.ProductID,&delivery.Order.ProductName,&delivery.Order.UnitPriceMinor,&delivery.Order.Quantity,&delivery.Order.AmountMinor,&delivery.Order.Currency,&delivery.Order.Status,&delivery.Order.ExpiresAt,&delivery.Order.CreatedAt,&delivery.Order.UpdatedAt,&delivery.Order.PaidAt,&delivery.Order.DeliveredAt); err != nil { return OrderDelivery{}, 0, err }
+	load := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(delivery_type,'card'),COALESCE(delivery_config_snapshot,'{}'),COALESCE(delivery_payload_json,'{}') FROM orders WHERE id=" + placeholder(driver,1)
+	if err := tx.QueryRowContext(ctx, load, orderID).Scan(&delivery.Order.ID,&delivery.Order.OrderNo,&delivery.Order.BotID,&delivery.Order.TelegramUserID,&delivery.Order.TelegramChatID,&delivery.Order.ProductID,&delivery.Order.ProductName,&delivery.Order.UnitPriceMinor,&delivery.Order.Quantity,&delivery.Order.AmountMinor,&delivery.Order.Currency,&delivery.Order.Status,&delivery.Order.ExpiresAt,&delivery.Order.CreatedAt,&delivery.Order.UpdatedAt,&delivery.Order.PaidAt,&delivery.Order.DeliveredAt,&delivery.Order.DeliveryType,&delivery.Order.DeliveryConfigSnapshot,&delivery.Order.DeliveryPayloadJSON); err != nil { return OrderDelivery{}, 0, err }
 	if err := tx.Commit(); err != nil { return OrderDelivery{}, 0, err }
 	return delivery, balance, nil
 }
-
 
 // SaveOrderDeliveryPayload persists generated one-time credentials before Telegram delivery.
 func SaveOrderDeliveryPayload(ctx context.Context, db *sql.DB, driver, orderID, payload string) error {
