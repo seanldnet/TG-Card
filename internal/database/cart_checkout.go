@@ -37,6 +37,7 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		if x.status!=1{return Order{},nil,fmt.Errorf("商品 %s 已下架，请刷新购物车",x.ProductName)}
 		if x.Currency!=currency{return Order{},nil,fmt.Errorf("购物车包含多种币种，暂不支持混合结算，请分币种购买")}
 		if x.deliveryType!=deliveryType||x.deliveryConfig!=deliveryConfig{return Order{},nil,fmt.Errorf("购物车商品交付方式或交付配置不同，请按相同交付方式分开结算")}
+		if len(live)>1 && deliveryType!="card" && deliveryType!="file_card" { return Order{},nil,fmt.Errorf("多商品统一结算目前仅支持卡密或文件卡密类商品；其他交付方式请单独购买") }
 		if x.Quantity<1||x.Quantity>100||x.UnitPriceMinor<=0||x.UnitPriceMinor>(1<<63-1)/int64(x.Quantity){return Order{},nil,fmt.Errorf("商品 %s 的数量或金额无效",x.ProductName)}
 		needsKeys:=deliveryType=="card"||deliveryType=="file_card"
 		if !needsKeys&&x.Quantity!=1{return Order{},nil,fmt.Errorf("商品 %s 的交付方式每笔仅支持 1 件",x.ProductName)}
