@@ -195,6 +195,7 @@ func main() {
 	api.HandleFunc("POST /api/orders/cleanup", app.clearOrderData)
 	api.HandleFunc("GET /api/users", app.listTelegramUsers)
 	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
+	api.HandleFunc("GET /api/users/{id}/wallet", app.listUserWalletLedger)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
@@ -1034,6 +1035,14 @@ func (a *application) listTelegramUsers(w http.ResponseWriter,r *http.Request) {
 	if _,ok:=a.authenticate(w,r);!ok{return}
 	items,err:=database.ListTelegramUsers(r.Context(),a.db)
 	if err!=nil{log.Printf("list Telegram users: %v",err);writeError(w,http.StatusInternalServerError,"Unable to load Telegram users");return}
+	writeSuccess(w,http.StatusOK,items)
+}
+
+func (a *application) listUserWalletLedger(w http.ResponseWriter,r *http.Request){
+	if _,ok:=a.authenticate(w,r);!ok{return}
+	var telegramUserID string
+	if err:=a.db.QueryRowContext(r.Context(),"SELECT telegram_user_id FROM telegram_users WHERE id="+database.PlaceholderForAPI(a.driver),r.PathValue("id")).Scan(&telegramUserID);err!=nil{writeError(w,http.StatusNotFound,"Telegram 用户不存在");return}
+	items,err:=database.ListWalletTransactions(r.Context(),a.db,a.driver,telegramUserID);if err!=nil{log.Printf("list wallet ledger failed: %v",err);writeError(w,http.StatusInternalServerError,"读取余额流水失败");return}
 	writeSuccess(w,http.StatusOK,items)
 }
 
