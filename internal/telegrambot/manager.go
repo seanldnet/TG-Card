@@ -778,7 +778,12 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付失败"); _ = m.sendMessage(ctx,cfg.Token,chatID,"余额支付失败："+err.Error()); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付成功")
 		m.Notify("payment_success","站内余额付款成功：订单 "+delivery.Order.OrderNo+"\n剩余余额："+formatUSDTAtomic(balance)+" USDT",strconv.FormatInt(chatID,10))
-		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但自动发货遇到问题，管理员会尽快处理。") } else { _ = m.sendMessage(ctx,cfg.Token,chatID,"站内余额支付成功，商品已进入发货流程。") }
+		claimed,claimErr:=database.ClaimOrderDelivery(ctx,m.db,m.driver,orderID,2*time.Minute)
+		if claimErr!=nil { log.Printf("wallet paid order delivery lease failed: order_id=%s error=%v",orderID,claimErr); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，商品已进入后台发货队列，请稍后查看订单。"); return }
+		if !claimed { _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，发货正在处理中，请稍后查看订单。"); return }
+		delivery,loadErr:=database.GetOrderDelivery(ctx,m.db,m.driver,orderID)
+		if loadErr!=nil { log.Printf("wallet paid order delivery load failed: order_id=%s error=%v",orderID,loadErr); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但发货信息暂时无法读取，系统会自动重试。"); return }
+		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但自动发货遇到问题，系统会自动重试。") } else { _ = m.sendMessage(ctx,cfg.Token,chatID,"站内余额支付成功，商品已发出。") }
 	case strings.HasPrefix(query.Data,"shop:chainpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:chainpay:")
 		order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
