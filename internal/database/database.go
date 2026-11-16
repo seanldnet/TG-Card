@@ -419,6 +419,9 @@ func UpsertTelegramUser(ctx context.Context, db *sql.DB, driver, telegramUserID,
 		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+",0,"+placeholder(driver,7)+","+placeholder(driver,8)+") "+
 		"ON CONFLICT(telegram_user_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_seen_bot_id=excluded.last_seen_bot_id,updated_at=excluded.updated_at"
 	_, err = db.ExecContext(ctx,query,id,telegramUserID,username,firstName,lastName,botID,now,now)
+	if err != nil { return err }
+	interaction := "INSERT INTO telegram_user_bots(bot_id,telegram_user_id,chat_id,last_seen_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+") ON CONFLICT(bot_id,telegram_user_id) DO UPDATE SET chat_id=excluded.chat_id,last_seen_at=excluded.last_seen_at"
+	_, err = db.ExecContext(ctx,interaction,botID,telegramUserID,telegramUserID,now)
 	return err
 }
 
