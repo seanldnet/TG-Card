@@ -20,6 +20,7 @@ type PaymentTransaction struct {
 	BlockTimestampMS int64 `json:"blockTimestampMs"`
 	Status string `json:"status"`
 	OrderID string `json:"orderId,omitempty"`
+	WalletRechargeID string `json:"walletRechargeId,omitempty"`
 	ReconciliationNote string `json:"reconciliationNote,omitempty"`
 	FirstSeenAt string `json:"firstSeenAt"`
 	UpdatedAt string `json:"updatedAt"`
@@ -72,13 +73,13 @@ func ClassifyTRC20Transfer(ctx context.Context, db *sql.DB, driver, transactionI
 
 func ListPaymentTransactions(ctx context.Context, db *sql.DB, limit int) ([]PaymentTransaction, error) {
 	if limit <= 0 || limit > 500 { limit = 100 }
-	rows, err := db.QueryContext(ctx, "SELECT id,provider,transaction_id,from_address,to_address,amount_atomic,token_decimals,block_timestamp_ms,status,COALESCE(order_id,''),reconciliation_note,first_seen_at,updated_at FROM payment_transactions ORDER BY block_timestamp_ms DESC LIMIT "+fmt.Sprint(limit))
+	rows, err := db.QueryContext(ctx, "SELECT id,provider,transaction_id,from_address,to_address,amount_atomic,token_decimals,block_timestamp_ms,status,COALESCE(order_id,''),reconciliation_note,first_seen_at,updated_at,COALESCE(wallet_recharge_id,'') FROM payment_transactions ORDER BY block_timestamp_ms DESC LIMIT "+fmt.Sprint(limit))
 	if err != nil { return nil, err }
 	defer rows.Close()
 	items := make([]PaymentTransaction, 0)
 	for rows.Next() {
 		var item PaymentTransaction
-		if err := rows.Scan(&item.ID,&item.Provider,&item.TransactionID,&item.FromAddress,&item.ToAddress,&item.AmountAtomic,&item.TokenDecimals,&item.BlockTimestampMS,&item.Status,&item.OrderID,&item.ReconciliationNote,&item.FirstSeenAt,&item.UpdatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.Provider,&item.TransactionID,&item.FromAddress,&item.ToAddress,&item.AmountAtomic,&item.TokenDecimals,&item.BlockTimestampMS,&item.Status,&item.OrderID,&item.ReconciliationNote,&item.FirstSeenAt,&item.UpdatedAt,&item.WalletRechargeID); err != nil { return nil, err }
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -175,4 +176,12 @@ func ReconcileTRC20Transfer(ctx context.Context, db *sql.DB, driver, transaction
 	n, err := result.RowsAffected(); if err != nil { return err }
 	if n != 1 { return fmt.Errorf("交易状态已被其他操作修改") }
 	return tx.Commit()
+}
+
+func ClassifyTRC20RechargeTransfer(ctx context.Context,db *sql.DB,driver,transactionID,rechargeID,note string)error{
+	if len(transactionID)!=64||rechargeID==""{return fmt.Errorf("invalid wallet recharge transfer")}
+	if len(note)>1000{note=note[:1000]}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	q:="UPDATE payment_transactions SET status='matched',order_id=NULL,wallet_recharge_id="+placeholder(driver,1)+",reconciliation_note="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE provider="+placeholder(driver,4)+" AND transaction_id="+placeholder(driver,5)+" AND status IN ('unmatched','reconciliation_required')"
+	res,err:=db.ExecContext(ctx,q,rechargeID,note,now,"trc20-usdt",transactionID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("交易状态已被其他操作修改")};return nil
 }
