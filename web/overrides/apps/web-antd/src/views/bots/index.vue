@@ -7,6 +7,7 @@ import { requestClient } from '#/api/request';
 
 interface Bot { id:string; name:string; username:string; status:number; welcomeText:string; createdAt:string; updatedAt:string }
 const loading=ref(false),saving=ref(false),botModalOpen=ref(false),editingId=ref('');
+const ownerID=ref(''),ownerSaving=ref(false);
 const bots=ref<Bot[]>([]);
 const botFormRef=ref();
 const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',enabled:true});
@@ -21,7 +22,8 @@ const botRules={
 function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.enabled=true}
 function handleAddBot(){editingId.value='';resetBotForm();botModalOpen.value=true}
 function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
-async function loadBots(){loading.value=true;try{bots.value=await requestClient.get<Bot[]>('/bots')}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
+async function loadBots(){loading.value=true;try{const [items,settings]=await Promise.all([requestClient.get<Bot[]>('/bots'),requestClient.get<{telegramOwnerId?:string}>('/settings/site')]);bots.value=items;ownerID.value=settings.telegramOwnerId||''}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
+async function saveOwnerID(){const value=ownerID.value.trim();if(value&&!/^\\d{1,32}$/.test(value)){message.warning('请输入有效的 Telegram 数字 ID');return;}ownerSaving.value=true;try{await requestClient.put('/bots/owner',{telegramOwnerId:value});message.success(value?'机器人主人 ID 已保存':'机器人主人 ID 已清空');}catch(error:any){message.error(error?.response?.data?.message||'保存主人 ID 失败');}finally{ownerSaving.value=false;}}
 async function submit(){
  try{await botFormRef.value?.validate()}catch{return}
  if(!editingId.value&&!botForm.token.trim()){message.warning('请填写 Bot Token');return}
@@ -46,7 +48,11 @@ onMounted(loadBots);
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-5 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">机器人管理</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一管理 Telegram 商城机器人及运行状态</p></div>
-   <a-button type="primary" size="large" @click="handleAddBot">＋添加机器人</a-button>
+   <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <a-input v-model:value="ownerID" class="w-full sm:w-56" size="large" inputmode="numeric" placeholder="主人 Telegram 数字 ID"/>
+    <a-button size="large" :loading="ownerSaving" @click="saveOwnerID">保存主人 ID</a-button>
+    <a-button type="primary" size="large" @click="handleAddBot">＋添加机器人</a-button>
+   </div>
   </div>
   <a-row :gutter="[12,12]">
    <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">机器人总数</div><div class="mt-2 text-2xl font-semibold leading-none">{{bots.length}}</div><div class="mt-2 text-xs text-gray-400">已添加的机器人</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:robot-outline" class="block text-2xl" /></span></div></a-card></a-col>
