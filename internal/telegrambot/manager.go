@@ -39,6 +39,7 @@ type Manager struct {
 	paymentAddress string
 	paymentEnabled bool
 	ownerID string
+	customerServiceURL string
 	notifier func(event, details, userChatID string)
 }
 
@@ -146,6 +147,8 @@ func (m *Manager) Reconcile(configs []Config) {
 }
 
 func (m *Manager) SetOwnerID(ownerID string) { m.mu.Lock(); m.ownerID = strings.TrimSpace(ownerID); m.mu.Unlock() }
+func (m *Manager) SetCustomerServiceURL(value string) { m.mu.Lock(); m.customerServiceURL = strings.TrimSpace(value); m.mu.Unlock() }
+func (m *Manager) customerServiceLink() string { m.mu.Lock(); defer m.mu.Unlock(); return m.customerServiceURL }
 
 func (m *Manager) isOwner(telegramUserID int64) bool {
 	m.mu.Lock(); ownerID := m.ownerID; m.mu.Unlock()
@@ -327,11 +330,13 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		m.showShop(ctx, cfg, msg.Chat.ID)
 	case first == "/help" || text == "❓ 使用帮助":
 		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n🧾 售后帮助 - 查看售后提交方式\n\n也可以直接发送命令：\n/shop - 浏览商城\n/orders - 我的订单\n/support 订单号 问题描述 - 申请售后\n/help - 查看帮助"
+		if link:=m.customerServiceLink();link!=""{help+="\n\nTelegram 客服："+link}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboard())
 	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
 	case text == "🧾 售后帮助":
 		msgText := "提交售后请发送：\n/support 订单号 问题描述\n例如：\n/support TC202611150001 卡密无法使用"
+		if link:=m.customerServiceLink();link!=""{msgText+="\n\nTelegram 客服："+link}
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, msgText, mainMenuKeyboard())
 	case first == "/support":
 		if len(command) < 3 {
