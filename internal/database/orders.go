@@ -351,7 +351,7 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 // GetOrderDelivery recovers a paid card for retry after a process interruption.
 func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, error) {
 	var item OrderDelivery
-	query := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(delivery_type,'card'),COALESCE(delivery_config_snapshot,'{}'),COALESCE(delivery_payload_json,'{}'),COALESCE(payment_method,''),COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver, 1) + " AND status IN ('paid','delivering','delivery_failed')"
+	query := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(delivery_type,'card'),COALESCE(delivery_config_snapshot,'{}'),COALESCE(delivery_payload_json,'{}'),COALESCE(payment_method,''),COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver, 1) + " AND status IN ('paid','delivering','delivery_failed','delivered')"
 	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.Order.DeliveryType,&item.Order.DeliveryConfigSnapshot,&item.Order.DeliveryPayloadJSON,&item.PaymentMethod,&item.PaymentReference)
 	if err != nil { return item, err }
 	if item.Order.DeliveryType == "" { item.Order.DeliveryType = "card" }
@@ -603,4 +603,36 @@ func SaveOrderDeliveryPayload(ctx context.Context, db *sql.DB, driver, orderID, 
 	result, err := db.ExecContext(ctx, query, payload, time.Now().UTC().Format(time.RFC3339Nano), orderID)
 	if err != nil { return err }
 	n, err := result.RowsAffected(); if err != nil { return err }; if n != 1 { return fmt.Errorf("order is not in a deliverable state") }; return nil
+}
+
+
+// ClaimOrderRedelivery rate-limits manual re-delivery requests across application instances.
+// Only an already delivered order can acquire a re-delivery lease.
+func ClaimOrderRedelivery(ctx context.Context, db *sql.DB, driver, orderID string, lease time.Duration) (bool, error) {
+	if orderID == "" { return false, fmt.Errorf("order ID is required") }
+	if lease <= 0 { lease = 45 * time.Second }
+	var status string
+	if err := db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id="+placeholder(driver, 1), orderID).Scan(&status); err != nil {
+		return false, err
+	}
+	if status != "delivered" { return false, fmt.Errorf("order is not delivered") }
+
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
+	leaseText := now.Add(lease).Format(time.RFC3339Nano)
+	query := "INSERT INTO order_redelivery_leases(order_id,lease_until,updated_at) VALUES(" +
+		placeholder(driver, 1) + "," + placeholder(driver, 2) + "," + placeholder(driver, 3) +
+		") ON CONFLICT(order_id) DO UPDATE SET lease_until=excluded.lease_until,updated_at=excluded.updated_at " +
+		"WHERE julianday(order_redelivery_leases.lease_until)<=julianday(excluded.updated_at)"
+	if driver == "postgres" {
+		query = "INSERT INTO order_redelivery_leases(order_id,lease_until,updated_at) VALUES(" +
+			placeholder(driver, 1) + "," + placeholder(driver, 2) + "," + placeholder(driver, 3) +
+			") ON CONFLICT(order_id) DO UPDATE SET lease_until=EXCLUDED.lease_until,updated_at=EXCLUDED.updated_at " +
+			"WHERE CAST(order_redelivery_leases.lease_until AS TIMESTAMPTZ)<=CAST(EXCLUDED.updated_at AS TIMESTAMPTZ)"
+	}
+	result, err := db.ExecContext(ctx, query, orderID, leaseText, nowText)
+	if err != nil { return false, err }
+	affected, err := result.RowsAffected()
+	if err != nil { return false, err }
+	return affected == 1, nil
 }
