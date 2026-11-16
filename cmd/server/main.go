@@ -378,10 +378,12 @@ func (a *application) updateUserProfile(w http.ResponseWriter, r *http.Request) 
 func (a *application) uploadUserAvatar(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
-	const maxAvatarBytes = 2 << 20
-	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+64<<10)
-	if err := r.ParseMultipartForm(maxAvatarBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "头像文件超过 2 MB 或上传请求无效")
+	// Avatar uploads are no longer restricted to 2 MB. Keep a generous 20 MB
+	// request ceiling to protect the service from oversized upload abuse.
+	const maxAvatarBytes = 20 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+(1<<20))
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "头像上传请求无效，单个图片请控制在 20 MB 以内")
 		return
 	}
 	file, header, err := r.FormFile("file")
@@ -391,23 +393,23 @@ func (a *application) uploadUserAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	if header.Size > maxAvatarBytes {
-		writeError(w, http.StatusBadRequest, "头像文件不能超过 2 MB")
+		writeError(w, http.StatusBadRequest, "头像文件不能超过 20 MB")
 		return
 	}
 	content, err := io.ReadAll(io.LimitReader(file, maxAvatarBytes+1))
 	if err != nil || len(content) == 0 || len(content) > maxAvatarBytes {
-		writeError(w, http.StatusBadRequest, "头像文件读取失败或超过 2 MB")
+		writeError(w, http.StatusBadRequest, "头像文件读取失败或超过 20 MB")
 		return
 	}
 	contentType := http.DetectContentType(content)
 	extensions := map[string]string{
-		"image/jpeg": ".jpg",
-		"image/png": ".png",
-		"image/webp": ".webp",
+		"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+		"image/gif": ".gif", "image/bmp": ".bmp", "image/tiff": ".tif",
+		"image/avif": ".avif", "image/heic": ".heic", "image/heif": ".heif",
 	}
 	extension, supported := extensions[contentType]
 	if !supported {
-		writeError(w, http.StatusBadRequest, "头像仅支持 JPG、PNG 或 WebP 图片")
+		writeError(w, http.StatusBadRequest, "文件内容不是受支持的图片格式，请上传 JPG、PNG、WebP、GIF、BMP、TIFF 或 AVIF 图片")
 		return
 	}
 	random := make([]byte, 16)
