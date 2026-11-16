@@ -852,7 +852,6 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case query.Data == "cart:checkout":
 		order, items, err := database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10),20*time.Minute)
 		if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法结算"); _ = m.sendMessage(ctx,cfg.Token,chatID,"购物车结算失败："+err.Error()); return }
-		_ = database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10))
 		lines:=make([]string,0,len(items));for _,item:=range items{lines=append(lines,item.ProductName+" × "+strconv.Itoa(item.Quantity)+" · "+formatPrice(item.LineTotalMinor,item.Currency))}
 		balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
 		text:="✅ 购物车统一订单已创建！\n订单号："+order.OrderNo+"\n\n"+strings.Join(lines,"\n")+"\n\n合计："+formatPrice(order.AmountMinor,order.Currency)+"\n付款有效期：20 分钟\n请选择一种付款方式。"
