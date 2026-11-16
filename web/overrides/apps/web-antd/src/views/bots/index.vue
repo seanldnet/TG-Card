@@ -5,11 +5,11 @@ import { useWindowSize } from '@vueuse/core';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
 
-interface Bot { id:string; name:string; username:string; status:number; welcomeText:string; ownerId:string; customerServiceUrl:string; businessGroupUrl:string; createdAt:string; updatedAt:string }
+interface Bot { id:string; name:string; username:string; status:number; welcomeText:string; welcomeMessage:string; purchaseNotice:string; description:string; ownerId:string; customerServiceUrl:string; businessGroupUrl:string; createdAt:string; updatedAt:string }
 const loading=ref(false),saving=ref(false),botModalOpen=ref(false),editingId=ref('');
 const bots=ref<Bot[]>([]);
 const botFormRef=ref();
-const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',ownerId:'',customerServiceUrl:'',businessGroupUrl:'',enabled:true});
+const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',welcomeMessage:'🎉 欢迎来到我们的商城！',purchaseNotice:'📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密',description:'欢迎使用本机器人，浏览商品并安全快捷地完成购买。',ownerId:'',customerServiceUrl:'',businessGroupUrl:'',enabled:true});
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const activeCount=computed(()=>bots.value.filter(item=>item.status===1).length);
@@ -18,9 +18,9 @@ const botRules={
  name:[{required:true,whitespace:true,message:'请输入机器人名称',trigger:'blur'}],
  token:[{validator:(_rule:any,value:string)=>editingId.value||String(value||'').trim()?Promise.resolve():Promise.reject(new Error('请输入 Telegram Bot Token')),trigger:'blur'}],
 };
-function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.ownerId='';botForm.customerServiceUrl='';botForm.businessGroupUrl='';botForm.enabled=true}
+function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.welcomeMessage='🎉 欢迎来到我们的商城！';botForm.purchaseNotice='📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description='欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId='';botForm.customerServiceUrl='';botForm.businessGroupUrl='';botForm.enabled=true}
 function handleAddBot(){editingId.value='';resetBotForm();botModalOpen.value=true}
-function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.ownerId=bot.ownerId||'';botForm.customerServiceUrl=bot.customerServiceUrl||'';botForm.businessGroupUrl=bot.businessGroupUrl||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
+function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.welcomeMessage=bot.welcomeMessage||'🎉 欢迎来到我们的商城！';botForm.purchaseNotice=bot.purchaseNotice||'📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description=bot.description||'欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId=bot.ownerId||'';botForm.customerServiceUrl=bot.customerServiceUrl||'';botForm.businessGroupUrl=bot.businessGroupUrl||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
 async function loadBots(){loading.value=true;try{bots.value=await requestClient.get<Bot[]>('/bots')}catch(error:any){message.error(error?.response?.data?.message||'机器人列表加载失败')}finally{loading.value=false}}
 async function submit(){
  try{await botFormRef.value?.validate()}catch{return}
@@ -28,10 +28,10 @@ async function submit(){
  saving.value=true;
  try{
   if(editingId.value){
-   await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
+   await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
    message.success('机器人资料已保存');
   }else{
-   await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
+   await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
    message.success('机器人添加成功');
   }
   botModalOpen.value=false;await loadBots();
@@ -80,7 +80,10 @@ onMounted(loadBots);
     <a-form ref="botFormRef" :model="botForm" :rules="botRules" layout="vertical">
      <a-form-item label="机器人名称" name="name"><a-input v-model:value="botForm.name" size="large" :maxlength="100" placeholder="例如：主商城机器人"/></a-form-item>
      <a-form-item label="Bot Token" name="token" :extra="editingId?'留空表示不修改现有 Token。':'从 Telegram 的 @BotFather 获取。'"><a-input-password v-model:value="botForm.token" size="large" autocomplete="new-password" placeholder="输入 Bot Token"/></a-form-item>
-     <a-form-item label="欢迎语"><a-textarea v-model:value="botForm.welcomeText" :rows="4" :maxlength="4000" show-count placeholder="输入用户打开机器人时看到的欢迎内容"/></a-form-item>
+     <a-form-item label="机器人资料介绍"><a-textarea v-model:value="botForm.description" :rows="3" :maxlength="512" show-count placeholder="用户点开机器人资料时看到的介绍"/></a-form-item>
+     <a-divider class="my-2">/start 欢迎页内容</a-divider>
+     <a-form-item label="上方欢迎文案"><a-textarea v-model:value="botForm.welcomeMessage" :rows="3" :maxlength="2000" show-count placeholder="支持自定义欢迎介绍；Telegram ID 和余额由系统自动显示"/></a-form-item>
+     <a-form-item label="下方购买须知"><a-textarea v-model:value="botForm.purchaseNotice" :rows="4" :maxlength="2000" show-count placeholder="支持自定义购买须知"/></a-form-item>
      <a-divider class="my-2">机器人专属设置</a-divider>
      <a-form-item label="主人 Telegram 数字 ID"><a-input v-model:value="botForm.ownerId" inputmode="numeric" placeholder="填写此机器人的主人 ID"/></a-form-item>
      <a-form-item label="客服链接"><a-input v-model:value="botForm.customerServiceUrl" placeholder="https://t.me/客服用户名"/></a-form-item>
