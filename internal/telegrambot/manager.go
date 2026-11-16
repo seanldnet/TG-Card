@@ -449,6 +449,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		if balanceErr == nil { balanceText = formatUSDTAtomic(balance) + " U" }
 		welcome := "🎉 欢迎来到自动发卡商城！\n选择下方菜单开始选购。\n\n👤 Telegram ID：\n" + strconv.FormatInt(msg.From.ID, 10) + "\n\n💰 当前余额：\n" + balanceText + "\n\n📌 购买须知：\n• 虚拟商品发货后不支持无理由退款\n• 如有问题请联系客服"
 		if link := m.customerServiceLink(); link != "" { welcome += "\n\n客服入口：" + link }
+		if community, support := m.communityLinks(); community != "" || support != "" { welcome += "\n\n群组入口："; if community != "" { welcome += "\n官方群：" + community }; if support != "" { welcome += "\n售后群：" + support } }
 		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, welcome, mainMenuKeyboard())
 	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
