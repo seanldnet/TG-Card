@@ -97,11 +97,18 @@ type Message struct {
 	From *TelegramUser `json:"from"`
 	NewChatMembers []TelegramUser `json:"new_chat_members"`
 	Document *TelegramDocument `json:"document"`
+	Photo []TelegramPhoto `json:"photo"`
 }
 type TelegramDocument struct {
 	FileID string `json:"file_id"`
 	FileName string `json:"file_name"`
 	MimeType string `json:"mime_type"`
+}
+type TelegramPhoto struct {
+	FileID string `json:"file_id"`
+	FileSize int64 `json:"file_size"`
+	Width int `json:"width"`
+	Height int `json:"height"`
 }
 
 type Chat struct {
@@ -479,9 +486,20 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
 	}
-	if msg.Document != nil {
-		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文件 ID 查询仅对 Bot 主人开放。"); return }
-		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id（复制到后台商品文件配置）：\n"+msg.Document.FileID)
+	if msg.Document != nil || len(msg.Photo)>0 {
+		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
+		if strings.HasPrefix(pendingMedia,"support_followup:") {
+			ticketID := strings.TrimPrefix(pendingMedia,"support_followup:")
+			fileID, fileName := "", ""
+			if msg.Document != nil { fileID=msg.Document.FileID; fileName=msg.Document.FileName } else { photo:=msg.Photo[len(msg.Photo)-1]; fileID=photo.FileID; fileName="Telegram 图片" }
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),"用户提交了售后凭证",fileID,fileName);err!=nil {
+				_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证保存失败，请稍后重试。")
+			} else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证已添加到售后工单。你可以继续发送补充说明或图片；发送 /start 可结束本次补充。") }
+			m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia)
+			return
+		}
+		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"请先提交售后工单，再发送图片或文件作为凭证。"); return }
+		if msg.Document != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id：\n"+msg.Document.FileID) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到图片，可在 Telegram file_id 中查看凭证。\n"+msg.Photo[len(msg.Photo)-1].FileID) }
 		return
 	}
 	text := strings.TrimSpace(msg.Text)
@@ -523,6 +541,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			m.setPendingAction(cfg.ID, msg.Chat.ID, "support_description:"+orderNo)
 			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "已记录订单号："+orderNo+"\n请直接描述你遇到的问题，我会提交售后申请。")
 			return
+		case strings.HasPrefix(pending,"support_followup:"):
+			ticketID := strings.TrimPrefix(pending,"support_followup:")
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","");err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。") }
+			m.setPendingAction(cfg.ID,msg.Chat.ID,pending)
+			return
 		case strings.HasPrefix(pending, "support_description:"):
 			orderNo := strings.TrimPrefix(pending, "support_description:")
 			description := strings.TrimSpace(text)
@@ -539,6 +562,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if _, timelineErr := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,"",""); timelineErr != nil { log.Printf("append initial support message failed: ticket_id=%s error=%v",ticket.ID,timelineErr) }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
+			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
 			return
 		case pending == "wallet_custom_amount":
 			value, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
