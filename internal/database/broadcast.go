@@ -42,7 +42,7 @@ func CreateBroadcastTask(ctx context.Context, db *sql.DB, driver, botID, title, 
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return BroadcastTask{},err};defer tx.Rollback()
 	insert:="INSERT INTO broadcast_tasks(id,bot_id,title,message_text,audience_type,status,scheduled_at,created_by,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'all','queued',"+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")"
 	if _,err:=tx.ExecContext(ctx,insert,id,botID,title,message,item.ScheduledAt,createdBy,now,now);err!=nil{return BroadcastTask{},err}
-	query:="SELECT u.telegram_user_id FROM telegram_users u WHERE u.last_seen_bot_id="+placeholder(driver,1)+" AND NOT EXISTS (SELECT 1 FROM broadcast_opt_outs o WHERE o.bot_id="+placeholder(driver,2)+" AND o.telegram_user_id=u.telegram_user_id)"
+	query:="SELECT u.telegram_user_id FROM telegram_user_bots u WHERE u.bot_id="+placeholder(driver,1)+" AND NOT EXISTS (SELECT 1 FROM broadcast_opt_outs o WHERE o.bot_id="+placeholder(driver,2)+" AND o.telegram_user_id=u.telegram_user_id)"
 	rows,err:=tx.QueryContext(ctx,query,botID,botID);if err!=nil{return BroadcastTask{},err}
 	userIDs:=make([]string,0)
 	for rows.Next(){var userID string;if err:=rows.Scan(&userID);err!=nil{rows.Close();return BroadcastTask{},err};userIDs=append(userIDs,userID)}
