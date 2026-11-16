@@ -867,8 +867,15 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或已处理"); return }
 		address,enabled:=m.paymentConfig()
 		if !enabled || address=="" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"链上付款暂未启用"); _ = m.sendMessage(ctx,cfg.Token,chatID,"链上付款暂未启用，请联系管理员。"); return }
-		text:="订单号："+order.OrderNo+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
-		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"我的订单","callback_data":"shop:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}}
+		amountText:=formatUSDTAtomic(order.PaymentAmountAtomic)
+		text:="付款信息\n订单号："+order.OrderNo+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+amountText+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
+		markup:=map[string]any{"inline_keyboard":[][]map[string]any{
+			{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
+			{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
+			{{"text":"📋 复制订单号","copy_text":map[string]string{"text":order.OrderNo}}},
+			{{"text":"我的订单","callback_data":"shop:orders"}},
+			{{"text":"返回商城","callback_data":"shop:home"}},
+		}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
 	case query.Data=="wallet:openrecharge":
@@ -917,8 +924,15 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 	if !enabled || address=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"充值功能暂未启用，请联系管理员。");return }
 	item,err:=database.CreateWalletRecharge(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(userID,10),strconv.FormatInt(chatID,10),amountAtomic,30*time.Minute)
 	if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"创建充值单失败："+err.Error());return }
-	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n预计赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n预计到账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+formatUSDTAtomic(item.PaymentAmountAtomic)+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
-	markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},{{"text":"🛍️ 返回商城","callback_data":"shop:home"}}}}
+	amountText:=formatUSDTAtomic(item.PaymentAmountAtomic)
+	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n预计赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n预计到账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+amountText+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
+	markup:=map[string]any{"inline_keyboard":[][]map[string]any{
+		{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
+		{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
+		{{"text":"📋 复制充值单号","copy_text":map[string]string{"text":item.RechargeNo}}},
+		{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},
+		{{"text":"🛍️ 返回商城","callback_data":"shop:home"}},
+	}}
 	if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码暂不可用，请复制收款地址。",markup) }
 }
 
