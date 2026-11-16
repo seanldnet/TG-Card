@@ -267,6 +267,8 @@ func (m *Manager) checkLowStock(ctx context.Context) {
 	if ownerID==""{return}
 	now:=time.Now()
 	for _,p:=range products{
+		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
+		if !keyBacked { m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue }
 		if p.Status==1 && p.StockCount>0 { m.NotifyProductRestocked(ctx,p.ID) }
 		if p.Status!=1||p.StockCount>5{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
 		m.mu.Lock();last:=m.stockAlerted[p.ID];due:=last.IsZero()||now.Sub(last)>=6*time.Hour
@@ -400,7 +402,8 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			for _, product := range products {
 				if product.Status != 1 { continue }
 				if strings.Contains(strings.ToLower(product.Name+" "+product.Description), needle) {
-					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · 库存 " + strconv.Itoa(product.StockCount)
+					stockLabel:="不限量";if product.DeliveryType==""||product.DeliveryType=="card"||product.DeliveryType=="file_card"{stockLabel="库存 "+strconv.Itoa(product.StockCount)}
+					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · " + stockLabel
 					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
 				}
 			}
@@ -654,7 +657,7 @@ func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
 func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
  products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",mainMenuKeyboard());return}
  rows:=make([][]map[string]string,0)
- for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
+ for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="不限量";if p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"{stock="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)}};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
  if len(rows)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回分类","callback_data":"shop:home"}}}});return}
  rows=append(rows,[]map[string]string{{"text":"⬅️ 返回分类","callback_data":"shop:home"}})
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（无库存商品也可以查看详情）：",map[string]any{"inline_keyboard":rows})
