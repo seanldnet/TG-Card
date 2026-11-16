@@ -35,3 +35,13 @@ CREATE TABLE IF NOT EXISTS broadcast_opt_outs (
   created_at TEXT NOT NULL,
   PRIMARY KEY(bot_id, telegram_user_id)
 );
+
+-- Track every Bot/user relationship rather than only the user's most recently used Bot.
+CREATE TABLE IF NOT EXISTS telegram_user_bots (
+  bot_id TEXT NOT NULL,
+  telegram_user_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  PRIMARY KEY(bot_id, telegram_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_user_bots_recent ON telegram_user_bots(bot_id, last_seen_at);
