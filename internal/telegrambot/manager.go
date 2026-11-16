@@ -40,6 +40,8 @@ type Manager struct {
 	paymentEnabled bool
 	ownerID string
 	customerServiceURL string
+	communityURL string
+	supportGroupURL string
 	stockAlerted map[string]time.Time
 	pendingActions map[string]string
 	notifier func(event, details, userChatID string)
@@ -153,6 +155,8 @@ func (m *Manager) Reconcile(configs []Config) {
 func (m *Manager) SetOwnerID(ownerID string) { m.mu.Lock(); m.ownerID = strings.TrimSpace(ownerID); m.mu.Unlock() }
 func (m *Manager) SetCustomerServiceURL(value string) { m.mu.Lock(); m.customerServiceURL = strings.TrimSpace(value); m.mu.Unlock() }
 func (m *Manager) customerServiceLink() string { m.mu.Lock(); defer m.mu.Unlock(); return m.customerServiceURL }
+func (m *Manager) SetCommunityLinks(communityURL, supportGroupURL string) { m.mu.Lock(); m.communityURL = strings.TrimSpace(communityURL); m.supportGroupURL = strings.TrimSpace(supportGroupURL); m.mu.Unlock() }
+func (m *Manager) communityLinks() (string, string) { m.mu.Lock(); defer m.mu.Unlock(); return m.communityURL, m.supportGroupURL }
 
 func (m *Manager) pendingKey(botID string, chatID int64) string {
 	return botID + ":" + strconv.FormatInt(chatID, 10)
