@@ -116,7 +116,7 @@ func ListSupportTickets(ctx context.Context, db *sql.DB, driver string) ([]Suppo
 	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets ORDER BY created_at DESC LIMIT 500"
 	rows,err:=db.QueryContext(ctx,query); if err!=nil{return nil,err}; defer rows.Close()
 	items:=make([]SupportTicket,0)
-	for rows.Next(){ var item SupportTicket; if err:=rows.Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt);err!=nil{return nil,err}; items=append(items,item) }
+	for rows.Next(){ var item SupportTicket; if err:=rows.Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt);err!=nil{return nil,err}; items=append(items,item) }
 	return items,rows.Err()
 }
 
