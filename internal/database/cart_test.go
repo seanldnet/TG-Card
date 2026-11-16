@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 	"time"
+	"time"
 
 	"github.com/seanldnet/TG-Card/internal/config"
 )
@@ -105,7 +106,7 @@ func TestCartCheckoutCreatesOneInvoiceAndReservesAllProducts(t *testing.T) {
 	if err=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",first.ID,2);err!=nil{t.Fatal(err)}
 	if err=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",second.ID,1);err!=nil{t.Fatal(err)}
 	order,lines,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot","user","123",20*time.Minute);if err!=nil{t.Fatal(err)}
-	if order.Status!="pending_payment"||order.AmountMinor!=900||order.Quantity!=3||order.PaymentAmountAtomic<9_000_000{return}
+	if order.Status!="pending_payment"||order.AmountMinor!=900||order.Quantity!=3||order.PaymentAmountAtomic<9_000_000{t.Fatalf("unexpected checkout order: %+v",order)}
 	if len(lines)!=2{t.Fatalf("expected two checkout lines, got %d",len(lines))}
 	var reserved int
 	if err=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE order_id=? AND status=1",order.ID).Scan(&reserved);err!=nil{t.Fatal(err)}
