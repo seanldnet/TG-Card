@@ -228,6 +228,7 @@ func main() {
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
 	api.HandleFunc("PUT /api/support/tickets/{id}", app.updateSupportTicket)
 	api.HandleFunc("GET /api/support/tickets/{id}/messages", app.listSupportTicketMessages)
+	api.HandleFunc("GET /api/support/tickets/{id}/attachments/{messageId}", app.getSupportTicketAttachment)
 	api.HandleFunc("POST /api/support/tickets/{id}/messages", app.appendSupportTicketMessage)
 	api.HandleFunc("PUT /api/support/tickets/{id}/assign", app.assignSupportTicket)
 	api.HandleFunc("POST /api/support/tickets/{id}/refund", app.refundSupportTicket)
