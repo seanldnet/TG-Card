@@ -26,7 +26,7 @@ TG-Card 是**单商户、多 Telegram Bot 的自动发卡商城**。多个 Bot �
 - 单商户、单管理员后台，不是多租户 SaaS。
 - 不包含代理商、代理余额、分销佣金体系。
 - 多个 Bot 共用商品与订单核心，但可分别配置 Bot Token、欢迎内容、购买须知、介绍、Owner 和客服/群组链接。
-- 管理后台是商品、库存、订单、支付设置及运营数据的主要管理入口。
+- 管理后台是商品、库存、订单、支付设置及运营数据的主要管理入口。\n- 允许单商户配置外部发卡上游作为采购来源；该能力是单商户业务边界的扩展，不引入多租户或代理角色。当前仅完成调研和接口契约设计，尚未交付目录同步或上游采购。
 
 ## 2. 技术架构
 
@@ -48,7 +48,7 @@ TG-Card 是**单商户、多 Telegram Bot 的自动发卡商城**。多个 Bot �
 - `internal/database/`：数据库访问、事务、订单/库存/余额/营销/工单操作。
 - `internal/payment/`、`internal/tron/`：支付监听与 TRON 链上交互。
 - `web/overrides/apps/web-antd/src/views/`：后台业务页面。
-- `docs/`：产品范围、支付交付、售后及开发变更记录。
+- `internal/upstream/`：上游适配器统一接口契约（阶段 A 新增，尚无可用 provider 实现）。\n- `docs/`：产品范围、支付交付、售后、上游对接及开发变更记录。
 
 ```mermaid
 flowchart LR
@@ -73,7 +73,7 @@ flowchart LR
 | 登录与管理员资料 | 已实现 | 管理员登录、Bearer Token、密码修改、个人资料、头像、邮箱验证码相关接口；密码 bcrypt 哈希。 |
 | 仪表盘 | 部分实现 | 提供工作台/分析页面；具体指标以页面和 API 实际返回为准，不应把规划中的全部经营指标视为已交付。 |
 | 机器人管理 | 已实现 | 添加/编辑/删除 Bot、Token 验证与加密保存、启停、欢迎内容、购买须知、介绍、Owner ID、客服/群组链接、运行状态、单 Bot 重启。 |
-| 商品与分类 | 已实现 | 分类管理、商品增删改、上下架、商品信息、价格及交付配置、库存卡密导入。 |
+| 商品与分类 | 已实现 | 分类管理、商品增删改、上下架、商品信息、价格及交付配置、库存卡密导入。上游目录同步/来源过滤尚未实现。 |\n| 上游发卡对接 | 调研/接口契约完成，功能待开发 | 已核实异次元和 Dujiao-Next 的官方接口文档；萌次元外部商户 API 尚待确认。统一 Go Adapter 契约位于 `internal/upstream/adapter.go`，尚无可用于生产的 provider 实现。详见 `docs/upstream-integration.md`。 |
 | 订单管理 | 已实现 | 订单列表、订单详情、支付状态与交付状态查看、清理入口、管理员重试发货；列表分页。 |
 | 支付流水 | 已实现 | 链上交易列表、状态筛选/搜索、已匹配/未匹配/需人工核对状态、人工匹配订单及备注。 |
 | 支付设置 | 已实现 | 后台设置 TRON 收款地址、TronGrid API Key、USDT 合约及启停；API Key 加密存储、脱敏显示，保存后更新运行配置。 |
@@ -506,7 +506,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | PR/Issue | 问题摘要 | 状态 | 影响模块 | 合并后动作 |
 |---|---|---|---|---|
 | [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 已合并；merge commit e70879e6bdbb5b554b31fdb06adaf6b3a359b98f。镜像发布状态需以 Publish workflow/GHCR 核验；Telegram 真机验收待记录。 | Telegram Bot 首页菜单、用户交互 | 确认目标镜像包含该 commit；部署后重新发送 /start，验证两种键盘同时显示，并测试普通用户/Owner 菜单隔离。 |
-| 其他已知问题 | 本次文档更新未创建新的代码修复 PR。 | 无新增 PR；其他待验收项见第 11 节。 | 见第 11 节 | 新问题出现时补充 Issue/PR、责任模块、状态和合并后验收动作。 |
+| [PR #15](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览与下载。 | Open，未合并；当前 CI 失败状态需继续排查。 | 售后 Bot、数据库、HTTP API、后台工单时间线 | 修复 CI、合并并发布镜像；项目所有者完成 Telegram 图片/文件真机验收。 |\n| [PR #16](https://github.com/seanldnet/TG-Card/pull/16) | 上游发卡系统阶段 A：官方协议调研、统一 Go Adapter 契约。 | 本 PR 待合并；尚未实现上游网络调用。 | `internal/upstream/`、上游专项文档 | 合并后先处理阶段 B；仅实现已核实的 ACG/Dujiao 协议，MCY 等官方确认。 |
 
 ## 20. 安全基线
 
@@ -540,6 +540,6 @@ curl -fsS http://127.0.0.1:38647/api/health
 - API 路由与权限：cmd/server/main.go。
 - 本地构建/CI：scripts/build-admin.sh、.github/workflows/go-ci.yml、.github/workflows/admin-ci.yml。
 - Docker 运行用户、端口和数据目录：Dockerfile、docker-compose.yml。
-- 支付人工核对：cmd/server/main.go、internal/payment/manager.go、docs/payment-delivery.md。
+- 支付人工核对：cmd/server/main.go、internal/payment/manager.go、docs/payment-delivery.md。\n- 上游协议调研与适配器契约：docs/upstream-integration.md、internal/upstream/adapter.go；上游接口字段以专项文档链接的官方文档/源码为依据。
 
 如果未来代码与本文冲突，应以当前代码和数据库迁移为准，并在同一 PR 中修订本文和 docs/CHANGELOG.md。
