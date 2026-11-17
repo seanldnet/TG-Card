@@ -2,6 +2,12 @@
 
 > 本文是项目当前实现状态的主文档。内容以 `main` 分支源码、数据库迁移、后台页面和现有技术文档为依据；产品规划不等于已交付功能。每次开发、修复、重构或发布都必须同步更新本文和 `docs/CHANGELOG.md`。
 
+> **文档元信息**
+> - 最后更新时间：2026-11-18
+> - 文档版本：1.1.0
+> - 源码核对基线：`main` 分支，commit `a06764f5060327ab675603bdf89115a11450951e`
+> - 本次文档更新：PR [#14](https://github.com/seanldnet/TG-Card/pull/14)，分支 `docs/update-project-status-v1.1.0`；分支最新 commit 以 PR 页面为准
+
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
 - 默认分支：`main`
@@ -44,6 +50,20 @@ TG-Card 是**单商户、多 Telegram Bot 的自动发卡商城**。多个 Bot �
 - `web/overrides/apps/web-antd/src/views/`：后台业务页面。
 - `docs/`：产品范围、支付交付、售后及开发变更记录。
 
+```mermaid
+flowchart LR
+  TG[Telegram 用户与群组] <--> BM[Telegram Bot Manager]
+  BM <--> DB[(PostgreSQL / SQLite)]
+  BM <--> API[HTTP API / 业务服务]
+  API <--> DB
+  PM[TRC20 支付监听] --> DB
+  PM --> BM
+  Admin[Vue 3 管理后台] <-->|HTTPS / JSON API| API
+  API --> Files[(持久化数据目录：上传文件与加密密钥)]
+```
+
+图示为逻辑关系：Bot Manager 与 HTTP API 共用数据库；支付监听将链上交易写入数据库并在支付确认后触发 Bot 发货；管理后台通过 HTTP API 管理业务数据。部署时是否启用 HTTPS 取决于外部反向代理配置。
+
 ## 3. 当前后台页面与功能清单
 
 以下状态描述的是当前仓库可见实现，不代表每个场景都已经过生产环境验收。
@@ -81,7 +101,7 @@ TG-Card 是**单商户、多 Telegram Bot 的自动发卡商城**。多个 Bot �
 
 Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Reply Keyboard 作为输入框下方的常驻菜单。两者是不同的 Telegram 键盘类型，不能把其中一个当成另一个。
 
-**重要已知事项：** `main` 当前首页实现曾只把常驻 Reply Keyboard 传给欢迎消息，导致欢迎卡片下方的 Inline Keyboard 缺失。恢复首页消息内按钮的修复正在 PR #12 中处理；在该 PR 合并并发布前，不得将这项修复描述为已进入正式镜像。PR：https://github.com/seanldnet/TG-Card/pull/12。
+**历史问题追踪：** 首页欢迎卡片下方 Inline Keyboard 曾缺失，修复已在 PR #12 合并；镜像发布及 Telegram 真机验收状态见第 19 节。
 
 ### 4.2 商品购买与订单
 
@@ -222,15 +242,20 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 ## 11. 当前明确未完成/需持续验收的事项
 
 以下内容不应被误报为已经完整交付：
-1. GMpay、EPUSDT 支付适配器。
-2. TRC20 自动退款、钱包归集/提现及复杂异常交易自动对账。
-3. 完整多角色 RBAC、多租户、代理商/分销体系（当前产品边界也不包含这些）。
-4. 签到积分、用户等级、邀请推广等完整营销套件。
-5. 完整商业授权/机器指纹授权系统。
-6. 所有 Telegram 菜单、所有按钮流程的真实客户端端到端验收。
-7. 所有售后附件、补发、退款路径的完整真实 Telegram 验收。
-8. 对 Telegram 网络超时导致的消息重复发送实现严格 exactly-once（Telegram API 本身不提供消息幂等键）。
-9. 所有移动端页面在真实设备上的完整回归测试。
+
+| 原条目 | 优先级 | 建议目标阶段 |
+|---|---|---|
+| 1. GMpay、EPUSDT 支付适配器。 | P1 | 后续支付渠道扩展阶段 |
+| 2. TRC20 自动退款、钱包归集/提现及复杂异常交易自动对账。 | P1 | 支付风控与资金运维阶段 |
+| 3. 完整多角色 RBAC、多租户、代理商/分销体系（当前产品边界也不包含这些）。 | P2 | 产品范围重新评审后再规划 |
+| 4. 签到积分、用户等级、邀请推广等完整营销套件。 | P2 | 营销能力扩展阶段 |
+| 5. 完整商业授权/机器指纹授权系统。 | P2 | 独立授权产品阶段，需先确认产品范围 |
+| 6. 所有 Telegram 菜单、所有按钮流程的真实客户端端到端验收。 | P0 | 当前版本发布验收阶段 |
+| 7. 所有售后附件、补发、退款路径的完整真实 Telegram 验收。 | P0 | 当前版本售后验收阶段 |
+| 8. 对 Telegram 网络超时导致的消息重复发送实现严格 exactly-once（Telegram API 本身不提供消息幂等键）。 | P1 | 交付可靠性专项评估阶段 |
+| 9. 所有移动端页面在真实设备上的完整回归测试。 | P1 | 当前版本移动端回归阶段 |
+
+优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
 
 该清单是当前文档编写时基于代码与现有技术文档识别的边界；每次实现变化后必须同步修订。
 
@@ -278,3 +303,243 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 - `docs/payment-delivery.md`：支付验证、订单状态、库存和发货恢复机制。
 - `docs/commerce-expansion.md`：补货通知、数量折扣、充值奖励、交付类型等实现约定。
 - `docs/support-tickets.md`：售后工单规则与当前限制。
+
+
+## 14. 环境变量与配置清单
+
+本表只列出 internal/config/config.go 和仓库根目录 docker-compose.yml 中实际读取或传入的环境变量。
+
+| 变量名 | 默认值/未设置时行为 | 是否必填 | 作用与依据 |
+|---|---|---|---|
+| APP_ENV | production | 否 | 应用环境标识；Compose 显式设置为 production。 |
+| PORT | 38647 | 否 | HTTP 服务监听端口。 |
+| DATA_DIR | ./data；Docker 镜像设为 /app/data | 否 | SQLite 默认数据库路径、JWT 签名密钥、Bot Token 加密密钥和上传文件目录。 |
+| WEB_DIST_DIR | ./web/dist；Docker 镜像设为 /app/web/dist | 否 | 前端静态构建产物目录。 |
+| DB_DRIVER | 未设置时，有 DATABASE_URL 则 postgres，否则 sqlite | 否（需与数据库配置匹配） | 数据库驱动；支持 postgres/postgresql/pgx 与 sqlite/sqlite3。Compose 固定为 postgres。 |
+| DATABASE_URL | 未设置时为空；SQLite 使用 DATA_DIR/tg-card.db | 使用 PostgreSQL 时必填 | 数据库 DSN；DB_DRIVER=postgres 时空值会导致启动失败。 |
+| JWT_SECRET | 未设置时从 DATA_DIR/jwt-secret 读取或生成 | 否 | HS256 管理员令牌签名密钥；显式设置时至少 32 个字符。 |
+| ADMIN_USERNAME | admin | 否 | 首次初始化管理员用户名；仅空管理员数据库使用，长度 3–64。 |
+| ADMIN_PASSWORD | 空值时生成一次性随机密码并在首次启动日志显示 | 首次初始化时可选；显式提供则至少 12 字符 | 首次初始化管理员密码；已有管理员时不会重置密码。 |
+| TRONGRID_API_KEY | 空字符串 | 否 | 旧配置/首次启动导入；需同时提供收款地址且数据库尚无支付设置，导入后加密保存。 |
+| TRON_RECEIVE_ADDRESS | 空字符串 | 否 | 旧配置/首次启动 TRON 收款地址导入；运行期配置以数据库为准。 |
+| TRON_USDT_CONTRACT | TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t | 否 | 首次导入时的 TRON USDT 合约默认值；后台保存后数据库配置为准。 |
+| POSTGRES_PASSWORD | 无默认值；Compose 要求在环境或 .env 中提供 | **是（Compose 部署）** | PostgreSQL 密码，并用于拼接应用 DATABASE_URL。 |
+| POSTGRES_DB | Compose 固定 tgcard | 否（Compose 已设置） | PostgreSQL 初始化数据库名。 |
+| POSTGRES_USER | Compose 固定 tgcard | 否（Compose 已设置） | PostgreSQL 初始化用户名。 |
+
+补充说明：
+- SMTP_HOST、SMTP_PORT、BOT_TOKEN_ENCRYPTION_KEY 等变量不由当前配置加载器读取；SMTP 在后台站点设置配置，Bot Token 加密密钥由数据目录中的持久化密钥文件管理。
+- TRONGRID_API_KEY、TRON_RECEIVE_ADDRESS、TRON_USDT_CONTRACT 在 Compose 中仅作为旧配置导入入口；支付初始化后数据库配置为准。
+- 未在上述配置加载器和 Compose 文件中发现其他应用级环境变量。
+
+核对位置：internal/config/config.go、cmd/server/main.go、internal/auth/token.go、internal/secret/secret.go、internal/database/database.go、docker-compose.yml。
+
+## 15. 升级与回滚
+
+### 15.1 从旧版本镜像升级
+
+1. 进入包含当前 docker-compose.yml 和部署环境文件的目录。
+2. 备份 PostgreSQL 数据卷和应用数据卷；保存当前 Compose 文件及正在运行的镜像版本/摘要。
+3. 拉取并启动新镜像：
+   ```bash
+   docker compose pull app
+   docker compose up -d
+   ```
+4. 查看启动日志：
+   ```bash
+   docker compose logs --tail=200 app
+   docker compose logs --tail=100 db
+   ```
+5. 检查 GET /api/health，并执行第 17 节端到端验收清单。
+
+### 15.2 数据库迁移兼容性
+
+- 启动时 database.Migrate 会读取嵌入二进制的 migrations/*.sql，按文件名版本号检查 schema_migrations。
+- 每个未执行迁移在独立数据库事务中执行；成功后写入版本记录，失败时回滚当前迁移并终止启动。
+- 当前迁移目录未提供 down/rollback 迁移脚本。
+- 迁移 SQL 的完整 SQLite/PostgreSQL 跨版本兼容矩阵：待补充。
+- 新版本迁移后的数据库是否可由任意旧版本二进制安全读写：待补充/待验证，不得默认兼容。
+
+### 15.3 回滚注意事项
+
+- 回滚镜像前先确认旧版本是否兼容当前 schema；未经验证不得直接用旧二进制继续写生产数据库。
+- 保留升级前一致性数据库备份，以及 tg_card_data、postgres_data 持久化卷。
+- tg_card_data 包含 jwt-secret、bot-token.key 和上传文件。丢失或替换密钥可能导致现有会话失效、已加密 Bot Token/支付密钥无法解密。
+- 不要通过删除 Docker volumes 回滚。
+- 数据库备份/恢复脚本、停机窗口、PostgreSQL PITR 和逐版本回滚矩阵：待补充。
+
+## 16. API 接口索引
+
+路径来自 cmd/server/main.go 的 ServeMux 注册。除特别注明外，权限为已登录且有效的管理员 Bearer Token；当前没有按后台菜单实现细粒度权限码控制。支付人工补单另要求 role=super。
+
+| 模块 | 方法与路径 | 权限 |
+|---|---|---|
+| 健康检查 | GET /api/health | 公开 |
+| 登录/会话 | POST /api/auth/login | 公开；登录有 IP 频率限制 |
+| 登录/会话 | POST /api/auth/logout | 当前处理器公开且仅返回成功，不会在服务端撤销 Token |
+| 管理员账户 | POST /api/admin/password | 管理员 Bearer |
+| 管理员资料 | GET /api/user/info、PUT /api/user/profile、POST /api/user/avatar | 管理员 Bearer |
+| 邮箱验证 | GET /api/auth/codes、POST /api/user/email/send-code、POST /api/user/email/verify | 管理员 Bearer |
+| 动态菜单 | GET /api/menu/all | 管理员 Bearer |
+| Bot 管理 | GET /api/bots、GET /api/bots/runtime、POST /api/bots、PUT /api/bots/owner、PUT /api/bots/{id}、DELETE /api/bots/{id}、POST /api/bots/{id}/restart | 管理员 Bearer |
+| 商品分类 | GET /api/catalog/categories、POST /api/catalog/categories、DELETE /api/catalog/categories/{id} | 管理员 Bearer |
+| 商品与库存 | GET /api/catalog/products、POST /api/catalog/products、PUT /api/catalog/products/{id}、DELETE /api/catalog/products/{id}、POST /api/catalog/products/{id}/keys | 管理员 Bearer |
+| 订单 | GET /api/orders、GET /api/orders/{id}、POST /api/orders/cleanup、POST /api/orders/{id}/retry-delivery | 管理员 Bearer |
+| 用户与余额 | GET /api/users、POST /api/users/{id}/balance、GET /api/users/{id}/wallet | 管理员 Bearer |
+| 支付交易 | GET /api/payment/transactions | 管理员 Bearer |
+| 支付交易人工核对 | POST /api/payment/transactions/{transactionId}/reconcile | super 管理员 Bearer |
+| 充值赠送 | GET /api/settings/recharge-bonus、PUT /api/settings/recharge-bonus | 管理员 Bearer |
+| 支付设置 | GET /api/settings/payment、PUT /api/settings/payment | 管理员 Bearer |
+| 站点设置 | GET /api/settings/site、PUT /api/settings/site、POST /api/settings/site/test-email、POST /api/settings/site/test-telegram、POST /api/settings/site/logo | 管理员 Bearer |
+| 优惠券/促销 | GET /api/promotions、POST /api/promotions、PUT /api/promotions/{id}、DELETE /api/promotions/{id} | 管理员 Bearer |
+| 兑换码 | GET /api/redemption-codes、POST /api/redemption-codes、PUT /api/redemption-codes/{id}、DELETE /api/redemption-codes/{id} | 管理员 Bearer |
+| 群发 | GET /api/broadcasts、POST /api/broadcasts | 管理员 Bearer |
+| 售后工单 | GET /api/support/tickets、PUT /api/support/tickets/{id}、GET /api/support/tickets/{id}/messages、POST /api/support/tickets/{id}/messages、PUT /api/support/tickets/{id}/assign、POST /api/support/tickets/{id}/refund | 管理员 Bearer |
+
+路由注册和权限实现位置：cmd/server/main.go。API handler 通常自行调用 authenticate；health、login 和当前 logout 不执行该认证。Telegram Bot 用户交互不属于后台 REST API。
+
+## 17. 测试与验收
+
+### 17.1 本地 Go 测试
+
+在仓库根目录、Go 1.25 环境运行：
+
+```bash
+go mod tidy
+gofmt -w cmd internal
+go vet ./...
+go test ./...
+CGO_ENABLED=0 go build -trimpath -o tg-card ./cmd/server
+```
+
+go test ./... 执行完整 Go 测试；CI 同样执行 tidy、格式化、vet、test 和 build。gofmt -w 会修改工作区文件，执行前应确认分支与工作区状态。
+
+### 17.2 本地前端构建
+
+在具备 Vben submodule、Node.js 22 和 Corepack/pnpm 的环境中，从仓库根目录运行：
+
+```bash
+corepack enable
+corepack prepare pnpm@11.16.0 --activate
+./scripts/build-admin.sh
+```
+
+脚本应用 overrides、安装锁定依赖、构建 @vben/web-antd，并复制产物到 web/dist。CI 工作流为 .github/workflows/admin-ci.yml。
+
+### 17.3 端到端验收 checklist 模板
+
+填写版本/镜像 digest、设备、日期和结果；未执行的项目保持“未验收”。
+
+**Telegram 真机（Android / iOS / Desktop）**
+- [ ] 记录 Bot 用户名、镜像 tag/digest、测试账号、设备/客户端版本。
+- [ ] 新用户发送 /start，欢迎内容、消息下方 Inline Keyboard 和输入框下方 Reply Keyboard 均出现。
+- [ ] 点击商品中心、搜索、订单、余额、充值、售后、帮助、主菜单，逐项验证。
+- [ ] Owner 与普通用户菜单隔离；普通用户不能执行 Owner 操作。
+- [ ] 完成测试商品下单、支付确认和交付；核对消息、订单和库存状态。
+- [ ] 提交售后文字、图片、文件（单独及组合），后台可查看并回复；按允许状态验证补发/退款。
+- [ ] 记录 Bot 重启、polling 冲突和网络异常时的日志及恢复结果。
+
+**支付到账（TRON TRC20 USDT）**
+- [ ] 后台收款地址、USDT 合约、TronGrid Key 配置状态及启用状态正确。
+- [ ] 创建待付款订单，核对金额、地址和有效期。
+- [ ] 受控测试转账确认到账，核对交易哈希、金额、地址、订单匹配和发货。
+- [ ] 检查支付流水、订单状态、库存扣减和 Telegram 通知。
+- [ ] 少付、多付、过期到账、无法匹配/歧义交易进入人工核对，不自动发货。
+- [ ] 人工核对前独立验证链上交易、收款地址、金额、时间和订单；记录操作人、备注和审计日志。
+- [ ] 记录测试交易哈希、网络、时间、金额和处理结果；不得记录私钥/API Key。
+
+**移动端浏览器（Android Chrome / iOS Safari）**
+- [ ] 记录设备型号、系统、浏览器版本和视口尺寸。
+- [ ] 登录、刷新、重新登录和会话过期行为正常。
+- [ ] 仪表盘、Bot、商品库存、订单、支付、用户、售后、设置页面无横向溢出/遮挡。
+- [ ] 分页、筛选、弹窗、表单和图片/Logo 上传在窄屏可用。
+- [ ] 加载、成功、失败提示清楚；无未处理控制台异常或敏感数据泄露。
+
+验收记录：版本/Commit/镜像 digest；环境与日期；测试人员；未通过项/缺陷链接；结论（通过/有条件通过/不通过/未执行）。
+
+## 18. 运维与故障排查
+
+### 18.1 日志查看
+
+```bash
+docker compose logs -f --tail=200 app
+docker compose logs -f --tail=100 db
+docker compose ps
+```
+
+应用启动日志包含监听地址、数据库驱动、前端目录和首次管理员初始化信息。随机初始密码只在首次创建时显示一次，应安全保存，不要公开完整日志。
+
+### 18.2 健康检查
+
+```bash
+curl -fsS http://127.0.0.1:38647/api/health
+```
+
+预期 JSON 包含 status=ok、service=tg-card 和 UTC 时间。该接口只证明 HTTP 服务响应，不代表 Telegram、数据库业务或支付链路端到端正常。PostgreSQL 容器另有 pg_isready 健康检查。
+
+### 18.3 TRC20 交易人工核对 SOP
+
+1. 在后台支付交易流水定位异常交易，记录哈希、金额、时间、收款地址、分类和错误说明。
+2. 通过可信 TRON 区块浏览器/节点独立核对交易已确认、收款地址、USDT 合约、金额和时间。
+3. 对照订单/充值记录，核对订单号、应付金额、有效期、支付状态及交易哈希是否已关联其他记录。
+4. 只有确认归属且无重复入账/冲突时，才由 super 管理员通过后台人工核对功能提交目标订单 ID 和备注。API：POST /api/payment/transactions/{transactionId}/reconcile。
+5. 检查交易分类、订单支付状态、审计记录和发货状态；若已入账但发货失败，在订单管理中按状态重试发货。
+6. 无法确认归属、金额不符、过期到账或存在歧义时，不得猜测匹配；保留人工处理状态并升级核查。
+
+注意：人工核对接口会把交易关联到指定订单并触发发货尝试，不是只添加备注。自动链上退款尚未实现。充值过期到账的人工余额处理流程：待补充。
+
+### 18.4 常见问题 FAQ
+
+| 现象 | 排查方向 |
+|---|---|
+| 容器提示 DATABASE_URL required | 检查 DB_DRIVER=postgres 时 DATABASE_URL、POSTGRES_PASSWORD 是否存在。 |
+| 管理员登录失败 | 检查首次启动日志中的随机初始密码；ADMIN_USERNAME/ADMIN_PASSWORD 只初始化空管理员数据库，不会重置已有账号。不要删除数据卷重置。 |
+| 重启后 Bot Token/支付密钥无法解密 | 检查 tg_card_data 卷及 bot-token.key 是否保留；不要用空目录替换旧数据卷。 |
+| API 返回 401 | 检查 Bearer Token、24 小时有效期、管理员状态及密码修改后的 Token Version；重新登录。 |
+| health 正常但 Bot 不响应 | health 不检查 Telegram；查看 app 日志、Bot 配置/运行状态、Token 和重复 polling 实例。 |
+| 支付到账但未发货 | 检查支付流水分类、订单状态和日志；确认是否人工核对或交付失败，不要重复确认交易。 |
+| 前端 404/空白 | 检查 WEB_DIST_DIR、镜像静态产物、app 日志和浏览器网络请求。 |
+| 迁移失败 | 查看 migration version 和数据库错误，保留现场并恢复升级前备份；不要删除 schema_migrations 记录。 |
+
+## 19. 进行中 PR 与已知问题追踪表
+
+| PR/Issue | 问题摘要 | 状态 | 影响模块 | 合并后动作 |
+|---|---|---|---|---|
+| [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 已合并；merge commit e70879e6bdbb5b554b31fdb06adaf6b3a359b98f。镜像发布状态需以 Publish workflow/GHCR 核验；Telegram 真机验收待记录。 | Telegram Bot 首页菜单、用户交互 | 确认目标镜像包含该 commit；部署后重新发送 /start，验证两种键盘同时显示，并测试普通用户/Owner 菜单隔离。 |
+| 其他已知问题 | 本次文档更新未创建新的代码修复 PR。 | 无新增 PR；其他待验收项见第 11 节。 | 见第 11 节 | 新问题出现时补充 Issue/PR、责任模块、状态和合并后验收动作。 |
+
+## 20. 安全基线
+
+### 20.1 代码中可确认的控制
+
+- 管理员密码使用 bcrypt；新密码长度要求 12–256 字符。
+- 管理员 Bearer Token 使用 HS256，签发有效期 24 小时；认证检查签名、过期时间、管理员状态和 Token Version。
+- 登录按客户端 IP 限制尝试频率；达到限制时返回 429，提示 15 分钟后再试。
+- 修改管理员密码会递增 Token Version，使已有会话失效。
+- Bot Token、支付 API Key、SMTP 密码通过持久化 AES-256-GCM 密钥加密保存；密钥文件创建权限为 0600。
+- JWT Secret 未显式设置时保存在 DATA_DIR/jwt-secret；Bot/支付/SMTP 加密密钥位于 DATA_DIR/bot-token.key，均依赖持久化数据卷。
+- Docker 镜像以非 root 的 tgcard 用户运行；应用数据目录由镜像构建步骤设置权限。
+- HTTP 响应设置 X-Content-Type-Options、Referrer-Policy 和 X-Frame-Options 安全头。
+- HTTP Server 设置 ReadHeaderTimeout=5s、IdleTimeout=60s；应用自身未配置 TLS listener。
+
+### 20.2 部署建议与待确认项
+
+- Compose 端口映射当前为 38647:38647，默认在宿主机所有接口发布。生产建议防火墙限制来源，并绑定回环地址（例如 127.0.0.1:38647:38647），由 Nginx/Caddy/云负载均衡等反向代理提供 HTTPS。
+- TLS 终止、证书续期、HSTS、可信代理头及真实客户端 IP 处理不由当前 Compose 自动配置，需由部署环境完成并验收。
+- 不要将 JWT_SECRET、POSTGRES_PASSWORD、TronGrid API Key、Bot Token、SMTP 密码提交到 Git、前端代码或公开日志。
+- 限制应用数据目录、备份文件和日志的访问；备份应加密并限制权限。
+- 当前普通管理员 API 主要采用统一 Bearer 认证；支付人工补单额外要求 super。细粒度 RBAC、除登录外的 API 速率限制、CSRF/CORS 专项策略及可信代理 IP 白名单：待补充/待安全评估。
+- logout handler 当前仅返回成功，不在服务端撤销 Token；Token 在 24 小时过期或管理员 Token Version 改变前仍可能有效。客户端应清除本地 Token；服务端主动会话撤销能力：待补充。
+
+## 21. 本次核对的代码位置
+
+- 环境变量：internal/config/config.go、docker-compose.yml、cmd/server/main.go。
+- JWT：internal/auth/token.go、cmd/server/main.go。
+- 加密密钥：internal/secret/secret.go。
+- 数据库迁移：internal/database/database.go、internal/database/migrations/*.sql。
+- API 路由与权限：cmd/server/main.go。
+- 本地构建/CI：scripts/build-admin.sh、.github/workflows/go-ci.yml、.github/workflows/admin-ci.yml。
+- Docker 运行用户、端口和数据目录：Dockerfile、docker-compose.yml。
+- 支付人工核对：cmd/server/main.go、internal/payment/manager.go、docs/payment-delivery.md。
+
+如果未来代码与本文冲突，应以当前代码和数据库迁移为准，并在同一 PR 中修订本文和 docs/CHANGELOG.md。
