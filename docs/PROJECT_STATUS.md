@@ -6,7 +6,7 @@
 > - 最后更新时间：2026-11-18
 > - 文档版本：1.1.0
 > - 源码核对基线：`main` 分支，commit `a06764f5060327ab675603bdf89115a11450951e`
-> - 本次文档更新分支：`docs/update-project-status-v1.1.0`（PR 合并后补录最终 commit）
+> - 本次文档更新：PR [#14](https://github.com/seanldnet/TG-Card/pull/14)，分支 `docs/update-project-status-v1.1.0`；分支最新 commit 以 PR 页面为准
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -50,7 +50,7 @@ TG-Card 是**单商户、多 Telegram Bot 的自动发卡商城**。多个 Bot �
 - `web/overrides/apps/web-antd/src/views/`：后台业务页面。
 - `docs/`：产品范围、支付交付、售后及开发变更记录。
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
   TG[Telegram 用户与群组] <--> BM[Telegram Bot Manager]
   BM <--> DB[(PostgreSQL / SQLite)]
@@ -60,7 +60,7 @@ flowchart LR
   PM --> BM
   Admin[Vue 3 管理后台] <-->|HTTPS / JSON API| API
   API --> Files[(持久化数据目录：上传文件与加密密钥)]
-\`\`\`
+```
 
 图示为逻辑关系：Bot Manager 与 HTTP API 共用数据库；支付监听将链上交易写入数据库并在支付确认后触发 Bot 发货；管理后台通过 HTTP API 管理业务数据。部署时是否启用 HTTPS 取决于外部反向代理配置。
 
