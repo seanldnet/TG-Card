@@ -2,7 +2,7 @@
 // Provider-specific wire formats must stay inside individual adapter implementations.
 package upstream
 
-import "context"
+import (\n\t"context"\n\t"errors"\n)\n\nvar ErrUnsupported = errors.New("upstream capability is not supported by this provider")
 
 type Provider string
 
