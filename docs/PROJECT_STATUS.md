@@ -6,7 +6,7 @@
 > - 最后更新时间：2026-11-18
 > - 文档版本：1.1.0
 > - 源码核对基线：`main` 分支，commit `a06764f5060327ab675603bdf89115a11450951e`
-> - 本次文档更新：PR [#14](https://github.com/seanldnet/TG-Card/pull/14)，分支 `docs/update-project-status-v1.1.0`；分支最新 commit 以 PR 页面为准
+> - 本次文档更新：PR [#14](https://github.com/seanldnet/TG-Card/pull/14) 已合并；分支 `docs/update-project-status-v1.1.0`；合并 commit `d77e46c197c121010c6a73a475e28a927130c25c`
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
