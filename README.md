@@ -84,6 +84,15 @@ docker compose logs app
 
 数据持久化在 Docker volumes 中。不要删除数据卷，否则会丢失数据库和 JWT 签名密钥。
 
+## 项目文档
+
+- [当前功能总览与开发规范](docs/PROJECT_STATUS.md)：当前已实现功能、部分实现、待开发事项及强制文档更新规则。
+- [开发与修复日志](docs/CHANGELOG.md)：按时间倒序记录每次代码变更、验证、合并和镜像发布。
+- [产品功能范围](docs/product-scope.md)：产品规划基线（不等同于已交付功能）。
+- [支付与交付机制](docs/payment-delivery.md)：支付校验、订单状态、库存和发货恢复。
+- [商业功能扩展](docs/commerce-expansion.md)：交付模式、补货通知、折扣和充值奖励约定。
+- [售后工单](docs/support-tickets.md)：工单规则与边界。
+
 ## API 基础端点
 
 - GET /api/health：健康检查。
