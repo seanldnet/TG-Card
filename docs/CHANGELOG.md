@@ -2,8 +2,8 @@
 
 ## 2026-11-18 — 扩充项目状态文档：配置、升级、API、测试、运维与安全（文档 v1.1.0）
 
-- 状态：PR 已创建，等待合并
-- PR / Commit：https://github.com/seanldnet/TG-Card/pull/14；分支 `docs/update-project-status-v1.1.0`；源码核对基线 `main@a06764f5060327ab675603bdf89115a11450951e`
+- 状态：已合并
+- PR / Commit：https://github.com/seanldnet/TG-Card/pull/14；合并 commit `d77e46c197c121010c6a73a475e28a927130c25c`；分支 `docs/update-project-status-v1.1.0`；源码核对基线 `main@a06764f5060327ab675603bdf89115a11450951e`
 - 影响模块：`docs/PROJECT_STATUS.md`、`docs/CHANGELOG.md`
 - 变更内容：
   - 增加最后更新时间、源码 commit/分支和文档版本元信息。
