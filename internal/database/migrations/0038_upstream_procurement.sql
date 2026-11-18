@@ -51,3 +51,12 @@ ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_currency TEXT NOT N
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_balance_checked_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE upstream_procurements ADD COLUMN delivery_lease_until TEXT NOT NULL DEFAULT '';
 ALTER TABLE upstream_settings ADD COLUMN supplier_balance_alert_threshold TEXT NOT NULL DEFAULT '10';
+
+CREATE TABLE IF NOT EXISTS upstream_callback_security_events (
+  id TEXT PRIMARY KEY,
+  body_sha256 TEXT NOT NULL,
+  source_ip TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL,
+  received_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_upstream_callback_security_events_time ON upstream_callback_security_events(received_at DESC);
