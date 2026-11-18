@@ -1,7 +1,7 @@
 ## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 Draft，分支 CI 通过）
 
 - PR：[PR #38](https://github.com/seanldnet/TG-Card/pull/38)，独立分支 feat/dujiao-fund-safety-pr-d，head 5dbd0269a719f91b74458f03bd67a25aeab0761b，基线 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f。
-- 状态：Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；PR 仍为 Draft、尚未合并，Docker Publish/生产部署/验收待后续。
+- 状态：Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；PR #38 仍为 Draft、尚未合并；分支 CI 通过，Docker Publish/生产部署/验收待后续。
 - 实现：供应商采购前后余额快照和差异异常、15 分钟未完成快照巡检、退款账本完整性检查与重复退款保护、uncertain ageing/Owner 核实恢复、统一资金异常中心及处理状态。
 - 测试：go vet ./...、go test ./...、CGO_ENABLED=0 go build 全部成功；SQLite 测试覆盖供应商资金差异、退款关联异常不自动修正、重复退款仅一笔 credit、uncertain ageing 和 Owner 恢复。
 - 资金边界：不自动修改买家或供应商余额；采购失败/重试不改原始支付引用；退款单订单唯一；供应商差异只进入人工审查。PR E 真实供应商资金联调未完成。
