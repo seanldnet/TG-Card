@@ -148,9 +148,14 @@ func TestProcurementCallbackDuplicateDoesNotRedeliver(t *testing.T){
 }
 
 func TestProcurementCallbackSignatureFailureIsRejected(t *testing.T){
+	f:=newProcurementFixture(t,&fakeProcurementAPI{})
 	body:=[]byte(`{"downstream_order_no":"TC-1","order_id":1,"status":"completed"}`)
 	err:=upstream.VerifyDujiaoCallback("expected-key","secret","expected-key",strconvFormat(time.Now().Unix()),"00","/api/v1/upstream/callback",body,time.Now())
 	if err==nil{t.Fatal("invalid callback signature must be rejected")}
+	assertProcurementLedger(t,f,"procurement_pending",0)
+	var callbacks int
+	if err:=f.db.QueryRow("SELECT COUNT(1) FROM upstream_callback_events").Scan(&callbacks);err!=nil{t.Fatal(err)}
+	if callbacks!=0{t.Fatalf("invalid callback wrote %d callback audit rows",callbacks)}
 }
 
 func strconvFormat(v int64)string{return fmt.Sprintf("%d",v)}
@@ -183,4 +188,5 @@ func TestProcurementQueueSkipsOrderNoLongerPending(t *testing.T){
 	job:=claimOne(t,f)
 	if err:=f.app.processUpstreamProcurement(context.Background(),job);err!=nil{t.Fatal(err)}
 	if len(api.createCalls)!=0{t.Fatalf("cancelled/refunded order must never trigger procurement")}
+	assertProcurementLedger(t,f,"refunded",1)
 }
