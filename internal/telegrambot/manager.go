@@ -503,7 +503,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if m.isOwner(cfg,msg.From.ID) && m.handleActiveOwnerSupportMessage(ctx,cfg,msg) { return }
 	if msg.Document != nil || len(msg.Photo)>0 {
 		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
-		if !strings.HasPrefix(pendingMedia,"support_description:") && !strings.HasPrefix(pendingMedia,"support_followup:") && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
+		if pendingMedia=="" && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
 			if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
 				fileID,fileName:="",""
 				if msg.Document!=nil{fileID=msg.Document.FileID;fileName=msg.Document.FileName}else if len(msg.Photo)>0{fileID=msg.Photo[len(msg.Photo)-1].FileID;fileName="Telegram 图片"}
@@ -540,7 +540,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
-	if !strings.HasPrefix(pending,"support_description:") && !strings.HasPrefix(pending,"support_followup:") && !strings.HasPrefix(text,"/") && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
+	if pending=="" && !strings.HasPrefix(text,"/") && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
 		if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
 			m.handleUserSupportFollowup(ctx,cfg,msg,latest.ID,text,"","")
 			return
