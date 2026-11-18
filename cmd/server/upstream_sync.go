@@ -63,10 +63,20 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		if category.ParentID > 0 {
 			if parent := categoryNames[category.ParentID]; parent != "" { name = parent + " / " + name }
 		}
+		iconPath := ""
+		preserveIcon := false
+		if strings.TrimSpace(category.Icon) != "" {
+			localIcon, iconErr := upstream.DownloadImage(ctx, category.Icon, a.dataDir)
+			if iconErr != nil {
+				summary.ImagesFailed++
+				preserveIcon = true
+				if len(imageWarnings) < 5 { imageWarnings = append(imageWarnings, fmt.Sprintf("分类 %s 图标下载失败", name)) }
+			} else { iconPath = localIcon }
+		}
 		categoryRecords = append(categoryRecords, database.UpstreamCategoryRecord{
 			UpstreamID: strconv.FormatInt(category.ID, 10),
 			ParentID: strconv.FormatInt(category.ParentID, 10),
-			Name: name, Icon: category.Icon, SortOrder: -category.SortOrder,
+			Name: name, Icon: iconPath, PreserveIcon: preserveIcon, SortOrder: -category.SortOrder,
 		})
 	}
 
