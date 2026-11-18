@@ -53,7 +53,9 @@ func DujiaoCreateOrder(ctx context.Context, baseURL, apiKey, apiSecret, skuID st
 	if err != nil || id <= 0 || quantity < 1 || quantity > 100 || strings.TrimSpace(downstreamOrderNo) == "" {
 		return DujiaoOrder{}, fmt.Errorf("invalid Dujiao procurement request")
 	}
-	body, err := json.Marshal(map[string]any{"sku_id": id, "quantity": quantity, "downstream_order_no": downstreamOrderNo, "callback_url": strings.TrimSpace(callbackURL)})
+	requestBody:=map[string]any{"sku_id":id,"quantity":quantity,"downstream_order_no":downstreamOrderNo}
+	if callbackURL=strings.TrimSpace(callbackURL);callbackURL!="" { requestBody["callback_url"]=callbackURL }
+	body, err := json.Marshal(requestBody)
 	if err != nil { return DujiaoOrder{}, err }
 	payload, err := DujiaoRequest(ctx, baseURL, http.MethodPost, dujiaoOrdersPath, nil, body, apiKey, apiSecret)
 	if err != nil { return DujiaoOrder{}, err }
