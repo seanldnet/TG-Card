@@ -165,6 +165,13 @@ func AppendSupportTicketMessageWithUpdateID(ctx context.Context, db *sql.DB, dri
  if len(message) > 5000 || len(attachmentFileID) > 512 || len(attachmentName) > 255 || (message == "" && attachmentFileID == "") {
   return SupportTicketMessage{}, fmt.Errorf("message or attachment is required and must be within size limits")
  }
+ if attachmentFileID != "" {
+  var existing SupportTicketMessage
+  lookup := "SELECT id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at FROM support_ticket_messages WHERE ticket_id="+placeholder(driver,1)+" AND sender_type="+placeholder(driver,2)+" AND sender_id="+placeholder(driver,3)+" AND attachment_file_id="+placeholder(driver,4)
+  err := db.QueryRowContext(ctx,lookup,ticketID,senderType,senderID,attachmentFileID).Scan(&existing.ID,&existing.TicketID,&existing.SenderType,&existing.SenderID,&existing.Message,&existing.AttachmentFileID,&existing.AttachmentName,&existing.CreatedAt)
+  if err == nil { return existing,nil }
+  if err != sql.ErrNoRows { return SupportTicketMessage{},err }
+ }
  if updateID != "" {
   var existing SupportTicketMessage
   query := "SELECT id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at FROM support_ticket_messages WHERE ticket_id="+placeholder(driver,1)+" AND sender_type="+placeholder(driver,2)+" AND sender_id="+placeholder(driver,3)+" AND telegram_update_id="+placeholder(driver,4)
