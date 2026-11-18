@@ -6,7 +6,7 @@
 
 | 上游 | 分类/商品 | 商户下单 | 交付 | 余额 | 证据结论 |
 |---|---|---|---|---|---|
-| Dujiao-Next | 官方 Open API：GET /categories、GET /products，分页和 SKU 结构有定义 | POST /orders，HMAC-SHA256；downstream_order_no 支持下游幂等关联 | GET /orders/:id + POST /upstream/callback；履约数据在 delivered 后提供 | POST /ping 返回 balance/currency | 官方文档确认，尚未在 TG-Card 实现 |
+| Dujiao-Next | 官方 Open API：GET /categories、GET /products，分页和 SKU 结构有定义 | POST /orders，HMAC-SHA256；downstream_order_no 支持下游幂等关联 | GET /orders/:id + POST /upstream/callback；履约数据在 delivered 后提供 | POST /ping 返回 balance/currency | 官方协议确认；TG-Card PR C 草稿实现中，尚未合并/联调 |
 | 异次元 / ACG-Faka | 未确认官方商户目录 API | 未确认官方商户采购 API | 未确认 | 未确认 | 待上游确认；第三方支付插件不构成货源 API 证据 |
 | 萌次元 / MCY Shop | 官方 Wiki 描述货源插件体系，但未确认第三方商户目录 API | 未确认 | 未确认 | 未确认 | 待上游确认；不得从异次元或 Dujiao 协议推断 |
 
@@ -28,7 +28,7 @@ API 根路径为 `/api/v1/upstream`。认证头为 `Dujiao-Next-Api-Key`、`Duji
 | 取消 | POST /orders/:id/cancel | 上游取消接口 |
 | 异步回调 | POST /upstream/callback | 上游推送状态与交付内容 |
 
-官方站点对接指南明确支付后异步采购、回调传递状态和交付内容；采购失败时标记异常供管理员处理，默认不自动取消/退款。TG-Card 需自行实现持久化队列、失败人工处理、重试与退款审计。回调负载的完整字段和签名校验规则应以 Open API 对应章节为准，未完成联调前不写入假设。
+官方站点对接指南明确支付后异步采购、回调传递状态和交付内容；采购失败时标记异常供管理员处理，默认不自动取消/退款。TG-Card 需自行实现持久化队列、失败人工处理、重试与退款审计。回调使用 `Dujiao-Next-Api-Key`、`Dujiao-Next-Timestamp`、`Dujiao-Next-Signature` 三个请求头；签名原文与普通 API 请求一致：`{METHOD}\\n{PATH}\\n{TIMESTAMP}\\n{BODY_MD5}`，HMAC-SHA256，时间戳 ±60 秒。回调路径为 `/api/v1/upstream/callback`，验签必须对原始 body 字节计算。
 
 ## 2. 异次元 / ACG-Faka（待上游确认）
 
@@ -50,7 +50,7 @@ PR A 的边界仅限配置与连接测试。PR B（PR #26，已合并）已实�
 
 价格处理：Dujiao ping 返回站点币种。TG-Card 订单结算使用 USDT，因此上游币种为 USDT 时按 1:1；其他币种必须在后台手动配置“1 单位上游币种 = ? USDT”的汇率。最终售价 = 上游 SKU 原币价格 × 汇率 ×（1 + 百分比加价）+ 固定 USDT 加价。原币金额与币种作为商品快照保存；不自动抓取或猜测汇率。
 
-PR B 不执行上游采购、付款转发、查单/回调、失败队列或退款。为避免已付款但无法履约，在 PR C 采购链路完成前，Bot 可浏览上游目录但不显示购买确认入口，服务端也拒绝上游商品订单创建。上述能力按 PR C、D、E 继续独立实施，当前均为待开发。
+PR B 不包含上游采购。PR C 草稿 PR #35 已在独立分支增加支付后采购队列、上游订单映射、异步查单/回调、失败队列、人工重试与退款审计等初步代码；该 PR 仍为 draft，未合并、未发布，不能视为生产已启用。
 
 Dujiao-Next API Key 与 API Secret 均使用 TG-Card 的持久化 AES-256-GCM 密钥加密；读取接口只返回掩码/已配置标志。连接测试按官方 HMAC-SHA256 规则调用 `POST /api/v1/upstream/ping`。
 
@@ -60,7 +60,7 @@ Dujiao-Next API Key 与 API Secret 均使用 TG-Card 的持久化 AES-256-GCM �
 |---|---|---|
 | PR A（PR #21） | 上游基础设施、商户配置、双凭证加密、连接测试 | 已合并 |
 | PR B（PR #26） | 分类/商品/SKU 目录同步、图片本地化、加价展示、目录来源切换 | 已合并；真实商户验收待执行 |
-| PR C | 采购转发、供应商钱包扣款、订单 ID 幂等防重复采购/扣款、异步查单/回调、持久化失败队列、Owner 人工处理通知、退款到买家余额及退款审计 | **全部待开发** |
+| PR C | 采购转发、供应商钱包扣款、订单 ID 幂等防重复采购/扣款、异步查单/回调、持久化失败队列、Owner 人工处理通知、退款到买家余额及退款审计 | **草稿 PR #35 实现中；测试/CI 未完成，未合并/未发布** |
 | PR D | 供应商资金与本地资金安全控制、余额/扣款一致性核对、异常告警与审计保护 | **待开发** |
 | PR E | 使用真实 Dujiao-Next 商户账号进行连接、目录、采购、扣款、异步回调、交付、失败与退款全链路联调 | **待开发/待验收** |
 
@@ -73,8 +73,9 @@ PR C、PR D、PR E 均独立 PR，按 C→D→E 顺序推进；采购链路不�
 
 ## 5. PR C/D/E 实施状态（2026-11-18）
 
-- PR C（Dujiao-Next 采购转发）已获准启动，当前为独立分支开发任务；**在 PR C 合并前不得将采购下单、供应商扣款、异步查单、回调、人工失败队列或采购退款标记为已实现**。
-- PR C 目标实现：支付确认后重新校验本地订单；使用本地订单号作为 `downstream_order_no` 幂等标识；请求超时先通过上游查单核实受理状态，禁止盲目重试；持久化本地/上游订单双向映射；支持同步 fulfillment 与异步状态轮询；实现上游 callback 验签、回调幂等和重复交付防护；失败进入人工队列；退款仅通过单独钱包 credit 与审计记录完成；上游余额纳入日报并按阈值通知 Owner。
+- PR C（Dujiao-Next 采购转发）当前独立草稿 PR [#35](https://github.com/seanldnet/TG-Card/pull/35)，分支 `feat/dujiao-next-procurement`。队列、映射、create/query、回调验签/幂等、失败人工队列、手动重试、退款审计与供应商余额日报初步代码已提交；仍须通过测试/CI并完成代码审查后才能合并。
+- PR C 目标实现：支付确认后重新校验本地订单；使用本地订单号作为 `downstream_order_no` 幂等标识；持久化本地/上游订单双向映射；支持同步 fulfillment 与异步状态轮询；实现上游 callback 验签、回调幂等和重复交付防护；失败进入人工队列；退款仅通过单独钱包 credit 与审计记录完成；上游余额纳入日报并按阈值通知 Owner。
+- 上游 API 能力边界：官方 GET `/orders/:id` 需要上游订单 ID，官方文档未定义按 `downstream_order_no` 查询的 GET endpoint。若 POST 超时且未获得上游 ID，PR C 使用同一 `downstream_order_no` 重发相同 POST，依赖官方幂等约束返回原采购单，不能生成新 ID 或盲目用不同 key 重试。
 - 回调验签必须严格按官方 Open API 对应章节及仓库已核实证据实现。若官方文档未明确回调签名原文/字段，必须在 PR C 开发中再次核实，不得臆造验签算法。
-- PR C 的 mock 测试覆盖同步卡密、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后查单避免双扣七类场景；每类断言订单状态、资金流水、审计记录。
+- PR C 的 mock 测试覆盖同步卡密、异步查单成功、查单超时、采购失败、重复回调、验签失败、POST 超时后同一幂等键恢复七类场景；每类断言订单状态、资金流水、审计记录。当前测试已加入，Actions 结果待确认。
 - PR D（进一步资金安全控制）与 PR E（真实上游联调）仍未完成。PR C 的 mock 测试通过不代表真实上游联调完成。
