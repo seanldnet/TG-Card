@@ -511,7 +511,6 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单创建失败："+err.Error(),supportBackKeyboard());m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia);return}
 			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,fileID,fileName);err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单已创建，但附件保存失败，请重新发送附件。")}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n文字说明和附件已一起保存。你可以继续补充文字、图片或文件。",supportBackKeyboard())}
 			m.notifyOwnerSupportTicket(ctx,cfg,ticket.ID)
-			m.notifyOwnerSupportTicket(ctx,cfg,ticket.ID)
 			m.Notify("support_created","新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
 			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID);return
 		}
@@ -521,9 +520,9 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if msg.Document != nil { fileID=msg.Document.FileID; fileName=msg.Document.FileName } else { photo:=msg.Photo[len(msg.Photo)-1]; fileID=photo.FileID; fileName="Telegram 图片" }
 			caption := strings.TrimSpace(msg.Caption)
 			if caption == "" { caption = "用户提交了售后凭证" }
-			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),caption,fileID,fileName);err!=nil {
+			if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),caption,fileID,fileName,strconv.FormatInt(msg.MessageID,10));err!=nil {
 				_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证保存失败，请稍后重试。")
-			} else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文字说明和附件已一起添加到售后工单。你可以继续单独发送文字、图片或文件。") }
+			} else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文字说明和附件已一起添加到售后工单。你可以继续单独发送文字、图片或文件。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,caption,fileID,fileName) }
 			m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia)
 			return
 		}
@@ -582,7 +581,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			return
 		case strings.HasPrefix(pending,"support_followup:"):
 			ticketID := strings.TrimPrefix(pending,"support_followup:")
-			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","");err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。") }
+			if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","",strconv.FormatInt(msg.MessageID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,text,"","") }
 			m.setPendingAction(cfg.ID,msg.Chat.ID,pending)
 			return
 		case strings.HasPrefix(pending, "support_description:"):
@@ -600,6 +599,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			}
 			if _, timelineErr := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,"",""); timelineErr != nil { log.Printf("append initial support message failed: ticket_id=%s error=%v",ticket.ID,timelineErr) }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
+			m.notifyOwnerSupportTicket(ctx,cfg,ticket.ID)
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
 			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
 			return
