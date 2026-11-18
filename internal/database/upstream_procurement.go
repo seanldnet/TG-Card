@@ -105,6 +105,8 @@ func StoreUpstreamFulfillment(ctx context.Context, db *sql.DB, driver, orderID, 
 	if strings.TrimSpace(encryptedPayload)==""{return false,fmt.Errorf("encrypted fulfillment payload is required")}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return false,err};defer tx.Rollback()
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	var dbOrderID string
+	if err:=tx.QueryRowContext(ctx,"SELECT order_id FROM upstream_procurements WHERE order_no="+placeholder(driver,1),orderID).Scan(&dbOrderID);err!=nil{return false,err}
 	if eventKey!="" {
 		id,err:=randomID();if err!=nil{return false,err}
 		q:="INSERT INTO upstream_callback_events(id,event_key,downstream_order_no,upstream_order_id,status,received_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'delivered',"+placeholder(driver,5)+") ON CONFLICT(event_key) DO NOTHING"
@@ -112,15 +114,32 @@ func StoreUpstreamFulfillment(ctx context.Context, db *sql.DB, driver, orderID, 
 	}
 	q:="UPDATE upstream_procurements SET upstream_order_id=CASE WHEN upstream_order_id IS NULL OR upstream_order_id='' THEN "+placeholder(driver,1)+" ELSE upstream_order_id END,upstream_order_no=CASE WHEN upstream_order_no='' THEN "+placeholder(driver,2)+" ELSE upstream_order_no END,status='ready',fulfillment_ciphertext="+placeholder(driver,3)+",next_attempt_at="+placeholder(driver,4)+",last_error='',updated_at="+placeholder(driver,5)+" WHERE order_no="+placeholder(driver,6)+" AND status NOT IN ('delivered','refunded')"
 	res,err:=tx.ExecContext(ctx,q,upstreamID,upstreamNo,encryptedPayload,now,now,orderID);if err!=nil{return false,err};n,err:=res.RowsAffected();if err!=nil{return false,err}
-	if n==1 { if err:=recordUpstreamProcurementEvent(ctx,tx,driver,orderID,"fulfillment_ready","fulfillment:"+orderID,"upstream fulfillment stored encrypted",now);err!=nil{return false,err} }
+	if n==1 { if err:=recordUpstreamProcurementEvent(ctx,tx,driver,dbOrderID,"fulfillment_ready","fulfillment:"+orderID,"upstream fulfillment stored encrypted",now);err!=nil{return false,err} }
 	if err:=tx.Commit();err!=nil{return false,err}
 	return n==1,nil
+}
+
+func ClaimUpstreamProcurementDelivery(ctx context.Context, db *sql.DB, driver, orderID string, lease time.Duration) (bool,error) {
+	if lease<=0 { lease=2*time.Minute }
+	now:=time.Now().UTC();stamp:=now.Format(time.RFC3339Nano);until:=now.Add(lease).Format(time.RFC3339Nano)
+	due:="julianday(delivery_lease_until)<=julianday("+placeholder(driver,1)+") OR delivery_lease_until=''"
+	if driver=="postgres" { due="CAST(delivery_lease_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,1)+" AS TIMESTAMPTZ) OR delivery_lease_until=''" }
+	q:="UPDATE upstream_procurements SET status='delivering',delivery_lease_until="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE order_id="+placeholder(driver,4)+" AND (status='ready' OR (status='delivering' AND ("+due+")))"
+	res,err:=db.ExecContext(ctx,q,stamp,until,stamp,orderID,stamp);if err!=nil{return false,err}
+	n,err:=res.RowsAffected();return n==1,err
+}
+
+func ReleaseUpstreamProcurementDelivery(ctx context.Context, db *sql.DB, driver, orderID, reason string, retryAfter time.Duration) error {
+	if retryAfter<time.Second { retryAfter=15*time.Second }
+	now:=time.Now().UTC();stamp:=now.Format(time.RFC3339Nano);next:=now.Add(retryAfter).Format(time.RFC3339Nano)
+	q:="UPDATE upstream_procurements SET status='ready',delivery_lease_until='',next_attempt_at="+placeholder(driver,1)+",last_error="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE order_id="+placeholder(driver,4)+" AND status='delivering'"
+	_,err:=db.ExecContext(ctx,q,next,reason,stamp,orderID);return err
 }
 
 func CompleteUpstreamProcurementDelivery(ctx context.Context, db *sql.DB, driver, orderID string) error {
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	q:="UPDATE upstream_procurements SET status='delivered',delivered_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE order_id="+placeholder(driver,3)+" AND status='ready'"
+	q:="UPDATE upstream_procurements SET status='delivered',delivered_at="+placeholder(driver,1)+",delivery_lease_until='',updated_at="+placeholder(driver,2)+" WHERE order_id="+placeholder(driver,3)+" AND status='delivering'"
 	res,err:=tx.ExecContext(ctx,q,now,now,orderID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n==0{return tx.Commit()}
 	q="UPDATE orders SET status='delivered',delivered_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+",delivery_error='' WHERE id="+placeholder(driver,3)+" AND status IN ('paid','purchase_failed')"
 	res,err=tx.ExecContext(ctx,q,now,now,orderID);if err!=nil{return err};n,err=res.RowsAffected();if err!=nil{return fmt.Errorf("upstream delivery sent but local order state changed")}
