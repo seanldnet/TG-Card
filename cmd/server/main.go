@@ -1363,7 +1363,9 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  case "delivery_success": emailEnabled,telegramEnabled=s.EmailDeliverySuccess,s.TelegramNotifyDeliverySuccess; title="自动发货通知"
  case "support_created": emailEnabled,telegramEnabled=s.EmailSupportCreated,s.TelegramNotifySupportCreated; title="售后工单通知"
  case "stock_low": telegramEnabled=s.TelegramNotifyStockLow; title="商品库存不足提醒"
- case "daily_report": telegramEnabled=s.TelegramNotifyDailyReport; title="每日经营报告"
+ case "stock_zero": telegramEnabled=s.TelegramNotifyStockLow; title="库存归零自动下架提醒"
+ case "stock_relisted": telegramEnabled=s.TelegramNotifyStockLow; title="补货自动上架提醒"
+ case "daily_report": emailEnabled=true; telegramEnabled=s.TelegramNotifyDailyReport; title="每日对账日报"
  case "risk_alert": telegramEnabled=s.TelegramNotifyRiskAlert; title="支付风险提醒"
  default: return
  }
