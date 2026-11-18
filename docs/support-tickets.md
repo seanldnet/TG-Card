@@ -68,7 +68,7 @@ Owner 点击“开始回复”后，Bot 提示直接发送文字/图片/文件�
 ## 数据库与兼容
 
 - 历史消息表仍保留 `attachment_file_id`、`attachment_name` 字段。
-- 新增迁移 `0035_support_owner_workflow.sql`：增加 Telegram update idempotency 字段及唯一索引、持久化 Owner 会话表、结单审计表。
+- 新增迁移 `0035_support_owner_workflow.sql`：增加 Telegram update idempotency 字段及唯一索引、附件去重唯一索引、持久化 Owner 会话表、结单审计表。
 - Owner 会话表以 Bot + Owner 为主键，保存 ticket ID、阶段、过期时间和更新时间。
 - 结单审计仅在工单从活动状态成功转为已解决时写入；重复结单不会产生第二条审计。
 - SQLite 与 PostgreSQL 使用相同迁移语句及数据库层 placeholder 适配。
