@@ -368,6 +368,7 @@ func ListProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 }
 
 func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (Product,error) {
+	if err:=ensureLocalCategory(ctx,db,driver,p.CategoryID);err!=nil{return Product{},err}
 	id,err:=randomID();if err!=nil{return Product{},err};now:=time.Now().UTC().Format(time.RFC3339Nano)
 	p.ID=id;p.CreatedAt=now;p.UpdatedAt=now;if p.Currency==""{p.Currency="USDT"};if p.DeliveryType==""{p.DeliveryType="card"};if p.Status==0{p.Status=1}
 	var category any;if p.CategoryID!=""{category=p.CategoryID}
@@ -378,6 +379,7 @@ func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (P
 }
 
 func UpdateProduct(ctx context.Context, db *sql.DB, driver string, p Product) error {
+	if err:=ensureLocalCategory(ctx,db,driver,p.CategoryID);err!=nil{return err}
 	now:=time.Now().UTC().Format(time.RFC3339Nano);var category any;if p.CategoryID!=""{category=p.CategoryID}
 	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)+" AND source_type='local'"
 	if p.BulkDiscountJSON=="" { p.BulkDiscountJSON="[]" }; if p.DeliveryConfigJSON=="" { p.DeliveryConfigJSON="{}" }
