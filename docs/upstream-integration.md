@@ -44,5 +44,9 @@ API 根路径为 `/api/v1/upstream`。认证头为 `Dujiao-Next-Api-Key`、`Duji
 
 ## 4. TG-Card 实施边界
 
-当前代码只有 provider-neutral Adapter 契约；没有供应商网络适配器、上游配置表/API、后台页面/菜单、目录同步、图片本地化、采购转发、失败队列或余额告警。Dujiao-Next 可依据已公开协议进入实现阶段；ACG-Faka 与 MCY 必须先取得上游可核验协议。生产真实下单验收由项目所有者执行。
+PR A 开发前的 main 基线 `40cb88e` 只有 provider-neutral Adapter 契约，尚无上游配置、后台页面或 provider 网络实现。开发分支 `feat/dujiao-upstream-foundation` 的 PR A 候选实现新增 Dujiao-Next 配置存储、双凭证加密、连接测试及状态展示；该分支在 PR 合并前不应视为 main 已交付能力。
+
+PR A 的边界仅限配置与连接测试：不执行目录同步、商品映射、图片下载、商品展示切换、采购转发、订单查单/回调、失败队列、退款或余额告警。上述能力按 PR B、C、D、E 继续独立实施。
+
+Dujiao-Next API Key 与 API Secret 均使用 TG-Card 的持久化 AES-256-GCM 密钥加密；读取接口只返回掩码/已配置标志。连接测试按官方 HMAC-SHA256 规则调用 `POST /api/v1/upstream/ping`。异次元 ACG-Faka 与萌次元 MCY 在取得可核验商户协议前不实现任何 adapter。生产真实商户验收由项目所有者在测试环境执行。
 
