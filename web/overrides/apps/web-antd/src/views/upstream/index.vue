@@ -44,13 +44,14 @@ async function load(){
 async function save():Promise<boolean>{
  saving.value=true;
  try{
+  const requestedEnabled=settings.enabled;
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
    markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
-  message.success('上游配置已安全保存');return true;
+  if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
  }catch(error:any){message.error(error?.response?.data?.message||'上游配置保存失败');return false;}
  finally{saving.value=false;}
 }
@@ -120,8 +121,8 @@ onMounted(()=>{void load();});
     </a-form-item>
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
-      <a-switch v-model:checked="settings.enabled"/>
-      <span class="text-sm text-gray-500">启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
+      <a-switch v-model:checked="settings.enabled" :disabled="settings.syncStatus!=='success'&&!settings.enabled"/>
+      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
      </div>
     </a-form-item>
     <a-alert class="mb-4" type="warning" show-icon message="上游商品同步和目录切换已开放；买家采购/付款转发将在 PR C 完成前保持禁用，不会创建本地假订单或扣款。" />
