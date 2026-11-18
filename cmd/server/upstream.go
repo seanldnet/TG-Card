@@ -26,6 +26,7 @@ type upstreamSettingsRequest struct {
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
+	ExchangeRateToUSDT float64 `json:"exchangeRateToUSDT"`
 }
 
 type upstreamSettingsView struct {
@@ -38,6 +39,7 @@ type upstreamSettingsView struct {
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
+	ExchangeRateToUSDT float64 `json:"exchangeRateToUSDT"`
 	LastTestStatus string `json:"lastTestStatus"`
 	LastTestAt string `json:"lastTestAt"`
 	LastError string `json:"lastError"`
@@ -62,7 +64,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 	return upstreamSettingsView{
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
-		Enabled:item.Enabled, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		Enabled:item.Enabled, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
 		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
@@ -92,6 +94,7 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	input.MerchantSecret=strings.TrimSpace(input.MerchantSecret)
 	if len(input.MerchantID)>512||len(input.MerchantSecret)>1024{writeError(w,http.StatusBadRequest,"上游 API 凭证长度无效");return}
 	if math.IsNaN(input.MarkupPercent)||math.IsInf(input.MarkupPercent,0)||input.MarkupPercent<0||input.MarkupPercent>1000||input.MarkupFixedMinor<0||input.MarkupFixedMinor>9_000_000_000_000{writeError(w,http.StatusBadRequest,"上游加价策略无效：百分比需为 0–1000%，固定加价不能为负数");return}
+	if math.IsNaN(input.ExchangeRateToUSDT)||math.IsInf(input.ExchangeRateToUSDT,0)||input.ExchangeRateToUSDT<0||input.ExchangeRateToUSDT>1_000_000{writeError(w,http.StatusBadRequest,"汇率必须为 0–1000000；非 USDT 上游币种必须配置大于 0 的汇率");return}
 	if input.SyncIntervalMinutes==0{input.SyncIntervalMinutes=15}
 	if input.SyncIntervalMinutes<5||input.SyncIntervalMinutes>1440{writeError(w,http.StatusBadRequest,"自动同步间隔必须为 5–1440 分钟");return}
 	current,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver)
@@ -107,7 +110,7 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	}
 	if input.Enabled&&(current.MerchantIDCiphertext==""||current.SecretCiphertext==""){writeError(w,http.StatusBadRequest,"启用上游前必须配置 API Key（商户 ID）和 API Secret");return}
 	current.Provider=input.Provider;current.BaseURL=baseURL;current.Enabled=input.Enabled
-	current.MarkupBPS=int64(math.Round(input.MarkupPercent*100));current.MarkupMinor=input.MarkupFixedMinor;current.SyncIntervalMinutes=input.SyncIntervalMinutes
+	current.MarkupBPS=int64(math.Round(input.MarkupPercent*100));current.MarkupMinor=input.MarkupFixedMinor;current.ExchangeRatePPM=int64(math.Round(input.ExchangeRateToUSDT*1_000_000));current.SyncIntervalMinutes=input.SyncIntervalMinutes
 	if err:=database.SaveUpstreamSettings(r.Context(),a.db,a.driver,current);err!=nil{log.Printf("save upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"保存上游配置失败");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.settings.update","upstream:"+input.Provider,clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t; base_url=%s; credentials_changed=%t",input.Enabled,baseURL,input.MerchantID!=""||input.MerchantSecret!=""||input.ClearCredentials))
 	saved,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver);if err!=nil{writeError(w,http.StatusInternalServerError,"配置已保存但读取失败");return}
