@@ -27,6 +27,9 @@ type upstreamSettingsRequest struct {
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
 	ExchangeRateToUSDT float64 `json:"exchangeRateToUSDT"`
+	CallbackURL string `json:"callbackUrl"`
+	PurchasePollIntervalSeconds int `json:"purchasePollIntervalSeconds"`
+	PurchaseTimeoutMinutes int `json:"purchaseTimeoutMinutes"`
 }
 
 type upstreamSettingsView struct {
@@ -41,6 +44,9 @@ type upstreamSettingsView struct {
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
 	ExchangeRateToUSDT float64 `json:"exchangeRateToUSDT"`
+	CallbackURL string `json:"callbackUrl"`
+	PurchasePollIntervalSeconds int `json:"purchasePollIntervalSeconds"`
+	PurchaseTimeoutMinutes int `json:"purchaseTimeoutMinutes"`
 	LastTestStatus string `json:"lastTestStatus"`
 	LastTestAt string `json:"lastTestAt"`
 	LastError string `json:"lastError"`
@@ -65,7 +71,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 	return upstreamSettingsView{
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
-		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, CallbackURL:item.CallbackURL, PurchasePollIntervalSeconds:item.PurchasePollIntervalSeconds, PurchaseTimeoutMinutes:item.PurchaseTimeoutMinutes, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
 		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
@@ -75,7 +81,7 @@ func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request
 	if _, ok := a.authenticate(w,r); !ok { return }
 	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,CatalogStale:true})
+		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,PurchasePollIntervalSeconds:15,PurchaseTimeoutMinutes:30,CatalogStale:true})
 		return
 	}
 	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
@@ -113,6 +119,11 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if input.SyncIntervalMinutes == 0 { input.SyncIntervalMinutes = 15 }
+	callbackURL, callbackErr := upstream.ValidateDujiaoCallbackURL(input.CallbackURL)
+	if callbackErr != nil { writeError(w,http.StatusBadRequest,callbackErr.Error()); return }
+	if input.PurchasePollIntervalSeconds == 0 { input.PurchasePollIntervalSeconds = 15 }
+	if input.PurchaseTimeoutMinutes == 0 { input.PurchaseTimeoutMinutes = 30 }
+	if input.PurchasePollIntervalSeconds < 5 || input.PurchasePollIntervalSeconds > 300 || input.PurchaseTimeoutMinutes < 1 || input.PurchaseTimeoutMinutes > 1440 { writeError(w,http.StatusBadRequest,"采购查单间隔需为 5–300 秒，采购超时需为 1–1440 分钟"); return }
 	if input.SyncIntervalMinutes < 5 || input.SyncIntervalMinutes > 1440 {
 		writeError(w, http.StatusBadRequest, "自动同步间隔必须为 5–1440 分钟")
 		return
@@ -169,6 +180,9 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	current.MarkupMinor = input.MarkupFixedMinor
 	current.ExchangeRatePPM = exchangeRatePPM
 	current.SyncIntervalMinutes = input.SyncIntervalMinutes
+	current.CallbackURL = callbackURL
+	current.PurchasePollIntervalSeconds = input.PurchasePollIntervalSeconds
+	current.PurchaseTimeoutMinutes = input.PurchaseTimeoutMinutes
 	if err := database.SaveUpstreamSettings(r.Context(), a.db, a.driver, current); err != nil {
 		log.Printf("save upstream settings: %v", err)
 		writeError(w, http.StatusInternalServerError, "保存上游配置失败")
