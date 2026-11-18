@@ -18,6 +18,9 @@ type DailyReconciliationReport struct {
 	UnmatchedTransactionCount int64 `json:"unmatchedTransactionCount"`
 	ManualReviewTransactionCount int64 `json:"manualReviewTransactionCount"`
 	GeneratedAt string `json:"generatedAt"`
+	SupplierBalance string `json:"supplierBalance"`
+	SupplierCurrency string `json:"supplierCurrency"`
+	SupplierBalanceCheckedAt string `json:"supplierBalanceCheckedAt"`
 }
 
 type BalanceReconciliationRun struct {
@@ -71,12 +74,12 @@ func BuildDailyReconciliationReport(ctx context.Context, db *sql.DB, driver stri
 }
 
 func SaveDailyReconciliationReport(ctx context.Context, db *sql.DB, driver string, report DailyReconciliationReport) (DailyReconciliationReport,bool,error) {
-	q:="INSERT INTO daily_reconciliation_reports(report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+") ON CONFLICT(report_date) DO NOTHING"
-	res,err:=db.ExecContext(ctx,q,report.ReportDate,report.RevenueAtomic,report.OrderCount,report.DeliveredCount,report.DeliveryFailedCount,report.RefundAtomic,report.RechargeAtomic,report.UnmatchedTransactionCount,report.ManualReviewTransactionCount,report.GeneratedAt)
+	q:="INSERT INTO daily_reconciliation_reports(report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at,supplier_balance,supplier_currency,supplier_balance_checked_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+","+placeholder(driver,11)+","+placeholder(driver,12)+","+placeholder(driver,13)+") ON CONFLICT(report_date) DO NOTHING"
+	res,err:=db.ExecContext(ctx,q,report.ReportDate,report.RevenueAtomic,report.OrderCount,report.DeliveredCount,report.DeliveryFailedCount,report.RefundAtomic,report.RechargeAtomic,report.UnmatchedTransactionCount,report.ManualReviewTransactionCount,report.GeneratedAt,report.SupplierBalance,report.SupplierCurrency,report.SupplierBalanceCheckedAt)
 	if err!=nil{return report,false,err}
 	n,err:=res.RowsAffected();if err!=nil{return report,false,err}
 	if n==0 {
-		err=db.QueryRowContext(ctx,"SELECT report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at FROM daily_reconciliation_reports WHERE report_date="+placeholder(driver,1),report.ReportDate).Scan(&report.ReportDate,&report.RevenueAtomic,&report.OrderCount,&report.DeliveredCount,&report.DeliveryFailedCount,&report.RefundAtomic,&report.RechargeAtomic,&report.UnmatchedTransactionCount,&report.ManualReviewTransactionCount,&report.GeneratedAt)
+		err=db.QueryRowContext(ctx,"SELECT report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at,supplier_balance,supplier_currency,supplier_balance_checked_at FROM daily_reconciliation_reports WHERE report_date="+placeholder(driver,1),report.ReportDate).Scan(&report.ReportDate,&report.RevenueAtomic,&report.OrderCount,&report.DeliveredCount,&report.DeliveryFailedCount,&report.RefundAtomic,&report.RechargeAtomic,&report.UnmatchedTransactionCount,&report.ManualReviewTransactionCount,&report.GeneratedAt,&report.SupplierBalance,&report.SupplierCurrency,&report.SupplierBalanceCheckedAt)
 		if err!=nil{return report,false,err}
 	}
 	return report,n==1,nil
@@ -85,7 +88,7 @@ func SaveDailyReconciliationReport(ctx context.Context, db *sql.DB, driver strin
 func ListDailyReconciliationReports(ctx context.Context,db *sql.DB,driver,month string)([]DailyReconciliationReport,error){
 	start,err:=time.Parse("2006-01",month);if err!=nil{return nil,fmt.Errorf("month must use YYYY-MM")}
 	end:=start.AddDate(0,1,0)
-	q:="SELECT report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at FROM daily_reconciliation_reports WHERE report_date>="+placeholder(driver,1)+" AND report_date<"+placeholder(driver,2)+" ORDER BY report_date DESC"
+	q:="SELECT report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at,supplier_balance,supplier_currency,supplier_balance_checked_at FROM daily_reconciliation_reports WHERE report_date>="+placeholder(driver,1)+" AND report_date<"+placeholder(driver,2)+" ORDER BY report_date DESC"
 	rows,err:=db.QueryContext(ctx,q,start.Format("2006-01-02"),end.Format("2006-01-02"));if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]DailyReconciliationReport,0)
 	for rows.Next(){var v DailyReconciliationReport;if err:=rows.Scan(&v.ReportDate,&v.RevenueAtomic,&v.OrderCount,&v.DeliveredCount,&v.DeliveryFailedCount,&v.RefundAtomic,&v.RechargeAtomic,&v.UnmatchedTransactionCount,&v.ManualReviewTransactionCount,&v.GeneratedAt);err!=nil{return nil,err};items=append(items,v)}
