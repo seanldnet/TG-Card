@@ -317,7 +317,7 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 	if driver == "postgres" {
 		dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 1) + " AS TIMESTAMPTZ)"
 	}
-	query := "SELECT id FROM orders WHERE COALESCE(delivery_type,'card')<>'upstream' AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) ORDER BY " + orderExpr + " LIMIT " + fmt.Sprint(limit)
+	query := "SELECT id FROM orders WHERE COALESCE(delivery_type,'card')<>'upstream' AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + "))) ORDER BY " + orderExpr + " LIMIT " + fmt.Sprint(limit)
 	if driver == "postgres" { query += " FOR UPDATE SKIP LOCKED" }
 	rows, err := tx.QueryContext(ctx, query, nowText)
 	if err != nil { return nil, err }
@@ -356,7 +356,7 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 	leaseText := now.Add(lease).Format(time.RFC3339Nano)
 	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
 	if driver == "postgres" { dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
-	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
+	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND COALESCE(delivery_type,'card')<>'upstream' AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
 	result, err := db.ExecContext(ctx, query, leaseText, nowText, orderID, nowText)
 	if err != nil { return false, err }
 	affected, err := result.RowsAffected()
