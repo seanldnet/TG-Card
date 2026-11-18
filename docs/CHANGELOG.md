@@ -1,3 +1,13 @@
+## 2026-11-18 — 修复 Dujiao-Next 分类图标同步回归（PR #26）
+
+- 状态：修复已提交，等待最新 PR CI 复验；未合并。
+- PR：https://github.com/seanldnet/TG-Card/pull/26
+- 修复 commit：`c402bc8345fb6d2cfc33350457e8083e87fe0948`
+- 根因：分类图标更新 SQL 的 CASE 表达式占位符顺序与参数顺序不一致；当图片下载失败、要求保留旧图标时，旧逻辑把布尔值写入 `upstream_icon`，导致测试失败。
+- 修复：按 SQL 占位符顺序传入 `PreserveIcon` 与新图标值；保留既有图标的分支不再写入布尔值。
+- 验证：上一轮 Go vet 通过；Go test 的 `TestUpstreamCatalogSyncIsTransactionalAndSourceAware` 暴露此问题。修复后的 Go test/build 与完整 CI 尚待新一轮 Actions 结果确认。
+- 资金安全：本修复不涉及订单、买家扣款、供应商采购或退款逻辑。
+
 ## 2026-11-18 — Dujiao-Next PR B：商品目录同步与来源管理
 
 - 状态：开发分支已实现，PR/CI/合并待完成；未执行真实商户账号同步验收。
