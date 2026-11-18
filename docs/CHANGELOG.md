@@ -20,8 +20,8 @@
 
 ## 2026-11-18 — 售后工单改为 Bot 转发 Owner 与交互式回复（独立 PR #27）
 
-- 状态：开发分支已提交；CI、PR 合并、镜像发布及真实 Telegram/SMTP 验收待完成。
-- 分支：`feat/support-owner-bot-workflow`；基线 `main@71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`。
+- 状态：已合并至 main（PR #27）；Go CI、Admin CI、安全扫描成功；Docker latest 已推送（Publish Run `44308515206`，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`）。真实 Telegram/SMTP 验收待项目所有者执行。
+- 分支：`feat/support-owner-bot-workflow`；基线 `main@71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；合并提交 `abb6d62c8d215ff4bffd4151130adccf7d346b24`。
 - 影响模块：`internal/telegrambot/manager.go`、`internal/database/support.go`、`internal/database/support_owner.go`、`cmd/server/main.go`、售后后台页面、上游/支付页面布局、售后专项文档。
 - 变更内容：
   - 用户创建工单和后续补充的图片/文件通过创建工单的 Bot 转发至该 Bot Owner 私聊；消息头包含工单号、用户、Bot、订单和文字摘要，并提供查看详情/待处理列表按钮。
