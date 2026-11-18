@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-func boolInt(value bool) int { if value { return 1 }; return 0 }
-
 func ensureLocalCategory(ctx context.Context, db *sql.DB, driver, categoryID string) error {
 	if categoryID == "" { return nil }
 	var source string
