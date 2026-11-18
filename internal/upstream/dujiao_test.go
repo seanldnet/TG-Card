@@ -1,7 +1,9 @@
 package upstream
 
 import (
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -13,10 +15,12 @@ func TestDujiaoSignatureUsesOfficialCanonicalString(t *testing.T) {
 	got := DujiaoSignature("POST", "/api/v1/upstream/orders", timestamp, body, "test-secret")
 	bodyHash := md5.Sum(body)
 	canonical := "POST\n/api/v1/upstream/orders\n" + timestamp + "\n" + hex.EncodeToString(bodyHash[:])
-	if len(got) != 64 || strings.Trim(got, "0123456789abcdef") != "" { t.Fatalf("invalid HMAC hex: %q", got) }
+	mac := hmac.New(sha256.New, []byte("test-secret"))
+	_, _ = mac.Write([]byte(canonical))
+	want := hex.EncodeToString(mac.Sum(nil))
+	if got != want { t.Fatalf("signature mismatch: got %s want %s", got, want) }
 	if got == DujiaoSignature("GET", "/api/v1/upstream/orders", timestamp, body, "test-secret") { t.Fatal("method must be covered by signature") }
 	if got == DujiaoSignature("POST", "/api/v1/upstream/orders", timestamp, []byte("{}"), "test-secret") { t.Fatal("body must be covered by signature") }
-	if canonical == "" { t.Fatal("canonical string must be constructed") }
 }
 
 func TestValidateDujiaoBaseURL(t *testing.T) {
@@ -29,4 +33,7 @@ func TestValidateDujiaoBaseURL(t *testing.T) {
 	} {
 		if _, err := ValidateDujiaoBaseURL(raw); err == nil { t.Errorf("expected URL to be rejected: %s", raw) }
 	}
+	if strings.TrimSpace(gotEmptySignature()) == "" { t.Fatal("empty-body signature should be deterministic") }
 }
+
+func gotEmptySignature() string { return DujiaoSignature("POST", "/api/v1/upstream/ping", "1710000000", nil, "test-secret") }
