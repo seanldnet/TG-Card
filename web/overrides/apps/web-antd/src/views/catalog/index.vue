@@ -5,12 +5,12 @@ import { useWindowSize } from '@vueuse/core';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
 
-interface Category { id:string; name:string; sortOrder:number; status:number }
-interface Product { id:string; categoryId:string; categoryName:string; name:string; description:string; priceMinor:number; currency:string; deliveryType:string; deliveryConfigJson:string; status:number; stockCount:number; bulkDiscountJson:string }
+interface Category { id:string; name:string; sortOrder:number; status:number; sourceType:string; upstreamCategoryId:string }
+interface Product { id:string; categoryId:string; categoryName:string; name:string; description:string; priceMinor:number; currency:string; deliveryType:string; deliveryConfigJson:string; status:number; stockCount:number; sourceType:string; upstreamProductId:string; upstreamSkuId:string; upstreamPriceSnapshotMinor:number; upstreamCurrency:string; upstreamStockQuantity:number; upstreamStockStatus:string; imagePathsJson:string; bulkDiscountJson:string }
 const loading=ref(false),saving=ref(false),categorySaving=ref(false),activeTab=ref('products');
 const categoryModalOpen=ref(false),productModalOpen=ref(false),importModalOpen=ref(false);
 const editingId=ref(''),importProduct=ref<Product|null>(null);
-const categories=ref<Category[]>([]),products=ref<Product[]>([]);
+const categories=ref<Category[]>([]),products=ref<Product[]>([]),upstreamEnabled=ref(false);
 const categoryFormRef=ref(),productFormRef=ref(),importFormRef=ref();
 const categoryForm=reactive({name:''});
 const productForm=reactive({name:'',categoryId:'',price:'0.00',description:'',enabled:true,discountText:'',deliveryType:'card',deliveryText:'',inviteChatId:'',inviteExpiryMinutes:60,telegramFileId:''});
@@ -28,8 +28,8 @@ const importRules={content:[{required:true,whitespace:true,message:'请粘贴卡
 async function loadAll(){
  loading.value=true;
  try{
-  const [cats,items]=await Promise.all([requestClient.get<Category[]>('/catalog/categories'),requestClient.get<Product[]>('/catalog/products')]);
-  categories.value=cats;products.value=items;
+  const [cats,items,upstream]=await Promise.all([requestClient.get<Category[]>('/catalog/categories'),requestClient.get<Product[]>('/catalog/products'),requestClient.get<any>('/upstream/config')]);
+  categories.value=cats;products.value=items;upstreamEnabled.value=Boolean(upstream.enabled);
  }catch(error:any){message.error(error?.response?.data?.message||'商品与分类加载失败')}
  finally{loading.value=false}
 }
@@ -112,8 +112,11 @@ function removeProduct(item:Product){
  }});
 }
 function money(item:Product){return (item.priceMinor/100).toFixed(2)+' '+item.currency}
-function stockLabel(item:Product){return item.deliveryType==='card'||item.deliveryType==='file_card'?String(item.stockCount):'不限量'}
-function deliveryLabel(item:Product){return ({card:'卡密',fixed_text:'固定文本',invite_link:'一次性邀请链接',file:'文件',file_card:'文件 + 卡密'} as Record<string,string>)[item.deliveryType]||'卡密'}
+function upstreamPriceLabel(item:Product){return item.sourceType==='upstream'?'上游原价 '+(item.upstreamPriceSnapshotMinor/100).toFixed(2)+' '+item.upstreamCurrency:''}
+function imagePath(item:Product){try{return (JSON.parse(item.imagePathsJson||'[]') as string[])[0]||''}catch{return ''}}
+function stockLabel(item:Product){if(item.sourceType==='upstream')return item.upstreamStockQuantity<0?'不限量':String(item.upstreamStockQuantity);return item.deliveryType==='card'||item.deliveryType==='file_card'?String(item.stockCount):'不限量'}
+function deliveryLabel(item:Product){return item.sourceType==='upstream'?'上游代购':({card:'卡密',fixed_text:'固定文本',invite_link:'一次性邀请链接',file:'文件',file_card:'文件 + 卡密'} as Record<string,string>)[item.deliveryType]||'卡密'}
+function rowProps(record:Product){return {class:upstreamEnabled.value&&record.sourceType==='local'?'opacity-50 grayscale':''};}
 onMounted(loadAll);
 </script>
 
@@ -129,6 +132,7 @@ onMounted(loadAll);
   </a-row>
  
   <a-card :bordered="false" class="rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}">
+   <a-alert v-if="upstreamEnabled" class="mb-4" type="info" show-icon message="当前 Bot 商品目录已切换为上游来源。本地商品仍保留在后台并置灰显示；上游商品采购将在 PR C 完成前保持禁用。" />
    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
     <div class="text-sm font-semibold">商品与库存</div>
     <a-space wrap>
@@ -148,21 +152,22 @@ onMounted(loadAll);
    <div v-else>
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-semibold">商品列表</div><div class="mt-1 text-xs text-gray-400">没有分类也可以新增商品，分类为可选项</div></div></div>
     <div v-if="isMobile" class="flex flex-col gap-3">
-     <a-card v-for="item in products" :key="item.id" size="small" class="rounded-lg border border-gray-100" :body-style="{padding:'20px 24px'}">
-      <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0"><div class="break-words text-sm font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-400">{{item.categoryName||'未分类'}}</div></div><a-tag class="m-0 shrink-0" :color="item.status===1?'success':'default'">{{item.status===1?'销售中':'已下架'}}</a-tag></div>
+     <a-card v-for="item in products" :key="item.id" size="small" class="rounded-lg border border-gray-100" :class="upstreamEnabled&&item.sourceType==='local'?'opacity-50 grayscale':''" :body-style="{padding:'20px 24px'}">
+      <div class="flex min-w-0 items-start justify-between gap-3"><div class="flex min-w-0 items-center gap-3"><a-image v-if="imagePath(item)" :src="imagePath(item)" :width="48" :height="48" class="shrink-0 rounded object-cover"/><div class="min-w-0"><div class="break-words text-sm font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-400">{{item.categoryName||'未分类'}}</div></div></div><div class="flex shrink-0 items-center gap-1"><a-tag class="m-0" :color="item.sourceType==='upstream'?'processing':upstreamEnabled?'default':'blue'">{{item.sourceType==='upstream'?'上游':upstreamEnabled?'本地（隐藏）':'本地'}}</a-tag><a-tag class="m-0" :color="item.status===1?'success':'default'">{{item.status===1?'销售中':'已下架'}}</a-tag></div></div>
       <a-divider class="my-3"/>
-      <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">售价</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div></div><div><div class="text-xs text-gray-400">可售库存</div><div class="mt-1 text-sm font-semibold">{{stockLabel(item)}}</div></div><div><div class="text-xs text-gray-400">交付方式</div><div class="mt-1 text-sm font-semibold">{{deliveryLabel(item)}}</div></div></div>
-      <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button v-if="item.deliveryType==='card'||item.deliveryType==='file_card'" size="small" @click="openImport(item)">导入卡密</a-button><a-button size="small" @click="openEdit(item)">编辑</a-button><a-button size="small" danger @click="removeProduct(item)">删除</a-button></div>
+      <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">售价</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div><div v-if="upstreamPriceLabel(item)" class="mt-1 text-xs text-gray-400">{{upstreamPriceLabel(item)}}</div></div><div><div class="text-xs text-gray-400">可售库存</div><div class="mt-1 text-sm font-semibold">{{stockLabel(item)}}</div></div><div><div class="text-xs text-gray-400">交付方式</div><div class="mt-1 text-sm font-semibold">{{deliveryLabel(item)}}</div></div></div>
+      <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button v-if="item.sourceType!=='upstream'&&(item.deliveryType==='card'||item.deliveryType==='file_card')" size="small" @click="openImport(item)">导入卡密</a-button><a-button size="small" :disabled="item.sourceType==='upstream'" @click="openEdit(item)">编辑</a-button><a-button size="small" danger :disabled="item.sourceType==='upstream'" @click="removeProduct(item)">删除</a-button></div>
      </a-card>
      <a-empty v-if="!loading&&products.length===0" description="还没有商品，点击“新增商品”创建第一个商品"/>
     </div>
-    <a-table v-else :data-source="products" :loading="loading" row-key="id" :scroll="{x:900}">
-     <a-table-column title="商品名称" data-index="name" key="name" :width="260"><template #default="{record}"><div class="whitespace-normal break-words leading-5">{{record.name}}</div></template></a-table-column>
+    <a-table v-else :data-source="products" :loading="loading" row-key="id" :scroll="{x:1000}" :custom-row="rowProps">
+     <a-table-column title="商品名称" data-index="name" key="name" :width="260"><template #default="{record}"><div class="flex items-center gap-2"><a-image v-if="imagePath(record)" :src="imagePath(record)" :width="36" :height="36" class="shrink-0 rounded object-cover"/><span class="whitespace-normal break-words leading-5">{{record.name}}</span></div></template></a-table-column>
+     <a-table-column title="来源" key="source"><template #default="{record}"><a-tag :color="record.sourceType==='upstream'?'processing':upstreamEnabled?'default':'blue'">{{record.sourceType==='upstream'?'上游':upstreamEnabled?'本地（隐藏）':'本地'}}</a-tag></template></a-table-column>
      <a-table-column title="分类" data-index="categoryName" key="categoryName"><template #default="{record}">{{record.categoryName||'未分类'}}</template></a-table-column>
-     <a-table-column title="售价" key="price"><template #default="{record}">{{money(record)}}</template></a-table-column>
+     <a-table-column title="售价" key="price"><template #default="{record}"><div>{{money(record)}}</div><div v-if="upstreamPriceLabel(record)" class="text-xs text-gray-400">{{upstreamPriceLabel(record)}}</div></template></a-table-column>
      <a-table-column title="库存 / 交付" key="stockCount" :width="140"><template #default="{record}">{{stockLabel(record)}} · {{deliveryLabel(record)}}</template></a-table-column>
      <a-table-column title="状态" key="status"><template #default="{record}"><a-tag :color="record.status===1?'success':'default'">{{record.status===1?'销售中':'已下架'}}</a-tag></template></a-table-column>
-     <a-table-column title="操作" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button v-if="record.deliveryType==='card'||record.deliveryType==='file_card'" type="link" size="small" @click="openImport(record)">导入卡密</a-button><a-button type="link" size="small" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" @click="removeProduct(record)">删除</a-button></a-space></template></a-table-column>
+     <a-table-column title="操作" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button v-if="record.sourceType!=='upstream'&&(record.deliveryType==='card'||record.deliveryType==='file_card')" type="link" size="small" @click="openImport(record)">导入卡密</a-button><a-button type="link" size="small" :disabled="record.sourceType==='upstream'" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" :disabled="record.sourceType==='upstream'" @click="removeProduct(record)">删除</a-button></a-space></template></a-table-column>
      <template #emptyText><a-empty description="还没有商品，点击“新增商品”创建第一个商品"/></template>
     </a-table>
    </div>
@@ -173,7 +178,7 @@ onMounted(loadAll);
   <a-modal v-model:open="productModalOpen" :title="editingId?'编辑商品':'新增商品'" :width="560" :confirm-loading="saving" ok-text="保存商品" cancel-text="取消" @ok="saveProduct">
    <div class="py-3"><a-form ref="productFormRef" :model="productForm" :rules="productRules" layout="vertical">
     <a-form-item label="商品名称" name="name"><a-input v-model:value="productForm.name" size="large" :maxlength="160" placeholder="例如：会员月卡"/></a-form-item>
-    <a-form-item label="商品分类"><a-select v-model:value="productForm.categoryId" size="large" allow-clear show-search option-filter-prop="label" placeholder="可不选择分类" :options="categories.map(item=>({label:item.name,value:item.id}))"/></a-form-item>
+    <a-form-item label="商品分类"><a-select v-model:value="productForm.categoryId" size="large" allow-clear show-search option-filter-prop="label" placeholder="可不选择分类"  :options="categories.filter(item=>item.sourceType==='local').map(item=>({label:item.name,value:item.id}))"/></a-form-item>
     <a-form-item label="售价（USDT）" name="price"><a-input v-model:value="productForm.price" size="large" inputmode="decimal" placeholder="例如：9.90"/></a-form-item>
     <a-form-item label="商品交付方式"><a-select v-model:value="productForm.deliveryType" size="large" :options="[{label:'卡密自动发货',value:'card'},{label:'固定文本',value:'fixed_text'},{label:'一次性 Telegram 邀请链接',value:'invite_link'},{label:'Telegram 文件',value:'file'},{label:'文件 + 卡密',value:'file_card'}]"/></a-form-item>
     <a-form-item v-if="productForm.deliveryType==='fixed_text'" label="固定交付文本"><a-textarea v-model:value="productForm.deliveryText" :rows="4" :maxlength="4000" placeholder="付款后自动发送给买家的内容"/></a-form-item>
