@@ -59,7 +59,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	categoryRecords := make([]database.UpstreamCategoryRecord, 0, len(categories))
 	for _, category := range categories {
 		name := categoryNames[category.ID]
-		if name == "" || category.ID <= 0 { continue }
+		if name == "" || category.ID <= 0 { return summary, a.failUpstreamSync(ctx, "上游分类包含无效 ID 或名称，已保留上一次目录数据") }
 		if category.ParentID > 0 {
 			if parent := categoryNames[category.ParentID]; parent != "" { name = parent + " / " + name }
 		}
@@ -83,14 +83,13 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	productRecords := make([]database.UpstreamProductRecord, 0)
 	imageWarnings := make([]string, 0)
 	for _, product := range products {
-		if product.ID <= 0 { continue }
+		if product.ID <= 0 { return summary, a.failUpstreamSync(ctx, "上游商品包含无效商品 ID，已保留上一次目录数据") }
 		title := upstream.LocalizedText(product.Title)
-		if title == "" { continue }
+		if title == "" { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("上游商品 %d 缺少可识别名称，已保留上一次目录数据", product.ID)) }
 		description := upstream.CleanDescription(product.Description, product.Content)
 		skus := product.SKUs
 		if len(skus) == 0 {
-			if len(imageWarnings) < 5 { imageWarnings = append(imageWarnings, fmt.Sprintf("商品 %s 没有可同步 SKU，已跳过", title)) }
-			continue
+			return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 没有 SKU 数据，已保留上一次目录数据", title))
 		}
 		for _, sku := range skus {
 			if sku.ID <= 0 { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 包含无效 SKU ID，已停止同步", strconv.FormatInt(product.ID,10))) }
