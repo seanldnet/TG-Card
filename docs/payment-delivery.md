@@ -85,7 +85,7 @@ If the initial supplier POST times out before returning an upstream order ID, th
 
 Supplier failures/timeouts do not alter the original buyer payment record or automatically debit/refund the buyer wallet. Owner-confirmed refunds atomically commit the separate wallet credit, refund ledger, order state, procurement event, and admin audit in one database transaction. Mock/CI success is not live supplier integration; PR E remains the only real supplier end-to-end phase.
 
-## PR D — Supplier funds and refund safety (in development)
+## PR D — Supplier funds and refund safety (Draft PR #38; branch CI passed)
 
 - The PR2 wallet reconciliation remains read-only and compares each buyer's stored balance with credit-minus-debit ledger entries.
 - PR D adds supplier balance snapshots immediately before and after a procurement request, linked to the local order number, supplier order ID, and supplier-reported amount. A mismatch or unavailable snapshot creates a finance exception for manual review; it never changes supplier or buyer balances.
@@ -93,4 +93,4 @@ Supplier failures/timeouts do not alter the original buyer payment record or aut
 - A periodic sweep marks unresolved post-purchase snapshots as unverifiable after 15 minutes.
 - Refund integrity checks validate the refunded order, independent refund row, admin/reason, buyer, amount, and the unique wallet credit transaction. Missing/orphan links create exceptions; the checker does not repair ledger entries.
 - Uncertain orders have an ageing view and an Owner resolution workflow. Confirmed accepted orders require a positive supplier order ID, extend the polling deadline, and resume GET-only polling; confirmed not-accepted orders are moved to failed state for explicit retry using the original idempotency key.
-- A unified finance exception center covers procurement failures, uncertain orders, supplier balance differences, and refund ledger anomalies. PR E remains the only live supplier-money integration phase.
+- A unified finance exception center covers procurement failures, uncertain orders, supplier balance differences, and refund ledger anomalies. PR #38 Go, Admin, and Security CI passed; merge, image publication, production deployment, and acceptance remain pending. PR E remains the only live supplier-money integration phase.
