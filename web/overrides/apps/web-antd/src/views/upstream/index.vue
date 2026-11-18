@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 
+interface FailedProcurement {
+  orderNo:string;productId:string;upstreamProductId:string;upstreamSKUID:string;quantity:number;
+  status:string;upstreamOrderNo:string;attemptCount:number;pollCount:number;lastError:string;updatedAt:string;
+}
 interface UpstreamSettings {
   provider: string;
   baseUrl: string;
@@ -37,9 +41,31 @@ const settings=reactive<UpstreamSettings>({
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
+const failedProcurements=ref<FailedProcurement[]>([]);
+const failedLoading=ref(false),actionOrder=ref('');
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
 const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
 const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'};return labels[settings.syncStatus]||settings.syncStatus;});
+async function loadFailedProcurements(){
+ failedLoading.value=true;
+ try{failedProcurements.value=await requestClient.get<FailedProcurement[]>('/upstream/procurements/failed');}
+ catch(error:any){message.error(error?.response?.data?.message||'采购失败队列加载失败');}
+ finally{failedLoading.value=false;}
+}
+async function retryProcurement(orderNo:string){
+ actionOrder.value=orderNo;
+ try{await requestClient.post(`/upstream/procurements/${encodeURIComponent(orderNo)}/retry`,{});message.success('已提交采购重试');await loadFailedProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||'采购重试失败');}
+ finally{actionOrder.value='';}
+}
+function refundProcurement(orderNo:string){
+ Modal.confirm({title:'确认退款到买家站内余额？',content:`订单 ${orderNo} 将收到一笔独立的站内余额 credit；原始支付记录不会更改。此操作不可重复。`,okText:'确认退款',cancelText:'取消',okButtonProps:{danger:true},onOk:async()=>{
+  actionOrder.value=orderNo;
+  try{await requestClient.post(`/upstream/procurements/${encodeURIComponent(orderNo)}/refund`,{note:'Owner 确认上游无法履约'});message.success('退款已记入买家站内余额');await loadFailedProcurements();}
+  catch(error:any){message.error(error?.response?.data?.message||'退款失败');}
+  finally{actionOrder.value='';}
+ }});
+}
 async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
@@ -82,7 +108,7 @@ async function testConnection(){
  }catch(error:any){await load();message.error(error?.response?.data?.message||'上游连接测试失败');}
  finally{testing.value=false;}
 }
-onMounted(()=>{void load();});
+onMounted(()=>{void load();void loadFailedProcurements();});
 </script>
 
 <template>
@@ -172,6 +198,25 @@ onMounted(()=>{void load();});
      <a-alert v-if="syncResult?.warning" class="mt-3" type="warning" show-icon :message="syncResult.warning"/>
     </div>
    </div>
+  </a-card>
+  <a-card :bordered="false" :loading="failedLoading" title="上游采购失败人工队列">
+   <template #extra><a-button size="small" @click="loadFailedProcurements">刷新队列</a-button></template>
+   <a-alert class="mb-3" type="warning" show-icon message="采购失败不会自动取消已付款订单或扣减买家余额。Owner 可先手动重试；确认无法履约后，才可退款至买家站内余额。所有操作写入审计与独立钱包流水。" />
+   <a-table :data-source="failedProcurements" row-key="orderNo" :pagination="{pageSize:8,hideOnSinglePage:true}" :scroll="{x:1100}">
+    <a-table-column title="本地订单号" data-index="orderNo" key="orderNo" :width="190"/>
+    <a-table-column title="上游订单号" data-index="upstreamOrderNo" key="upstreamOrderNo" :width="180"/>
+    <a-table-column title="采购尝试" data-index="attemptCount" key="attemptCount" :width="100"/>
+    <a-table-column title="查单次数" data-index="pollCount" key="pollCount" :width="100"/>
+    <a-table-column title="失败原因" data-index="lastError" key="lastError" :width="300"/>
+    <a-table-column title="更新时间" data-index="updatedAt" key="updatedAt" :width="190"/>
+    <a-table-column title="操作" key="actions" fixed="right" :width="180">
+     <template #default="{record}">
+      <a-button type="link" size="small" :loading="actionOrder===record.orderNo" @click="retryProcurement(record.orderNo)">手动重试</a-button>
+      <a-button type="link" danger size="small" :disabled="!!actionOrder" @click="refundProcurement(record.orderNo)">退款</a-button>
+     </template>
+    </a-table-column>
+   </a-table>
+   <a-empty v-if="!failedLoading&&failedProcurements.length===0" description="当前没有待人工处理的采购失败订单"/>
   </a-card>
  </div>
 </template>
