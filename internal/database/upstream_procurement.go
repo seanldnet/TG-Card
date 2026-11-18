@@ -163,11 +163,12 @@ func FailUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderID, r
 	return tx.Commit()
 }
 
-func RetryUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderID string) error {
+func RetryUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderID string, timeout time.Duration) error {
+	if timeout<=0 { timeout=30*time.Minute }
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
-	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	q:="UPDATE upstream_procurements SET status='retry',next_attempt_at="+placeholder(driver,1)+",last_error='',updated_at="+placeholder(driver,2)+" WHERE order_id="+placeholder(driver,3)+" AND status='failed'"
-	res,err:=tx.ExecContext(ctx,q,now,now,orderID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("采购任务不处于可重试失败状态")}
+	current:=time.Now().UTC();now:=current.Format(time.RFC3339Nano);deadline:=current.Add(timeout).Format(time.RFC3339Nano)
+	q:="UPDATE upstream_procurements SET status='retry',next_attempt_at="+placeholder(driver,1)+",deadline_at="+placeholder(driver,2)+",last_error='',updated_at="+placeholder(driver,3)+" WHERE order_id="+placeholder(driver,4)+" AND status='failed'"
+	res,err:=tx.ExecContext(ctx,q,now,deadline,now,orderID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("采购任务不处于可重试失败状态")}
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='paid',delivery_error='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND status='purchase_failed'",now,orderID);err!=nil{return err}
 	if err:=recordUpstreamProcurementEvent(ctx,tx,driver,orderID,"manual_retry","retry:"+orderID+":"+now,"manual procurement retry requested",now);err!=nil{return err}
 	return tx.Commit()
