@@ -1374,6 +1374,9 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  case "stock_relisted": telegramEnabled=s.TelegramNotifyStockLow; title="补货自动上架提醒"
  case "daily_report": emailEnabled=true; telegramEnabled=s.TelegramNotifyDailyReport; title="每日对账日报"
  case "risk_alert": telegramEnabled=s.TelegramNotifyRiskAlert; title="支付风险提醒"
+ case "upstream_procurement_failed": telegramEnabled=true; title="上游采购失败提醒"
+ case "upstream_balance_low": telegramEnabled=true; title="供应商余额不足提醒"
+ case "upstream_callback_invalid": telegramEnabled=true; title="上游回调验签失败提醒"
  default: return
  }
  body:=s.SiteName+"\n"+title+"\n"+details
@@ -1392,7 +1395,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  }
  if telegramEnabled {
   targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
-  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="support_created"{targets=append(targets,s.TelegramOwnerID)}
+  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="upstream_procurement_failed"||event=="upstream_balance_low"||event=="upstream_callback_invalid"||event=="support_created"{targets=append(targets,s.TelegramOwnerID)}
   sent:=map[string]bool{}
   bots,err:=database.ListBots(ctx,a.db)
   if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }
