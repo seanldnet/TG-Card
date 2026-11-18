@@ -6,7 +6,7 @@
 
 | 上游 | 分类/商品 | 商户下单 | 交付 | 余额 | 证据结论 |
 |---|---|---|---|---|---|
-| Dujiao-Next | 官方 Open API：GET /categories、GET /products，分页和 SKU 结构有定义 | POST /orders，HMAC-SHA256；downstream_order_no 支持下游幂等关联 | GET /orders/:id + POST /upstream/callback；履约数据在 delivered 后提供 | POST /ping 返回 balance/currency | 官方文档确认，尚未在 TG-Card 实现 |
+| Dujiao-Next | 官方 Open API：GET /categories、GET /products，分页和 SKU 结构有定义 | POST /orders，HMAC-SHA256；downstream_order_no 支持下游幂等关联 | GET /orders/:id + POST /upstream/callback；履约数据在 delivered 后提供 | POST /ping 返回 balance/currency | PR A/B/C 已合并；真实商户联调仍留待 PR E |
 | 异次元 / ACG-Faka | 未确认官方商户目录 API | 未确认官方商户采购 API | 未确认 | 未确认 | 待上游确认；第三方支付插件不构成货源 API 证据 |
 | 萌次元 / MCY Shop | 官方 Wiki 描述货源插件体系，但未确认第三方商户目录 API | 未确认 | 未确认 | 未确认 | 待上游确认；不得从异次元或 Dujiao 协议推断 |
 
@@ -28,7 +28,7 @@ API 根路径为 `/api/v1/upstream`。认证头为 `Dujiao-Next-Api-Key`、`Duji
 | 取消 | POST /orders/:id/cancel | 上游取消接口 |
 | 异步回调 | POST /upstream/callback | 上游推送状态与交付内容 |
 
-官方站点对接指南明确支付后异步采购、回调传递状态和交付内容；采购失败时标记异常供管理员处理，默认不自动取消/退款。TG-Card 需自行实现持久化队列、失败人工处理、重试与退款审计。回调负载的完整字段和签名校验规则应以 Open API 对应章节为准，未完成联调前不写入假设。
+官方站点对接指南明确支付后异步采购、回调传递状态和交付内容；采购失败时标记异常供管理员处理，默认不自动取消/退款。TG-Card 需自行实现持久化队列、失败人工处理、重试与退款审计。回调使用 `Dujiao-Next-Api-Key`、`Dujiao-Next-Timestamp`、`Dujiao-Next-Signature` 请求头；签名原文 `{METHOD}\\n{PATH}\\n{TIMESTAMP}\\n{BODY_MD5}`，HMAC-SHA256，时间戳容差 ±60 秒。验签必须对原始 body 字节计算。
 
 ## 2. 异次元 / ACG-Faka（待上游确认）
 
@@ -50,7 +50,7 @@ PR A 的边界仅限配置与连接测试。PR B（PR #26，已合并）已实�
 
 价格处理：Dujiao ping 返回站点币种。TG-Card 订单结算使用 USDT，因此上游币种为 USDT 时按 1:1；其他币种必须在后台手动配置“1 单位上游币种 = ? USDT”的汇率。最终售价 = 上游 SKU 原币价格 × 汇率 ×（1 + 百分比加价）+ 固定 USDT 加价。原币金额与币种作为商品快照保存；不自动抓取或猜测汇率。
 
-PR C 已在独立 PR #32（Draft）实现采购转发、订单状态复核、幂等、异步查单/回调、人工失败队列、退款账本和供应商余额日报；Go/Admin/Security CI 与十项 mock 测试均通过，但 PR 尚未合并，不代表生产可用。PR D 与 PR E 仍未完成。
+PR C 已通过独立 PR #32 合并，完成采购转发、订单状态复核、幂等、异步查单/回调、人工失败队列、退款账本和供应商余额日报；PR head 与 merge 后 Go/Admin/Security CI 通过，十项 mock 测试通过。PR C 不等于真实商户联调或生产端到端验收；PR D 与 PR E 仍未完成。
 
 Dujiao-Next API Key 与 API Secret 均使用 TG-Card 的持久化 AES-256-GCM 密钥加密；读取接口只返回掩码/已配置标志。连接测试按官方 HMAC-SHA256 规则调用 `POST /api/v1/upstream/ping`。
 
@@ -60,7 +60,7 @@ Dujiao-Next API Key 与 API Secret 均使用 TG-Card 的持久化 AES-256-GCM �
 |---|---|---|
 | PR A（PR #21） | 上游基础设施、商户配置、双凭证加密、连接测试 | 已合并 |
 | PR B（PR #26） | 分类/商品/SKU 目录同步、图片本地化、加价展示、目录来源切换 | 已合并；真实商户验收待执行 |
-| PR C（PR #32） | 支付确认后采购、`downstream_order_no` 幂等、查单轮询/回调、失败人工队列、Owner 通知、手动恢复、站内余额退款账本、供应商余额告警 | **独立 Draft PR；Go/Admin/Security CI 和十项 mock 测试通过，尚未合并** |
+| PR C（PR #32） | 支付确认后采购、`downstream_order_no` 幂等、查单轮询/回调、失败人工队列、Owner 通知、手动恢复、站内余额退款账本、供应商余额告警 | **已合并（PR #32）；Go/Admin/Security CI、merge Publish 与十项 mock 测试通过** |
 | PR D | 供应商资金与本地资金安全控制、余额/扣款一致性核对、异常告警与审计保护 | **待开发** |
 | PR E | 使用真实 Dujiao-Next 商户账号进行连接、目录、采购、扣款、异步回调、交付、失败与退款全链路联调 | **待开发/待验收** |
 
