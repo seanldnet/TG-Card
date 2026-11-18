@@ -342,13 +342,13 @@ func (m *Manager) checkLowStock(ctx context.Context) {
 		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
 		if !keyBacked||p.SourceType=="upstream"{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
 		if autoUnlist&&p.Status==1&&p.StockCount==0{
-			if err:=database.SetLocalProductAvailability(ctx,m.db,m.driver,p.ID,false);err!=nil{log.Printf("auto unlist zero-stock product failed: product_id=%s error=%v",p.ID,err);continue}
+			if err:=database.MarkLocalProductAutoUnlisted(ctx,m.db,m.driver,p.ID);err!=nil{log.Printf("auto unlist zero-stock product failed: product_id=%s error=%v",p.ID,err);continue}
 			log.Printf("product automatically unpublished at zero stock: product_id=%s name=%q",p.ID,p.Name)
 			m.Notify("stock_zero",fmt.Sprintf("商品：%s\n库存已归零，系统已自动下架。补货后是否自动上架取决于网站设置。",p.Name),ownerID)
 			m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock()
 			continue
 		}
-		if autoRelist&&p.Status==0&&p.StockCount>0{
+		if autoRelist&&p.Status==0&&p.StockAutoUnlisted&&p.StockCount>0{
 			if err:=database.SetLocalProductAvailability(ctx,m.db,m.driver,p.ID,true);err!=nil{log.Printf("auto relist restocked product failed: product_id=%s error=%v",p.ID,err);continue}
 			p.Status=1
 			log.Printf("product automatically republished after restock: product_id=%s stock=%d",p.ID,p.StockCount)
