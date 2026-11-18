@@ -4,9 +4,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-18
-> - 文档版本：1.4.0
-> - 源码核对基线：`main` 分支，commit `2044fa5234ebfd62d3e30357220b192e3a10814b`
-> - 本次文档更新：记录 Dujiao-Next PR A 合并状态与代码边界；源码基线为 `main@2044fa5234ebfd62d3e30357220b192e3a10814b`
+> - 文档版本：1.5.0
+> - 源码核对基线：`main` 分支，commit `e625d57473acba618cb26923965566cd3fea12d1`
+> - 本次文档更新：记录 Dujiao-Next PR B 商品目录同步实现范围；源码基线为 `main@e625d57473acba618cb26923965566cd3fea12d1`，PR B 开发分支待合并
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -84,7 +84,7 @@ flowchart LR
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
 | 系统权限与菜单 | 已实现 | 后台动态菜单/权限码接口；当前为单管理员产品结构，不应误认为完整多角色 RBAC。 |
-| 上游发卡对接 | 部分实现（PR #21 已合并） | Dujiao-Next 配置迁移/API/后台动态菜单页面、双凭证 AES-256-GCM 加密、脱敏读取、HMAC-SHA256 `/ping` 连接测试及连接状态记录已实现；目录同步、商品来源切换、采购转发和失败队列仍未实现。异次元/萌次元不提供可调用配置。详见 `docs/upstream-integration.md`。 |
+| 上游发卡对接 | 部分实现（PR #21 已合并；PR #24 开发中） | PR #21 提供配置、双凭证加密和连接测试；PR #24 开发分类/商品/SKU 同步、图片本地化、加价/汇率快照、手动/定时同步、来源切换与下架隐藏。采购转发、订单查单/回调和失败队列仍未实现。异次元/萌次元不提供可调用配置。详见 `docs/upstream-integration.md`。 |
 
 ## 4. Telegram Bot 用户端功能
 
@@ -260,7 +260,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 10. 附件修复在 Bot 停止状态和真实 Telegram 图片/文件场景下的验收。 | P0 | 本次附件修复 PR 合并后由项目所有者验收 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | P0 | 本次 CDN 修复 PR 构建后由项目所有者验收 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | P1 | 本次布局修复 PR 构建后回归 |
-| 13. 上游发卡对接：Dujiao-Next PR A 已实现配置、双凭证加密、连接测试和后台入口；分类/商品/SKU 同步、图片本地化、价格策略、商品来源切换、采购转发、查单/回调、失败队列、退款审计和余额告警仍未实现。ACG-Faka 与 MCY 商户 API 待上游确认。 | P1 | 按 PR B→C→D→E 独立实施；真实商户端到端验收后才标记完成 |
+| 13. 上游发卡对接：Dujiao-Next PR A 已实现配置/连接测试；PR B 开发分类、商品、SKU 同步、图片本地化、价格策略、来源切换和下架隐藏。采购转发、订单查单/回调、资金失败队列、退款审计及余额告警仍未实现。ACG-Faka 与 MCY 商户 API 待上游确认。 | P1 | PR B 合并后依次实施 PR C→D→E；真实商户端到端验收后才标记完成 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
 
@@ -397,7 +397,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 支付交易人工核对 | POST /api/payment/transactions/{transactionId}/reconcile | super 管理员 Bearer |
 | 充值赠送 | GET /api/settings/recharge-bonus、PUT /api/settings/recharge-bonus | 管理员 Bearer |
 | 支付设置 | GET /api/settings/payment、PUT /api/settings/payment | 管理员 Bearer |
-| 上游配置 | GET /api/upstream/config、PUT /api/upstream/config、POST /api/upstream/test | 管理员 Bearer；PR #21 实现；API Key 与 API Secret AES-256-GCM 加密，读取仅返回脱敏值 |
+| 上游配置 | GET /api/upstream/config、PUT /api/upstream/config、POST /api/upstream/test、POST /api/upstream/sync | 管理员 Bearer；PR #21/#24；凭证 AES-256-GCM 加密，读取仅返回脱敏值；手动同步需成功配置 |
 | 站点设置 | GET /api/settings/site、PUT /api/settings/site、POST /api/settings/site/test-email、POST /api/settings/site/test-telegram、POST /api/settings/site/logo | 管理员 Bearer |
 | 优惠券/促销 | GET /api/promotions、POST /api/promotions、PUT /api/promotions/{id}、DELETE /api/promotions/{id} | 管理员 Bearer |
 | 兑换码 | GET /api/redemption-codes、POST /api/redemption-codes、PUT /api/redemption-codes/{id}、DELETE /api/redemption-codes/{id} | 管理员 Bearer |
@@ -517,7 +517,8 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #15](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载基础实现。 | 已合并；后续附件可靠性修复见 PR #19。 | 不把 PR #15 的历史实现视为当前附件修复已验收。 | 以 PR #19 镜像执行图片/文件、Bot 停止后查看及跨工单访问保护测试。 |
 | [PR #17](https://github.com/seanldnet/TG-Card/pull/17) | 文档与代码一致性审计，包含上游能力审计表。 | 已合并；审计结论已写入 README、PROJECT_STATUS 与 CHANGELOG。 | 文档审计完成；上游业务功能仍未实现。 | 保持协议证据边界；仅对有官方可核实协议的 Dujiao-Next 开发。 |
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。Publish Run #327 成功，GHCR latest 与 commit SHA 标签均已推送。 | **代码完成待项目所有者验收**：Telegram 附件真机测试、跟踪防护下零外部 CDN 请求、PC 宽屏浏览器回归均未验收。 | 项目所有者按交接验收步骤执行并回填结果；不得以 CI/镜像发布替代真机验收。 |
-| [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像发布状态以本节后续记录为准。 | 完成真实商户凭证连接验收后进入 PR B。 |
+| [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.1 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
+| [PR #24](https://github.com/seanldnet/TG-Card/pull/24) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 开发分支已实现，PR/CI/合并待完成；包含事务式 upsert、缺失商品下架、同步失败保留旧目录、手动/定时同步。 | CI、真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购在 PR C 前禁用。 | PR #24 CI 通过并合并后再开始 PR C。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
 ### 19.1 PR #19 镜像发布证据
@@ -535,6 +536,17 @@ curl -fsS http://127.0.0.1:38647/api/health
 - 同一 commit 的 Go CI、Admin frontend CI、安全扫描均成功；这些自动化结果不代表真实 Telegram/浏览器验收。
 - 证据来源：Actions job `build-and-push` 日志中的 `pushing manifest for ...:latest`、commit SHA 标签推送及 `containerimage.digest` 输出。
 - 发布结论：PR #19 的 commit 已成功构建并推送 GHCR latest；生产部署与三类真实环境验收仍待项目所有者执行。
+
+
+### 19.1 PR #21 镜像发布证据
+
+- Publish workflow：[Run #44291422271](https://github.com/seanldnet/TG-Card/actions/runs/44291422271)，状态 `completed / success`。
+- 源码 commit：`2044fa5234ebfd62d3e30357220b192e3a10814b`。
+- GHCR 标签：`ghcr.io/seanldnet/tg-card:latest` 与 `ghcr.io/seanldnet/tg-card:2044fa5234ebfd62d3e30357220b192e3a10814b`。
+- Buildx digest：`sha256:edcf23eefc6be73bd1433a94d74870cae18d2198cd75424e7918d2b6f3066479`。
+- 构建平台：`linux/amd64`、`linux/arm64`；日志确认 latest 与 commit SHA 标签 manifest 推送成功。
+- main Push Go CI：[Run #44291422213](https://github.com/seanldnet/TG-Card/actions/runs/44291422213)、Admin CI：[Run #44291422281](https://github.com/seanldnet/TG-Card/actions/runs/44291422281)、Security：[Run #44291422254](https://github.com/seanldnet/TG-Card/actions/runs/44291422254) 均成功。
+- 发布结论：PR #21 已进入 GHCR latest；真实 Dujiao 商户连接/同步验收仍待项目所有者提供凭证并执行。
 
 ## 20. 安全基线
 
@@ -570,5 +582,6 @@ curl -fsS http://127.0.0.1:38647/api/health
 - Docker 运行用户、端口和数据目录：Dockerfile、docker-compose.yml。
 - 支付人工核对：cmd/server/main.go、internal/payment/manager.go、docs/payment-delivery.md。
 - Dujiao-Next 上游配置：internal/upstream/dujiao.go、internal/database/upstream.go、internal/database/migrations/0029_upstream_settings.sql、cmd/server/upstream.go、web/overrides/apps/web-antd/src/views/upstream/index.vue。
+- Dujiao-Next 目录同步：internal/upstream/catalog.go、internal/database/upstream_catalog.go、internal/database/migrations/0030–0034、cmd/server/upstream_sync.go、internal/telegrambot/manager.go、web/overrides/apps/web-antd/src/views/catalog/index.vue。
 
 如果未来代码与本文冲突，应以当前代码和数据库迁移为准，并在同一 PR 中修订本文和 docs/CHANGELOG.md。
