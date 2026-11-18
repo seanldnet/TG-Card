@@ -1,6 +1,18 @@
+## 2026-11-18 — PR #19 镜像发布核验与追踪状态修正
+
+- 状态：镜像已发布；真实环境验收待项目所有者执行。
+- PR / Commit：[PR #19](https://github.com/seanldnet/TG-Card/pull/19)；main commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。
+- Publish Actions：[Run #327](https://github.com/seanldnet/TG-Card/actions/runs/44288929603)，Run ID `44288929603`，事件 push，状态 `completed / success`；job `build-and-push` 成功。
+- 镜像标签：`ghcr.io/seanldnet/tg-card:latest`、`ghcr.io/seanldnet/tg-card:40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。
+- 镜像 digest：`sha256:05663ddbc49d9706a4fe3b4771cbc1dab427a29b15605a048d69723485fc60c6`；Buildx 日志明确记录 latest manifest 推送成功、commit SHA 标签推送成功及 containerimage.digest。
+- 构建平台：linux/amd64、linux/arm64。
+- 同一 commit 的 Go backend CI、Admin frontend CI、安全扫描均成功；见 [Go](https://github.com/seanldnet/TG-Card/actions/runs/44288929665)、[Admin](https://github.com/seanldnet/TG-Card/actions/runs/44288929601)、[Security](https://github.com/seanldnet/TG-Card/actions/runs/44288929734)。
+- 验收状态：Telegram 图片/文件附件及 Bot 停止后历史附件查看、跟踪防护下 Network 零外部 CDN 请求、PC 宽屏真实浏览器回归，均仍待项目所有者执行。CI 与镜像发布不等于端到端验收。
+- 文档：更新 PROJECT_STATUS 元信息源码基线为 `main@40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`；重写第 19 节 PR/发布/验收追踪表；修正本记录之前将 PR #19 标记为“PR 中”的过期状态。
+
 ## 2026-11-18 — 附件下载、静态资源与 PC 内容区修复
 
-- 状态：PR 中；Go CI、Admin 前端 CI、安全扫描均已通过；真实环境验收未完成。
+- 状态：已合并至 main（PR #19）；镜像已发布（Publish Run #327 成功，digest 见下方发布核验记录）；真实环境验收未完成。
 - 复现条件：售后附件端点依赖内存 Bot worker，下载失败日志不足；Vben 默认 Logo/头像使用 unpkg static-source；后台外层容器 max-width 限制大屏宽度。
 - 附件：`internal/telegrambot/manager.go` 从 `bots.token_ciphertext` 读取工单所属 Bot Token 并使用既有 decrypt 函数解密，不再依赖运行 worker；getFile 与下载链路分别设置超时；20 MiB 限制。
 - 附件错误与日志：`cmd/server/support.go` 区分附件失效、文件过大、Telegram 异常、未知错误；结构化记录 ticket/message/bot、脱敏 file_id 前缀、Telegram 错误码/描述和成功字节数，不记录 Token。
@@ -12,9 +24,9 @@
 - CI：Go backend CI、Admin frontend CI、安全扫描通过。Actions: [Go](https://github.com/seanldnet/TG-Card/actions/runs/44287702230)、[Admin](https://github.com/seanldnet/TG-Card/actions/runs/44287701536)、[Security](https://github.com/seanldnet/TG-Card/actions/runs/44287701277)。
 - 未验收：Telegram 真机图片/文件预览下载、Bot 停止后查看历史附件、浏览器跟踪防护 Network 零外部域请求、PC 宽屏真实浏览器回归、真实上游下单。以上由项目所有者执行，不由 Agent 代标已验收。
 
-## 2026-11-18 — 上游发卡能力与文档一致性审计（问题五）
+## 2026-11-18 — 上游发卡能力与文档一致性审计（问题五，PR #17 已合并）
 
-- 状态：审计结论已写入文档；代码功能未因此宣称交付。
+- 状态：PR #17 已合并；审计结论已写入文档；代码功能未因此宣称交付。
 - 源码基线：`main@41ef99ac935407dfd896b74840e220b3ba766400`。
 - 检查范围：`README.md`、`docs/*`、`web/overrides/`、`internal/`、`cmd/`，并核对数据库迁移、后台路由/页面及动态菜单注册。
 - 关键代码证据：
