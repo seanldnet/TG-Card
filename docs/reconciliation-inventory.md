@@ -13,7 +13,8 @@ PR2 独立分支：`feat/reconciliation-inventory-safety`。本专项只处理 T
 - 订单数：按 `orders.created_at` 落在报告日内统计。
 - 营收：仅统计 USDT 订单，按 `paid_at` 落在报告日内的 `amount_minor × 10,000` 汇总为 6 位 USDT atomic。
 - 已交付数：按 `delivered_at` 落在报告日内统计。
-- 交付失败数：按 `order_delivery_events.event_type='delivery_failed'` 的事件时间统计，按报告日内不同订单 ID 去重；重试多次同一订单在同一天只计一单。
+- 交付成功数：按 `delivered_at` 统计，不要求订单当前状态仍为 delivered，因此后续退款的已交付订单仍计入成功交付。
+- 交付失败数：按 `order_delivery_events.event_type='delivery_failed'` 的事件时间统计，按报告日内不同订单 ID 去重；重试多次同一订单在同一天只计一单。迁移会将升级时仍处于 delivery_failed 的订单按最后更新时间回填为一条历史事件。
 - 退款金额：按 `wallet_transactions` 中 `direction='credit'` 且备注前缀为“售后退款：”的流水金额统计。
 - 充值总额：按 `wallet_recharges.status='paid'` 与 `paid_at` 统计充值本金 `amount_atomic`，不把赠送额算作用户实际充值金额。
 - 未匹配交易：按报告日链上时间 `block_timestamp_ms` 统计 `status='unmatched'`。
