@@ -573,12 +573,12 @@ func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return OrderDelivery{}, 0, err }
 	defer tx.Rollback()
-	q := "SELECT status,expires_at,telegram_user_id,amount_minor,order_no,quantity,COALESCE(delivery_type,'card') FROM orders WHERE id=" + placeholder(driver, 1)
+	q := "SELECT status,expires_at,telegram_user_id,amount_minor,order_no,quantity,COALESCE(delivery_type,'card'),COALESCE(upstream_source_snapshot,'') FROM orders WHERE id=" + placeholder(driver, 1)
 	if driver == "postgres" { q += " FOR UPDATE" }
-	var status, expiresAt, userID, orderNo, deliveryType string
+	var status, expiresAt, userID, orderNo, deliveryType, sourceType string
 	var amountMinor int64
 	var quantity int
-	if err := tx.QueryRowContext(ctx, q, orderID).Scan(&status,&expiresAt,&userID,&amountMinor,&orderNo,&quantity,&deliveryType); err != nil { return OrderDelivery{}, 0, err }
+	if err := tx.QueryRowContext(ctx, q, orderID).Scan(&status,&expiresAt,&userID,&amountMinor,&orderNo,&quantity,&deliveryType,&sourceType); err != nil { return OrderDelivery{}, 0, err }
 	if status != "pending_payment" { return OrderDelivery{}, 0, fmt.Errorf("订单当前状态不允许余额支付：%s", status) }
 	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
 	if err != nil || !time.Now().UTC().Before(expires) { return OrderDelivery{}, 0, fmt.Errorf("订单已过期，请重新下单") }
@@ -598,12 +598,20 @@ func PayOrderWithWallet(ctx context.Context, db *sql.DB, driver, orderID string)
 	ledger := "INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES(" + placeholder(driver,1) + "," + placeholder(driver,2) + ",'','debit'," + placeholder(driver,3) + "," + placeholder(driver,4) + "," + placeholder(driver,5) + "," + placeholder(driver,6) + ")"
 	if _, err := tx.ExecContext(ctx, ledger, ledgerID, userID, amountAtomic, balance, "商城订单 "+orderNo, now); err != nil { return OrderDelivery{}, 0, err }
 	ref := "wallet:" + orderID
-	update := "UPDATE orders SET status='paid',payment_method='wallet',payment_reference=" + placeholder(driver,1) + ",paid_at=" + placeholder(driver,2) + ",updated_at=" + placeholder(driver,3) + " WHERE id=" + placeholder(driver,4) + " AND status='pending_payment'"
-	res, err = tx.ExecContext(ctx, update, ref, now, now, orderID)
+	paymentStatus := "paid"
+	if sourceType == "upstream" || deliveryType == "upstream" { paymentStatus = "procurement_pending" }
+	update := "UPDATE orders SET status=" + placeholder(driver,1) + ",payment_method='wallet',payment_reference=" + placeholder(driver,2) + ",paid_at=" + placeholder(driver,3) + ",updated_at=" + placeholder(driver,4) + " WHERE id=" + placeholder(driver,5) + " AND status='pending_payment'"
+	res, err = tx.ExecContext(ctx, update, paymentStatus, ref, now, now, orderID)
 	if err != nil { return OrderDelivery{}, 0, err }
 	n, err = res.RowsAffected()
 	if err != nil || n != 1 { if err != nil { return OrderDelivery{}, 0, err }; return OrderDelivery{}, 0, fmt.Errorf("订单状态已变化，请刷新订单") }
 	if err:=RedeemOrderPromotion(ctx,tx,driver,orderID,time.Now().UTC());err!=nil{return OrderDelivery{},0,err}
+	if sourceType == "upstream" || deliveryType == "upstream" {
+		timeoutMinutes := 30
+		_ = tx.QueryRowContext(ctx, "SELECT procurement_timeout_minutes FROM upstream_settings WHERE id=1").Scan(&timeoutMinutes)
+		if timeoutMinutes < 1 || timeoutMinutes > 1440 { timeoutMinutes = 30 }
+		if err := enqueueUpstreamProcurementTx(ctx, tx, driver, orderID, orderNo, time.Duration(timeoutMinutes)*time.Minute, time.Now().UTC()); err != nil { return OrderDelivery{}, 0, err }
+	}
 	needsKeys := deliveryType == "" || deliveryType == "card" || deliveryType == "file_card"
 	var delivery OrderDelivery
 	if needsKeys {
