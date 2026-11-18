@@ -1,3 +1,14 @@
+## 2026-11-18 — Dujiao-Next PR C 采购转发（PR #32，开发中）
+
+- 状态：独立 Draft PR；当前尚未合并，Go/Admin/Security CI 与七类 mock 场景待最终通过；不代表真实上游联调或生产可用。
+- 分支：`feat/dujiao-purchase-forwarding`；基线 `main@a9a01e6ef41a1047c37f1180501fcf30294a4cd0`。
+- 实现：订单支付确认事务登记采购任务；订单创建快照上游商品/SKU；采购前复核本地订单状态和商品上架状态；本地订单号幂等创建、上游订单 ID/订单号持久化；查单轮询、回调 HMAC-SHA256 验签与幂等；交付内容加密后走 Telegram 交付；采购失败人工队列、手动重试、站内余额退款独立账本与管理员审计；供应商余额快照/阈值告警/日报。
+- 资金安全：采购失败和重试不修改原支付记录、不自动扣减或退款买家余额；退款仅在确认采购失败后由管理员手动触发，使用独立钱包 credit 流水和退款审计。
+- 协议限制：官方 Dujiao-Next API 未提供按 `downstream_order_no` 查单接口。首次 POST 网络异常且未获得上游订单 ID 时，自动流程标记 uncertain 并暂停自动重发；人工核实后使用原幂等键重试。已获得上游订单 ID 时才调用 `GET /orders/:id`。
+- 当前限制：只开放 auto 自动交付 SKU；manual 表单商品因尚无买家侧表单采集而暂不开放自助下单。真实商户端到端联调留给 PR E。
+- 文档：同步 PROJECT_STATUS 第 5/6/19 节、upstream-integration.md，新增 upstream-procurement.md。
+- PR：[https://github.com/seanldnet/TG-Card/pull/32](https://github.com/seanldnet/TG-Card/pull/32)
+
 ## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 开发启动
 
 - 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-18。
