@@ -66,7 +66,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		categoryRecords = append(categoryRecords, database.UpstreamCategoryRecord{
 			UpstreamID: strconv.FormatInt(category.ID, 10),
 			ParentID: strconv.FormatInt(category.ParentID, 10),
-			Name: name, SortOrder: -category.SortOrder,
+			Name: name, Icon: category.Icon, SortOrder: -category.SortOrder,
 		})
 	}
 
@@ -115,10 +115,30 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "商品图片路径序列化失败") }
 				imageJSON = string(encoded)
 			}
+			specJSON := "{}"
+			if len(sku.SpecValues) > 0 {
+				encoded, marshalErr := json.Marshal(sku.SpecValues)
+				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "SKU 规格序列化失败") }
+				specJSON = string(encoded)
+			}
+			manualFormJSON := "{}"
+			if len(product.ManualFormSchema) > 0 {
+				encoded, marshalErr := json.Marshal(product.ManualFormSchema)
+				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "人工交付表单结构序列化失败") }
+				manualFormJSON = string(encoded)
+			}
+			tagsJSON := "[]"
+			if len(product.Tags) > 0 {
+				encoded, marshalErr := json.Marshal(product.Tags)
+				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "商品标签序列化失败") }
+				tagsJSON = string(encoded)
+			}
 			productRecords = append(productRecords, database.UpstreamProductRecord{
-				ProductID: strconv.FormatInt(product.ID, 10), SKUID: skuID, Slug: product.Slug,
+				ProductID: strconv.FormatInt(product.ID, 10), SKUID: skuID, SKUCode: sku.Code, Slug: product.Slug,
 				CategoryID: strconv.FormatInt(product.CategoryID, 10),
 				Name: upstream.VariantName(title, sku, len(skus)), Description: description,
+				SpecValuesJSON: specJSON, FulfillmentType: product.FulfillmentType,
+				ManualFormSchemaJSON: manualFormJSON, TagsJSON: tagsJSON,
 				PriceMinor: price, PriceSnapshotMinor: priceSnapshot, Currency: currency,
 				StockQuantity: sku.StockQuantity, StockStatus: sku.StockStatus,
 				ImagePathsJSON: imageJSON, Active: product.IsActive && sku.IsActive,
