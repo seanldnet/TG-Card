@@ -223,6 +223,9 @@ func main() {
 	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
 	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
+	api.HandleFunc("GET /api/upstream/config", app.getUpstreamSettings)
+	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
+	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
 	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
 	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
@@ -596,6 +599,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "PaymentSettings", "path": "/settings/payment", "component": "/settings/payment/index",
 			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 7, "title": "支付设置"},
+		},
+		{
+			"name": "UpstreamSettings", "path": "/upstream", "component": "/upstream/index",
+			"meta": map[string]any{"icon": "lucide:plug-zap", "order": 8, "title": "上游对接"},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
