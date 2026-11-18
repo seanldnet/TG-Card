@@ -349,7 +349,9 @@ func (m *Manager) checkLowStock(ctx context.Context) {
 			continue
 		}
 		if autoRelist&&p.Status==0&&p.StockAutoUnlisted&&p.StockCount>0{
-			if err:=database.SetLocalProductAvailability(ctx,m.db,m.driver,p.ID,true);err!=nil{log.Printf("auto relist restocked product failed: product_id=%s error=%v",p.ID,err);continue}
+			changed,err:=database.RelistAutoUnlistedProduct(ctx,m.db,m.driver,p.ID)
+			if err!=nil{log.Printf("auto relist restocked product failed: product_id=%s error=%v",p.ID,err);continue}
+			if !changed{continue}
 			p.Status=1
 			log.Printf("product automatically republished after restock: product_id=%s stock=%d",p.ID,p.StockCount)
 			m.Notify("stock_relisted",fmt.Sprintf("商品：%s\n补货后已按设置自动上架。当前库存：%d",p.Name,p.StockCount),ownerID)
