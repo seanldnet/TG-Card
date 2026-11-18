@@ -1,3 +1,5 @@
+import localLogo from '#/assets/tg-card-logo.svg';
+
 import {
   appCopyrightPreferences,
   defineOverridesPreferences,
@@ -18,9 +20,11 @@ interface WebAntdPreferencesExtension {
 export const overridesPreferences = defineOverridesPreferences({
   app: {
     name: import.meta.env.VITE_APP_TITLE,
-    accessMode: 'backend',\n    defaultAvatar: localLogo,
+    accessMode: 'backend',
+    defaultAvatar: localLogo,
   },
-  logo: { source: localLogo },\n  copyright: appCopyrightPreferences,
+  logo: { source: localLogo },
+  copyright: appCopyrightPreferences,
 });
 
 export const preferencesExtension =
