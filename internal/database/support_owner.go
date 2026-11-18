@@ -87,3 +87,11 @@ func ListPendingSupportTickets(ctx context.Context, db *sql.DB, driver string) (
   }
   return items,rows.Err()
 }
+
+func SupportTicketMessageUpdateExists(ctx context.Context, db *sql.DB, driver, ticketID, senderType, senderID, updateID string) (bool,error) {
+ if strings.TrimSpace(updateID)=="" { return false,nil }
+ var exists int
+ query:="SELECT COUNT(1) FROM support_ticket_messages WHERE ticket_id="+placeholder(driver,1)+" AND sender_type="+placeholder(driver,2)+" AND sender_id="+placeholder(driver,3)+" AND telegram_update_id="+placeholder(driver,4)
+ if err:=db.QueryRowContext(ctx,query,strings.TrimSpace(ticketID),strings.TrimSpace(senderType),strings.TrimSpace(senderID),strings.TrimSpace(updateID)).Scan(&exists);err!=nil{return false,err}
+ return exists>0,nil
+}
