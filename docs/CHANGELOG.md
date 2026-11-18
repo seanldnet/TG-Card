@@ -1,3 +1,26 @@
+## 2026-11-18 — Dujiao-Next PR A：上游基础设施（配置与连接测试）
+
+- 状态：开发分支已实现，PR/CI/合并待完成；未进行真实商户账号验收。
+- 分支：`feat/dujiao-upstream-foundation`；基线 `main@40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。
+- 复现条件：后台没有上游配置入口；没有持久化商户凭证、连接测试或上游状态记录。
+- 变更内容：
+  - 新增数据库迁移 `0029_upstream_settings.sql` 和上游配置持久化方法，记录 provider、站点根地址、加密凭证、启用状态、连接测试结果/错误与同步状态字段。
+  - API Key（商户 ID）与 API Secret 均使用现有持久化 AES-256-GCM 密钥加密；读取只返回掩码和已配置标志，不返回明文。
+  - 新增 Dujiao-Next 官方 HMAC-SHA256 签名实现及 `POST /api/v1/upstream/ping` 连接测试；按官方规范计算空请求体 MD5、签名原文和请求头。
+  - 上游站点仅接受 HTTPS 根地址；请求不跟随重定向，并在拨号阶段解析 DNS、拒绝私网/本地/非公网 IP，降低 SSRF 风险。
+  - 新增后台“上游对接”页面与动态菜单，提供上游类型、站点地址、商户 API Key/Secret、启用开关、测试连接、连接结果和同步状态/错误展示。
+  - 当前只开放 Dujiao-Next；ACG-Faka、MCY 不接受未核实的协议类型，不实现其 adapter。
+- 数据库迁移：新增 0029；SQLite/PostgreSQL 共用迁移与 upsert。
+- 配置/部署影响：无新增环境变量；使用现有 DATA_DIR 持久化加密密钥。
+- 兼容性与已知限制：PR A 不执行目录同步、不改变本地商品展示、不采购、不扣上游余额；同步状态字段仅用于后续 PR B。真实商户凭证连接测试尚待测试环境执行。
+- 验证：
+  - 新增 Dujiao 签名规范与站点 URL 校验单元测试。
+  - 新增 SQLite 上游配置读写、状态持久化测试。
+  - Go CI、Admin CI、安全扫描待 PR workflow 结果。
+  - 官方协议依据：[Dujiao-Next Open API](https://dujiao-next.com/api/integration-open-api) 与 [站点对接指南](https://dujiao-next.com/api/integration-guide)。
+- 发布镜像：PR A 尚未合并，不发布 latest。
+- 后续：PR A CI 通过并合并后再开始 PR B；异次元与萌次元继续保持待上游确认。
+
 ## 2026-11-18 — PR #19 镜像发布核验与追踪状态修正
 
 - 状态：镜像已发布；真实环境验收待项目所有者执行。
