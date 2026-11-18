@@ -83,8 +83,8 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			continue
 		}
 		for _, sku := range skus {
+			if sku.ID <= 0 { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 包含无效 SKU ID，已停止同步", strconv.FormatInt(product.ID,10))) }
 			skuID := strconv.FormatInt(sku.ID, 10)
-			if sku.ID == 0 { skuID = "default" }
 			priceText := strings.TrimSpace(sku.PriceAmount)
 			if priceText == "" { priceText = strings.TrimSpace(product.PriceAmount) }
 			priceSnapshot, priceErr := upstream.ParseMinorUnits(priceText)
