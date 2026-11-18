@@ -1,3 +1,17 @@
+## 2026-11-18 — 附件下载、静态资源与 PC 内容区修复（综合修复阶段）
+
+- 状态：代码改动已提交至修复分支；CI/浏览器/Telegram 真机验收尚未完成。
+- 复现条件：工单附件访问返回 500/502 且缺少有效日志；Vben 默认 Logo/头像请求 unpkg CDN；PC 页面容器宽度被 max-w-7xl 限制。
+- 附件改动：`internal/telegrambot/manager.go` 从数据库 `bots.token_ciphertext` 读取工单所属 Bot 凭据并使用现有 decrypt 函数解密，不再依赖运行中的 worker；getFile 与下载分别设置超时；限制 20 MiB；区分附件失效、文件过大、Telegram 异常和未知错误。
+- 附件日志：`cmd/server/support.go` 记录 ticket/message/bot、脱敏 file_id 前缀、Telegram error_code/description、成功字节数；不记录完整 Token 或密钥。
+- 前端提示：`web/overrides/apps/web-antd/src/views/support/index.vue` 按 HTTP 410/413/502 展示不同文案。
+- CDN 改动：新增本地 `src/assets/tg-card-logo.svg`，在 Vben preferences 覆盖 `logo.source` 和 `app.defaultAvatar`，替换上游默认的 unpkg URL。
+- PC 布局：订单、工单、支付、用户等页面去除固定 max-w-7xl 内容宽度上限；移动端断点和窄屏样式保留。
+- 上游调研：重写 `docs/upstream-integration.md`，Dujiao-Next 按官方 Open API 文档核对路径、HMAC-SHA256、目录、SKU 下单、余额和异步回调；ACG-Faka/MCY 未取得可核验商户 API，标记待上游确认，不实现猜测字段。
+- 文档更新：同步更新 `docs/PROJECT_STATUS.md` 与本日志。
+- 验证结果：静态代码修改已推送到分支；尚未运行 CI，未验证跟踪防护下 Network 零外部域请求，未执行真实 Telegram 图片/文件及 Bot 停止状态验收，未进行真实上游采购。
+- 验收责任：以上真实环境验收由项目所有者执行；Agent 不将其标记为已验收。
+
 # TG-Card 开发与修复日志
 
 ## 2026-11-18 — 售后工单附件后台预览与下载（阶段一，P0）
