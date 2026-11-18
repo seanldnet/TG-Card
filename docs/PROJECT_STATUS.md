@@ -534,7 +534,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.2 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
 | [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR head Go CI、Admin CI、安全扫描均通过；main Publish Run #44299965343 成功，latest digest `sha256:c805ce4a8aa2ee6f2adcf01d16122d15117c9e813457a740c00f2d31e7ec66ae`。 | 真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购仍未实现。 | 继续按 PR C→D→E 实施采购与资金闭环。 |
 | [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | PR1 补齐结单闭环；执行 Owner Bot 媒体/回复/结单验收。 |
-| PR1（本批次） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 独立分支 `fix/support-resolution-lifecycle`；新增迁移 `0036_support_resolution_lifecycle.sql`；CI/PR/镜像待完成。 | 尚未验收；真实 Telegram 由项目所有者执行。 | PR1 CI 通过并合并后再开始 PR2。 |
+| [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1，本批次） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 独立分支 `fix/support-resolution-lifecycle`；新增迁移 `0036_support_resolution_lifecycle.sql`；CI/PR/镜像待完成。 | 尚未验收；真实 Telegram 由项目所有者执行。 | PR1 CI 通过并合并后再开始 PR2。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
 ### 19.1 PR #19 镜像发布证据
