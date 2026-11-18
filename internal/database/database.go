@@ -290,6 +290,9 @@ type Category struct {
 	Name string `json:"name"`
 	SortOrder int `json:"sortOrder"`
 	Status int `json:"status"`
+	SourceType string `json:"sourceType"`
+	UpstreamCategoryID string `json:"upstreamCategoryId"`
+	UpstreamParentID string `json:"upstreamParentId"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -305,6 +308,15 @@ type Product struct {
 	DeliveryType string `json:"deliveryType"`
 	Status int `json:"status"`
 	StockCount int `json:"stockCount"`
+	SourceType string `json:"sourceType"`
+	UpstreamProductID string `json:"upstreamProductId"`
+	UpstreamSKUID string `json:"upstreamSkuId"`
+	UpstreamSlug string `json:"upstreamSlug"`
+	UpstreamPriceSnapshotMinor int64 `json:"upstreamPriceSnapshotMinor"`
+	UpstreamCurrency string `json:"upstreamCurrency"`
+	UpstreamStockQuantity int64 `json:"upstreamStockQuantity"`
+	UpstreamStockStatus string `json:"upstreamStockStatus"`
+	ImagePathsJSON string `json:"imagePathsJson"`
 	BulkDiscountJSON string `json:"bulkDiscountJson"`
 	DeliveryConfigJSON string `json:"deliveryConfigJson"`
 	CreatedAt string `json:"createdAt"`
@@ -317,13 +329,13 @@ type StockSecret struct {
 }
 
 func ListCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
-	rows, err := db.QueryContext(ctx, "SELECT id,name,sort_order,status,created_at,updated_at FROM product_categories ORDER BY sort_order,name")
+	rows, err := db.QueryContext(ctx, "SELECT id,name,sort_order,status,COALESCE(source_type,'local'),COALESCE(upstream_category_id,''),COALESCE(upstream_parent_id,''),created_at,updated_at FROM product_categories ORDER BY sort_order,name")
 	if err != nil { return nil, err }
 	defer rows.Close()
 	items := make([]Category, 0)
 	for rows.Next() {
 		var item Category
-		if err := rows.Scan(&item.ID,&item.Name,&item.SortOrder,&item.Status,&item.CreatedAt,&item.UpdatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.Name,&item.SortOrder,&item.Status,&item.SourceType,&item.UpstreamCategoryID,&item.UpstreamParentID,&item.CreatedAt,&item.UpdatedAt); err != nil { return nil, err }
 		items = append(items,item)
 	}
 	return items, rows.Err()
@@ -340,18 +352,18 @@ func CreateCategory(ctx context.Context, db *sql.DB, driver, name string, sortOr
 }
 
 func DeleteCategory(ctx context.Context, db *sql.DB, driver, id string) error {
-	result,err:=db.ExecContext(ctx,"DELETE FROM product_categories WHERE id="+placeholder(driver,1),id)
+	result,err:=db.ExecContext(ctx,"DELETE FROM product_categories WHERE id="+placeholder(driver,1)+" AND source_type='local'",id)
 	if err!=nil{return err}
 	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
 
 func ListProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 	rows,err:=db.QueryContext(ctx,`SELECT p.id,COALESCE(p.category_id,''),COALESCE(c.name,''),p.name,p.description,p.price_minor,p.currency,p.delivery_type,p.status,COALESCE(p.bulk_discount_json,'[]'),COALESCE(p.delivery_config_json,'{}'),
-	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),p.created_at,p.updated_at
+	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),COALESCE(p.source_type,'local'),COALESCE(p.upstream_product_id,''),COALESCE(p.upstream_sku_id,''),COALESCE(p.upstream_slug,''),COALESCE(p.upstream_price_snapshot_minor,0),COALESCE(p.upstream_currency,''),COALESCE(p.upstream_stock_quantity,0),COALESCE(p.upstream_stock_status,''),COALESCE(p.image_paths_json,'[]'),p.created_at,p.updated_at
 	FROM products p LEFT JOIN product_categories c ON c.id=p.category_id ORDER BY p.created_at DESC`)
 	if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]Product,0)
-	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
+	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.SourceType,&p.UpstreamProductID,&p.UpstreamSKUID,&p.UpstreamSlug,&p.UpstreamPriceSnapshotMinor,&p.UpstreamCurrency,&p.UpstreamStockQuantity,&p.UpstreamStockStatus,&p.ImagePathsJSON,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
 	return items,rows.Err()
 }
 
@@ -367,14 +379,14 @@ func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (P
 
 func UpdateProduct(ctx context.Context, db *sql.DB, driver string, p Product) error {
 	now:=time.Now().UTC().Format(time.RFC3339Nano);var category any;if p.CategoryID!=""{category=p.CategoryID}
-	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)
+	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)+" AND source_type='local'
 	if p.BulkDiscountJSON=="" { p.BulkDiscountJSON="[]" }; if p.DeliveryConfigJSON=="" { p.DeliveryConfigJSON="{}" }
 	result,err:=db.ExecContext(ctx,query,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.BulkDiscountJSON,p.DeliveryConfigJSON,now,p.ID);if err!=nil{return err}
 	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
 
 func DeleteProduct(ctx context.Context, db *sql.DB, driver, id string) error {
-	result,err:=db.ExecContext(ctx,"DELETE FROM products WHERE id="+placeholder(driver,1),id);if err!=nil{return err}
+	result,err:=db.ExecContext(ctx,"DELETE FROM products WHERE id="+placeholder(driver,1)+" AND source_type='local'",id);if err!=nil{return err}
 	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
 
