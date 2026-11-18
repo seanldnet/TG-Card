@@ -98,6 +98,11 @@ func (a *application) processUpstreamProcurement(ctx context.Context,job databas
 		if err==nil{a.notifyProcurementOwner(ctx,job.LocalOrderNo,"上游商品来源未启用或目录已过期，采购未发起")}
 		return err
 	}
+	if settings.CallbackURL=="" {
+		err=database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"尚未配置公网回调地址；请先在上游设置中配置回调地址后手动恢复")
+		if err==nil{a.notifyProcurementOwner(ctx,job.LocalOrderNo,"尚未配置公网回调地址，采购未发起；请配置回调地址后手动恢复")}
+		return err
+	}
 	client,err:=a.getProcurementAPI(settings)
 	if err!=nil{return database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,err.Error())}
 	pollInterval:=time.Duration(settings.ProcurementPollIntervalSeconds)*time.Second
