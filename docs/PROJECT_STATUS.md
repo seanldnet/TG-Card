@@ -544,7 +544,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #32](https://github.com/seanldnet/TG-Card/pull/32)（PR C） | Dujiao-Next 支付后采购转发、下游订单幂等、查单轮询/回调验签、人工队列、手动重试与站内余额退款审计、供应商余额日报。 | 独立分支 `feat/dujiao-purchase-forwarding`；新增迁移 `0038_upstream_procurement.sql`、采购 API/worker/回调处理、后台采购队列与 mock 测试；当前 Draft PR，CI 及测试待完成。 | 开发中；不代表真实上游联调或生产可用。手动表单商品暂不开放自助购买。 | 先通过 Go/Admin/Security CI 和七类 mock 场景，再更新专项文档并转 Ready；PR D/E 保持未完成。 |
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-18）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用 PR #28 镜像 digest `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。 |
-| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
+| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B 已合并；PR C（PR #32）独立开发中，代码/文档已提交 Draft PR，CI 与 mock 测试待最终通过；PR D/E 未完成。 | PR C 未合并、未生产验收；真实商户联调仅属于 PR E。 | PR C 完成 mock/CI 后合并；再按 PR D→PR E 独立推进。 |
 
 ### 19.1 PR #19 镜像发布证据
 
