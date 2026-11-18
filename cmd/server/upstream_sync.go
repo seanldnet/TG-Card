@@ -54,6 +54,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	products, err := upstream.DujiaoFetchProducts(ctx, settings.BaseURL, apiKey, apiSecret)
 	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
 
+	imageWarnings := make([]string, 0)
 	categoryNames := make(map[int64]string, len(categories))
 	for _, category := range categories { categoryNames[category.ID] = upstream.LocalizedText(category.Name) }
 	categoryRecords := make([]database.UpstreamCategoryRecord, 0, len(categories))
@@ -81,7 +82,6 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	}
 
 	productRecords := make([]database.UpstreamProductRecord, 0)
-	imageWarnings := make([]string, 0)
 	for _, product := range products {
 		if product.ID <= 0 { return summary, a.failUpstreamSync(ctx, "上游商品包含无效商品 ID，已保留上一次目录数据") }
 		title := upstream.LocalizedText(product.Title)
