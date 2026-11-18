@@ -5,8 +5,8 @@
 > **文档元信息**
 > - 最后更新时间：2026-11-18
 > - 文档版本：1.2.0
-> - 源码核对基线：`main` 分支，commit `a06764f5060327ab675603bdf89115a11450951e`
-> - 本次文档更新：阶段一 PR [#15](https://github.com/seanldnet/TG-Card/pull/15)；分支 `fix/support-attachment-visualization`；合并 commit 待补录
+> - 源码核对基线：`main` 分支，commit `41ef99ac935407dfd896b74840e220b3ba766400`
+> - 本次文档更新：上游能力与文档一致性审计；基线为 `main@41ef99ac935407dfd896b74840e220b3ba766400`
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -84,6 +84,7 @@ flowchart LR
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
 | 系统权限与菜单 | 已实现 | 后台动态菜单/权限码接口；当前为单管理员产品结构，不应误认为完整多角色 RBAC。 |
+| 上游发卡对接 | 待开发（仅适配器契约） | 仅有 provider-neutral 接口/类型定义；没有 ACG、萌次元或 Dujiao 的可调用适配器、配置 API、数据库配置表、目录同步、后台页面或动态菜单入口。详见 `docs/upstream-integration.md`。 |
 
 ## 4. Telegram Bot 用户端功能
 
@@ -256,6 +257,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 7. 所有售后附件、补发、退款路径的完整真实 Telegram 验收。 | P0 | 当前版本售后验收阶段 |
 | 8. 对 Telegram 网络超时导致的消息重复发送实现严格 exactly-once（Telegram API 本身不提供消息幂等键）。 | P1 | 交付可靠性专项评估阶段 |
 | 9. 所有移动端页面在真实设备上的完整回归测试。 | P1 | 当前版本移动端回归阶段 |
+| 10. 上游发卡对接（ACG-Faka、萌次元、Dujiao-Next）：配置、后台入口、目录同步、采购转发、失败队列和余额告警均未实现；MCY 外部商户 API 待上游确认。 | P1 | 上游对接阶段，按 `docs/upstream-integration.md` 的证据矩阵分 provider 实施 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
 
@@ -508,7 +510,8 @@ curl -fsS http://127.0.0.1:38647/api/health
 | PR/Issue | 问题摘要 | 状态 | 影响模块 | 合并后动作 |
 |---|---|---|---|---|
 | [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 镜像已发布；digest sha256:ec1c5c8b468e2ef7d03c84da750015465c66fb20cd3dc4cbfaee92b97533f54d。Telegram 真机验收待记录。 | Telegram Bot 首页菜单、用户交互 | 部署该镜像后重新发送 /start，验证两种键盘同时显示，并测试普通用户/Owner 菜单隔离。 |
-| [本阶段一 PR](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载。 | PR 待合并；CI 和真机验收状态待回填。 | 售后 Bot、数据库、HTTP API、后台工单时间线 | 合并后发布镜像；项目所有者执行图片/文件真机验收并检查跨工单访问保护。 |
+| [PR #15](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载。 | 已合并并进入后续发布线；真实 Telegram 图片/文件验收仍待项目所有者执行。 | 售后 Bot、数据库、HTTP API、后台工单时间线 | 使用当前发布镜像执行图片/文件预览下载、Bot 停止后历史附件查看及跨工单访问保护验收。 |
+| 本次综合修复 | 上游发卡文档与代码一致性审计。 | 审计 PR 中；仅接口契约存在，上游集成未实现。 | 文档、`internal/upstream/` | 后续阶段分别实施附件/CDN/布局修复与有官方证据的 provider adapter。 |
 
 ## 20. 安全基线
 
