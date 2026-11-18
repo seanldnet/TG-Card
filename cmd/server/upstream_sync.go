@@ -42,6 +42,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	ping, err := upstream.DujiaoPing(ctx, settings.BaseURL, apiKey, apiSecret)
 	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
 	currency := strings.ToUpper(strings.TrimSpace(ping.Currency))
+	if currency == "" { return summary, a.failUpstreamSync(ctx, "Dujiao-Next ping 未返回币种，已停止同步以避免错误定价") }
 	ratePPM := int64(1_000_000)
 	if currency != "USDT" {
 		ratePPM = settings.ExchangeRatePPM
