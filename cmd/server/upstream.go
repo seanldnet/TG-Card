@@ -43,6 +43,7 @@ type upstreamSettingsView struct {
 	LastError string `json:"lastError"`
 	SyncStatus string `json:"syncStatus"`
 	SyncAt string `json:"syncAt"`
+	SyncAttemptAt string `json:"syncAttemptAt"`
 	SyncError string `json:"syncError"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -62,7 +63,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
 		Enabled:item.Enabled, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
-		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt,
+		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
 }
