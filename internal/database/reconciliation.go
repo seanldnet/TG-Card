@@ -60,7 +60,7 @@ func BuildDailyReconciliationReport(ctx context.Context, db *sql.DB, driver stri
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveredCount);err!=nil{return out,err}
 	q = "SELECT COUNT(DISTINCT order_id) FROM order_delivery_events WHERE event_type='delivery_failed' AND " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveryFailedCount);err!=nil{return out,err}
-	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_transactions WHERE direction='credit' AND note LIKE '售后退款：%' AND " + dailyTimeExpr(driver,"created_at")
+	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_transactions WHERE direction='credit' AND (note LIKE '售后退款：%' OR note LIKE '上游采购退款：%') AND " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RefundAtomic);err!=nil{return out,err}
 	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_recharges WHERE status='paid' AND paid_at IS NOT NULL AND " + dailyTimeExpr(driver,"paid_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RechargeAtomic);err!=nil{return out,err}
