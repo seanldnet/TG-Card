@@ -18,7 +18,7 @@
   - 新增 SQLite 上游配置读写、状态持久化测试。
   - Go CI：[Run #44291154727](https://github.com/seanldnet/TG-Card/actions/runs/44291154727) 成功；Admin CI：[Run #44291154731](https://github.com/seanldnet/TG-Card/actions/runs/44291154731) 成功；安全扫描：[Run #44291154797](https://github.com/seanldnet/TG-Card/actions/runs/44291154797) 成功。
   - 官方协议依据：[Dujiao-Next Open API](https://dujiao-next.com/api/integration-open-api) 与 [站点对接指南](https://dujiao-next.com/api/integration-guide)。
-- 发布镜像：合并后 Publish workflow 正在运行；digest 与 latest 标签待发布完成后补录。
+- 发布镜像：[Publish Run #44291422271](https://github.com/seanldnet/TG-Card/actions/runs/44291422271) 成功；GHCR latest 与 commit 标签均已推送；digest `sha256:edcf23eefc6be73bd1433a94d74870cae18d2198cd75424e7918d2b6f3066479`；构建平台 linux/amd64、linux/arm64。
 - 后续：PR A CI 通过并合并后再开始 PR B；异次元与萌次元继续保持待上游确认。
 
 ## 2026-11-18 — PR #19 镜像发布核验与追踪状态修正
