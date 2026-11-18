@@ -93,8 +93,8 @@ func FailUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,reaso
 	reason=strings.TrimSpace(reason);if len(reason)>1000{reason=reason[:1000]}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	q:="UPDATE upstream_procurements SET status='failed',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status NOT IN ('completed','refunded')"
-	if _,err:=tx.ExecContext(ctx,q,reason,now,orderID);err!=nil{return err}
+	q:="UPDATE upstream_procurements SET status='failed',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status IN ('queued','polling','uncertain')"
+	res,err:=tx.ExecContext(ctx,q,reason,now,orderID);if err!=nil{return err};changed,err:=res.RowsAffected();if err!=nil{return err};if changed==0{return tx.Commit()}
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_failed',procurement_error="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status='procurement_pending'",reason,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'failed',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,reason,now);err!=nil{return err}
@@ -105,7 +105,7 @@ func MarkUpstreamProcurementUncertain(ctx context.Context,db *sql.DB,driver,orde
 	reason=strings.TrimSpace(reason);if len(reason)>1000{reason=reason[:1000]}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='uncertain',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3),reason,now,orderID);err!=nil{return err}
+	res,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='uncertain',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status IN ('queued','polling')",reason,now,orderID);if err!=nil{return err};changed,err:=res.RowsAffected();if err!=nil{return err};if changed==0{return tx.Commit()}
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_failed',procurement_error="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status='procurement_pending'",reason,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'uncertain',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,reason,now);err!=nil{return err}
@@ -116,10 +116,11 @@ func CompleteUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,e
 	if strings.TrimSpace(payloadCiphertext)==""{return fmt.Errorf("upstream fulfillment payload is empty")}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	var status string
-	q:="SELECT status FROM orders WHERE id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE"}
-	if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&status);err!=nil{return err}
-	if status=="refunded"||status=="delivered"{return fmt.Errorf("local order no longer accepts upstream fulfillment: %s",status)}
+	var status,queueStatus string
+	q:="SELECT o.status,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE OF o,p"}
+	if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&status,&queueStatus);err!=nil{return err}
+	if queueStatus=="completed"{return tx.Commit()}
+	if queueStatus=="refunded"||status=="refunded"||status=="delivered"{return fmt.Errorf("local order no longer accepts upstream fulfillment: order=%s procurement=%s",status,queueStatus)}
 	if status!="procurement_pending"&&status!="procurement_failed"&&status!="paid"{return fmt.Errorf("local order is not awaiting upstream fulfillment: %s",status)}
 	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET external_order_id=CASE WHEN "+placeholder(driver,1)+"<>'' THEN "+placeholder(driver,2)+" ELSE external_order_id END,external_order_no=CASE WHEN "+placeholder(driver,3)+"<>'' THEN "+placeholder(driver,4)+" ELSE external_order_no END,status='completed',payload_ciphertext="+placeholder(driver,5)+",last_error='',next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,6)+" WHERE local_order_id="+placeholder(driver,7),externalID,externalID,externalNo,externalNo,payloadCiphertext,now,orderID);err!=nil{return err}
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='paid',delivery_payload_json="+placeholder(driver,1)+",procurement_error='',updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3),payloadCiphertext,now,orderID);err!=nil{return err}
@@ -230,7 +231,7 @@ func ClaimUpstreamBalanceAlert(ctx context.Context,db *sql.DB,driver,day,balance
 func CancelUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,reason string)error{
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
-	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='cancelled',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status IN ('queued','polling')",reason,now,orderID);err!=nil{return err}
+	res,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='cancelled',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status IN ('queued','polling')",reason,now,orderID);if err!=nil{return err};changed,err:=res.RowsAffected();if err!=nil{return err};if changed==0{return tx.Commit()}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'skipped',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,reason,now);err!=nil{return err}
 	return tx.Commit()
