@@ -546,7 +546,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-19）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-19）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
 | [PR #37](https://github.com/seanldnet/TG-Card/pull/37) | PR C 合并状态、CI/镜像与 PR D/E 边界文档记录。 | 已合并，merge commit 0b0f0514a1c5850aafec0018c95570d0bce8a39f；Admin CI #44338591754/#44338655437 与 main Admin CI #44338618618 成功；文档-only，不触发业务镜像发布。 | 已完成文档记录；PR C 镜像/CI证据见第 19.7 节。 | 已完成。 |
-| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 独立 Draft PR；head 7416cc2fe5dc32bac8677c3870e9a58cd0a1de32；Go CI #44370378887、Admin CI #44370378795、Security #44370379000 均成功；尚未合并，未触发发布。 | 尚未生产部署或验收；PR E 真实供应商联调仍未完成。 | CI 通过后合并；main Publish 成功后再通知项目所有者拉取测试。 |
+| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 独立 Draft PR；head 5dbd0269a719f91b74458f03bd67a25aeab0761b；Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；尚未合并，未触发发布。 | 尚未生产部署或验收；PR E 真实供应商联调仍未完成。 | CI 通过后合并；main Publish 成功后再通知项目所有者拉取测试。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B/C 已合并；PR C Go/Admin/Security CI、Docker Publish 与十项 mock 测试通过；PR D 独立分支开发中；真实上游联调留待 PR E。 | PR C 代码已合并并完成 mock/CI 验证；PR D 开发中；未进行真实商户联调，真实商户联调仅属于 PR E。 | PR C 已合并；下一阶段按 PR D→PR E 独立推进。 |
 
 ### 19.1 PR #19 镜像发布证据
@@ -675,12 +675,12 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 
 ### 19.8 Dujiao-Next PR D（资金安全深化）开发记录
 
-- 状态：独立分支 feat/dujiao-fund-safety-pr-d，基于 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f；PR #38 已创建 Draft，head 7416cc2fe5dc32bac8677c3870e9a58cd0a1de32。Go CI #44370378887、Admin CI #44370378795、Security #44370379000 均成功；尚未合并、未发布镜像、未生产部署/验收。
+- 状态：独立分支 feat/dujiao-fund-safety-pr-d，基于 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f；PR #38 已创建 Draft，head 5dbd0269a719f91b74458f03bd67a25aeab0761b。Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；尚未合并、未发布镜像、未生产部署/验收。
 - 仓库审查结论：PR2 的余额校验只覆盖买家钱包余额与 credit/debit 流水；PR C 已有独立退款表（order_id 主键、wallet_transaction_id 唯一）和人工退款流程，但缺少退款账本完整性巡检；供应商余额已有快照/低余额阈值告警，但此前没有逐笔采购前后余额变动对照；uncertain 订单混在采购队列中，没有等待时长与独立人工核实入口；没有统一资金异常列表。
 - 当前实现方向：采购前后获取供应商余额快照，按本地订单号关联上游订单 ID、上游返回采购金额和余额变化；差异/缺快照只生成异常，不修正余额。退款账本一致性检查核对订单退款状态、唯一钱包 credit 流水、金额、管理员和买家；uncertain 独立列表显示 ageing，Owner 人工核实后恢复查单或确认未受理；统一 finance_exceptions 异常中心纳入采购失败、uncertain、供应商余额差异、退款账本异常。
 - 新迁移：0039_finance_safety.sql；新增 finance_exceptions、upstream_procurement_fund_checks，并扩展采购行的供应商资金核对字段。
 - 资金红线：不自动修改买家或供应商余额；采购失败不改变原支付记录；退款每订单最多一条、每笔退款唯一关联一个钱包 credit；同一采购订单重试沿用本地订单号。
-- 验证：SQLite 覆盖供应商余额匹配/差异、退款账本异常只读检测、重复退款拒绝、uncertain ageing 与 Owner 恢复；Go CI #44370378887（vet/test/build）、Admin CI #44370378795、Security #44370379000 全部成功。真实供应商扣款对账与实际资金变动仍属于 PR E。
+- 验证：SQLite 覆盖供应商余额匹配/差异、退款账本异常只读检测、重复退款拒绝、uncertain ageing 与 Owner 恢复；Go CI #44370639264（vet/test/build）、Admin CI #44370639142、Security #44370639404 全部成功。真实供应商扣款对账与实际资金变动仍属于 PR E。
 - PR E 仍未完成；PR #27 C1–C4 保持待验收。
 
 ## 20. 安全基线
