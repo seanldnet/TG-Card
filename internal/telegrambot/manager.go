@@ -1766,7 +1766,7 @@ func (m *Manager) NotifySupportResolved(ctx context.Context,ticket database.Supp
 
 func (m *Manager) notifyOwnerSupportTicket(ctx context.Context,cfg Config,ticketID string) {
  if strings.TrimSpace(cfg.OwnerID)=="" { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=owner_not_configured",cfg.ID,ticketID);return }
- ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
+ ticket,err=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
  messages,err:=database.ListSupportTicketMessages(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner timeline load failed: ticket_id=%s error=%v",ticketID,err);return}
  owner,_:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  for _,item:=range messages { if item.SenderType!="user"||item.AttachmentFileID==""{continue};caption:=item.Message
