@@ -279,7 +279,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 10. 旧网站附件预览/下载方案 | 已由产品决策替代并关闭 | 改为 Bot 转发 Owner；历史附件字段和 API 保留，媒体验收转入新售后工作流清单 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | P0 | 本次 CDN 修复 PR 构建后由项目所有者验收 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | P1 | 本次布局修复 PR 构建后回归 |
-| 13. 上游发卡对接：PR A/B 已合并；PR C（PR #32）独立开发中，尚待 CI/模拟测试及合并；PR D 资金安全、PR E 真实商户联调仍未完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR C 模拟测试通过并合并后再进入 PR D；真实商户端到端验收仅在 PR E 执行 |
+| 13. 上游发卡对接：PR A/B 已合并；PR C（PR #32）独立 Draft PR，Go CI #44334042245、Admin CI #44334041865、Security #44334041884 均通过，十项 mock 测试通过；待合并。PR D 资金安全、PR E 真实商户联调仍未完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR C 模拟测试通过并合并后再进入 PR D；真实商户端到端验收仅在 PR E 执行 |
 | 14. 售后 Owner Bot 工作流：媒体转发、Owner 菜单、直接回复/继续沟通、结单幂等、超时与通知。 | P0 | 本专项 PR CI 通过后，由项目所有者按 `docs/support-tickets.md` 执行真实 Telegram、SMTP、串单与失败场景验收 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
@@ -541,10 +541,10 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR #28 后代镜像包含该提交。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常；上游采购功能仍由 PR C 实现。 | 已通过；对应验收项 D1–D5 使用 PR #28 历史基准镜像记录。 |
 | [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | PR1 补齐结单闭环；执行 Owner Bot 媒体/回复/结单验收。 |
 | [PR #29](https://github.com/seanldnet/TG-Card/pull/29) | 交接文档校准、18 项验收表、Admin CI paths 过滤修复、Dujiao-Next PR B/C/D/E 边界。 | 已合并；Admin frontend CI Run #44321310277 成功；未改业务代码，不产生新业务镜像。 | 文档与 CI 触发修复完成；生产验收仍按第 19.3 节执行。 | 已完成；PR2 CI 强制要求 Go、Admin、Security、Publish 四类运行。 |
-| [PR #32](https://github.com/seanldnet/TG-Card/pull/32)（PR C） | Dujiao-Next 支付后采购转发、下游订单幂等、查单轮询/回调验签、人工队列、手动重试与站内余额退款审计、供应商余额日报。 | 独立分支 `feat/dujiao-purchase-forwarding`；新增迁移 `0038_upstream_procurement.sql`、采购 API/worker/回调处理、后台采购队列与 mock 测试；当前 Draft PR，CI 及测试待完成。 | 开发中；不代表真实上游联调或生产可用。手动表单商品暂不开放自助购买。 | 先通过 Go/Admin/Security CI 和七类 mock 场景，再更新专项文档并转 Ready；PR D/E 保持未完成。 |
+| [PR #32](https://github.com/seanldnet/TG-Card/pull/32)（PR C） | Dujiao-Next 支付后采购转发、下游订单幂等、查单轮询/回调验签、人工队列、手动重试与站内余额退款审计、供应商余额日报。 | 独立分支 `feat/dujiao-purchase-forwarding`；新增迁移 `0038_upstream_procurement.sql`、采购 API/worker/回调处理、后台采购队列与 mock 测试；当前 Draft PR；Go/Admin/Security CI 全通过，十项 mock 测试通过，待合并。 | 开发中；不代表真实上游联调或生产可用。手动表单商品暂不开放自助购买。 | Go/Admin/Security CI 与十项 mock 测试已通过；转 Ready 并合并后，PR D/E 仍保持未完成。 |
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-18）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用 PR #28 镜像 digest `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。 |
-| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B 已合并；PR C（PR #32）独立开发中，代码/文档已提交 Draft PR，CI 与 mock 测试待最终通过；PR D/E 未完成。 | PR C 未合并、未生产验收；真实商户联调仅属于 PR E。 | PR C 完成 mock/CI 后合并；再按 PR D→PR E 独立推进。 |
+| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B 已合并；PR C（PR #32）独立开发中，代码/文档已提交 Draft PR，Go/Admin/Security CI 与十项 mock 测试已通过，待合并；PR D/E 未完成。 | PR C 未合并、未生产验收；真实商户联调仅属于 PR E。 | PR C 完成 mock/CI 后合并；再按 PR D→PR E 独立推进。 |
 
 ### 19.1 PR #19 镜像发布证据
 
@@ -661,7 +661,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 安全边界：本地买家支付记录在采购失败/重试中保持不变；不自动扣减或退款买家余额。人工退款只允许采购失败且未退款订单，退款记入钱包 credit 和独立 `upstream_procurement_refunds` 表。
 - 协议限制：官方 API 没有按 `downstream_order_no` 查单的接口。若首次 POST 发生网络异常且未取得上游订单 ID，系统标记 `uncertain` 并暂停自动重发；人工核实后可使用同一幂等键重试。已取得上游订单 ID 才调用 `GET /orders/:id`。
 - 当前限制：仅开放 `auto` 自动交付 SKU；`manual` 表单商品在买家表单采集能力完成前不允许自助下单。真实供应商凭证联调不属于 PR C，留给 PR E。
-- 验证：mock 覆盖同步交付、异步查单成功、查单超时、采购失败、重复回调、回调验签失败、超时后同幂等键手动重试，以及 HTTP 402/404 业务错误分类；截至本文更新时 PR #32 最新 Go/Admin/Security CI 正在复跑。
+- 验证：mock 覆盖同步交付、异步查单成功、查单超时、采购失败、重复回调、回调验签失败、超时后同幂等键手动重试，以及 HTTP 402/404 业务错误分类；PR #32 Go CI #44334042245、Admin CI #44334041865、Security #44334041884 均成功。
 - PR D（供应商资金安全）和 PR E（真实上游联调）仍未完成；PR C 不与 PR3–PR6 混合。
 
 ## 20. 安全基线
