@@ -795,7 +795,7 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 	rows := make([][]map[string]string, 0)
 	for _, order := range orders {
 		switch order.Status {
-		case "paid", "delivering", "delivery_failed", "delivered":
+		case "paid", "delivering", "delivery_failed", "delivered", "procurement_pending", "procurement_failed":
 			label := truncateButtonText(order.OrderNo+" · "+order.ProductName, 48)
 			rows = append(rows, []map[string]string{{"text": label, "callback_data": "support:order:"+order.OrderNo}})
 		}
@@ -1284,7 +1284,8 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 func orderStatusLabel(status string) string {
 	switch status {
 	case "pending_payment": return "待付款"
-	case "paid", "delivering": return "处理中"
+	case "paid", "delivering", "procurement_pending": return "处理中（上游采购/交付）"
+	case "procurement_failed": return "采购失败，等待人工处理"
 	case "delivery_failed": return "发货异常，系统重试中"
 	case "delivered": return "已交付"
 	case "expired": return "已关闭"
@@ -1514,8 +1515,14 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
 			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
 		}
+	case "upstream":
+		if item.Order.DeliveryPayloadJSON == "" || item.Order.DeliveryPayloadJSON == "{}" { deliveryErr = fmt.Errorf("upstream fulfillment payload is missing"); break }
+		if m.decrypt == nil { deliveryErr = fmt.Errorf("upstream fulfillment decryptor is not configured"); break }
+		payload, decryptErr := m.decrypt(item.Order.DeliveryPayloadJSON)
+		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
+		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
 	case "file_card":
-		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
+		if strings.TrimSpace(config.FileID)=="") { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
 			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
 			if deliveryErr==nil {
 				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+strings.Join(deliveredKeys,"\n")+"\n请妥善保存，不要转发给他人。")
