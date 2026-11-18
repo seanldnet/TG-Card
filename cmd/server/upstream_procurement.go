@@ -70,10 +70,19 @@ func (a *application) processDueUpstreamProcurements(ctx context.Context) {
 }
 
 func (a *application) processUpstreamProcurement(ctx context.Context,job database.UpstreamProcurementJob) error {
-	// The paid-order state is rechecked immediately before every upstream write.
-	if job.OrderStatus!="procurement_pending" {
-		log.Printf("skip upstream purchase because local order is no longer payable for procurement: order=%s status=%s",job.LocalOrderNo,job.OrderStatus)
+	// Re-read the live order and product immediately before any upstream API write.
+	var liveOrderStatus,sourceType string
+	var productStatus int
+	q:="SELECT o.status,COALESCE(p.status,0),COALESCE(p.source_type,'') FROM orders o LEFT JOIN products p ON p.id=o.product_id WHERE o.id="+database.PlaceholderForAPI(a.driver)
+	if err:=a.db.QueryRowContext(ctx,q,job.LocalOrderID).Scan(&liveOrderStatus,&productStatus,&sourceType);err!=nil{return err}
+	if liveOrderStatus!="procurement_pending" {
+		log.Printf("skip upstream purchase because local order is no longer payable for procurement: order=%s status=%s",job.LocalOrderNo,liveOrderStatus)
 		return nil
+	}
+	if productStatus!=1||sourceType!="upstream" {
+		err:=database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"采购前复核发现上游商品已下架或来源已变化")
+		if err==nil{a.notifyProcurementOwner(ctx,job.LocalOrderNo,"采购前复核发现上游商品已下架或来源已变化")}
+		return err
 	}
 	deadline,err:=time.Parse(time.RFC3339Nano,job.DeadlineAt)
 	if err!=nil{return database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"采购任务截止时间无效")}
