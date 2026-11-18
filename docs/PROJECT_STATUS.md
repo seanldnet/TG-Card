@@ -1,6 +1,6 @@
 ## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 已合并
 
-- 状态：PR #30（PR2）已合并，Go CI、Admin CI、安全扫描和 Docker Publish 全部成功；项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收均按默认通过记录（2026-11-18）。Dujiao-Next PR C 已通过独立 PR #32 合并；PR D/E 仍未完成。
+- 状态：PR #30（PR2）已合并，Go CI、Admin CI、安全扫描和 Docker Publish 全部成功；项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收均按默认通过记录（2026-11-18）。Dujiao-Next PR C 已通过独立 PR #32 合并；merge commit 镜像 digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 当前重建发布 Run #44338105044 对应 latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍以项目所有者确认的 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 为准；PR D/E 仍未完成。
 - PR #28 merge commit：`6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`。
 - PR2 当前生产验收镜像 digest（覆盖 PR #19/#26/#28 与 PR2 本次验收）：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)。
 - Go CI [#44317232633](https://github.com/seanldnet/TG-Card/actions/runs/44317232633) 与 Security [#44317232660](https://github.com/seanldnet/TG-Card/actions/runs/44317232660) 均成功。
@@ -665,7 +665,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 安全边界：本地买家支付记录在采购失败/重试中保持不变；不自动扣减或退款买家余额。人工退款只允许采购失败且未退款订单，退款记入钱包 credit 和独立 `upstream_procurement_refunds` 表。
 - 协议限制：官方 API 没有按 `downstream_order_no` 查单的接口。若首次 POST 发生网络异常且未取得上游订单 ID，系统标记 `uncertain` 并暂停自动重发；人工核实后可使用同一幂等键重试。已取得上游订单 ID 才调用 `GET /orders/:id`。
 - 当前限制：仅开放 `auto` 自动交付 SKU；`manual` 表单商品在买家表单采集能力完成前不允许自助购买。公网 HTTPS 回调地址必须在后台配置后才能自助下单。真实供应商凭证联调留给 PR E。
-- 验证：PR head Go CI #44335141310、Admin CI #44335141493、Security #44335141220 成功；合并后 main Go CI #44335573358、Admin CI #44335573432、Security #44335573555、Docker Publish #44335573493 成功。GHCR manifest digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`。`go test ./...` 全部通过。10 项 mock 测试覆盖同步交付、异步查单成功、查单超时、采购失败、重复回调、回调验签失败、超时后同幂等键手动重试、已退款订单跳过、HTTP 402 余额不足、HTTP 404 查单错误。
+- 验证：PR head Go CI #44335141310、Admin CI #44335141493、Security #44335141220 成功；合并后 main Go CI #44335573358、Admin CI #44335573432、Security #44335573555、Docker Publish #44335573493 成功。PR #32 merge Publish manifest digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；当前 main rebuild Publish Run #44338105044 成功，latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。`go test ./...` 全部通过。10 项 mock 测试覆盖同步交付、异步查单成功、查单超时、采购失败、重复回调、回调验签失败、超时后同幂等键手动重试、已退款订单跳过、HTTP 402 余额不足、HTTP 404 查单错误。
 - PR D（供应商资金安全）和 PR E（真实上游联调）仍未完成；PR C 不与 PR3–PR6 混合。当前不宣称已使用真实商户凭证或完成真实上游联调。
 
 ## 20. 安全基线
