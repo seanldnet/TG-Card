@@ -203,3 +203,17 @@ func (a *application) retryUpstreamProcurement(w http.ResponseWriter,r *http.Req
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.retry","order:"+orderNo,clientIP(r),r.UserAgent(),"manual retry")
 	writeSuccess(w,http.StatusOK,map[string]any{"accepted":true,"orderNo":orderNo})
 }
+
+func (a *application) refundUpstreamProcurement(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.requireSuperAdmin(w,r);if !ok{return}
+	orderNo:=strings.TrimSpace(r.PathValue("orderNo"))
+	proc,err:=database.GetUpstreamProcurement(r.Context(),a.db,a.driver,orderNo)
+	if err==sql.ErrNoRows{writeError(w,http.StatusNotFound,"采购任务不存在");return}
+	if err!=nil{writeError(w,http.StatusInternalServerError,"无法读取采购任务");return}
+	var input struct{Note string `json:"note"`}
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil{writeError(w,http.StatusBadRequest,"退款备注格式无效");return}
+	balance,err:=database.RefundUpstreamProcurementToWallet(r.Context(),a.db,a.driver,proc.OrderID,claims.AdminID,input.Note)
+	if err!=nil{writeError(w,http.StatusConflict,err.Error());return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.refund","order:"+orderNo,clientIP(r),r.UserAgent(),"credited buyer wallet; original payment unchanged")
+	writeSuccess(w,http.StatusOK,map[string]any{"refunded":true,"orderNo":orderNo,"balanceAfterAtomic":balance})
+}
