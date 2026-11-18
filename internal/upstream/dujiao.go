@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/md5"
@@ -64,22 +65,7 @@ func DujiaoSignature(method, path, timestamp string, body []byte, apiSecret stri
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func DujiaoPing(ctx context.Context, baseURL, apiKey, apiSecret string) (DujiaoPingResult, error) {
-	var result DujiaoPingResult
-	origin, err := ValidateDujiaoBaseURL(baseURL)
-	if err != nil { return result, err }
-	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" { return result, fmt.Errorf("Dujiao API Key 和 API Secret 均不能为空") }
-
-	const path = dujiaoAPIPrefix + "/ping"
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	body := []byte{}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, origin+path, strings.NewReader(string(body)))
-	if err != nil { return result, fmt.Errorf("create Dujiao ping request: %w", err) }
-	req.Header.Set("Dujiao-Next-Api-Key", apiKey)
-	req.Header.Set("Dujiao-Next-Timestamp", timestamp)
-	req.Header.Set("Dujiao-Next-Signature", DujiaoSignature(http.MethodPost, path, timestamp, body, apiSecret))
-	req.Header.Set("Content-Type", "application/json")
-
+func newDujiaoHTTPClient() *http.Client {
 	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &http.Transport{
 		Proxy: nil,
@@ -95,26 +81,50 @@ func DujiaoPing(ctx context.Context, baseURL, apiKey, apiSecret string) (DujiaoP
 			return dialer.DialContext(dialCtx, network, net.JoinHostPort(ips[0].IP.String(), port))
 		},
 	}
-	client := &http.Client{
-		Timeout: 12 * time.Second,
+	return &http.Client{
+		Timeout: 20 * time.Second,
 		Transport: transport,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	response, err := client.Do(req)
-	if err != nil { return result, fmt.Errorf("连接 Dujiao-Next 失败：%w", err) }
-	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil { return result, fmt.Errorf("读取 Dujiao-Next 响应失败") }
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return result, fmt.Errorf("Dujiao-Next 返回 HTTP %d", response.StatusCode)
+}
+
+// DujiaoRequest sends a signed request. The path must be an official upstream
+// API path; query parameters are deliberately excluded from the signature.
+func DujiaoRequest(ctx context.Context, baseURL, method, path string, query url.Values, body []byte, apiKey, apiSecret string) ([]byte, error) {
+	origin, err := ValidateDujiaoBaseURL(baseURL)
+	if err != nil { return nil, err }
+	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" { return nil, fmt.Errorf("Dujiao API Key 和 API Secret 均不能为空") }
+	if !strings.HasPrefix(path, dujiaoAPIPrefix+"/") || strings.Contains(path, "?") || strings.Contains(path, "#") {
+		return nil, fmt.Errorf("invalid Dujiao API path")
 	}
+	requestURL := origin + path
+	if len(query) > 0 { requestURL += "?" + query.Encode() }
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), requestURL, bytes.NewReader(body))
+	if err != nil { return nil, fmt.Errorf("create Dujiao request: %w", err) }
+	req.Header.Set("Dujiao-Next-Api-Key", apiKey)
+	req.Header.Set("Dujiao-Next-Timestamp", timestamp)
+	req.Header.Set("Dujiao-Next-Signature", DujiaoSignature(method, path, timestamp, body, apiSecret))
+	req.Header.Set("Content-Type", "application/json")
+	response, err := newDujiaoHTTPClient().Do(req)
+	if err != nil { return nil, fmt.Errorf("连接 Dujiao-Next 失败：%w", err) }
+	defer response.Body.Close()
+	payload, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
+	if err != nil { return nil, fmt.Errorf("读取 Dujiao-Next 响应失败") }
+	if response.StatusCode < 200 || response.StatusCode >= 300 { return nil, fmt.Errorf("Dujiao-Next 返回 HTTP %d", response.StatusCode) }
+	return payload, nil
+}
+
+func DujiaoPing(ctx context.Context, baseURL, apiKey, apiSecret string) (DujiaoPingResult, error) {
 	var envelope dujiaoEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil { return result, fmt.Errorf("Dujiao-Next 返回了无法识别的响应") }
+	payload, err := DujiaoRequest(ctx, baseURL, http.MethodPost, dujiaoAPIPrefix+"/ping", nil, nil, apiKey, apiSecret)
+	if err != nil { return DujiaoPingResult{}, err }
+	if err := json.Unmarshal(payload, &envelope); err != nil { return DujiaoPingResult{}, fmt.Errorf("Dujiao-Next 返回了无法识别的响应") }
 	if !envelope.OK {
 		message := strings.TrimSpace(envelope.ErrorMessage)
 		if message == "" { message = "上游拒绝连接，请检查 API Key、API Secret 和凭证审批状态" }
 		if len(message) > 300 { message = message[:300] }
-		return result, fmt.Errorf("Dujiao-Next: %s", message)
+		return DujiaoPingResult{}, fmt.Errorf("Dujiao-Next: %s", message)
 	}
 	return envelope.DujiaoPingResult, nil
 }
