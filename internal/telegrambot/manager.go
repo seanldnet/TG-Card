@@ -1736,6 +1736,9 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  if fileID!=""{if msg.Document!=nil{err=m.sendDocument(ctx,cfg.Token,userChat,fileID,outgoing)}else{err=m.sendPhotoByID(ctx,cfg.Token,userChat,fileID,outgoing)}}else{err=m.sendMessage(ctx,cfg.Token,userChat,outgoing)}
  if err!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"发送给用户失败："+err.Error()+"\n工单保持处理中，可稍后重试。");log.Printf("support owner reply failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err);return true}
  updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
+ exists,lookupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,updateKey)
+ if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法确认消息是否已处理，请稍后重试。");return true}
+ if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已处理，请继续发送下一条内容。");return true}
  if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,text,fileID,fileName,updateKey);err!=nil{log.Printf("support owner reply timeline append failed: ticket_id=%s error=%v",ticket.ID,err)}
  _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticket.ID,"confirm",30*time.Minute)
  keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"是，结单","callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":"否，继续沟通","callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
