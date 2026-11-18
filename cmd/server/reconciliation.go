@@ -46,8 +46,10 @@ func (a *application) runScheduledDailyReport(ctx context.Context,now time.Time)
 	saved,created,err:=database.SaveDailyReconciliationReport(ctx,a.db,a.driver,report)
 	if err!=nil{log.Printf("save daily reconciliation report failed: date=%s error=%v",report.ReportDate,err);return}
 	if !created{return}
-	details:=fmt.Sprintf("对账日期（UTC）：%s\n当日营收：%s USDT\n订单数：%d\n已交付：%d\n交付失败：%d\n退款金额：%s USDT\n充值总额：%s USDT\n未匹配交易：%d\n需人工核对交易：%d",
-		saved.ReportDate,formatUSDTAtomic(saved.RevenueAtomic),saved.OrderCount,saved.DeliveredCount,saved.DeliveryFailedCount,formatUSDTAtomic(saved.RefundAtomic),formatUSDTAtomic(saved.RechargeAtomic),saved.UnmatchedTransactionCount,saved.ManualReviewTransactionCount)
+	supplierBalance:="未获取"
+	if saved.SupplierBalance!=""{supplierBalance=saved.SupplierBalance+" "+saved.SupplierCurrency+"（检测："+saved.SupplierBalanceCheckedAt+"）"}
+	details:=fmt.Sprintf("对账日期（UTC）：%s\n当日营收：%s USDT\n订单数：%d\n已交付：%d\n交付失败：%d\n退款金额：%s USDT\n充值总额：%s USDT\n未匹配交易：%d\n需人工核对交易：%d\n上游供应商余额：%s",
+		saved.ReportDate,formatUSDTAtomic(saved.RevenueAtomic),saved.OrderCount,saved.DeliveredCount,saved.DeliveryFailedCount,formatUSDTAtomic(saved.RefundAtomic),formatUSDTAtomic(saved.RechargeAtomic),saved.UnmatchedTransactionCount,saved.ManualReviewTransactionCount,supplierBalance)
 	a.notifySiteEvent(ctx,"daily_report",details,"")
 	log.Printf("daily reconciliation report generated: date=%s",saved.ReportDate)
 }

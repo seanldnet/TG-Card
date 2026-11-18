@@ -26,6 +26,10 @@ type upstreamSettingsRequest struct {
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
+	ProcurementPollIntervalSeconds int `json:"procurementPollIntervalSeconds"`
+	ProcurementTimeoutMinutes int `json:"procurementTimeoutMinutes"`
+	SupplierLowBalanceThreshold string `json:"supplierLowBalanceThreshold"`
+	CallbackURL string `json:"callbackUrl"`
 	ExchangeRateToUSDT float64 `json:"exchangeRateToUSDT"`
 }
 
@@ -40,6 +44,10 @@ type upstreamSettingsView struct {
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
+	ProcurementPollIntervalSeconds int `json:"procurementPollIntervalSeconds"`
+	ProcurementTimeoutMinutes int `json:"procurementTimeoutMinutes"`
+	SupplierLowBalanceThreshold string `json:"supplierLowBalanceThreshold"`
+	CallbackURL string `json:"callbackUrl"`
 	ExchangeRateToUSDT float64 `json:"exchangeRateToUSDT"`
 	LastTestStatus string `json:"lastTestStatus"`
 	LastTestAt string `json:"lastTestAt"`
@@ -65,7 +73,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 	return upstreamSettingsView{
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
-		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ProcurementPollIntervalSeconds:item.ProcurementPollIntervalSeconds, ProcurementTimeoutMinutes:item.ProcurementTimeoutMinutes, SupplierLowBalanceThreshold:item.SupplierLowBalanceThreshold, CallbackURL:item.CallbackURL, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
 		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
@@ -75,7 +83,7 @@ func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request
 	if _, ok := a.authenticate(w,r); !ok { return }
 	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,CatalogStale:true})
+		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,ProcurementPollIntervalSeconds:30,ProcurementTimeoutMinutes:30,SupplierLowBalanceThreshold:"0",CatalogStale:true})
 		return
 	}
 	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
@@ -117,6 +125,22 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "自动同步间隔必须为 5–1440 分钟")
 		return
 	}
+	if input.ProcurementPollIntervalSeconds == 0 { input.ProcurementPollIntervalSeconds = 30 }
+	if input.ProcurementPollIntervalSeconds < 5 || input.ProcurementPollIntervalSeconds > 3600 {
+		writeError(w,http.StatusBadRequest,"采购查单间隔必须为 5–3600 秒");return
+	}
+	if input.ProcurementTimeoutMinutes == 0 { input.ProcurementTimeoutMinutes = 30 }
+	if input.ProcurementTimeoutMinutes < 1 || input.ProcurementTimeoutMinutes > 1440 {
+		writeError(w,http.StatusBadRequest,"采购超时时间必须为 1–1440 分钟");return
+	}
+	input.SupplierLowBalanceThreshold = strings.TrimSpace(input.SupplierLowBalanceThreshold)
+	if input.SupplierLowBalanceThreshold == "" { input.SupplierLowBalanceThreshold = "0" }
+	if _, thresholdErr := upstream.ParseMinorUnits(input.SupplierLowBalanceThreshold); thresholdErr != nil {
+		writeError(w,http.StatusBadRequest,"供应商余额预警阈值必须为非负金额");return
+	}
+	callbackURL, callbackErr := upstream.ValidateDujiaoCallbackURL(input.CallbackURL)
+	if callbackErr != nil { writeError(w,http.StatusBadRequest,callbackErr.Error());return }
+	input.CallbackURL = callbackURL
 
 	current, err := database.GetUpstreamSettings(r.Context(), a.db, a.driver)
 	hasCurrent := err == nil
@@ -169,6 +193,10 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	current.MarkupMinor = input.MarkupFixedMinor
 	current.ExchangeRatePPM = exchangeRatePPM
 	current.SyncIntervalMinutes = input.SyncIntervalMinutes
+	current.ProcurementPollIntervalSeconds = input.ProcurementPollIntervalSeconds
+	current.ProcurementTimeoutMinutes = input.ProcurementTimeoutMinutes
+	current.SupplierLowBalanceThreshold = input.SupplierLowBalanceThreshold
+	current.CallbackURL = input.CallbackURL
 	if err := database.SaveUpstreamSettings(r.Context(), a.db, a.driver, current); err != nil {
 		log.Printf("save upstream settings: %v", err)
 		writeError(w, http.StatusInternalServerError, "保存上游配置失败")

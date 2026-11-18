@@ -5,7 +5,7 @@ import { requestClient } from '#/api/request';
 
 interface DailyReport {
  reportDate:string;revenueAtomic:number;orderCount:number;deliveredCount:number;deliveryFailedCount:number;
- refundAtomic:number;rechargeAtomic:number;unmatchedTransactionCount:number;manualReviewTransactionCount:number;generatedAt:string;
+ refundAtomic:number;rechargeAtomic:number;unmatchedTransactionCount:number;manualReviewTransactionCount:number;supplierBalance:string;supplierCurrency:string;supplierBalanceCheckedAt:string;generatedAt:string;
 }
 interface BalanceRun {runKey:string;runAt:string;checkedUsers:number;mismatchUsers:number;totalDifferenceAtomic:number}
 interface BalanceAnomaly {runKey:string;telegramUserId:string;recordedBalanceAtomic:number;ledgerBalanceAtomic:number;differenceAtomic:number;createdAt:string}
@@ -53,8 +53,8 @@ onMounted(load);
   </div>
   <a-card :bordered="false" :loading="loading">
    <template #title><div class="text-base font-semibold">每日对账日历 · {{month}}</div></template>
-   <a-alert class="mb-3" type="info" show-icon message="日报每日 UTC 00:05 后生成前一日快照；营收按 paid_at、订单数按 created_at、交付成功按 delivered_at、交付失败按失败事件时间统计。历史日报为生成时快照。" />
-   <a-table :data-source="reports" row-key="reportDate" :pagination="{pageSize:31,hideOnSinglePage:true}" :scroll="{x:1250}">
+   <a-alert class="mb-3" type="info" show-icon message="日报每日 UTC 00:05 后生成前一日快照；营收按 paid_at、订单数按 created_at、交付成功按 delivered_at、交付失败按失败事件时间统计。上游供应商余额取该 UTC 日内最近一次余额快照；历史日报为生成时快照。" />
+   <a-table :data-source="reports" row-key="reportDate" :pagination="{pageSize:31,hideOnSinglePage:true}" :scroll="{x:1580}">
     <a-table-column title="日期（UTC）" data-index="reportDate" key="date" :width="130"/>
     <a-table-column title="营收" key="revenue" :width="150"><template #default="{record}">{{money(record.revenueAtomic)}}</template></a-table-column>
     <a-table-column title="订单数" data-index="orderCount" key="orders" :width="90"/>
@@ -64,6 +64,8 @@ onMounted(load);
     <a-table-column title="充值总额" key="recharge" :width="150"><template #default="{record}">{{money(record.rechargeAtomic)}}</template></a-table-column>
     <a-table-column title="未匹配交易" data-index="unmatchedTransactionCount" key="unmatched" :width="110"/>
     <a-table-column title="需人工核对" data-index="manualReviewTransactionCount" key="review" :width="110"/>
+    <a-table-column title="上游余额" key="supplierBalance" :width="160"><template #default="{record}">{{record.supplierBalance?record.supplierBalance+' '+record.supplierCurrency:'未获取'}}</template></a-table-column>
+    <a-table-column title="上游余额检测时间" key="supplierBalanceCheckedAt" :width="190"><template #default="{record}">{{record.supplierBalanceCheckedAt?when(record.supplierBalanceCheckedAt):'—'}}</template></a-table-column>
     <a-table-column title="生成时间" key="generated" :width="190"><template #default="{record}">{{when(record.generatedAt)}}</template></a-table-column>
    </a-table>
    <a-empty v-if="!loading&&reports.length===0" description="本月暂无已生成的日报；日报在每日 UTC 00:05 后生成前一日数据"/>
