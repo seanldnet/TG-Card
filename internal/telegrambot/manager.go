@@ -520,10 +520,14 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			if msg.Document != nil { fileID=msg.Document.FileID; fileName=msg.Document.FileName } else { photo:=msg.Photo[len(msg.Photo)-1]; fileID=photo.FileID; fileName="Telegram 图片" }
 			caption := strings.TrimSpace(msg.Caption)
 			if caption == "" { caption = "用户提交了售后凭证" }
+			updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
+			updateExists,updateErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),updateKey)
+			if updateErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验消息是否重复，请稍后重试。") } else if updateExists { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已记录，无需重复提交。") } else {
 			duplicate,dupErr:=database.SupportTicketAttachmentExists(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),fileID)
 			if dupErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验附件是否重复，请稍后重试。") } else if duplicate { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这份附件已记录，无需重复提交。") } else if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),caption,fileID,fileName,strconv.FormatInt(msg.MessageID,10));err!=nil {
 				_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证保存失败，请稍后重试。")
 			} else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文字说明和附件已一起添加到售后工单。你可以继续单独发送文字、图片或文件。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,caption,fileID,fileName) }
+			}
 			m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia)
 			return
 		}
@@ -582,7 +586,9 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			return
 		case strings.HasPrefix(pending,"support_followup:"):
 			ticketID := strings.TrimPrefix(pending,"support_followup:")
-			if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","",strconv.FormatInt(msg.MessageID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,text,"","") }
+			updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
+			duplicate,dupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),updateKey)
+			if dupErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验消息是否重复，请稍后重试。") } else if duplicate { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已记录，无需重复提交。") } else if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","",strconv.FormatInt(msg.MessageID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,text,"","") }
 			m.setPendingAction(cfg.ID,msg.Chat.ID,pending)
 			return
 		case strings.HasPrefix(pending, "support_description:"):
@@ -1758,11 +1764,6 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  exists,lookupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,updateKey)
  if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法确认消息是否已处理，请稍后重试。");return true}
  if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已处理，请继续发送下一条内容。");return true}
- if fileID!=""{
-  duplicate,dupErr:=database.SupportTicketAttachmentExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,fileID)
-  if dupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验附件是否重复，请稍后重试。");return true}
-  if duplicate{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这份附件已发送过，请发送新的内容。");return true}
- }
  if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,text,fileID,fileName,updateKey);err!=nil{
   log.Printf("support owner reply timeline append failed: ticket_id=%s error=%v",ticket.ID,err)
   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"沟通记录保存失败，尚未发送给用户，请稍后重试。")
