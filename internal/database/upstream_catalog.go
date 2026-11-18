@@ -61,7 +61,7 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 			localID, err = randomID()
 			if err != nil { return err }
 			query := "INSERT INTO product_categories(id,name,sort_order,status,source_type,upstream_category_id,upstream_parent_id,upstream_icon,upstream_sync_batch_id,created_at,updated_at) VALUES("+
-				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")"
+				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
 			if _, err = tx.ExecContext(ctx, query, localID, item.Name, item.SortOrder, item.UpstreamID, item.ParentID, item.Icon, batchID, now, now); err != nil { return fmt.Errorf("insert upstream category %s: %w", item.UpstreamID, err) }
 		} else if err != nil { return err } else {
 			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon="+placeholder(driver,4)+",upstream_sync_batch_id="+placeholder(driver,5)+",updated_at="+placeholder(driver,6)+" WHERE id="+placeholder(driver,7)+" AND source_type='upstream'"
