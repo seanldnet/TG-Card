@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -218,4 +219,10 @@ func (a *application) refundUpstreamProcurement(w http.ResponseWriter,r *http.Re
 	if err!=nil{writeError(w,http.StatusConflict,err.Error());return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.refund","order:"+orderNo,clientIP(r),r.UserAgent(),"credited buyer wallet; original payment unchanged")
 	writeSuccess(w,http.StatusOK,map[string]any{"refunded":true,"orderNo":orderNo,"balanceAfterAtomic":balance})
+}
+
+func mustPublicCallbackBase(ctx context.Context,a *application) string {
+	settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver);if err!=nil{return ""}
+	u,err:=url.Parse(settings.CallbackURL);if err!=nil||u==nil{return ""}
+	return u.Scheme+"://"+u.Host
 }
