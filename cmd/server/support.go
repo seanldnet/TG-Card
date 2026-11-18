@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -10,6 +13,7 @@ import (
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/telegrambot"
 )
 
 type supportMessageRequest struct {
@@ -34,33 +38,29 @@ func (a *application) listSupportTicketMessages(w http.ResponseWriter, r *http.R
 	writeSuccess(w, http.StatusOK, items)
 }
 
-func (a *application) getSupportTicketAttachment(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.authenticate(w, r); !ok { return }
-	ticketID := strings.TrimSpace(r.PathValue("id"))
-	messageID := strings.TrimSpace(r.PathValue("messageId"))
-	attachment, err := database.GetSupportTicketAttachment(r.Context(), a.db, a.driver, ticketID, messageID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "该工单不存在此附件")
-		return
-	}
-	data, _, err := a.botManager.DownloadSupportAttachment(r.Context(), attachment.BotID, attachment.FileID)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "附件暂时无法从 Telegram 获取："+err.Error())
-		return
-	}
-	name := filepath.Base(strings.ReplaceAll(strings.TrimSpace(attachment.FileName), "\\", "/"))
-	if name == "." || name == "/" || name == "" { name = "support-attachment" }
-	contentType := mime.TypeByExtension(filepath.Ext(name))
-	if contentType == "" { contentType = http.DetectContentType(data) }
-	disposition := "attachment"
-	if strings.HasPrefix(strings.ToLower(contentType), "image/") { disposition = "inline" }
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": name}))
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+func (a *application) getSupportTicketAttachment(w http.ResponseWriter,r *http.Request){
+ if _,ok:=a.authenticate(w,r);!ok{return}
+ ticketID:=strings.TrimSpace(r.PathValue("id"));messageID:=strings.TrimSpace(r.PathValue("messageId"))
+ attachment,err:=database.GetSupportTicketAttachment(r.Context(),a.db,a.driver,ticketID,messageID)
+ if err!=nil{log.Printf("support_attachment_failed ticket_id=%q message_id=%q kind=not_found error=%q",ticketID,messageID,err.Error());writeError(w,http.StatusNotFound,"该工单不存在此附件");return}
+ prefix:=attachment.FileID;if len(prefix)>8{prefix=prefix[:8]}
+ ctx,cancel:=context.WithTimeout(r.Context(),55*time.Second);defer cancel()
+ data,_,err:=a.botManager.DownloadSupportAttachment(ctx,attachment.BotID,attachment.FileID)
+ if err!=nil{
+  kind:="unknown";status:=http.StatusBadGateway;message:="附件获取失败，请稍后重试"
+  var ae *telegrambot.AttachmentError
+  if errors.As(err,&ae){kind=ae.Kind;switch kind{case "expired":status=http.StatusGone;message="Telegram 附件已失效，请用户重新上传";case "too_large":status=http.StatusRequestEntityTooLarge;message="附件超过 20MB 限制，无法预览或下载";case "bot_missing":status=http.StatusNotFound;message="工单关联的机器人配置不存在";case "telegram_error":message="Telegram 暂时无法提供该附件，请稍后重试"}
+   log.Printf("support_attachment_failed ticket_id=%q message_id=%q bot_id=%q file_id_prefix=%q kind=%q telegram_error_code=%d telegram_description=%q error=%q",ticketID,messageID,attachment.BotID,prefix,kind,ae.TelegramCode,ae.Description,err.Error())
+  }else{log.Printf("support_attachment_failed ticket_id=%q message_id=%q bot_id=%q file_id_prefix=%q kind=%q error=%q",ticketID,messageID,attachment.BotID,prefix,kind,err.Error())}
+  writeError(w,status,message);return
+ }
+ name:=filepath.Base(strings.ReplaceAll(strings.TrimSpace(attachment.FileName),"\\","/"));if name=="."||name=="/"||name==""{name="support-attachment"}
+ contentType:=mime.TypeByExtension(filepath.Ext(name));if contentType==""{contentType=http.DetectContentType(data)}
+ disposition:="attachment";if strings.HasPrefix(strings.ToLower(contentType),"image/"){disposition="inline"}
+ w.Header().Set("Content-Type",contentType);w.Header().Set("Content-Disposition",mime.FormatMediaType(disposition,map[string]string{"filename":name}))
+ w.Header().Set("Cache-Control","private, no-store");w.Header().Set("X-Content-Type-Options","nosniff");w.Header().Set("Content-Length",strconv.Itoa(len(data)));w.WriteHeader(http.StatusOK)
+ if _,err:=w.Write(data);err!=nil{log.Printf("support_attachment_write_failed ticket_id=%q message_id=%q bot_id=%q file_id_prefix=%q error=%q",ticketID,messageID,attachment.BotID,prefix,err.Error());return}
+ log.Printf("support_attachment_success ticket_id=%q message_id=%q bot_id=%q file_id_prefix=%q bytes=%d content_type=%q",ticketID,messageID,attachment.BotID,prefix,len(data),contentType)
 }
 
 func (a *application) appendSupportTicketMessage(w http.ResponseWriter, r *http.Request) {
