@@ -67,6 +67,13 @@ func ListFinanceExceptions(ctx context.Context,db *sql.DB,driver,status,category
  return out,rows.Err()
 }
 
+func ClaimFinanceExceptionAlert(ctx context.Context,db *sql.DB,driver,alertKey,day string)(bool,error){
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ q:="INSERT INTO finance_exception_alerts(alert_key,alert_date,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(alert_key,alert_date) DO NOTHING"
+ res,err:=db.ExecContext(ctx,q,alertKey,day,now);if err!=nil{return false,err}
+ n,err:=res.RowsAffected();if err!=nil{return false,err};return n==1,nil
+}
+
 func CountOpenFinanceExceptions(ctx context.Context,db *sql.DB)(int64,error){
  var n int64;err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM finance_exceptions WHERE status IN ('open','processing')").Scan(&n);return n,err
 }
