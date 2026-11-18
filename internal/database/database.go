@@ -293,6 +293,7 @@ type Category struct {
 	SourceType string `json:"sourceType"`
 	UpstreamCategoryID string `json:"upstreamCategoryId"`
 	UpstreamParentID string `json:"upstreamParentId"`
+	UpstreamIcon string `json:"upstreamIcon"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -311,6 +312,11 @@ type Product struct {
 	SourceType string `json:"sourceType"`
 	UpstreamProductID string `json:"upstreamProductId"`
 	UpstreamSKUID string `json:"upstreamSkuId"`
+	UpstreamSKUCode string `json:"upstreamSkuCode"`
+	UpstreamSpecValuesJSON string `json:"upstreamSpecValuesJson"`
+	UpstreamFulfillmentType string `json:"upstreamFulfillmentType"`
+	UpstreamManualFormSchemaJSON string `json:"upstreamManualFormSchemaJson"`
+	UpstreamTagsJSON string `json:"upstreamTagsJson"`
 	UpstreamSlug string `json:"upstreamSlug"`
 	UpstreamPriceSnapshotMinor int64 `json:"upstreamPriceSnapshotMinor"`
 	UpstreamCurrency string `json:"upstreamCurrency"`
@@ -329,13 +335,13 @@ type StockSecret struct {
 }
 
 func ListCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
-	rows, err := db.QueryContext(ctx, "SELECT id,name,sort_order,status,COALESCE(source_type,'local'),COALESCE(upstream_category_id,''),COALESCE(upstream_parent_id,''),created_at,updated_at FROM product_categories ORDER BY sort_order,name")
+	rows, err := db.QueryContext(ctx, "SELECT id,name,sort_order,status,COALESCE(source_type,'local'),COALESCE(upstream_category_id,''),COALESCE(upstream_parent_id,''),COALESCE(upstream_icon,''),created_at,updated_at FROM product_categories ORDER BY sort_order,name")
 	if err != nil { return nil, err }
 	defer rows.Close()
 	items := make([]Category, 0)
 	for rows.Next() {
 		var item Category
-		if err := rows.Scan(&item.ID,&item.Name,&item.SortOrder,&item.Status,&item.SourceType,&item.UpstreamCategoryID,&item.UpstreamParentID,&item.CreatedAt,&item.UpdatedAt); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.Name,&item.SortOrder,&item.Status,&item.SourceType,&item.UpstreamCategoryID,&item.UpstreamParentID,&item.UpstreamIcon,&item.CreatedAt,&item.UpdatedAt); err != nil { return nil, err }
 		items = append(items,item)
 	}
 	return items, rows.Err()
@@ -359,11 +365,11 @@ func DeleteCategory(ctx context.Context, db *sql.DB, driver, id string) error {
 
 func ListProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 	rows,err:=db.QueryContext(ctx,`SELECT p.id,COALESCE(p.category_id,''),COALESCE(c.name,''),p.name,p.description,p.price_minor,p.currency,p.delivery_type,p.status,COALESCE(p.bulk_discount_json,'[]'),COALESCE(p.delivery_config_json,'{}'),
-	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),COALESCE(p.source_type,'local'),COALESCE(p.upstream_product_id,''),COALESCE(p.upstream_sku_id,''),COALESCE(p.upstream_slug,''),COALESCE(p.upstream_price_snapshot_minor,0),COALESCE(p.upstream_currency,''),COALESCE(p.upstream_stock_quantity,0),COALESCE(p.upstream_stock_status,''),COALESCE(p.image_paths_json,'[]'),p.created_at,p.updated_at
+	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),COALESCE(p.source_type,'local'),COALESCE(p.upstream_product_id,''),COALESCE(p.upstream_sku_id,''),COALESCE(p.upstream_sku_code,''),COALESCE(p.upstream_spec_values_json,'{}'),COALESCE(p.upstream_fulfillment_type,''),COALESCE(p.upstream_manual_form_schema_json,'{}'),COALESCE(p.upstream_tags_json,'[]'),COALESCE(p.upstream_slug,''),COALESCE(p.upstream_price_snapshot_minor,0),COALESCE(p.upstream_currency,''),COALESCE(p.upstream_stock_quantity,0),COALESCE(p.upstream_stock_status,''),COALESCE(p.image_paths_json,'[]'),p.created_at,p.updated_at
 	FROM products p LEFT JOIN product_categories c ON c.id=p.category_id ORDER BY p.created_at DESC`)
 	if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]Product,0)
-	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.SourceType,&p.UpstreamProductID,&p.UpstreamSKUID,&p.UpstreamSlug,&p.UpstreamPriceSnapshotMinor,&p.UpstreamCurrency,&p.UpstreamStockQuantity,&p.UpstreamStockStatus,&p.ImagePathsJSON,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
+	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.SourceType,&p.UpstreamProductID,&p.UpstreamSKUID,&p.UpstreamSKUCode,&p.UpstreamSpecValuesJSON,&p.UpstreamFulfillmentType,&p.UpstreamManualFormSchemaJSON,&p.UpstreamTagsJSON,&p.UpstreamSlug,&p.UpstreamPriceSnapshotMinor,&p.UpstreamCurrency,&p.UpstreamStockQuantity,&p.UpstreamStockStatus,&p.ImagePathsJSON,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
 	return items,rows.Err()
 }
 
