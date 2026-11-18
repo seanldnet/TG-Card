@@ -67,11 +67,11 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 	if err != nil { return Order{}, err }
 	defer tx.Rollback()
 
-	var productName, currency, discountJSON, deliveryType, deliveryConfig string
+	var productName, currency, discountJSON, deliveryType, deliveryConfig, sourceType, upstreamProductID, upstreamSKUID, upstreamFulfillmentType string
 	var price int64
 	var status int
-	query := "SELECT name,price_minor,currency,status,COALESCE(bulk_discount_json,'[]'),COALESCE(delivery_type,'card'),COALESCE(delivery_config_json,'{}') FROM products WHERE id=" + placeholder(driver, 1)
-	if err := tx.QueryRowContext(ctx, query, productID).Scan(&productName, &price, &currency, &status, &discountJSON, &deliveryType, &deliveryConfig); err != nil { return Order{}, err }
+	query := "SELECT name,price_minor,currency,status,COALESCE(bulk_discount_json,'[]'),COALESCE(delivery_type,'card'),COALESCE(delivery_config_json,'{}'),COALESCE(source_type,'local'),COALESCE(upstream_product_id,''),COALESCE(upstream_sku_id,''),COALESCE(upstream_fulfillment_type,'') FROM products WHERE id=" + placeholder(driver, 1)
+	if err := tx.QueryRowContext(ctx, query, productID).Scan(&productName, &price, &currency, &status, &discountJSON, &deliveryType, &deliveryConfig, &sourceType, &upstreamProductID, &upstreamSKUID, &upstreamFulfillmentType); err != nil { return Order{}, err }
 	if status != 1 { return Order{}, fmt.Errorf("product is unavailable") }
 	if deliveryType == "" { deliveryType = "card" }
 	needsKeys := deliveryType == "card" || deliveryType == "file_card"
@@ -147,10 +147,10 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 		if affected != 1 { return Order{}, fmt.Errorf("stock reservation conflict") }
 	}
 
-	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json,promotion_id,promotion_code,promotion_discount_minor) VALUES("
-	for i:=1;i<=22;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
+	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json,promotion_id,promotion_code,promotion_discount_minor,upstream_source_snapshot,upstream_product_id_snapshot,upstream_sku_id_snapshot,upstream_fulfillment_type_snapshot) VALUES("
+	for i:=1;i<=26;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
 	insert += ")"
-	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON,order.PromotionID,order.PromotionCode,order.PromotionDiscountMinor)
+	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON,order.PromotionID,order.PromotionCode,order.PromotionDiscountMinor,sourceType,upstreamProductID,upstreamSKUID,upstreamFulfillmentType)
 	if err != nil { return Order{}, err }
 	if promotion.ID != "" { if err := ReservePromotion(ctx, tx, driver, promotion, order.ID, telegramUserID, promotionDiscount, now); err != nil { return Order{}, err } }
 	if err := tx.Commit(); err != nil { return Order{}, err }
