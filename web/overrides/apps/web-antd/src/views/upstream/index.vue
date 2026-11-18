@@ -27,8 +27,8 @@ const settings=reactive<UpstreamSettings>({
  lastError:'',syncStatus:'not_started',syncAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
-const testLabel=computed(()=>({success:'连接成功',failed:'连接失败',not_tested:'尚未测试'}[settings.lastTestStatus]||settings.lastTestStatus));
-const syncLabel=computed(()=>({not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'}[settings.syncStatus]||settings.syncStatus));
+const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
+const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'};return labels[settings.syncStatus]||settings.syncStatus;});
 async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
@@ -94,7 +94,7 @@ onMounted(()=>{void load();});
     <a-alert class="mb-4" type="warning" show-icon message="启用上游开关目前只保存配置，不会在 PR A 阶段改变商品展示或触发采购。目录同步和采购转发将在后续独立 PR 实现。" />
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
-     <a-button :loading="testing" :disabled="saving||testing||!settings.merchantIdConfigured&&!merchantId||!settings.merchantSecretConfigured&&!merchantSecret" @click="testConnection">测试连接</a-button>
+     <a-button :loading="testing" :disabled="saving||testing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
      <a-button :disabled="saving||testing" @click="load">重新加载</a-button>
     </div>
    </a-form>
