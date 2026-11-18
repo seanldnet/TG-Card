@@ -54,12 +54,12 @@ func CreateFinanceException(ctx context.Context,db *sql.DB,driver,sourceKey,cate
  return tx.Commit()
 }
 
-func ListFinanceExceptions(ctx context.Context,db *sql.DB,status,category string,limit int)([]FinanceException,error){
+func ListFinanceExceptions(ctx context.Context,db *sql.DB,driver,status,category string,limit int)([]FinanceException,error){
  if limit<1||limit>500{limit=100}
  q:="SELECT id,source_key,category,severity,entity_type,entity_id,title,detail,status,resolution_note,resolved_by,created_at,updated_at,resolved_at FROM finance_exceptions WHERE 1=1"
  args:=[]any{}
- if status!=""{q+=" AND status=?";args=append(args,status)}
- if category!=""{q+=" AND category=?";args=append(args,category)}
+ if status!=""{q+=" AND status="+placeholder(driver,len(args)+1);args=append(args,status)}
+ if category!=""{q+=" AND category="+placeholder(driver,len(args)+1);args=append(args,category)}
  q+=" ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'error' THEN 1 ELSE 2 END,created_at DESC LIMIT "+fmt.Sprint(limit)
  rows,err:=db.QueryContext(ctx,q,args...);if err!=nil{return nil,err};defer rows.Close()
  out:=make([]FinanceException,0)
