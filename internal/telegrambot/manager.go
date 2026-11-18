@@ -395,6 +395,10 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 		if p.ID!=productID||p.Status!=1 { continue }
 		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
 		if keyBacked&&p.StockCount<1 { _ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。"); return }
+		if p.SourceType=="upstream" {
+			settings,settingsErr:=database.GetUpstreamSettings(ctx,m.db,m.driver)
+			if settingsErr!=nil||!settings.Enabled||settings.CatalogStale||settings.CallbackURL=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游采购暂不可用：管理员需先启用上游目录并配置公网回调地址。"); return }
+		}
 		if p.SourceType=="upstream" && p.UpstreamStockStatus=="out_of_stock" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游商品库存不足，请返回商城选择其他商品。"); return }
 		if p.SourceType=="upstream" && p.UpstreamFulfillmentType=="manual" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品需要人工交付表单信息，目前请联系客服处理，暂不支持自助下单。"); return }
 		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}else if p.SourceType=="upstream"{stockText="上游库存："+p.UpstreamStockStatus}
