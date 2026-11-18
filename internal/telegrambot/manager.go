@@ -378,10 +378,11 @@ func (m *Manager) retryDueDeliveries(ctx context.Context) {
 }
 
 func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chatID int64, productID string) {
-	products, err := database.ListProducts(ctx, m.db)
+	products, err := database.ListVisibleProducts(ctx, m.db)
 	if err != nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"商品暂时无法加载，请稍后再试。"); return }
 	for _,p:=range products {
 		if p.ID!=productID||p.Status!=1 { continue }
+		if p.SourceType=="upstream" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品的采购履约将在下一阶段开放，目前暂不可购买。"); return }
 		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
 		if keyBacked&&p.StockCount<1 { _ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。"); return }
 		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}
@@ -549,7 +550,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			m.createPurchaseOrderWithPromotion(ctx,cfg,query,msg.Chat.ID,parts[0],quantity,text)
 			return
 		case pending == "search":
-			products, err := database.ListProducts(ctx, m.db)
+			products, err := database.ListVisibleProducts(ctx, m.db)
 			if err != nil { _ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "商品搜索暂时不可用，请稍后重试。"); return }
 			needle := strings.ToLower(text)
 			rows := make([][]map[string]string, 0)
@@ -925,8 +926,8 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 	}
 }
 func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
- cats,err:=database.ListCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
- products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",shopBackKeyboard());return}
+ cats,err:=database.ListVisibleCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
+ products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",shopBackKeyboard());return}
  active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0)
  for _,c:=range cats{if c.Status!=1{continue};n:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==c.ID{n++}};if n>0{rows=append(rows,[]map[string]string{{"text":c.Name+"（"+strconv.Itoa(n)+"）","callback_data":"shop:category:"+c.ID}})}}
@@ -936,7 +937,7 @@ func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛍️ 商品中心\n请选择商品分类：",map[string]any{"inline_keyboard":rows})
 }
 func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
- products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",shopBackKeyboard());return}
+ products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0)
  for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="不限量";if p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"{stock="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)}};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
  if len(rows)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回分类","callback_data":"shop:home"}}}});return}
@@ -945,13 +946,14 @@ func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categ
 }
 
 func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, productID string) {
-	products, err := database.ListProducts(ctx, m.db)
+	products, err := database.ListVisibleProducts(ctx, m.db)
 	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
 	for _, p := range products {
 		if p.ID != productID || p.Status != 1 { continue }
 		keyBacked := p.DeliveryType == "" || p.DeliveryType == "card" || p.DeliveryType == "file_card"
 		stockLabel := "库存：不限量交付"
 		if keyBacked { stockLabel = "库存：" + strconv.Itoa(p.StockCount) }
+		if p.SourceType == "upstream" { if p.UpstreamStockQuantity < 0 { stockLabel = "上游库存：不限量" } else { stockLabel = "上游库存：" + strconv.FormatInt(p.UpstreamStockQuantity,10) } }
 		text := p.Name + "\n\n" + p.Description + "\n\n价格：" + formatPrice(p.PriceMinor,p.Currency) + "\n" + stockLabel
 		var discountTiers []struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
 		if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil && len(discountTiers)>0 {
@@ -959,7 +961,9 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
 			for _,tier:=range discountTiers { text += "\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%" }
 		}
 		buttons := make([][]map[string]string,0)
-		if keyBacked && p.StockCount < 1 {
+		if p.SourceType == "upstream" {
+			text += "\\n\\n⚠️ 上游采购履约将在下一阶段开放，目前暂不可购买。"
+		} else if keyBacked && p.StockCount < 1 {
 			buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}}}
 		} else if keyBacked {
 			for _, quantity := range []int{1,2,3,5,10} {
@@ -981,6 +985,16 @@ func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query Cal
 }
 
 func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int, promotionCode string) {
+	products, catalogErr := database.ListProducts(ctx, m.db)
+	if catalogErr == nil {
+		for _, product := range products {
+			if product.ID == productID && product.SourceType == "upstream" {
+				if query.ID != "" { _ = m.answerCallback(ctx, cfg.Token, query.ID, "上游采购功能尚未开放") }
+				_ = m.sendMessage(ctx, cfg.Token, chatID, "该商品来自上游，采购与支付转发将在下一阶段开放；当前不会创建订单或扣款。")
+				return
+			}
+		}
+	}
 	order, err := database.CreateOrderWithPromotion(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, promotionCode, 20*time.Minute)
 	if err != nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"下单失败："+err.Error()); _ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建订单："+err.Error()); return }
 	balance,balanceErr := database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10))
@@ -1032,7 +1046,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			for _,item:=range items[:limit] { rows=append(rows,[]map[string]string{{"text":truncateButtonText(item.OrderNo+" · "+item.ProductName,48),"callback_data":"owner:order:"+item.ID}}) }
 			if len(rows)==0 { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂无订单。",ownerMenuKeyboard()) } else { rows=append(rows,[]map[string]string{{"text":"⬅️ 返回管理台","callback_data":"owner:home"}});_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"最近订单（点击查看详情）：",map[string]any{"inline_keyboard":rows}) }
 		case "owner:stock", "owner:addstock":
-			products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品列表加载失败。",ownerMenuKeyboard());break }
+			products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品列表加载失败。",ownerMenuKeyboard());break }
 			rows:=make([][]map[string]string,0);for _,p:=range products { if p.Status==1 { rows=append(rows,[]map[string]string{{"text":truncateButtonText(p.Name+" · 库存 "+strconv.Itoa(p.StockCount),48),"callback_data":"owner:product:"+p.ID}}) } }
 			rows=append(rows,[]map[string]string{{"text":"⬅️ 返回管理台","callback_data":"owner:home"}});_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"选择商品查看库存或添加卡密：",map[string]any{"inline_keyboard":rows})
 		case "owner:broadcast":
@@ -1043,7 +1057,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			prompts:=map[string]string{"owner:ban":"请发送要封禁的 Telegram 用户 ID。","owner:unban":"请发送要解除封禁的 Telegram 用户 ID。","owner:closeorder":"请发送需要关闭的待付款订单号。"}
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,prompts[query.Data],ownerMenuKeyboard())
 		case "owner:products":
-			products,err:=database.ListProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
+			products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
 			var lines []string
 			for _,p:=range products{lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+strconv.Itoa(p.StockCount))}
 			if len(lines)==0{lines=append(lines,"暂无商品")}
