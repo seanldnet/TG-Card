@@ -14,7 +14,7 @@ func createOwnerWorkflowTicket(t *testing.T, db *sql.DB) SupportTicket {
  ctx:=context.Background()
  product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Owner workflow test",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
  if err!=nil{t.Fatal(err)}
- order,err:=CreateOrder(ctx,db,"owner-workflow-bot","owner-workflow-user","owner-workflow-chat",product.ID,time.Minute)
+ order,err:=CreateOrder(ctx,db,"sqlite","owner-workflow-bot","owner-workflow-user","owner-workflow-chat",product.ID,time.Minute)
  if err!=nil{t.Fatal(err)}
  if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
  ticket,err:=CreateSupportTicket(ctx,db,"sqlite","owner-workflow-bot","owner-workflow-user","owner-workflow-chat",order.OrderNo,"other","Owner workflow issue")
