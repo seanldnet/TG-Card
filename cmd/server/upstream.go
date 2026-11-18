@@ -114,7 +114,7 @@ func (a *application) testUpstreamConnection(w http.ResponseWriter,r *http.Reque
 	ctx,cancel:=context.WithTimeout(r.Context(),15*time.Second);defer cancel()
 	ping,callErr:=upstream.DujiaoPing(ctx,item.BaseURL,apiKey,secretValue)
 	status,message:="success",""
-	if callErr!=nil{status="failed";message=callErr.Error();if len(message)>500{message=message[:500]}}
+	if callErr!=nil{status="failed";message=callErr.Error();message=strings.ReplaceAll(message,apiKey,"[redacted]");message=strings.ReplaceAll(message,secretValue,"[redacted]");if len(message)>500{message=message[:500]}}
 	if saveErr:=database.SaveUpstreamTestResult(r.Context(),a.db,a.driver,status,message);saveErr!=nil{log.Printf("save upstream test status: %v",saveErr)}
 	if callErr!=nil{
 		database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,clientIP(r),r.UserAgent(),"failed")
