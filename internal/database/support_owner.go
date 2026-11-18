@@ -181,3 +181,12 @@ func AcquireSupportFollowupSlot(ctx context.Context, db *sql.DB, driver, botID, 
 	if err != nil { return false, err }
 	return n == 1, nil
 }
+
+
+// GetLatestSupportTicketForUser returns the most recently created ticket for this Bot/user pair.
+func GetLatestSupportTicketForUser(ctx context.Context, db *sql.DB, driver, botID, telegramUserID string) (SupportTicket, error) {
+ query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2)+" ORDER BY created_at DESC LIMIT 1"
+ var item SupportTicket
+ err := db.QueryRowContext(ctx,query,strings.TrimSpace(botID),strings.TrimSpace(telegramUserID)).Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt)
+ return item,err
+}
