@@ -127,7 +127,7 @@ func (a *application) processOneUpstreamProcurement(ctx context.Context, setting
 
 func isDefinitiveUpstreamFailure(message string) bool {
 	v:=strings.ToLower(message)
-	for _,term:=range []string{"insufficient_balance","insufficient balance","sku_unavailable","product_unavailable","payment_failed","bad_request","http 402","http 409"}{if strings.Contains(v,term){return true}}
+	for _,term:=range []string{"insufficient_balance","insufficient balance","sku_unavailable","sku_not_available","product_unavailable","product_offline","out_of_stock","balance_insufficient","payment_failed","bad_request","http 402","http 409"}{if strings.Contains(v,term){return true}}
 	return false
 }
 func isUpstreamFailureStatus(status string) bool {
