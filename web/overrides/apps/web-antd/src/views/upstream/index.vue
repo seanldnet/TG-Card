@@ -180,12 +180,12 @@ onMounted(()=>{void load();});
     <a-table-column title="异常原因" data-index="lastError" :ellipsis="true" :width="260"/>
     <a-table-column title="操作" :fixed="'right'" :width="170"><template #default="{record}">
      <div class="flex gap-2" v-if="record.status==='failed'||record.status==='uncertain'">
-      <a-button size="small" type="primary" :disabled="!!record.externalOrderNo" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">手动重试</a-button>
+      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">{{record.externalOrderNo ? "查单恢复" : "手动重试采购"}}</a-button>
       <a-button size="small" danger :disabled="!!actionLoading" @click="openRefund(record)">退款</a-button>
      </div><span v-else class="text-xs text-gray-400">—</span>
     </template></a-table-column>
    </a-table>
-   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。请先核实上游订单受理状态；已存在上游订单号的失败记录禁止再次采购，避免重复扣款，只能核实后退款。" />
+   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。请先核实上游订单受理状态；已存在上游订单号的失败记录点击“查单恢复”只查询该上游订单，不会再次创建采购单；没有上游订单号的记录使用原本地订单号作为幂等键手动重试。" />
   </a-card>
   <a-modal v-model:open="refundVisible" title="确认上游采购失败退款" :confirm-loading="!!actionLoading" @ok="submitRefund">
    <a-alert type="warning" show-icon message="退款将按本地订单金额记入买家站内余额，并生成独立退款账本和管理员审计记录。" />
