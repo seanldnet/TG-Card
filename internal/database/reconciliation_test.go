@@ -69,7 +69,13 @@ func TestStockAutoUnlistMarkerDoesNotOverrideManualListingChoice(t *testing.T){
 	if err:=MarkLocalProductAutoUnlisted(ctx,db,"sqlite",product.ID);err!=nil{t.Fatal(err)}
 	items,err:=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
 	if len(items)!=1||items[0].Status!=0||!items[0].StockAutoUnlisted{t.Fatalf("expected auto-unlisted marker: %+v",items)}
-	if err:=SetLocalProductAvailability(ctx,db,"sqlite",product.ID,true);err!=nil{t.Fatal(err)}
+	changed,err:=RelistAutoUnlistedProduct(ctx,db,"sqlite",product.ID)
+	if err!=nil||!changed{t.Fatalf("first automatic relist should update product: changed=%v err=%v",changed,err)}
+	changed,err=RelistAutoUnlistedProduct(ctx,db,"sqlite",product.ID)
+	if err!=nil||changed{t.Fatalf("duplicate automatic relist must be idempotent: changed=%v err=%v",changed,err)}
 	items,err=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
-	if len(items)!=1||items[0].Status!=1||items[0].StockAutoUnlisted{t.Fatalf("manual relist must clear auto-unlist marker: %+v",items)}
+	if len(items)!=1||items[0].Status!=1||items[0].StockAutoUnlisted{t.Fatalf("automatic relist must clear auto-unlist marker: %+v",items)}
+	if err:=UpdateProduct(ctx,db,"sqlite",Product{ID:product.ID,Name:"Card item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:0});err!=nil{t.Fatal(err)}
+	items,err=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
+	if len(items)!=1||items[0].Status!=0||items[0].StockAutoUnlisted{t.Fatalf("manual unlisting must not be marked for automatic relist: %+v",items)}
 }
