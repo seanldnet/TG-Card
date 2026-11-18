@@ -66,7 +66,7 @@ onMounted(loadDashboard);
 </script>
 
 <template>
-  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="m-0 text-2xl font-semibold">TG-Card 经营概览</h1>
