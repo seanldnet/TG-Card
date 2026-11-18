@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS upstream_procurements (
   next_poll_at TEXT,
   deadline_at TEXT NOT NULL,
   last_request_at TEXT,
+  lease_until TEXT,
   last_error TEXT NOT NULL DEFAULT '',
   payload_ciphertext TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
