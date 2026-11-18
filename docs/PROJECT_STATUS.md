@@ -5,7 +5,7 @@
 - PR #28 历史验收镜像 digest：`sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`；PR2 当前生产镜像 digest：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)。
 - Go CI [#44317232633](https://github.com/seanldnet/TG-Card/actions/runs/44317232633) 与 Security [#44317232660](https://github.com/seanldnet/TG-Card/actions/runs/44317232660) 均成功。
 - Admin frontend CI 未对 PR #28 运行：原 workflow 对 `web/**`、`scripts/**`、README 和 workflow 文件使用 paths 过滤；PR #28 未改动这些路径。已在本次文档修正分支移除路径过滤，后续 main push / PR 均执行 Admin CI。
-- 验收日期：2026-11-18。PR #19/#26/#28 项目项按 PR #28 基准镜像 `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04` 记录；PR2 项按 `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录。验收结论依据项目所有者确认生产已更新且未收到异常反馈。
+- 验收日期：2026-11-18。PR #19/#26/#28 与 PR2 的本次生产验收均在当前 PR2 镜像 `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 上记录；该镜像包含前序合并代码。验收结论依据项目所有者确认生产已更新且未收到异常反馈。
 
 # TG-Card 项目现状与功能总览
 
@@ -13,9 +13,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-18
-> - 文档版本：2.0.0
+> - 文档版本：2.1.0
 > - 源码核对基线：`main` 分支，commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`（PR #30 / PR2 已合并）
-> - 本次文档更新：记录 PR #19/#26/#28/PR2 生产验收通过；记录 PR2 镜像 digest、CI/Publish 证据；启动 Dujiao-Next PR C 独立开发
+> - 本次文档更新：记录 PR #19/#26/#28/PR2 生产验收通过；PR2 镜像 digest、CI/Publish 证据；新增 Dujiao-Next PR C 独立草稿 PR 与采购实现边界
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -154,15 +154,16 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 
 ## 5. 订单、库存与交付机制
 
-- 订单具有待付款、已付款/交付中、交付失败、已交付、已过期等状态。
+- 订单具有待付款、已付款/交付中、交付失败、采购失败、已交付、已过期等状态。
 - 卡密预留、消费和订单状态转换使用数据库事务，避免同一库存被并发重复销售。
 - 支付确认使用唯一交易引用，重复处理同一交易引用具有幂等保护。
-- 后台可对符合条件的订单重试交付。
+- 后台可对符合条件的本地商品订单重试交付；上游商品订单使用独立采购队列，不进入本地卡密交付 worker。
+- 上游订单支付确认后进入持久化采购队列，采购失败时订单状态为 `purchase_failed`，保留原支付引用与金额；Owner 可手动重试或确认无法履约后退款到买家站内余额。
 - 后台工作循环会定期扫描待恢复交付，并使用租约避免多个工作者同时处理同一订单。
 - Telegram 消息发送没有幂等键，因此网络响应丢失后仍存在重复发送可能；当前交付保证是**至少一次**，不是严格 exactly-once。
 - 已交付订单的售后补发属于单独的重发流程，不应误用首次交付重试接口；邀请链接不应被重复发放。
 
-详细状态机、事务与恢复约束见 `docs/payment-delivery.md`。
+详细状态机、事务与恢复约束见 `docs/payment-delivery.md`。PR C 的上游采购机制仍处独立草稿 PR，未合并/发布前不可用于生产。
 
 ## 6. 支付与余额
 
@@ -187,6 +188,16 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 ### 6.2 站内余额和充值
 
 当前代码包含 Telegram 用户余额、余额流水、余额调整、充值订单及充值过期处理。充值赠送规则支持全局开关与阶梯规则，支付确认时按充值记录快照入账，避免重复赠送。实际可用充值支付渠道受当前支付实现约束。
+
+### 6.3 Dujiao-Next 上游采购（PR C 草稿实现中）
+
+- 本地订单状态确认支付后，由后台持久化采购调度器扫描并创建采购任务；下单前再次要求本地订单仍为已付款状态，取消/退款订单不会进入队列。
+- 以本地订单号作为 Dujiao `downstream_order_no`；本地采购任务对 order_id/order_no 唯一，供应商请求使用同一幂等键。上游官方只提供按上游订单 ID 查单，未提供按 downstream_order_no 查询接口；POST 响应丢失时按官方幂等合同重发相同请求，不能臆造 GET 查单接口。
+- 上游订单 ID/订单号与本地订单号持久化；同步 fulfillment 或异步轮询/回调均先加密保存交付内容，再经 Telegram Bot 发送。
+- 回调按官方 API Key、时间戳 ±60 秒及 HMAC-SHA256 原文规则验签；回调事件去重，验签失败单独记安全审计并通知 Owner。
+- 采购失败/超时将订单标记 `purchase_failed` 并进入人工队列，不改原始支付引用、不扣减买家余额；人工重试复用原本地订单幂等键。Owner 确认无法履约后可执行单次余额 credit 退款，独立钱包流水和采购审计均保留。
+- 采购查单间隔、采购超时、回调 URL 和供应商余额阈值由上游后台设置管理。供应商余额在每日 UTC 对账日报中记录，低于阈值通知 Owner。
+- 当前实现位于 PR #35 草稿分支；代码测试/CI 尚未全部验证，未合并、未发布、未真实联调。PR D 与 PR E 仍未完成。
 
 ## 7. 营销与运营能力
 
@@ -534,12 +545,12 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #17](https://github.com/seanldnet/TG-Card/pull/17) | 文档与代码一致性审计，包含上游能力审计表。 | 已合并；审计结论已写入 README、PROJECT_STATUS 与 CHANGELOG。 | 文档审计完成；上游业务功能仍未实现。 | 保持协议证据边界；仅对有官方可核实协议的 Dujiao-Next 开发。 |
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`；后续 PR #28 镜像包含该提交。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 A1–A3 使用 PR #28 历史基准镜像记录。 |
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.2 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
-| [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR #28 后代镜像包含该提交。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常；上游采购功能仍由 PR C 实现。 | 已通过；对应验收项 D1–D5 使用 PR #28 历史基准镜像记录。 |
+| [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR #28 后代镜像包含该提交。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常；上游采购功能仍由 PR C 实现。 | 已通过；对应验收项 D1–D5 使用本次生产验收镜像 `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录。 |
 | [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | PR1 补齐结单闭环；执行 Owner Bot 媒体/回复/结单验收。 |
 | [PR #29](https://github.com/seanldnet/TG-Card/pull/29) | 交接文档校准、18 项验收表、Admin CI paths 过滤修复、Dujiao-Next PR B/C/D/E 边界。 | 已合并；Admin frontend CI Run #44321310277 成功；未改业务代码，不产生新业务镜像。 | 文档与 CI 触发修复完成；生产验收仍按第 19.3 节执行。 | 已完成；PR2 CI 强制要求 Go、Admin、Security、Publish 四类运行。 |
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-18）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-18）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用 PR #28 镜像 digest `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。 |
-| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
+| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR B 已合并；PR C 草稿 PR #35 已包含采购队列、回调、失败队列/退款等初步实现，测试与 CI 尚待核验。 | PR C 未验收；PR E 真实商户联调未开始。 | 完成七类 mock 与 CI 后将 PR C 标记 ready；PR D、PR E 独立推进。 |
 
 ### 19.1 PR #19 镜像发布证据
 
@@ -583,7 +594,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 
 **统一验收表**
 
-以下 PR #19/#26/#28 项目项使用当前生产 PR2 镜像 `ghcr.io/seanldnet/tg-card@sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。项目所有者于 2026-11-18 确认生产更新后未反馈异常，按默认通过处理。PR #27 Owner Bot 项目项未在本次明确验收范围内，继续保持待验收。
+以下 PR #19/#26/#28 项目项与 PR2 新增项目项，均以本次已部署的 PR2 镜像 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 作为验收版本。项目所有者于 2026-11-18 确认生产更新后未反馈异常，按默认通过处理。PR #27 Owner Bot 项目项未在本次明确验收范围内，继续保持待验收。
 
 | 编号 | 来源 | 验收项目 | 对应镜像 digest | 状态/回填 |
 |---|---|---|---|---|
@@ -651,9 +662,17 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 
 ## 19.6 Dujiao-Next 后续采购路线
 
-- **PR C：采购转发**——已获准启动，必须使用独立分支和独立 PR；支付确认后采购、订单状态复核、幂等防重复扣款、超时查单确认、双向订单映射、异步轮询、回调验签/幂等、失败人工队列、手动重试、退款审计、Owner 通知、供应商余额日报与七类 mock 测试。当前仅为开发任务，未实现前不得标记完成。
+- **PR C：采购转发**——独立分支 `feat/dujiao-next-procurement`，草稿 PR [#35](https://github.com/seanldnet/TG-Card/pull/35)。已提交持久化采购队列、订单映射、供应商 API 封装、回调验签/安全审计、异步轮询、失败队列/重试/退款 API、Owner 通知及供应商余额日报的初步实现；七类 mock 场景测试正在补齐与运行。当前仍为 draft，未合并、未发布、未联调。
 - **PR D：资金安全**——未完成，保持独立后续批次。
 - **PR E：真实上游联调**——未完成；必须在 PR C/D 完成后进行。PR C 的 mock 测试不能表述为真实上游联调。
+
+### 19.7 PR #35 Dujiao-Next PR C 草稿记录（2026-11-18）
+
+- PR：[feat: Dujiao-Next asynchronous procurement forwarding](https://github.com/seanldnet/TG-Card/pull/35)，分支 `feat/dujiao-next-procurement`，draft 状态。
+- 当前实现：新增迁移 `0038_upstream_procurement.sql`；本地订单号唯一采购队列、上游订单 ID/订单号映射、回调事件幂等与验签失败安全审计；支付后异步调度、查单轮询、加密 fulfillment、Telegram 交付 lease；失败人工队列、手动重试、Owner-only 站内余额退款及独立 wallet credit；供应商余额日报和低额 Owner 告警；上游配置页增加回调地址、轮询间隔、超时、余额阈值与失败队列操作。
+- 关键 API 限制：官方 Open API 的 GET 查单按上游订单 ID，不支持以本地 downstream_order_no 查询。POST 超时且未拿到上游 ID 时，使用相同 `downstream_order_no` 重发，由官方幂等合同返回既有订单；不是盲目生成新采购单。若业务强制要求 GET 查询本地订单号，需上游提供对应接口，当前不能虚构。
+- 验证状态：数据库生命周期测试与 HTTP mock 适配器测试已加入，覆盖同步交付、异步查单成功、超时/失败、重复回调、验签失败、重试幂等和单次退款；GitHub Actions 结果待核实。未宣称已联调。
+- PR D、PR E 仍未完成。
 
 ## 20. 安全基线
 
