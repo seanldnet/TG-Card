@@ -91,8 +91,13 @@ func newDujiaoHTTPClient() *http.Client {
 // DujiaoRequest sends a signed request. The path must be an official upstream
 // API path; query parameters are deliberately excluded from the signature.
 func DujiaoRequest(ctx context.Context, baseURL, method, path string, query url.Values, body []byte, apiKey, apiSecret string) ([]byte, error) {
+	return dujiaoRequestWithClient(ctx,newDujiaoHTTPClient(),baseURL,method,path,query,body,apiKey,apiSecret)
+}
+
+func dujiaoRequestWithClient(ctx context.Context, client *http.Client, baseURL, method, path string, query url.Values, body []byte, apiKey, apiSecret string) ([]byte, error) {
 	origin, err := ValidateDujiaoBaseURL(baseURL)
 	if err != nil { return nil, err }
+	if client==nil { return nil,fmt.Errorf("Dujiao HTTP client is required") }
 	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" { return nil, fmt.Errorf("Dujiao API Key 和 API Secret 均不能为空") }
 	if !strings.HasPrefix(path, dujiaoAPIPrefix+"/") || strings.Contains(path, "?") || strings.Contains(path, "#") {
 		return nil, fmt.Errorf("invalid Dujiao API path")
@@ -106,7 +111,7 @@ func DujiaoRequest(ctx context.Context, baseURL, method, path string, query url.
 	req.Header.Set("Dujiao-Next-Timestamp", timestamp)
 	req.Header.Set("Dujiao-Next-Signature", DujiaoSignature(method, path, timestamp, body, apiSecret))
 	req.Header.Set("Content-Type", "application/json")
-	response, err := newDujiaoHTTPClient().Do(req)
+	response, err := client.Do(req)
 	if err != nil { return nil, fmt.Errorf("连接 Dujiao-Next 失败：%w", err) }
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
