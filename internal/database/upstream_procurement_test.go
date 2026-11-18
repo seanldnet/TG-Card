@@ -116,3 +116,17 @@ func TestUpstreamCallbackSecurityFailureIsAuditable(t *testing.T) {
 	if n!=1{t.Fatalf("security audit row count=%d",n)}
 	if walletLedgerCount(t,db)!=0{t.Fatal("invalid callback must not change buyer wallet")}
 }
+
+func TestUpstreamProcurementSupplierPurchaseFailurePreservesPayment(t *testing.T) {
+	ctx:=context.Background();db,_:=newUpstreamProcurementTestDB(t);defer db.Close()
+	if _,err:=EnqueuePaidUpstreamOrders(ctx,db,"sqlite",30*time.Minute);err!=nil{t.Fatal(err)}
+	p,err:=GetUpstreamProcurement(ctx,db,"sqlite","TC-20261118-0001");if err!=nil{t.Fatal(err)}
+	if err:=FailUpstreamProcurement(ctx,db,"sqlite",p.OrderID,"supplier insufficient balance","purchase-failed:order1");err!=nil{t.Fatal(err)}
+	var status,method,reference string
+	if err:=db.QueryRow("SELECT status,payment_method,payment_reference FROM orders WHERE id='order1'").Scan(&status,&method,&reference);err!=nil{t.Fatal(err)}
+	if status!="purchase_failed"||method!="wallet"||reference!="wallet:order1"{t.Fatalf("payment record changed after supplier failure: %s %s %s",status,method,reference)}
+	if walletLedgerCount(t,db)!=0{t.Fatal("supplier failure changed buyer wallet ledger")}
+	var count int
+	if err:=db.QueryRow("SELECT COUNT(1) FROM upstream_procurement_events WHERE order_id='order1' AND event_type='failed'").Scan(&count);err!=nil{t.Fatal(err)}
+	if count!=1{t.Fatalf("expected one failure audit event, got %d",count)}
+}
