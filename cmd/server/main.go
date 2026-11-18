@@ -241,6 +241,7 @@ func main() {
 	api.HandleFunc("POST /api/v1/upstream/callback", app.handleDujiaoCallback)
 	api.HandleFunc("GET /api/upstream/procurements/failed", app.listFailedUpstreamProcurements)
 	api.HandleFunc("POST /api/upstream/procurements/{orderNo}/retry", app.retryUpstreamProcurement)
+	api.HandleFunc("POST /api/upstream/procurements/{orderNo}/refund", app.refundUpstreamProcurement)
 	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
 	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
