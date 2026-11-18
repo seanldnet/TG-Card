@@ -67,3 +67,24 @@ func TestUncertainProcurementAgeingAndOwnerResolution(t *testing.T){
  if err:=db.QueryRowContext(ctx,`SELECT o.status,p.status,p.external_order_id FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id=?`,order.ID).Scan(&orderStatus,&queueStatus,&externalID);err!=nil{t.Fatal(err)}
  if orderStatus!="procurement_pending"||queueStatus!="polling"||externalID!="9988"{t.Fatalf("accepted supplier order was not restored for polling: order=%s queue=%s external=%s",orderStatus,queueStatus,externalID)}
 }
+
+func TestUpstreamRefundCreatesExactlyOneWalletCredit(t *testing.T){
+ ctx:=context.Background();db:=reconciliationTestDB(t)
+ if err:=UpsertTelegramUser(ctx,db,"sqlite","refund-once-user","buyer","Buyer","","bot");err!=nil{t.Fatal(err)}
+ product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"upstream",PriceMinor:1234,Currency:"USDT",DeliveryType:"fixed_text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=CreateOrder(ctx,db,"sqlite","bot","refund-once-user","refund-once-user",product.ID,time.Hour)
+ if err!=nil{t.Fatal(err)}
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='procurement_failed',payment_method='trc20',payment_reference='immutable-payment-ref' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,`INSERT INTO upstream_procurements(local_order_id,local_order_no,status,deadline_at,created_at,updated_at) VALUES(?,?,'failed',?,?,?)`,order.ID,order.OrderNo,now,now,now);err!=nil{t.Fatal(err)}
+ if _,err:=RefundUpstreamProcurementToWallet(ctx,db,"sqlite",order.ID,"admin-1","supplier confirmed unable to fulfill");err!=nil{t.Fatal(err)}
+ if _,err:=RefundUpstreamProcurementToWallet(ctx,db,"sqlite",order.ID,"admin-1","duplicate refund attempt");err==nil{t.Fatal("duplicate refund must be rejected")}
+ var refunds,credits int
+ if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM upstream_procurement_refunds WHERE order_id=?",order.ID).Scan(&refunds);err!=nil{t.Fatal(err)}
+ if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE note LIKE ?", "上游采购失败退款："+order.OrderNo+"%").Scan(&credits);err!=nil{t.Fatal(err)}
+ if refunds!=1||credits!=1{t.Fatalf("expected exactly one refund row and wallet credit, got refunds=%d credits=%d",refunds,credits)}
+ var method,reference,status string
+ if err:=db.QueryRowContext(ctx,"SELECT status,payment_method,payment_reference FROM orders WHERE id=?",order.ID).Scan(&status,&method,&reference);err!=nil{t.Fatal(err)}
+ if status!="refunded"||method!="trc20"||reference!="immutable-payment-ref"{t.Fatalf("refund must preserve original payment reference: status=%s method=%s ref=%s",status,method,reference)}
+}
