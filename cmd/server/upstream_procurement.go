@@ -114,6 +114,9 @@ func (a *application) processUpstreamProcurement(ctx context.Context,job databas
 		if requestErr!=nil {
 			var businessErr *upstream.ProcurementBusinessError
 			if errors.As(requestErr,&businessErr) {
+				if result.OrderID>0 {
+					if saveErr:=database.UpdateUpstreamProcurementSubmitted(ctx,a.db,a.driver,job.LocalOrderID,strconv.FormatInt(result.OrderID,10),result.OrderNo,pollInterval);saveErr!=nil{return saveErr}
+				}
 				err=database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,businessErr.Error())
 				if err==nil{a.notifyProcurementOwner(ctx,job.LocalOrderNo,"上游采购失败："+businessErr.Error())}
 				return err
