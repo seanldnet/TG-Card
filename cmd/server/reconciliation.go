@@ -49,7 +49,7 @@ func (a *application) attachSupplierBalanceToReport(ctx context.Context, report 
 	threshold,ok:=new(big.Rat).SetString(strings.TrimSpace(settings.SupplierBalanceAlertThreshold));if !ok{threshold=new(big.Rat).SetInt64(10)}
 	if balance.Cmp(threshold)<0 {
 		details:=fmt.Sprintf("Dujiao-Next 供应商余额低于预警阈值\\n当前余额：%s %s\\n预警阈值：%s %s\\n请及时为供应商账户充值。",report.SupplierBalance,report.SupplierCurrency,threshold.RatString(),report.SupplierCurrency)
-		a.notifySiteEvent(ctx,"risk_alert",details,"")
+		a.notifySiteEvent(ctx,"upstream_balance_low",details,"")
 	}
 }
 
