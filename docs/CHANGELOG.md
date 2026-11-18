@@ -1,3 +1,27 @@
+## 2026-11-18 — Dujiao-Next PR B：商品目录同步与来源管理
+
+- 状态：开发分支已实现，PR/CI/合并待完成；未执行真实商户账号同步验收。
+- 分支：`feat/dujiao-catalog-sync`；开发前 main 基线 `e625d57473acba618cb26923965566cd3fea12d1`。
+- 复现条件：PR A 已可保存 Dujiao-Next 凭证并测试连接，但没有商品/分类/SKU 同步；启用上游目录无法切换 Bot 商品来源。
+- 变更内容：
+  - 数据库迁移 0030–0034：分类/商品 source_type、上游分类/商品/SKU ID、SKU 规格、履约类型/人工表单 schema、标签、库存、原币价格快照、图片本地路径、同步批次、加价/汇率策略及目录 stale 标志。
+  - 分类、商品、SKU 通过官方 API 分页同步；每个上游 SKU 映射为一条 TG-Card 商品，保留 product_id、sku_id、sku_code、spec_values、fulfillment_type 和 manual_form_schema。
+  - 上游图片/分类图标下载至 DATA_DIR/uploads/upstream，内容校验、大小限制、SHA-256 文件名；不保存远程图片 URL 作为展示资源。
+  - 价格保存原币快照；最终售价先按显式配置汇率换算为 USDT，再应用百分比加价与固定加价。上游币种为 USDT 时汇率固定 1；非 USDT 未配置汇率则拒绝同步，不猜测汇率。
+  - 手动同步 API 与按配置间隔运行的定时同步；目录 upsert 在单个数据库事务内完成，上游下架/缺失 SKU 在成功同步后隐藏；网络/数据/事务失败不覆盖上次成功目录。
+  - 配置、凭证或价格策略变更会标记目录 stale 并自动关闭上游展示；重新同步成功后才允许再次启用。
+  - Bot 启用上游后仅展示上游商品；关闭后恢复本地商品。PR C 采购转发完成前，上游商品不展示可购买/确认按钮，后端也拒绝伪造订单或扣款。
+  - 后台本地旧商品在上游启用时置灰保留；上游商品禁止本地编辑、删除和导入卡密。
+- 数据库迁移：新增 0030–0034；兼容 SQLite/PostgreSQL。
+- 配置/部署影响：无新增环境变量；汇率、加价和同步间隔在后台配置；图片使用现有 DATA_DIR 持久化卷。
+- 兼容性与已知限制：当前订单结算为 USDT；非 USDT 上游币种必须人工配置“1 单位上游币种 = ? USDT”的汇率。每个 SKU 单独映射为商品；最多下载每商品前 5 张图片。上游采购/付款转发尚未实现，必须等待 PR C。
+- 验证：
+  - 新增官方响应 JSON 结构、价格解析/汇率/加价、SKU 规格名称单元测试。
+  - 新增 SQLite 源切换、事务回滚、缺失商品隐藏、图片失败保留、stale 标志和设置持久化测试。
+  - Go CI、Admin CI、安全扫描等待 PR workflow 结果；真实上游账号同步待项目所有者执行。
+  - 官方协议依据：`docs/upstream-integration.md` 所列 Dujiao-Next Open API 文档。
+- 发布镜像：PR B 尚未合并，不更新 latest。
+
 ## 2026-11-18 — Dujiao-Next PR A：上游基础设施（配置与连接测试）
 
 - 状态：PR #21 已合并至 main；Go CI、Admin CI、安全扫描均通过；真实商户账号验收待执行。
@@ -18,7 +42,7 @@
   - 新增 SQLite 上游配置读写、状态持久化测试。
   - Go CI：[Run #44291154727](https://github.com/seanldnet/TG-Card/actions/runs/44291154727) 成功；Admin CI：[Run #44291154731](https://github.com/seanldnet/TG-Card/actions/runs/44291154731) 成功；安全扫描：[Run #44291154797](https://github.com/seanldnet/TG-Card/actions/runs/44291154797) 成功。
   - 官方协议依据：[Dujiao-Next Open API](https://dujiao-next.com/api/integration-open-api) 与 [站点对接指南](https://dujiao-next.com/api/integration-guide)。
-- 发布镜像：合并后 Publish workflow 正在运行；digest 与 latest 标签待发布完成后补录。
+- 发布镜像：[Publish Run #44291422271](https://github.com/seanldnet/TG-Card/actions/runs/44291422271) 成功；GHCR latest 与 commit 标签均已推送；digest `sha256:edcf23eefc6be73bd1433a94d74870cae18d2198cd75424e7918d2b6f3066479`；构建平台 linux/amd64、linux/arm64。
 - 后续：PR A CI 通过并合并后再开始 PR B；异次元与萌次元继续保持待上游确认。
 
 ## 2026-11-18 — PR #19 镜像发布核验与追踪状态修正
