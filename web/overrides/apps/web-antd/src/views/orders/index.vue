@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
-import { useRoute } from 'vue-router';
 import { requestClient } from '#/api/request';
 
 interface Order {
@@ -17,7 +16,6 @@ interface OrderDetail { order: Order; paymentFromAddress:string; paymentToAddres
 const loading=ref(false), orders=ref<Order[]>([]), retryingId=ref(''), detailLoading=ref(false), detailOpen=ref(false), selectedDetail=ref<OrderDetail|null>(null);
 const cleanupOpen=ref(false),cleanupPhrase=ref(''),cleanupLoading=ref(false);
 const {width}=useWindowSize();
-const route=useRoute();
 const mobilePage=ref(1);
 const mobilePageSize=10;
 const mobileOrders=computed(()=>orders.value.slice((mobilePage.value-1)*mobilePageSize,mobilePage.value*mobilePageSize));
@@ -25,15 +23,15 @@ const isMobile=computed(()=>width.value<768);
 const pendingCount=computed(()=>orders.value.filter(x=>x.status==='pending_payment').length);
 const reservedCount=computed(()=>orders.value.filter(x=>x.stockReserved).length);
 const failedCount=computed(()=>orders.value.filter(x=>x.status==='delivery_failed').length);
-function statusLabel(status:string){const labels:Record<string,string>={pending_payment:'待付款',paid:'已付款',delivered:'已发货',delivering:'发货中',delivery_failed:'发货失败',procurement_pending:'采购处理中',procurement_failed:'采购失败',expired:'已过期',cancelled:'已取消',failed:'异常'};return labels[status]??status}
-function statusColor(status:string){if(status==='delivered')return 'success';if(status==='paid'||status==='delivering'||status==='procurement_pending')return 'processing';if(status==='delivery_failed'||status==='procurement_failed')return 'error';if(status==='pending_payment')return 'warning';return 'default'}
+function statusLabel(status:string){const labels:Record<string,string>={pending_payment:'待付款',paid:'已付款',delivered:'已发货',delivering:'发货中',delivery_failed:'发货失败',expired:'已过期',cancelled:'已取消',failed:'异常'};return labels[status]??status}
+function statusColor(status:string){if(status==='delivered')return 'success';if(status==='paid'||status==='delivering')return 'processing';if(status==='delivery_failed')return 'error';if(status==='pending_payment')return 'warning';return 'default'}
 function formatTime(value:string|number){if(!value)return '-';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString()}
 function copy(value:string){if(!value)return;navigator.clipboard?.writeText(value).then(()=>message.success('已复制')).catch(()=>message.error('复制失败'))}
 async function loadOrders(){loading.value=true;try{orders.value=await requestClient.get<Order[]>('/orders');mobilePage.value=1}catch{message.error('订单列表加载失败')}finally{loading.value=false}}
 async function openOrderDetail(order:Order){detailOpen.value=true;detailLoading.value=true;selectedDetail.value=null;try{selectedDetail.value=await requestClient.get<OrderDetail>('/orders/'+order.id)}catch{message.error('订单详情加载失败')}finally{detailLoading.value=false}}
 async function retryDelivery(order:Order){retryingId.value=order.id;try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货重试');await loadOrders()}catch{message.error('发货重试失败，请检查机器人状态及错误信息');await loadOrders()}finally{retryingId.value=''}}
 async function clearAllOrderData(){if(cleanupPhrase.value.trim()!=='清空全部订单数据'){message.warning('请完整输入“清空全部订单数据”以确认');return;}cleanupLoading.value=true;try{const result=await requestClient.post<{orders:number;paymentTransactions:number;supportTickets:number;walletTransactions:number;walletRecharges:number}>('/orders/cleanup',{confirmation:'CLEAR_ALL_ORDERS'});message.success('清理完成：订单 '+result.orders+' 笔，支付流水 '+result.paymentTransactions+' 笔，充值 '+result.walletRecharges+' 笔');cleanupOpen.value=false;cleanupPhrase.value='';await loadOrders();}catch(error:any){message.error(error?.response?.data?.message||'清理失败');}finally{cleanupLoading.value=false;}}
-onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo||'');if(orderNo){const target=orders.value.find(item=>item.orderNo===orderNo);if(target)await openOrderDetail(target);}});
+onMounted(loadOrders);
 </script>
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">

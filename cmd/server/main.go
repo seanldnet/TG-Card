@@ -31,7 +31,6 @@ import (
 	"github.com/seanldnet/TG-Card/internal/secret"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
 	"github.com/seanldnet/TG-Card/internal/tron"
-	"github.com/seanldnet/TG-Card/internal/upstream"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -45,9 +44,6 @@ type application struct {
 	dataDir string
 	loginMu sync.Mutex
 	upstreamSyncMu sync.Mutex
-	procurementAPI upstream.ProcurementAPI
-	procurementNotify func(context.Context,string,string)
-	dispatchProcurement func(context.Context,string) error
 	loginFailures map[string][]time.Time
 }
 
@@ -186,7 +182,6 @@ func main() {
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
-	go app.runUpstreamProcurementScheduler(ctx)
 	go app.runReconciliationScheduler(ctx)
 
 	api := http.NewServeMux()
@@ -241,10 +236,6 @@ func main() {
 	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
 	api.HandleFunc("POST /api/upstream/sync", app.syncUpstreamNow)
-	api.HandleFunc("POST /api/v1/upstream/callback", app.upstreamProcurementCallback)
-	api.HandleFunc("GET /api/upstream/procurements", app.listUpstreamProcurements)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.retryUpstreamProcurement)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/refund", app.refundUpstreamProcurement)
 	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
 	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
