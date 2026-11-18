@@ -43,6 +43,7 @@ type application struct {
 	paymentManager *payment.Manager
 	dataDir string
 	loginMu sync.Mutex
+	upstreamSyncMu sync.Mutex
 	loginFailures map[string][]time.Time
 }
 
@@ -178,6 +179,7 @@ func main() {
 	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time)}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
+	go app.runUpstreamSyncScheduler(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
@@ -226,6 +228,7 @@ func main() {
 	api.HandleFunc("GET /api/upstream/config", app.getUpstreamSettings)
 	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
+	api.HandleFunc("POST /api/upstream/sync", app.syncUpstreamNow)
 	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
 	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
