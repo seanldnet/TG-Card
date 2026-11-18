@@ -44,3 +44,10 @@ CREATE TABLE IF NOT EXISTS finance_exceptions (
 );
 CREATE INDEX IF NOT EXISTS idx_finance_exceptions_status ON finance_exceptions(status,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_finance_exceptions_category ON finance_exceptions(category,status,updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS finance_exception_alerts (
+  alert_key TEXT NOT NULL,
+  alert_date TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(alert_key,alert_date)
+);

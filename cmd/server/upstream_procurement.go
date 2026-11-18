@@ -189,8 +189,12 @@ func (a *application) recordSupplierProcurementBalanceAfter(ctx context.Context,
  check,err:=database.CompleteSupplierProcurementBalanceCheck(ctx,a.db,a.driver,job.LocalOrderID,strconv.FormatInt(result.OrderID,10),result.Amount,after.Balance,after.Currency)
  if err!=nil {log.Printf("supplier procurement balance reconciliation failed: order=%s error=%v",job.LocalOrderNo,err);return}
  if check.Status=="mismatch"||check.Status=="unverifiable" {
-  settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
-  a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("供应商采购资金核对异常\n本地订单：%s\n上游订单：%s\n币种：%s\n采购金额：%s\n余额变动：%s\n差额：%s\n原因：%s\n处理入口：%s",check.LocalOrderNo,check.ExternalOrderID,check.Currency,check.ExpectedDebit,check.ObservedDebit,check.Difference,check.Detail,a.procurementQueueLink(settings)),"")
+  day:=time.Now().UTC().Format("2006-01-02")
+  notify,claimErr:=database.ClaimFinanceExceptionAlert(ctx,a.db,a.driver,"supplier-fund:"+job.LocalOrderID,day)
+  if claimErr==nil&&notify{
+   settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+   a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("供应商采购资金核对异常\n本地订单：%s\n上游订单：%s\n币种：%s\n采购金额：%s\n余额变动：%s\n差额：%s\n原因：%s\n处理入口：%s",check.LocalOrderNo,check.ExternalOrderID,check.Currency,check.ExpectedDebit,check.ObservedDebit,check.Difference,check.Detail,a.procurementQueueLink(settings)),"")
+  }
  }
 }
 
@@ -254,8 +258,12 @@ func (a *application) runSupplierFinanceIntegrityCheck(ctx context.Context) {
  count,err:=database.RunRefundLedgerIntegrityCheck(ctx,a.db,a.driver)
  if err!=nil{log.Printf("refund ledger integrity check failed: %v",err);return}
  if count>0||stale>0 {
-  settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
-  a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("资金安全定期检查发现异常：退款账本 %d 条，供应商采购余额快照超时 %d 条。系统未修改任何余额或流水。请在资金异常中心核查。\n处理入口：%s",count,stale,a.procurementQueueLink(settings)),"")
+  day:=time.Now().UTC().Format("2006-01-02")
+  notify,claimErr:=database.ClaimFinanceExceptionAlert(ctx,a.db,a.driver,"periodic-finance-integrity",day)
+  if claimErr==nil&&notify{
+   settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+   a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("资金安全定期检查发现异常：退款账本 %d 条，供应商采购余额快照超时 %d 条。系统未修改任何余额或流水。请在资金异常中心核查。\n处理入口：%s",count,stale,a.procurementQueueLink(settings)),"")
+  }
  }
 }
 func (a *application) checkSupplierBalance(ctx context.Context) {
