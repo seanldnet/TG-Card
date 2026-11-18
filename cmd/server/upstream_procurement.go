@@ -202,7 +202,9 @@ func (a *application) retryUpstreamProcurement(w http.ResponseWriter,r *http.Req
 	proc,err:=database.GetUpstreamProcurement(r.Context(),a.db,a.driver,orderNo)
 	if err==sql.ErrNoRows{writeError(w,http.StatusNotFound,"采购任务不存在");return}
 	if err!=nil{writeError(w,http.StatusInternalServerError,"无法读取采购任务");return}
-	if err:=database.RetryUpstreamProcurement(r.Context(),a.db,a.driver,proc.OrderID);err!=nil{writeError(w,http.StatusConflict,err.Error());return}
+	settings,settingsErr:=database.GetUpstreamSettings(r.Context(),a.db,a.driver);if settingsErr!=nil{writeError(w,http.StatusInternalServerError,"无法读取采购配置");return}
+	timeout:=time.Duration(settings.PurchaseTimeoutMinutes)*time.Minute
+	if err:=database.RetryUpstreamProcurement(r.Context(),a.db,a.driver,proc.OrderID,timeout);err!=nil{writeError(w,http.StatusConflict,err.Error());return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.retry","order:"+orderNo,clientIP(r),r.UserAgent(),"manual retry")
 	writeSuccess(w,http.StatusOK,map[string]any{"accepted":true,"orderNo":orderNo})
 }
