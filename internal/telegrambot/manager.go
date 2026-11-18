@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -1637,6 +1638,54 @@ func formatUSDTAtomic(value int64) string {
 	if value < 0 { value = 0 }
 	return fmt.Sprintf("%d.%06d", value/1_000_000, value%1_000_000)
 }
+// DownloadSupportAttachment retrieves a Telegram file using only the Bot configured on the ticket.
+func (m *Manager) DownloadSupportAttachment(ctx context.Context, botID, fileID string) ([]byte, string, error) {
+	if strings.TrimSpace(botID) == "" || strings.TrimSpace(fileID) == "" {
+		return nil, "", fmt.Errorf("attachment reference is incomplete")
+	}
+	m.mu.Lock()
+	current, ok := m.workers[botID]
+	var token string
+	if ok { token = current.config.Token }
+	m.mu.Unlock()
+	if !ok || token == "" {
+		return nil, "", fmt.Errorf("the Telegram Bot for this ticket is not running")
+	}
+
+	getURL := "https://api.telegram.org/bot" + token + "/getFile?file_id=" + url.QueryEscape(fileID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getURL, nil)
+	if err != nil { return nil, "", err }
+	response, err := m.client.Do(req)
+	if err != nil { return nil, "", fmt.Errorf("Telegram getFile request failed: %w", err) }
+	defer response.Body.Close()
+	var result struct {
+		OK bool `json:"ok"`
+		Description string `json:"description"`
+		Result struct { FilePath string `json:"file_path"` } `json:"result"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
+		return nil, "", fmt.Errorf("decode Telegram getFile response: %w", err)
+	}
+	if response.StatusCode != http.StatusOK || !result.OK || strings.TrimSpace(result.Result.FilePath) == "" {
+		return nil, "", fmt.Errorf("Telegram getFile rejected the attachment: %s", result.Description)
+	}
+
+	fileURL := "https://api.telegram.org/file/bot" + token + "/" + strings.TrimLeft(result.Result.FilePath, "/")
+	fileReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil { return nil, "", err }
+	fileResponse, err := m.client.Do(fileReq)
+	if err != nil { return nil, "", fmt.Errorf("Telegram file download failed: %w", err) }
+	defer fileResponse.Body.Close()
+	if fileResponse.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("Telegram file download returned HTTP %d", fileResponse.StatusCode)
+	}
+	const maxAttachmentSize = 20 * 1024 * 1024
+	data, err := io.ReadAll(io.LimitReader(fileResponse.Body, maxAttachmentSize+1))
+	if err != nil { return nil, "", fmt.Errorf("read Telegram attachment: %w", err) }
+	if len(data) > maxAttachmentSize { return nil, "", fmt.Errorf("attachment exceeds the 20 MiB download limit") }
+	return data, result.Result.FilePath, nil
+}
+
 // SendSupportReply delivers an administrator response to the Telegram user who opened the ticket.
 func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportTicket) error {
 	m.mu.Lock()

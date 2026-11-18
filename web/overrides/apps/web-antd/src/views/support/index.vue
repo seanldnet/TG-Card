@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
@@ -8,6 +8,20 @@ interface Ticket{id:string;ticketNo:string;orderId:string;orderNo:string;botId:s
 interface TicketMessage{id:string;ticketId:string;senderType:string;senderId:string;message:string;attachmentFileId?:string;attachmentName?:string;createdAt:string}
 const loading=ref(false),saving=ref(false),tickets=ref<Ticket[]>([]),selected=ref<Ticket|null>(null),ticketModalOpen=ref(false),editStatus=ref('open');
 const timeline=ref<TicketMessage[]>([]),replyText=ref(''),slaHours=ref(24),timelineLoading=ref(false);
+const attachmentUrls=ref<Record<string,string>>({}),attachmentIsImage=ref<Record<string,boolean>>({});
+function clearAttachmentUrls(){for(const value of Object.values(attachmentUrls.value))URL.revokeObjectURL(value);attachmentUrls.value={};attachmentIsImage.value={};}
+async function loadAttachmentPreviews(items:TicketMessage[]){
+ clearAttachmentUrls();
+ await Promise.all(items.filter(item=>item.attachmentFileId).map(async item=>{
+  try{
+   const blob=await requestClient.get<Blob>('/support/tickets/'+item.ticketId+'/attachments/'+item.id,{responseType:'blob'});
+   const url=URL.createObjectURL(blob);attachmentUrls.value[item.id]=url;attachmentIsImage.value[item.id]=blob.type.startsWith('image/');
+  }catch(error:any){
+   const detail=error?.response?.data?.message||'附件获取失败，请检查 Bot 运行状态后重试';
+   message.warning((item.attachmentName||'工单附件')+'：'+detail);
+  }
+ }));
+}
 const {width}=useWindowSize(),isMobile=computed(()=>width.value<768);
 const openCount=computed(()=>tickets.value.filter(x=>['open','in_progress','waiting_user'].includes(x.status)).length);
 const resolvedCount=computed(()=>tickets.value.filter(x=>x.status==='resolved').length);
@@ -17,10 +31,10 @@ function categoryLabel(v:string){return ({not_received:'未收到货',invalid_ke
 function formatTime(v:string){const d=new Date(v);return Number.isNaN(d.getTime())?'-':d.toLocaleString()}
 async function loadTickets(){loading.value=true;try{tickets.value=await requestClient.get<Ticket[]>('/support/tickets')}catch{message.error('售后工单加载失败')}finally{loading.value=false}}
 async function openEdit(item:Ticket){
- selected.value=item;replyText.value='';slaHours.value=24;
+ selected.value=item;replyText.value='';slaHours.value=24;clearAttachmentUrls();
  editStatus.value=item.status;
  ticketModalOpen.value=true;timelineLoading.value=true;
- try{timeline.value=await requestClient.get<TicketMessage[]>('/support/tickets/'+item.id+'/messages')}
+ try{timeline.value=await requestClient.get<TicketMessage[]>('/support/tickets/'+item.id+'/messages');await loadAttachmentPreviews(timeline.value)}
  catch{timeline.value=[];message.warning('沟通记录暂时无法加载')}
  finally{timelineLoading.value=false}
 }
@@ -57,6 +71,7 @@ async function save(){
  }catch(error:any){message.error(error?.response?.data?.message||error?.message||'工单更新失败')}finally{saving.value=false}
 }
 onMounted(loadTickets);
+onUnmounted(clearAttachmentUrls);
 </script>
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
@@ -92,7 +107,16 @@ onMounted(loadTickets);
       <div v-for="entry in timeline" :key="entry.id" class="rounded-md bg-gray-50 p-3 text-sm">
        <div class="mb-1 flex justify-between gap-2 text-xs text-gray-500"><span>{{entry.senderType==='admin'?'管理员':entry.senderType==='system'?'系统':'用户'}} · {{entry.senderId}}</span><span>{{formatTime(entry.createdAt)}}</span></div>
        <div v-if="entry.message" class="whitespace-pre-wrap break-words">{{entry.message}}</div>
-       <div v-if="entry.attachmentFileId" class="mt-1 break-all text-xs text-blue-600">附件：{{entry.attachmentName||entry.attachmentFileId}}（Telegram file_id）</div>
+       <div v-if="entry.attachmentFileId" class="mt-3 rounded-lg border border-gray-200 bg-white p-2">
+        <div v-if="!attachmentUrls[entry.id]" class="text-xs text-red-500">附件暂不可用或正在加载：{{entry.attachmentName||'Telegram 附件'}}</div>
+        <template v-else>
+         <img v-if="attachmentIsImage[entry.id]" :src="attachmentUrls[entry.id]" :alt="entry.attachmentName||'售后图片凭证'" class="max-h-64 max-w-full rounded object-contain"/>
+         <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span class="min-w-0 break-all">{{entry.attachmentName||'Telegram 附件'}}</span>
+          <a :href="attachmentUrls[entry.id]" :download="entry.attachmentName||'support-attachment'" class="text-blue-600 hover:underline">下载附件</a>
+         </div>
+        </template>
+       </div>
       </div>
      </div>
     </div>

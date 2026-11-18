@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"mime"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +32,35 @@ func (a *application) listSupportTicketMessages(w http.ResponseWriter, r *http.R
 	items, err := database.ListSupportTicketMessages(r.Context(), a.db, a.driver, ticketID)
 	if err != nil { writeError(w, http.StatusInternalServerError, "无法读取售后沟通记录"); return }
 	writeSuccess(w, http.StatusOK, items)
+}
+
+func (a *application) getSupportTicketAttachment(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w, r); !ok { return }
+	ticketID := strings.TrimSpace(r.PathValue("id"))
+	messageID := strings.TrimSpace(r.PathValue("messageId"))
+	attachment, err := database.GetSupportTicketAttachment(r.Context(), a.db, a.driver, ticketID, messageID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "该工单不存在此附件")
+		return
+	}
+	data, _, err := a.botManager.DownloadSupportAttachment(r.Context(), attachment.BotID, attachment.FileID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "附件暂时无法从 Telegram 获取："+err.Error())
+		return
+	}
+	name := filepath.Base(strings.ReplaceAll(strings.TrimSpace(attachment.FileName), "\\", "/"))
+	if name == "." || name == "/" || name == "" { name = "support-attachment" }
+	contentType := mime.TypeByExtension(filepath.Ext(name))
+	if contentType == "" { contentType = http.DetectContentType(data) }
+	disposition := "attachment"
+	if strings.HasPrefix(strings.ToLower(contentType), "image/") { disposition = "inline" }
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": name}))
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (a *application) appendSupportTicketMessage(w http.ResponseWriter, r *http.Request) {

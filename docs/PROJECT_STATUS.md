@@ -4,9 +4,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-18
-> - 文档版本：1.1.0
+> - 文档版本：1.2.0
 > - 源码核对基线：`main` 分支，commit `a06764f5060327ab675603bdf89115a11450951e`
-> - 本次文档更新：PR [#14](https://github.com/seanldnet/TG-Card/pull/14) 已合并；分支 `docs/update-project-status-v1.1.0`；合并 commit `d77e46c197c121010c6a73a475e28a927130c25c`
+> - 本次文档更新：阶段一 PR [#15](https://github.com/seanldnet/TG-Card/pull/15)；分支 `fix/support-attachment-visualization`；合并 commit 待补录
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -79,7 +79,7 @@ flowchart LR
 | 支付设置 | 已实现 | 后台设置 TRON 收款地址、TronGrid API Key、USDT 合约及启停；API Key 加密存储、脱敏显示，保存后更新运行配置。 |
 | 优惠券/促销 | 已实现 | 促销规则的查询、创建/更新、删除；具体类型与适用规则以当前页面/API为准。 |
 | 兑换码 | 已实现 | 兑换码规则的创建/更新/删除及用户兑换处理；以当前后台页面和数据库实现为准。 |
-| 售后工单 | 部分实现 | 工单列表、状态更新、消息记录、分配、退款相关 API；Bot 支持用户提交和沟通。附件场景与复杂补发流程仍需端到端验收。 |
+| 售后工单 | 已实现（附件真机待验收） | 工单列表、状态更新、消息时间线、分配、退款相关 API；管理员可通过受保护接口预览/下载 Telegram 附件。真实 Telegram 附件收发仍需端到端验收。 |
 | 用户管理 | 已实现 | Telegram 用户列表、余额调整、余额流水查询。 |
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
@@ -197,6 +197,8 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - 工单关联用户、Bot 和订单。
 - 后台工单列表与状态处理。
 - 工单消息记录和管理员回复。
+- 用户图片/文件以 Telegram file_id 及文件名保存于 support_ticket_messages；后台消息接口返回附件元数据，管理员通过工单归属校验的受保护附件接口从所属 Bot 的 Telegram API 读取文件。
+- 后台支持图片预览和其他文件下载；原始附件不落盘到 DATA_DIR，附件接口不接受任意 file_id。
 - 工单分配接口。
 - 售后退款相关接口。
 - Bot 通过私聊向用户发送工单消息/状态反馈。
@@ -205,7 +207,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 限制与验收要求：
 - 不应把“接口存在”直接等同于退款渠道已完成原路退款。
 - 退款到站内余额与原支付渠道退款必须分别说明。
-- 工单附件的 Telegram file_id、文件名、消息时间线及用户/管理员双向交互要以当前实现和实际验收为准。
+- Telegram file_id 失效、Bot 未运行或 Telegram 下载失败时，后台显示明确错误；附件访问接口代码已实现，图片/文件真机预览下载仍标记为待验收。
 
 ## 9. 管理员设置、安全与数据
 
@@ -505,8 +507,8 @@ curl -fsS http://127.0.0.1:38647/api/health
 
 | PR/Issue | 问题摘要 | 状态 | 影响模块 | 合并后动作 |
 |---|---|---|---|---|
-| [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 已合并；merge commit e70879e6bdbb5b554b31fdb06adaf6b3a359b98f。镜像发布状态需以 Publish workflow/GHCR 核验；Telegram 真机验收待记录。 | Telegram Bot 首页菜单、用户交互 | 确认目标镜像包含该 commit；部署后重新发送 /start，验证两种键盘同时显示，并测试普通用户/Owner 菜单隔离。 |
-| 其他已知问题 | 本次文档更新未创建新的代码修复 PR。 | 无新增 PR；其他待验收项见第 11 节。 | 见第 11 节 | 新问题出现时补充 Issue/PR、责任模块、状态和合并后验收动作。 |
+| [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 镜像已发布；digest sha256:ec1c5c8b468e2ef7d03c84da750015465c66fb20cd3dc4cbfaee92b97533f54d。Telegram 真机验收待记录。 | Telegram Bot 首页菜单、用户交互 | 部署该镜像后重新发送 /start，验证两种键盘同时显示，并测试普通用户/Owner 菜单隔离。 |
+| [本阶段一 PR](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载。 | PR 待合并；CI 和真机验收状态待回填。 | 售后 Bot、数据库、HTTP API、后台工单时间线 | 合并后发布镜像；项目所有者执行图片/文件真机验收并检查跨工单访问保护。 |
 
 ## 20. 安全基线
 

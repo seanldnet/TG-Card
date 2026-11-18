@@ -182,6 +182,20 @@ func ListSupportTicketMessages(ctx context.Context, db *sql.DB, driver, ticketID
 	return items, rows.Err()
 }
 
+// SupportTicketAttachment is returned only when the message belongs to the requested ticket.
+type SupportTicketAttachment struct {
+	BotID string
+	FileID string
+	FileName string
+}
+
+func GetSupportTicketAttachment(ctx context.Context, db *sql.DB, driver, ticketID, messageID string) (SupportTicketAttachment, error) {
+	query := "SELECT t.bot_id,m.attachment_file_id,m.attachment_name FROM support_ticket_messages m JOIN support_tickets t ON t.id=m.ticket_id WHERE m.ticket_id=" + placeholder(driver,1) + " AND m.id=" + placeholder(driver,2) + " AND m.attachment_file_id<>''"
+	var item SupportTicketAttachment
+	err := db.QueryRowContext(ctx, query, ticketID, messageID).Scan(&item.BotID, &item.FileID, &item.FileName)
+	return item, err
+}
+
 func AssignSupportTicket(ctx context.Context, db *sql.DB, driver, ticketID, adminID string, sla time.Duration) (SupportTicket, error) {
 	if strings.TrimSpace(ticketID)=="" || strings.TrimSpace(adminID)=="" { return SupportTicket{}, fmt.Errorf("ticket and administrator are required") }
 	if sla < 0 || sla > 30*24*time.Hour { return SupportTicket{}, fmt.Errorf("SLA must be between 0 and 30 days") }

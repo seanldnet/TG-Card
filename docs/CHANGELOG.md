@@ -1,5 +1,26 @@
 # TG-Card 开发与修复日志
 
+## 2026-11-18 — 售后工单附件后台预览与下载（阶段一，P0）
+
+- 状态：PR 待合并；Telegram 真机验收待执行
+- PR / Commit：https://github.com/seanldnet/TG-Card/pull/15；分支 `fix/support-attachment-visualization`；源码基线 `main@e70879e6bdbb5b554b31fdb06adaf6b3a359b98f`
+- 影响模块：`internal/database/support.go`、`internal/telegrambot/manager.go`、`cmd/server/support.go`、`cmd/server/main.go`、售后后台页面、售后文档
+- 复现条件：用户在 Telegram Bot 售后工单中发送图片/文件；后台时间线只能看到 Telegram file_id，无法预览或下载。
+- 根因：数据库与消息 API 已保存/返回 attachmentFileId、attachmentName，但前端仅显示 file_id 文本；没有管理员附件读取接口。
+- 修复内容：
+  - 新增数据库附件归属查询，要求 messageId 必须属于指定 ticketId，且该消息确实包含附件。
+  - 新增管理员 Bearer 认证附件端点；服务端使用工单所属 Bot 调用 Telegram getFile 并下载，拒绝客户端任意 file_id。
+  - 图片以内嵌方式预览，其他文件作为附件下载；限制 20 MiB，失败时返回明确错误。
+  - 前端时间线展示图片预览和下载链接，并在页面卸载/切换工单时释放 Blob URL。
+  - 更新 PROJECT_STATUS、CHANGELOG 和 support-tickets 专项文档。
+- 数据库迁移：无；复用 0025_support_conversation_sla.sql 中的 support_ticket_messages 表。
+- 安全说明：附件端点要求管理员 Bearer Token；数据库校验工单与消息归属；不将 DATA_DIR 作为附件静态目录公开。
+- 验证：
+  - Go CI、前端 CI、代码安全扫描：待 PR workflow 运行结果回填。
+  - Telegram 真机：用户发图/文件后后台预览、下载及跨工单访问拒绝，待项目所有者验收。
+  - Bot 离线/file_id 失效时的错误提示，需在测试环境验收。
+- 发布镜像：待 PR 合并后的 Publish workflow 成功后记录 tag/digest。
+
 ## 2026-11-18 — 扩充项目状态文档：配置、升级、API、测试、运维与安全（文档 v1.1.0）
 
 - 状态：已合并
