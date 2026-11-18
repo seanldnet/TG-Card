@@ -51,7 +51,7 @@ func BuildDailyReconciliationReport(ctx context.Context, db *sql.DB, driver stri
 	out := DailyReconciliationReport{ReportDate:start.Format("2006-01-02")}
 	q := "SELECT COUNT(1) FROM orders WHERE " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.OrderCount);err!=nil{return out,err}
-	q = "SELECT COALESCE(SUM(amount_minor*10000),0) FROM orders WHERE currency='USDT' AND paid_at IS NOT NULL AND " + dailyTimeExpr(driver,"paid_at")
+	q = "SELECT COALESCE(SUM(CAST(amount_minor AS BIGINT)*10000),0) FROM orders WHERE currency='USDT' AND paid_at IS NOT NULL AND " + dailyTimeExpr(driver,"paid_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RevenueAtomic);err!=nil{return out,err}
 	q = "SELECT COUNT(1) FROM orders WHERE delivered_at<>'' AND " + dailyTimeExpr(driver,"delivered_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveredCount);err!=nil{return out,err}
