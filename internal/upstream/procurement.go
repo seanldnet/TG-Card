@@ -49,6 +49,10 @@ type DujiaoCallback struct {
 }
 
 func DujiaoCreateOrder(ctx context.Context, baseURL, apiKey, apiSecret, skuID string, quantity int, downstreamOrderNo, callbackURL string) (DujiaoOrder, error) {
+	return dujiaoCreateOrderWithClient(ctx,newDujiaoHTTPClient(),baseURL,apiKey,apiSecret,skuID,quantity,downstreamOrderNo,callbackURL)
+}
+
+func dujiaoCreateOrderWithClient(ctx context.Context, client *http.Client, baseURL, apiKey, apiSecret, skuID string, quantity int, downstreamOrderNo, callbackURL string) (DujiaoOrder, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(skuID), 10, 64)
 	if err != nil || id <= 0 || quantity < 1 || quantity > 100 || strings.TrimSpace(downstreamOrderNo) == "" {
 		return DujiaoOrder{}, fmt.Errorf("invalid Dujiao procurement request")
@@ -57,7 +61,7 @@ func DujiaoCreateOrder(ctx context.Context, baseURL, apiKey, apiSecret, skuID st
 	if callbackURL=strings.TrimSpace(callbackURL);callbackURL!="" { requestBody["callback_url"]=callbackURL }
 	body, err := json.Marshal(requestBody)
 	if err != nil { return DujiaoOrder{}, err }
-	payload, err := DujiaoRequest(ctx, baseURL, http.MethodPost, dujiaoOrdersPath, nil, body, apiKey, apiSecret)
+	payload, err := dujiaoRequestWithClient(ctx, client, baseURL, http.MethodPost, dujiaoOrdersPath, nil, body, apiKey, apiSecret)
 	if err != nil { return DujiaoOrder{}, err }
 	var result DujiaoOrder
 	if err := json.Unmarshal(payload, &result); err != nil { return DujiaoOrder{}, fmt.Errorf("Dujiao-Next procurement response is invalid") }
@@ -74,10 +78,14 @@ func DujiaoCreateOrder(ctx context.Context, baseURL, apiKey, apiSecret, skuID st
 }
 
 func DujiaoGetOrder(ctx context.Context, baseURL, apiKey, apiSecret, upstreamOrderID string) (DujiaoOrder, error) {
+	return dujiaoGetOrderWithClient(ctx,newDujiaoHTTPClient(),baseURL,apiKey,apiSecret,upstreamOrderID)
+}
+
+func dujiaoGetOrderWithClient(ctx context.Context, client *http.Client, baseURL, apiKey, apiSecret, upstreamOrderID string) (DujiaoOrder, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(upstreamOrderID), 10, 64)
 	if err != nil || id <= 0 { return DujiaoOrder{}, fmt.Errorf("invalid Dujiao upstream order ID") }
 	path := dujiaoOrdersPath + "/" + strconv.FormatInt(id, 10)
-	payload, err := DujiaoRequest(ctx, baseURL, http.MethodGet, path, url.Values{}, nil, apiKey, apiSecret)
+	payload, err := dujiaoRequestWithClient(ctx, client, baseURL, http.MethodGet, path, url.Values{}, nil, apiKey, apiSecret)
 	if err != nil { return DujiaoOrder{}, err }
 	var result DujiaoOrder
 	if err := json.Unmarshal(payload, &result); err != nil { return DujiaoOrder{}, fmt.Errorf("Dujiao-Next order query response is invalid") }
