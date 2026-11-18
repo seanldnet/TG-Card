@@ -37,6 +37,30 @@ const settings=reactive<UpstreamSettings>({
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
+interface ProcurementItem { localOrderId:string; localOrderNo:string; externalOrderNo:string; status:string; requestAttempts:number; lastError:string; updatedAt:string; }
+const procurements=ref<ProcurementItem[]>([]);
+const procurementLoading=ref(false),refundOrderId=ref(''),refundReason=ref(''),refundVisible=ref(false),actionLoading=ref('');
+const procurementStatus=(value:string)=>({queued:'待采购',polling:'查单中',completed:'已完成',failed:'采购失败',uncertain:'受理状态不确定',refunded:'已退款'} as Record<string,string>)[value]||value;
+async function loadProcurements(){
+ procurementLoading.value=true;
+ try{procurements.value=await requestClient.get<ProcurementItem[]>('/upstream/procurements')||[];}
+ catch(error:any){message.error(error?.response?.data?.message||'采购队列加载失败');}
+ finally{procurementLoading.value=false;}
+}
+async function retryProcurement(item:ProcurementItem){
+ actionLoading.value=item.localOrderId;
+ try{await requestClient.post('/upstream/procurements/'+item.localOrderId+'/retry',{});message.success('已加入采购重试队列');await loadProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||'采购重试失败');}
+ finally{actionLoading.value='';}
+}
+function openRefund(item:ProcurementItem){refundOrderId.value=item.localOrderId;refundReason.value='';refundVisible.value=true;}
+async function submitRefund(){
+ if(!refundReason.value.trim()){message.warning('请填写退款原因');return;}
+ actionLoading.value=refundOrderId.value;
+ try{await requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',{reason:refundReason.value.trim()});message.success('退款已记入买家站内余额');refundVisible.value=false;await loadProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||'采购退款失败');}
+ finally{actionLoading.value='';}
+}
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
 const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
 const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'};return labels[settings.syncStatus]||settings.syncStatus;});
@@ -44,7 +68,7 @@ async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
  catch(error:any){message.error(error?.response?.data?.message||'上游配置加载失败');}
- finally{loading.value=false;}
+ finally{loading.value=false;void loadProcurements();}
 }
 async function save():Promise<boolean>{
  saving.value=true;
@@ -146,6 +170,27 @@ onMounted(()=>{void load();});
     </div>
    </a-form>
   </a-card>
+  <a-card :bordered="false" title="上游采购人工处理队列">
+   <template #extra><a-button size="small" :loading="procurementLoading" @click="loadProcurements">刷新队列</a-button></template>
+   <a-table :data-source="procurements" :loading="procurementLoading" :pagination="{pageSize:8}" row-key="localOrderId" :scroll="{x:760}">
+    <a-table-column title="本地订单号" data-index="localOrderNo" :width="190"/>
+    <a-table-column title="上游订单号" data-index="externalOrderNo" :width="170"/>
+    <a-table-column title="状态" :width="130"><template #default="{record}"><a-tag :color="record.status==='failed'||record.status==='uncertain'?'error':record.status==='completed'?'success':'processing'">{{procurementStatus(record.status)}}</a-tag></template></a-table-column>
+    <a-table-column title="重试次数" data-index="requestAttempts" :width="90"/>
+    <a-table-column title="异常原因" data-index="lastError" :ellipsis="true" :width="260"/>
+    <a-table-column title="操作" :fixed="'right'" :width="170"><template #default="{record}">
+     <div class="flex gap-2" v-if="record.status==='failed'||record.status==='uncertain'">
+      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">手动重试</a-button>
+      <a-button size="small" danger :disabled="!!actionLoading" @click="openRefund(record)">退款</a-button>
+     </div><span v-else class="text-xs text-gray-400">—</span>
+    </template></a-table-column>
+   </a-table>
+   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。请先核实上游订单受理状态，再决定手动重试或退款。" />
+  </a-card>
+  <a-modal v-model:open="refundVisible" title="确认上游采购失败退款" :confirm-loading="!!actionLoading" @ok="submitRefund">
+   <a-alert type="warning" show-icon message="退款将按本地订单金额记入买家站内余额，并生成独立退款账本和管理员审计记录。" />
+   <a-form-item class="mt-4" label="退款原因"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count placeholder="填写已确认无法履约的原因"/></a-form-item>
+  </a-modal>
   <a-card :bordered="false" title="连接与同步状态">
    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <div class="rounded-lg border border-gray-200 p-4">
