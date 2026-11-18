@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"time"
 )
 
@@ -56,7 +55,7 @@ func BuildDailyReconciliationReport(ctx context.Context, db *sql.DB, driver stri
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RevenueAtomic);err!=nil{return out,err}
 	q = "SELECT COUNT(1) FROM orders WHERE status='delivered' AND delivered_at<>'' AND " + dailyTimeExpr(driver,"delivered_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveredCount);err!=nil{return out,err}
-	q = "SELECT COUNT(1) FROM orders WHERE delivery_failed_at<>'' AND " + dailyTimeExpr(driver,"delivery_failed_at")
+	q = "SELECT COUNT(DISTINCT order_id) FROM order_delivery_events WHERE event_type='delivery_failed' AND " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveryFailedCount);err!=nil{return out,err}
 	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_transactions WHERE direction='credit' AND note LIKE '售后退款：%' AND " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RefundAtomic);err!=nil{return out,err}
@@ -109,7 +108,7 @@ func RunWalletBalanceReconciliation(ctx context.Context,db *sql.DB,driver,runKey
 	if err!=nil{return BalanceReconciliationRun{},nil,false,err}
 	anomalies:=make([]BalanceReconciliationAnomaly,0)
 	var checked,totalDiff int64
-	for rows.Next(){var user string;var recorded,ledger int64;if err:=rows.Scan(&user,&recorded,&ledger);err!=nil{rows.Close();return BalanceReconciliationRun{},nil,false,err};checked++;if recorded!=ledger{diff:=recorded-ledger;abs:=diff;if abs<0{if abs==math.MinInt64{abs=math.MaxInt64}else{abs=-abs}};totalDiff+=abs;anomalies=append(anomalies,BalanceReconciliationAnomaly{RunKey:runKey,TelegramUserID:user,RecordedBalanceAtomic:recorded,LedgerBalanceAtomic:ledger,DifferenceAtomic:diff,CreatedAt:now})}}
+	for rows.Next(){var user string;var recorded,ledger int64;if err:=rows.Scan(&user,&recorded,&ledger);err!=nil{rows.Close();return BalanceReconciliationRun{},nil,false,err};checked++;if recorded!=ledger{diff:=recorded-ledger;abs:=diff;if abs<0{abs=-abs;if abs<0{abs=1<<63-1}};if totalDiff>(1<<63-1)-abs{totalDiff=1<<63-1}else{totalDiff+=abs};anomalies=append(anomalies,BalanceReconciliationAnomaly{RunKey:runKey,TelegramUserID:user,RecordedBalanceAtomic:recorded,LedgerBalanceAtomic:ledger,DifferenceAtomic:diff,CreatedAt:now})}}
 	if err:=rows.Err();err!=nil{rows.Close();return BalanceReconciliationRun{},nil,false,err};if err:=rows.Close();err!=nil{return BalanceReconciliationRun{},nil,false,err}
 	for _,a:=range anomalies{q="INSERT INTO balance_reconciliation_anomalies(run_key,telegram_user_id,recorded_balance_atomic,ledger_balance_atomic,difference_atomic,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")";if _,err:=tx.ExecContext(ctx,q,a.RunKey,a.TelegramUserID,a.RecordedBalanceAtomic,a.LedgerBalanceAtomic,a.DifferenceAtomic,a.CreatedAt);err!=nil{return BalanceReconciliationRun{},nil,false,err}}
 	run:=BalanceReconciliationRun{RunKey:runKey,RunAt:now,CheckedUsers:checked,MismatchUsers:int64(len(anomalies)),TotalDifferenceAtomic:totalDiff}
