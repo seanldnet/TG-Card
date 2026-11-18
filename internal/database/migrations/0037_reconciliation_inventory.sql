@@ -1,6 +1,4 @@
 -- Daily reconciliation snapshots and read-only wallet balance audit history.
-ALTER TABLE orders ADD COLUMN delivery_failed_at TEXT NOT NULL DEFAULT '';
-
 CREATE TABLE IF NOT EXISTS order_delivery_events (
   id TEXT PRIMARY KEY,
   order_id TEXT NOT NULL,
