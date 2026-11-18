@@ -96,7 +96,7 @@ func SaveSupplierProcurementBalanceBefore(ctx context.Context,db *sql.DB,driver,
  balance=strings.TrimSpace(balance);currency=strings.ToUpper(strings.TrimSpace(currency));if balance==""||currency==""{return fmt.Errorf("supplier balance snapshot missing")}
  now:=time.Now().UTC().Format(time.RFC3339Nano)
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
- _,err=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_fund_checks(local_order_id,local_order_no,currency,balance_before,status,created_at,updated_at) SELECT local_order_id,local_order_no,"+placeholder(driver,1)+","+placeholder(driver,2)+",'pending',"+placeholder(driver,3)+","+placeholder(driver,4)+" FROM upstream_procurements WHERE local_order_id="+placeholder(driver,5)+" ON CONFLICT(local_order_id) DO UPDATE SET currency=excluded.currency,balance_before=excluded.balance_before,balance_after='',expected_debit='',observed_debit='',difference='',status='pending',detail='',checked_at='',updated_at=excluded.updated_at",currency,balance,now,now,orderID)
+ _,err=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_fund_checks(local_order_id,local_order_no,currency,balance_before,status,created_at,updated_at) SELECT local_order_id,local_order_no,"+placeholder(driver,1)+","+placeholder(driver,2)+",'pending',"+placeholder(driver,3)+","+placeholder(driver,4)+" FROM upstream_procurements WHERE local_order_id="+placeholder(driver,5)+" ON CONFLICT(local_order_id) DO NOTHING",currency,balance,now,now,orderID)
  if err!=nil{return err}
  if err:=tx.Commit();err!=nil{return err};return nil
 }
