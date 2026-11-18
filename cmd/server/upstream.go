@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"strconv"
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/database"
@@ -30,6 +31,7 @@ type upstreamSettingsRequest struct {
 	CallbackURL string `json:"callbackUrl"`
 	PurchasePollIntervalSeconds int `json:"purchasePollIntervalSeconds"`
 	PurchaseTimeoutMinutes int `json:"purchaseTimeoutMinutes"`
+	SupplierBalanceAlertThreshold string `json:"supplierBalanceAlertThreshold"`
 }
 
 type upstreamSettingsView struct {
@@ -47,6 +49,7 @@ type upstreamSettingsView struct {
 	CallbackURL string `json:"callbackUrl"`
 	PurchasePollIntervalSeconds int `json:"purchasePollIntervalSeconds"`
 	PurchaseTimeoutMinutes int `json:"purchaseTimeoutMinutes"`
+	SupplierBalanceAlertThreshold string `json:"supplierBalanceAlertThreshold"`
 	LastTestStatus string `json:"lastTestStatus"`
 	LastTestAt string `json:"lastTestAt"`
 	LastError string `json:"lastError"`
@@ -71,7 +74,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 	return upstreamSettingsView{
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
-		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, CallbackURL:item.CallbackURL, PurchasePollIntervalSeconds:item.PurchasePollIntervalSeconds, PurchaseTimeoutMinutes:item.PurchaseTimeoutMinutes, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, CallbackURL:item.CallbackURL, PurchasePollIntervalSeconds:item.PurchasePollIntervalSeconds, PurchaseTimeoutMinutes:item.PurchaseTimeoutMinutes, SupplierBalanceAlertThreshold:item.SupplierBalanceAlertThreshold, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
 		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
@@ -81,7 +84,7 @@ func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request
 	if _, ok := a.authenticate(w,r); !ok { return }
 	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,PurchasePollIntervalSeconds:15,PurchaseTimeoutMinutes:30,CatalogStale:true})
+		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,PurchasePollIntervalSeconds:15,PurchaseTimeoutMinutes:30,SupplierBalanceAlertThreshold:"10",CatalogStale:true})
 		return
 	}
 	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
@@ -123,6 +126,10 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	if callbackErr != nil { writeError(w,http.StatusBadRequest,callbackErr.Error()); return }
 	if input.PurchasePollIntervalSeconds == 0 { input.PurchasePollIntervalSeconds = 15 }
 	if input.PurchaseTimeoutMinutes == 0 { input.PurchaseTimeoutMinutes = 30 }
+	input.SupplierBalanceAlertThreshold = strings.TrimSpace(input.SupplierBalanceAlertThreshold)
+	if input.SupplierBalanceAlertThreshold == "" { input.SupplierBalanceAlertThreshold = "10" }
+	thresholdValue, thresholdErr := strconv.ParseFloat(input.SupplierBalanceAlertThreshold,64)
+	if thresholdErr != nil || math.IsNaN(thresholdValue) || math.IsInf(thresholdValue,0) || thresholdValue <= 0 { writeError(w,http.StatusBadRequest,"供应商余额预警阈值必须是大于 0 的数字"); return }
 	if input.PurchasePollIntervalSeconds < 5 || input.PurchasePollIntervalSeconds > 300 || input.PurchaseTimeoutMinutes < 1 || input.PurchaseTimeoutMinutes > 1440 { writeError(w,http.StatusBadRequest,"采购查单间隔需为 5–300 秒，采购超时需为 1–1440 分钟"); return }
 	if input.SyncIntervalMinutes < 5 || input.SyncIntervalMinutes > 1440 {
 		writeError(w, http.StatusBadRequest, "自动同步间隔必须为 5–1440 分钟")
@@ -183,6 +190,7 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	current.CallbackURL = callbackURL
 	current.PurchasePollIntervalSeconds = input.PurchasePollIntervalSeconds
 	current.PurchaseTimeoutMinutes = input.PurchaseTimeoutMinutes
+	current.SupplierBalanceAlertThreshold = input.SupplierBalanceAlertThreshold
 	if err := database.SaveUpstreamSettings(r.Context(), a.db, a.driver, current); err != nil {
 		log.Printf("save upstream settings: %v", err)
 		writeError(w, http.StatusInternalServerError, "保存上游配置失败")
