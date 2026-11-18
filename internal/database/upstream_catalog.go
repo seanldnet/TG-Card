@@ -75,7 +75,7 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 			if _, err = tx.ExecContext(ctx, query, localID, category, item.Name, item.Description, item.PriceMinor, status, item.ProductID, item.SKUID, item.Slug, item.PriceSnapshotMinor, item.Currency, item.StockQuantity, item.StockStatus, images, batchID, now, now); err != nil { return fmt.Errorf("insert upstream product %s/%s: %w", item.ProductID, item.SKUID, err) }
 		} else if err != nil { return err } else {
 			images := item.ImagePathsJSON
-			if images == "" || images == "[]" { images = previousImages }
+			if images == "" { images = previousImages }
 			status := 0
 			if item.Active { status = 1 }
 			query := "UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",status="+placeholder(driver,5)+",upstream_slug="+placeholder(driver,6)+",upstream_price_snapshot_minor="+placeholder(driver,7)+",upstream_currency="+placeholder(driver,8)+",upstream_stock_quantity="+placeholder(driver,9)+",upstream_stock_status="+placeholder(driver,10)+",image_paths_json="+placeholder(driver,11)+",upstream_sync_batch_id="+placeholder(driver,12)+",updated_at="+placeholder(driver,13)+" WHERE id="+placeholder(driver,14)+" AND source_type='upstream'"
