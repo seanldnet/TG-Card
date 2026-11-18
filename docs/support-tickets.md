@@ -1,5 +1,7 @@
 # 售后工单、Owner Bot 转发与交互流程
 
+> 当前状态（2026-11-18）：PR #27 Owner Bot 流程与 PR #28 结单生命周期均已合并；PR #28 latest 镜像 digest 为 `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。所有 Telegram/SMTP 真机验收仍由项目所有者按 `docs/PROJECT_STATUS.md` 第 19.3 节统一清单执行，未回填前保持待验收。
+
 ## 产品规则
 
 - 工单仍关联真实订单、提交用户和创建工单的 Bot；同一订单同时只允许一个未关闭工单。
