@@ -168,7 +168,11 @@ func RetryUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,admi
 	if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&orderStatus,&queueStatus);err!=nil{return err}
 	if orderStatus!="procurement_failed"|| (queueStatus!="failed"&&queueStatus!="uncertain"){return fmt.Errorf("订单当前状态不允许手动重试采购")}
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_pending',procurement_error='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,orderID);err!=nil{return err}
-	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='queued',next_poll_at="+placeholder(driver,1)+",lease_until=NULL,last_error='',updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3),now,now,orderID);err!=nil{return err}
+	timeoutMinutes:=30
+	_ = tx.QueryRowContext(ctx,"SELECT procurement_timeout_minutes FROM upstream_settings WHERE id=1").Scan(&timeoutMinutes)
+	if timeoutMinutes<1||timeoutMinutes>1440{timeoutMinutes=30}
+	deadline:=time.Now().UTC().Add(time.Duration(timeoutMinutes)*time.Minute).Format(time.RFC3339Nano)
+	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='queued',next_poll_at="+placeholder(driver,1)+",deadline_at="+placeholder(driver,2)+",lease_until=NULL,last_error='',updated_at="+placeholder(driver,3)+" WHERE local_order_id="+placeholder(driver,4),now,deadline,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'manual_retry',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,adminID,"manual retry authorized",now);err!=nil{return err}
 	return tx.Commit()
