@@ -1771,7 +1771,7 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  }
  userChat,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil{
-  _=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败：用户会话地址无效","","")
+  _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败：用户会话地址无效","","")
   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用户会话地址无效，工单保持处理中。")
   return true
  }
