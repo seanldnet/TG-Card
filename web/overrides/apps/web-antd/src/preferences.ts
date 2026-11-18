@@ -18,9 +18,9 @@ interface WebAntdPreferencesExtension {
 export const overridesPreferences = defineOverridesPreferences({
   app: {
     name: import.meta.env.VITE_APP_TITLE,
-    accessMode: 'backend',
+    accessMode: 'backend',\n    defaultAvatar: localLogo,
   },
-  copyright: appCopyrightPreferences,
+  logo: { source: localLogo },\n  copyright: appCopyrightPreferences,
 });
 
 export const preferencesExtension =
