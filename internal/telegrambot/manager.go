@@ -297,10 +297,8 @@ func (m *Manager) startExpiryLoop() {
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		stockTicker := time.NewTicker(5*time.Minute)
-		dailyTicker := time.NewTicker(24*time.Hour)
 		defer ticker.Stop()
 		defer stockTicker.Stop()
-		defer dailyTicker.Stop()
 		for {
 			expired, err := database.ExpirePendingOrders(ctx, m.db, m.driver, 100)
 		if recharges, rechargeErr := database.ExpirePendingWalletRecharges(ctx,m.db,m.driver); rechargeErr != nil && ctx.Err()==nil { log.Printf("expire wallet recharges failed: %v",rechargeErr) } else if recharges>0 { log.Printf("expired pending wallet recharges: count=%d",recharges) }
@@ -316,8 +314,6 @@ func (m *Manager) startExpiryLoop() {
 				m.processDueBroadcastTasks(ctx)
 			case <-stockTicker.C:
 				m.checkLowStock(ctx)
-			case <-dailyTicker.C:
-				m.sendDailyOperationsReport(ctx)
 			}
 			m.retryDueDeliveries(ctx)
 		}
@@ -331,28 +327,40 @@ func (m *Manager) checkLowStock(ctx context.Context) {
 	m.mu.Lock();ownerID:=m.ownerID
 	if m.stockAlerted==nil{m.stockAlerted=make(map[string]time.Time)}
 	m.mu.Unlock()
-	if ownerID==""{return}
+
+	autoUnlist:=true
+	autoRelist:=false
+	if raw,err:=database.GetSiteSettings(ctx,m.db);err==nil{
+		var policy struct{StockAutoUnlistOnZero *bool `json:"stockAutoUnlistOnZero"`;StockAutoRelistOnRestock *bool `json:"stockAutoRelistOnRestock"`}
+		if json.Unmarshal([]byte(raw),&policy)==nil{
+			if policy.StockAutoUnlistOnZero!=nil{autoUnlist=*policy.StockAutoUnlistOnZero}
+			if policy.StockAutoRelistOnRestock!=nil{autoRelist=*policy.StockAutoRelistOnRestock}
+		}
+	}else{log.Printf("load stock automation settings failed: %v",err)}
 	now:=time.Now()
 	for _,p:=range products{
 		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
-		if !keyBacked { m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue }
-		if p.Status==1 && p.StockCount>0 { m.NotifyProductRestocked(ctx,p.ID) }
+		if !keyBacked||p.SourceType=="upstream"{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
+		if autoUnlist&&p.Status==1&&p.StockCount==0{
+			if err:=database.SetLocalProductAvailability(ctx,m.db,m.driver,p.ID,false);err!=nil{log.Printf("auto unlist zero-stock product failed: product_id=%s error=%v",p.ID,err);continue}
+			log.Printf("product automatically unpublished at zero stock: product_id=%s name=%q",p.ID,p.Name)
+			m.Notify("stock_zero",fmt.Sprintf("商品：%s\n库存已归零，系统已自动下架。补货后是否自动上架取决于网站设置。",p.Name),ownerID)
+			m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock()
+			continue
+		}
+		if autoRelist&&p.Status==0&&p.StockCount>0{
+			if err:=database.SetLocalProductAvailability(ctx,m.db,m.driver,p.ID,true);err!=nil{log.Printf("auto relist restocked product failed: product_id=%s error=%v",p.ID,err);continue}
+			p.Status=1
+			log.Printf("product automatically republished after restock: product_id=%s stock=%d",p.ID,p.StockCount)
+			m.Notify("stock_relisted",fmt.Sprintf("商品：%s\n补货后已按设置自动上架。当前库存：%d",p.Name,p.StockCount),ownerID)
+		}
+		if p.Status==1&&p.StockCount>0{m.NotifyProductRestocked(ctx,p.ID)}
 		if p.Status!=1||p.StockCount>5{m.mu.Lock();delete(m.stockAlerted,p.ID);m.mu.Unlock();continue}
 		m.mu.Lock();last:=m.stockAlerted[p.ID];due:=last.IsZero()||now.Sub(last)>=6*time.Hour
 		if due{m.stockAlerted[p.ID]=now}
 		m.mu.Unlock()
 		if due{m.Notify("stock_low",fmt.Sprintf("商品：%s\n当前可售库存：%d\n提醒阈值：5 件，请及时补充卡密。",p.Name,p.StockCount),ownerID)}
 	}
-}
-
-func (m *Manager) sendDailyOperationsReport(ctx context.Context) {
-	m.mu.Lock();ownerID:=m.ownerID;m.mu.Unlock()
-	if ownerID==""{return}
-	summary,err:=database.GetDailyOperationsSummary(ctx,m.db,m.driver,time.Now().UTC())
-	if err!=nil{log.Printf("daily operations summary failed: %v",err);return}
-	revenue:=fmt.Sprintf("%d.%02d",summary.RevenueMinor/100,summary.RevenueMinor%100)
-	details:=fmt.Sprintf("日期（UTC）：%s\n新增订单：%d\n付款订单：%d\n成功发货：%d\n发货失败：%d\n过期订单：%d\n待付款订单：%d\n当日销售额：%s USDT\n未结售后：%d\n待核对/未匹配链上交易：%d",time.Now().UTC().Format("2006-01-02"),summary.OrderCount,summary.PaidOrderCount,summary.DeliveredOrderCount,summary.DeliveryFailedCount,summary.ExpiredOrderCount,summary.PendingPaymentCount,revenue,summary.OpenSupportCount,summary.PaymentRiskCount)
-	m.Notify("daily_report",details,ownerID)
 }
 
 // retryDueDeliveries leases paid orders and recovers deliveries interrupted by a restart.
