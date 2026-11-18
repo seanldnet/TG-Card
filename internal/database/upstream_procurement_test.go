@@ -86,7 +86,7 @@ func TestUpstreamProcurementRetryKeepsSingleLocalMapping(t *testing.T) {
 	if _,err:=EnqueuePaidUpstreamOrders(ctx,db,"sqlite",30*time.Minute);err!=nil{t.Fatal(err)}
 	p,err:=GetUpstreamProcurement(ctx,db,"sqlite","TC-20261118-0001");if err!=nil{t.Fatal(err)}
 	if err:=FailUpstreamProcurement(ctx,db,"sqlite",p.OrderID,"supplier insufficient balance","failed:order1");err!=nil{t.Fatal(err)}
-	if err:=RetryUpstreamProcurement(ctx,db,"sqlite",p.OrderID);err!=nil{t.Fatal(err)}
+	if err:=RetryUpstreamProcurement(ctx,db,"sqlite",p.OrderID,30*time.Minute);err!=nil{t.Fatal(err)}
 	if n,err:=EnqueuePaidUpstreamOrders(ctx,db,"sqlite",30*time.Minute);err!=nil||n!=0{t.Fatalf("retry must reuse existing mapping; n=%d err=%v",n,err)}
 	p,err=GetUpstreamProcurement(ctx,db,"sqlite",p.OrderNo);if err!=nil{t.Fatal(err)}
 	if p.Status!="retry"{t.Fatalf("expected retry state, got %s",p.Status)}
