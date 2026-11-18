@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS upstream_procurements (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_upstream_procurements_external_id
   ON upstream_procurements(external_order_id) WHERE external_order_id <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_upstream_procurements_external_no
+  ON upstream_procurements(external_order_no) WHERE external_order_no <> '';
 CREATE INDEX IF NOT EXISTS idx_upstream_procurements_due
   ON upstream_procurements(status,next_poll_at,deadline_at);
 
