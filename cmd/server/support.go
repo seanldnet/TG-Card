@@ -1,6 +1,9 @@
 package main
 
-import (\n\t"context"\n\t"errors"\n\t"log"
+import (
+	"context"
+	"errors"
+	"log"
 	"encoding/json"
 	"mime"
 	"net/http"
@@ -9,7 +12,8 @@ import (\n\t"context"\n\t"errors"\n\t"log"
 	"strings"
 	"time"
 
-	"github.com/seanldnet/TG-Card/internal/database"\n\t"github.com/seanldnet/TG-Card/internal/telegrambot"
+	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/telegrambot"
 )
 
 type supportMessageRequest struct {
