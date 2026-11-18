@@ -15,6 +15,10 @@ interface UpstreamSettings {
   markupPercent: number;
   markupFixedMinor: number;
   syncIntervalMinutes: number;
+  procurementPollIntervalSeconds: number;
+  procurementTimeoutMinutes: number;
+  supplierLowBalanceThreshold: string;
+  callbackUrl: string;
   exchangeRateToUSDT: number;
   lastTestStatus: string;
   lastTestAt: string;
@@ -29,10 +33,34 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
+ merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,procurementPollIntervalSeconds:30,procurementTimeoutMinutes:30,supplierLowBalanceThreshold:'0',callbackUrl:'',exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
+interface ProcurementItem { localOrderId:string; localOrderNo:string; externalOrderNo:string; status:string; requestAttempts:number; lastError:string; updatedAt:string; }
+const procurements=ref<ProcurementItem[]>([]);
+const procurementLoading=ref(false),refundOrderId=ref(''),refundReason=ref(''),refundVisible=ref(false),actionLoading=ref('');
+const procurementStatus=(value:string)=>({queued:'待采购',polling:'查单中',completed:'已完成',failed:'采购失败',uncertain:'受理状态不确定',refunded:'已退款'} as Record<string,string>)[value]||value;
+async function loadProcurements(){
+ procurementLoading.value=true;
+ try{procurements.value=await requestClient.get<ProcurementItem[]>('/upstream/procurements')||[];}
+ catch(error:any){message.error(error?.response?.data?.message||'采购队列加载失败');}
+ finally{procurementLoading.value=false;}
+}
+async function retryProcurement(item:ProcurementItem){
+ actionLoading.value=item.localOrderId;
+ try{await requestClient.post('/upstream/procurements/'+item.localOrderId+'/retry',{});message.success('已加入采购重试队列');await loadProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||'采购重试失败');}
+ finally{actionLoading.value='';}
+}
+function openRefund(item:ProcurementItem){refundOrderId.value=item.localOrderId;refundReason.value='';refundVisible.value=true;}
+async function submitRefund(){
+ if(!refundReason.value.trim()){message.warning('请填写退款原因');return;}
+ actionLoading.value=refundOrderId.value;
+ try{await requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',{reason:refundReason.value.trim()});message.success('退款已记入买家站内余额');refundVisible.value=false;await loadProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||'采购退款失败');}
+ finally{actionLoading.value='';}
+}
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
 const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
 const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'};return labels[settings.syncStatus]||settings.syncStatus;});
@@ -40,7 +68,7 @@ async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
  catch(error:any){message.error(error?.response?.data?.message||'上游配置加载失败');}
- finally{loading.value=false;}
+ finally{loading.value=false;void loadProcurements();}
 }
 async function save():Promise<boolean>{
  saving.value=true;
@@ -49,7 +77,7 @@ async function save():Promise<boolean>{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
-   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,
+   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,procurementPollIntervalSeconds:settings.procurementPollIntervalSeconds,procurementTimeoutMinutes:settings.procurementTimeoutMinutes,supplierLowBalanceThreshold:settings.supplierLowBalanceThreshold,callbackUrl:settings.callbackUrl,exchangeRateToUSDT:settings.exchangeRateToUSDT,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
@@ -126,7 +154,14 @@ onMounted(()=>{void load();});
       <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
      </div>
     </a-form-item>
-    <a-alert class="mb-4" type="warning" show-icon message="上游商品同步和目录切换已开放；买家采购/付款转发将在 PR C 完成前保持禁用，不会创建本地假订单或扣款。" />
+    <a-divider />
+    <a-form-item label="上游采购回调地址" extra="请填写本站公网 HTTPS 地址，路径固定为 /api/v1/upstream/callback。配置后上游交付完成会主动回调；轮询仍作为兜底。">
+     <a-input v-model:value="settings.callbackUrl" placeholder="https://你的域名/api/v1/upstream/callback" autocomplete="url"/>
+    </a-form-item>
+    <a-form-item label="采购查单轮询间隔（秒）"><a-input-number v-model:value="settings.procurementPollIntervalSeconds" class="w-full" :min="5" :max="3600" :step="5"/></a-form-item>
+    <a-form-item label="采购等待超时（分钟）"><a-input-number v-model:value="settings.procurementTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></a-form-item>
+    <a-form-item label="供应商余额低于此值时告警" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" placeholder="例如 100.00"/></a-form-item>
+    <a-alert class="mb-4" type="info" show-icon message="采购将在本地订单支付确认后异步执行；上游回调与查单轮询共同推进交付。采购失败只进入人工处理队列，不自动退款或修改买家已支付资金。" />
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
@@ -135,6 +170,27 @@ onMounted(()=>{void load();});
     </div>
    </a-form>
   </a-card>
+  <a-card :bordered="false" title="上游采购人工处理队列">
+   <template #extra><a-button size="small" :loading="procurementLoading" @click="loadProcurements">刷新队列</a-button></template>
+   <a-table :data-source="procurements" :loading="procurementLoading" :pagination="{pageSize:8}" row-key="localOrderId" :scroll="{x:760}">
+    <a-table-column title="本地订单号" data-index="localOrderNo" :width="190"/>
+    <a-table-column title="上游订单号" data-index="externalOrderNo" :width="170"/>
+    <a-table-column title="状态" :width="130"><template #default="{record}"><a-tag :color="record.status==='failed'||record.status==='uncertain'?'error':record.status==='completed'?'success':'processing'">{{procurementStatus(record.status)}}</a-tag></template></a-table-column>
+    <a-table-column title="重试次数" data-index="requestAttempts" :width="90"/>
+    <a-table-column title="异常原因" data-index="lastError" :ellipsis="true" :width="260"/>
+    <a-table-column title="操作" :fixed="'right'" :width="170"><template #default="{record}">
+     <div class="flex gap-2" v-if="record.status==='failed'||record.status==='uncertain'">
+      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">{{record.externalOrderNo ? "查单恢复" : "手动重试采购"}}</a-button>
+      <a-button size="small" danger :disabled="!!actionLoading" @click="openRefund(record)">退款</a-button>
+     </div><span v-else class="text-xs text-gray-400">—</span>
+    </template></a-table-column>
+   </a-table>
+   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。请先核实上游订单受理状态；已存在上游订单号的失败记录点击“查单恢复”只查询该上游订单，不会再次创建采购单；没有上游订单号的记录使用原本地订单号作为幂等键手动重试。" />
+  </a-card>
+  <a-modal v-model:open="refundVisible" title="确认上游采购失败退款" :confirm-loading="!!actionLoading" @ok="submitRefund">
+   <a-alert type="warning" show-icon message="退款将按本地订单金额记入买家站内余额，并生成独立退款账本和管理员审计记录。" />
+   <a-form-item class="mt-4" label="退款原因"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count placeholder="填写已确认无法履约的原因"/></a-form-item>
+  </a-modal>
   <a-card :bordered="false" title="连接与同步状态">
    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <div class="rounded-lg border border-gray-200 p-4">
