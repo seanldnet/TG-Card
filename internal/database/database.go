@@ -379,7 +379,7 @@ func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (P
 
 func UpdateProduct(ctx context.Context, db *sql.DB, driver string, p Product) error {
 	now:=time.Now().UTC().Format(time.RFC3339Nano);var category any;if p.CategoryID!=""{category=p.CategoryID}
-	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)+" AND source_type='local'
+	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)+" AND source_type='local'"
 	if p.BulkDiscountJSON=="" { p.BulkDiscountJSON="[]" }; if p.DeliveryConfigJSON=="" { p.DeliveryConfigJSON="{}" }
 	result,err:=db.ExecContext(ctx,query,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.BulkDiscountJSON,p.DeliveryConfigJSON,now,p.ID);if err!=nil{return err}
 	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
@@ -393,7 +393,7 @@ func DeleteProduct(ctx context.Context, db *sql.DB, driver, id string) error {
 func ImportProductKeys(ctx context.Context, db *sql.DB, driver, productID string, secrets []StockSecret) (int,error) {
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return 0,err};defer tx.Rollback()
 	var exists int
-	if err:=tx.QueryRowContext(ctx,"SELECT COUNT(1) FROM products WHERE id="+placeholder(driver,1),productID).Scan(&exists);err!=nil{return 0,err}
+	if err:=tx.QueryRowContext(ctx,"SELECT COUNT(1) FROM products WHERE id="+placeholder(driver,1)+" AND source_type='local'",productID).Scan(&exists);err!=nil{return 0,err}
 	if exists==0{return 0,sql.ErrNoRows}
 	inserted:=0
 	for _,item:=range secrets {
