@@ -141,7 +141,7 @@ func TestProcurementCallbackDuplicateDoesNotRedeliver(t *testing.T){
 	if err!=nil||!deliver||duplicate||id!=f.orderID{t.Fatalf("first callback: id=%s deliver=%v duplicate=%v err=%v",id,deliver,duplicate,err)}
 	id,deliver,duplicate,err=database.ApplyUpstreamCallback(context.Background(),f.db,"sqlite",hash,f.orderNo,"101","UP-101","completed",cipher)
 	if err!=nil||deliver||!duplicate||id!=f.orderID{t.Fatalf("duplicate callback: id=%s deliver=%v duplicate=%v err=%v",id,deliver,duplicate,err)}
-	assertProcurementLedger(t,f,"paid",2)
+	assertProcurementLedger(t,f,"paid",1)
 	var callbackCount int
 	if err:=f.db.QueryRow("SELECT COUNT(1) FROM upstream_callback_events WHERE local_order_no=?",f.orderNo).Scan(&callbackCount);err!=nil{t.Fatal(err)}
 	if callbackCount!=1{t.Fatalf("duplicate callback inserted %d events",callbackCount)}
