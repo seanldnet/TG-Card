@@ -7,6 +7,7 @@
 - `delivery_failed`: payment remains final and the sold key is retained for retry.
 - `delivered`: Telegram accepted the card delivery request and the order was finalized.
 - `expired`: an unpaid order expired and its reserved key was released back to `status=0`.
+- `purchase_failed`: a paid upstream order could not be procured or queried before its configured timeout; the original payment reference remains intact and the buyer's wallet is unchanged.
 
 ## Trusted payment adapter contract
 
@@ -75,3 +76,16 @@ TronGrid API credentials and the receiving address are managed from **Admin → 
 Saving the page updates the live payment watcher and Telegram bot checkout details without restarting the service. The settings are stored in the same SQLite/PostgreSQL database as orders and survive container recreation and image upgrades. .env is no longer required for payment setup. Existing installations that already set TRONGRID_API_KEY and TRON_RECEIVE_ADDRESS are imported into the database on first startup after this migration; after that, the database settings are authoritative.
 
 The payment settings page exposes the TRON receiving address, optional USDT contract override, enable/disable switch, and API-key replacement. Enabling collection is rejected unless a valid TronGrid key and valid TRON Base58Check address are present.
+
+
+## Dujiao-Next upstream procurement (PR C draft)
+
+Upstream products are not local card inventory. The local card delivery recovery worker explicitly excludes orders whose snapshotted `delivery_type` is `upstream`. Once a trusted payment path records the order as `paid`, the durable procurement scheduler rechecks that status and the upstream product/SKU mapping before enqueueing a unique local procurement row.
+
+The local order number is sent as Dujiao-Next `downstream_order_no`. The supplier documents idempotency for the same API Key + downstream order number. The official API only documents `GET /orders/:id` by upstream order ID; it does not document a lookup by downstream order number. If a POST times out before the upstream ID is received, the same POST is retried with the same downstream order number, so the supplier returns the existing order under its idempotency contract. The implementation must never retry with a new downstream key.
+
+Supplier order ID and order number are persisted against the local order number. A synchronous fulfillment or a later `GET /orders/:id` result is encrypted at rest before Telegram delivery. Pending supplier orders are polled using the configured interval and deadline. The callback endpoint `POST /api/v1/upstream/callback` validates the documented API Key, timestamp and HMAC-SHA256 signature over the exact raw body; duplicate callback event keys do not create another fulfillment event. Invalid signatures are recorded in a separate security audit table and trigger an Owner notification.
+
+Supplier failures and query timeouts set the local order to `purchase_failed`, preserve `payment_method` and `payment_reference`, do not debit/credit the buyer wallet, and create a durable failed-queue record. Owner manual retry reuses the original local order/idempotency key and resets the configured timeout. Only an explicit Owner refund action credits the buyer's internal wallet; it creates a separate `wallet_transactions` credit entry, updates the order/refund state and writes a procurement audit event. This does not rewrite the original payment record.
+
+The upstream settings page exposes callback URL, poll interval, procurement timeout and supplier-balance warning threshold. Supplier balance is included in the UTC daily reconciliation report and low balance notifies Owner. PR C is currently draft PR #35; no real supplier account integration is claimed. PR D and PR E remain separate, incomplete phases.
