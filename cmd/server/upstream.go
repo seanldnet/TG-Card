@@ -1,0 +1,118 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/upstream"
+)
+
+type upstreamSettingsRequest struct {
+	Provider string `json:"provider"`
+	BaseURL string `json:"baseUrl"`
+	MerchantID string `json:"merchantId"`
+	MerchantSecret string `json:"merchantSecret"`
+	ClearCredentials bool `json:"clearCredentials"`
+	Enabled bool `json:"enabled"`
+}
+
+type upstreamSettingsView struct {
+	Provider string `json:"provider"`
+	BaseURL string `json:"baseUrl"`
+	MerchantIDMasked string `json:"merchantIdMasked"`
+	MerchantIDConfigured bool `json:"merchantIdConfigured"`
+	MerchantSecretConfigured bool `json:"merchantSecretConfigured"`
+	Enabled bool `json:"enabled"`
+	LastTestStatus string `json:"lastTestStatus"`
+	LastTestAt string `json:"lastTestAt"`
+	LastError string `json:"lastError"`
+	SyncStatus string `json:"syncStatus"`
+	SyncAt string `json:"syncAt"`
+	SyncError string `json:"syncError"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func maskCredential(value string) string {
+	if value == "" { return "" }
+	if len(value) <= 8 { return strings.Repeat("*", len(value)) }
+	return value[:3] + strings.Repeat("*", len(value)-6) + value[len(value)-3:]
+}
+
+func upstreamSettingsResponse(item database.UpstreamSettings) upstreamSettingsView {
+	return upstreamSettingsView{
+		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(item.MerchantID),
+		MerchantIDConfigured:item.MerchantID!="", MerchantSecretConfigured:item.SecretCiphertext!="",
+		Enabled:item.Enabled, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt,
+		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
+	}
+}
+
+func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.authenticate(w,r); !ok { return }
+	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
+	if errors.Is(err, http.ErrNoCookie) { writeError(w,http.StatusInternalServerError,"读取上游配置失败"); return }
+	if errors.Is(err, databaseNoRows()) {
+		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started"})
+		return
+	}
+	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
+	writeSuccess(w,http.StatusOK,upstreamSettingsResponse(item))
+}
+
+func databaseNoRows() error { return sqlErrNoRows }
+
+func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	var input upstreamSettingsRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil{writeError(w,http.StatusBadRequest,"上游配置格式无效");return}
+	input.Provider=strings.TrimSpace(input.Provider)
+	if input.Provider=="" { input.Provider=string(upstream.ProviderDujiaoNext) }
+	if input.Provider!=string(upstream.ProviderDujiaoNext) { writeError(w,http.StatusBadRequest,"当前仅支持已核实官方协议的 Dujiao-Next；其他上游待官方确认");return }
+	baseURL,err:=upstream.ValidateDujiaoBaseURL(input.BaseURL)
+	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	input.MerchantID=strings.TrimSpace(input.MerchantID)
+	input.MerchantSecret=strings.TrimSpace(input.MerchantSecret)
+	if len(input.MerchantID)>512||len(input.MerchantSecret)>1024{writeError(w,http.StatusBadRequest,"上游 API 凭证长度无效");return}
+	current,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver)
+	if err!=nil&&!errors.Is(err,sqlErrNoRows){log.Printf("load upstream config before update: %v",err);writeError(w,http.StatusInternalServerError,"读取现有上游配置失败");return}
+	if input.ClearCredentials { current.MerchantID="";current.SecretCiphertext="" }
+	if input.MerchantID!="" { current.MerchantID=input.MerchantID }
+	if input.MerchantSecret!="" {
+		current.SecretCiphertext,err=a.secrets.Encrypt(input.MerchantSecret)
+		if err!=nil{writeError(w,http.StatusInternalServerError,"上游密钥加密失败");return}
+	}
+	if input.Enabled&&(current.MerchantID==""||current.SecretCiphertext==""){writeError(w,http.StatusBadRequest,"启用上游前必须配置 API Key（商户 ID）和 API Secret")}
+	if input.Enabled&&(current.MerchantID==""||current.SecretCiphertext==""){return}
+	current.Provider=input.Provider;current.BaseURL=baseURL;current.Enabled=input.Enabled
+	if err:=database.SaveUpstreamSettings(r.Context(),a.db,a.driver,current);err!=nil{log.Printf("save upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"保存上游配置失败");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.settings.update","upstream:"+input.Provider,clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t; base_url=%s; credentials_changed=%t",input.Enabled,baseURL,input.MerchantID!=""||input.MerchantSecret!=""||input.ClearCredentials))
+	saved,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver);if err!=nil{writeError(w,http.StatusInternalServerError,"配置已保存但读取失败");return}
+	writeSuccess(w,http.StatusOK,upstreamSettingsResponse(saved))
+}
+
+func (a *application) testUpstreamConnection(w http.ResponseWriter,r *http.Request) {
+	claims,ok:=a.authenticate(w,r);if !ok{return}
+	item,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver)
+	if err!=nil{writeError(w,http.StatusBadRequest,"请先保存上游站点地址和 API 凭证");return}
+	if item.Provider!=string(upstream.ProviderDujiaoNext)||item.MerchantID==""||item.SecretCiphertext==""{writeError(w,http.StatusBadRequest,"上游配置不完整");return}
+	secretValue,err:=a.secrets.Decrypt(item.SecretCiphertext)
+	if err!=nil{log.Printf("decrypt upstream secret failed");writeError(w,http.StatusInternalServerError,"无法解密上游密钥，请检查持久化数据目录");return}
+	ctx,cancel:=context.WithTimeout(r.Context(),15*time.Second);defer cancel()
+	ping,callErr:=upstream.DujiaoPing(ctx,item.BaseURL,item.MerchantID,secretValue)
+	status,message:="success",""
+	if callErr!=nil{status="failed";message=callErr.Error();if len(message)>500{message=message[:500]}}
+	if saveErr:=database.SaveUpstreamTestResult(r.Context(),a.db,a.driver,status,message);saveErr!=nil{log.Printf("save upstream test status: %v",saveErr)}
+	if callErr!=nil{
+		database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,clientIP(r),r.UserAgent(),"failed")
+		writeError(w,http.StatusBadGateway,message);return
+	}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,clientIP(r),r.UserAgent(),"success")
+	writeSuccess(w,http.StatusOK,map[string]any{"connected":true,"siteName":ping.SiteName,"protocolVersion":ping.ProtocolVersion,"balance":ping.Balance,"currency":ping.Currency,"testedAt":time.Now().UTC().Format(time.RFC3339Nano)})
+}
