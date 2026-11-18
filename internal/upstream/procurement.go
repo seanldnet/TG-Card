@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -105,4 +106,18 @@ func VerifyDujiaoCallback(apiKey, apiSecret string, headers http.Header, body []
 		return fmt.Errorf("callback signature verification failed")
 	}
 	return nil
+}
+
+func ValidateDujiaoCallbackURL(raw string) (string,error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" { return "", nil }
+	u,err:=url.Parse(raw)
+	if err!=nil || u==nil || u.Scheme!="https" || u.Host=="" || u.User!=nil || u.RawQuery!="" || u.Fragment!="" {
+		return "",fmt.Errorf("回调地址必须是有效的 HTTPS 公网 URL")
+	}
+	host:=strings.ToLower(u.Hostname())
+	if host=="localhost" || strings.HasSuffix(host,".localhost") || strings.HasSuffix(host,".local") || strings.HasSuffix(host,".internal") { return "",fmt.Errorf("回调地址不能指向本地或内网主机") }
+	if ip:=net.ParseIP(host); ip!=nil && !isPublicIP(ip) { return "",fmt.Errorf("回调地址不能指向本地或私有网络 IP") }
+	if !strings.HasSuffix(u.Path,DujiaoCallbackPath) { return "",fmt.Errorf("回调地址路径必须以 %s 结尾",DujiaoCallbackPath) }
+	return u.String(),nil
 }
