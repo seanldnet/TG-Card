@@ -1,3 +1,27 @@
+## 2026-11-18 — 售后工单改为 Bot 转发 Owner 与交互式回复（独立 PR #27）
+
+- 状态：开发分支已提交；CI、PR 合并、镜像发布及真实 Telegram/SMTP 验收待完成。
+- 分支：`feat/support-owner-bot-workflow`；基线 `main@71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`。
+- 影响模块：`internal/telegrambot/manager.go`、`internal/database/support.go`、`internal/database/support_owner.go`、`cmd/server/main.go`、售后后台页面、上游/支付页面布局、售后专项文档。
+- 变更内容：
+  - 用户创建工单和后续补充的图片/文件通过创建工单的 Bot 转发至该 Bot Owner 私聊；消息头包含工单号、用户、Bot、订单和文字摘要，并提供查看详情/待处理列表按钮。
+  - Owner 待处理列表按每页 8 条分页；详情提供开始回复、结单、返回列表。
+  - Owner 点击开始回复后直接发送文字/图片/文件即可回复用户；发送成功后弹出结单确认；点“否”或不点击按钮继续发消息时保持当前工单激活并再次弹出确认。
+  - Owner 激活会话持久化，默认 30 分钟超时；新工单通知不抢占当前工单；重复结单不重复写审计。
+  - Owner 回复失败时显示 Telegram 错误，不结单；Owner 未配置时工单继续存档并记录日志。
+  - 站点 `support_created` 事件继续发送现有 SMTP 邮件和 Telegram 通知；通知失败不影响工单创建。
+  - 后台工单时间线仅显示文字；附件改为 `[图片]` / `[文件]` 占位，提示在机器人查看；前端不再调用附件读取端点，旧 API 与附件字段保留。
+  - 上游对接页、支付设置页改用页面级 flex column gap 统一卡片垂直间距，避免按钮区域卡片与相邻卡片贴合。
+- 数据库迁移：新增 `0035_support_owner_workflow.sql`，增加 Telegram update idempotency 字段/索引、持久化 Owner 会话表和结单审计表；旧工单消息与附件字段不删除。
+- 配置/部署影响：无新增环境变量；复用 Bot 现有 Owner ID、站点 SMTP 与 Telegram 通知设置；迁移由现有启动迁移器自动执行。
+- 兼容性与已知限制：旧附件下载 API 保留供历史兼容，但当前后台不再请求；Telegram 媒体转发依赖创建工单的 Bot 能访问原 file_id 且 Owner 已私聊启动该 Bot。消息发送成功与时间线写入之间仍存在网络/数据库故障窗口；不宣称跨 Telegram API 的严格 exactly-once。
+- 验证：
+  - 自动化测试：本分支新增数据库会话/审计/幂等路径；完整 Go CI 尚待 Actions 验证。
+  - 前端构建：Admin CI 尚待 Actions 验证。
+  - Telegram/SMTP/浏览器端到端：尚未执行；由项目所有者按专项验收清单执行。
+- 发布镜像：未发布；不得拉取本分支功能作为已发布版本。
+- 文档：同步更新 `docs/PROJECT_STATUS.md`、`docs/support-tickets.md` 与本日志；遵守第 12 节文档规则。
+
 ## 2026-11-18 — 修正 PR #26 stale 状态测试夹具
 
 - 状态：测试夹具已修正并提交，等待最新 Go CI 复验；PR #26 未合并。
