@@ -27,7 +27,7 @@ func TestUpstreamCatalogSyncIsTransactionalAndSourceAware(t *testing.T) {
 	var upstreamProduct *Product
 	for i:=range all{if all[i].SourceType=="upstream"{upstreamProduct=&all[i]}}
 	if upstreamProduct==nil{t.Fatal("upstream product not persisted")}
-	if upstreamProduct.UpstreamProductID!="34"||upstreamProduct.UpstreamSKUID!="56"||upstreamProduct.UpstreamPriceSnapshotMinor!=1000||upstreamProduct.UpstreamCurrency!="CNY"||upstreamProduct.UpstreamSKUCode!="MONTH"||upstreamProduct.UpstreamFulfillmentType!="manual"||upstreamProduct.PriceMinor!=1200||upstreamProduct.UpstreamStockQuantity!=8{
+	if upstreamProduct.UpstreamProductID!="34"||upstreamProduct.UpstreamSKUID!="56"||upstreamProduct.UpstreamPriceSnapshotMinor!=1000||upstreamProduct.UpstreamCurrency!="CNY"||upstreamProduct.UpstreamSKUCode!="MONTH"||upstreamProduct.UpstreamSpecValuesJSON!=`{"duration":"1 month"}`||upstreamProduct.UpstreamFulfillmentType!="manual"||upstreamProduct.UpstreamManualFormSchemaJSON!=`{"fields":[]}`||upstreamProduct.UpstreamTagsJSON!=`["hot"]`||upstreamProduct.PriceMinor!=1200||upstreamProduct.UpstreamStockQuantity!=8{
 		t.Fatalf("upstream product snapshot mismatch: %+v",upstreamProduct)
 	}
 	if upstreamProduct.ImagePathsJSON!="[\"/uploads/upstream/item.png\"]"{t.Fatalf("local image paths missing: %s",upstreamProduct.ImagePathsJSON)}
