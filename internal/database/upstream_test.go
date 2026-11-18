@@ -38,6 +38,10 @@ func TestUpstreamSettingsLifecycle(t *testing.T) {
 	loaded, err = GetUpstreamSettings(ctx, db, cfg.DBDriver)
 	if err != nil { t.Fatal(err) }
 	if loaded.LastTestStatus != "success" || loaded.LastTestAt == "" { t.Fatalf("test result not persisted: %+v", loaded) }
+	if err := SaveUpstreamSyncResult(ctx, db, cfg.DBDriver, "success", ""); err != nil { t.Fatal(err) }
+	loaded, err = GetUpstreamSettings(ctx, db, cfg.DBDriver)
+	if err != nil { t.Fatal(err) }
+	if loaded.SyncStatus != "success" || loaded.SyncAt == "" || loaded.SyncAttemptAt == "" { t.Fatalf("sync timestamps not persisted: %+v", loaded) }
 
 	item.Enabled = false
 	item.MerchantIDCiphertext = "rotated-encrypted-key"
