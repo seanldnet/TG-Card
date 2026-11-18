@@ -77,7 +77,7 @@ func (a *application) processUpstreamProcurement(ctx context.Context,job databas
 	if err:=a.db.QueryRowContext(ctx,q,job.LocalOrderID).Scan(&liveOrderStatus,&productStatus,&sourceType);err!=nil{return err}
 	if liveOrderStatus!="procurement_pending" {
 		log.Printf("skip upstream purchase because local order is no longer payable for procurement: order=%s status=%s",job.LocalOrderNo,liveOrderStatus)
-		return nil
+		return database.CancelUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"本地订单状态已变化，采购任务已取消")
 	}
 	if productStatus!=1||sourceType!="upstream" {
 		err:=database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"采购前复核发现上游商品已下架或来源已变化")
