@@ -1,7 +1,7 @@
 ## 2026-11-18 — Dujiao-Next PR A：上游基础设施（配置与连接测试）
 
-- 状态：开发分支已实现，PR/CI/合并待完成；未进行真实商户账号验收。
-- 分支：`feat/dujiao-upstream-foundation`；基线 `main@40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。
+- 状态：PR #21 已合并至 main；Go CI、Admin CI、安全扫描均通过；真实商户账号验收待执行。
+- PR / Commit：[PR #21](https://github.com/seanldnet/TG-Card/pull/21)；merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；开发分支 `feat/dujiao-upstream-foundation`。
 - 复现条件：后台没有上游配置入口；没有持久化商户凭证、连接测试或上游状态记录。
 - 变更内容：
   - 新增数据库迁移 `0029_upstream_settings.sql` 和上游配置持久化方法，记录 provider、站点根地址、加密凭证、启用状态、连接测试结果/错误与同步状态字段。
@@ -16,9 +16,9 @@
 - 验证：
   - 新增 Dujiao 签名规范与站点 URL 校验单元测试。
   - 新增 SQLite 上游配置读写、状态持久化测试。
-  - Go CI、Admin CI、安全扫描待 PR workflow 结果。
+  - Go CI：[Run #44291154727](https://github.com/seanldnet/TG-Card/actions/runs/44291154727) 成功；Admin CI：[Run #44291154731](https://github.com/seanldnet/TG-Card/actions/runs/44291154731) 成功；安全扫描：[Run #44291154797](https://github.com/seanldnet/TG-Card/actions/runs/44291154797) 成功。
   - 官方协议依据：[Dujiao-Next Open API](https://dujiao-next.com/api/integration-open-api) 与 [站点对接指南](https://dujiao-next.com/api/integration-guide)。
-- 发布镜像：PR A 尚未合并，不发布 latest。
+- 发布镜像：合并后 Publish workflow 正在运行；digest 与 latest 标签待发布完成后补录。
 - 后续：PR A CI 通过并合并后再开始 PR B；异次元与萌次元继续保持待上游确认。
 
 ## 2026-11-18 — PR #19 镜像发布核验与追踪状态修正
