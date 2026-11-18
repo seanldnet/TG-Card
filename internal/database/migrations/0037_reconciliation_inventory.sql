@@ -1,6 +1,16 @@
 -- Daily reconciliation snapshots and read-only wallet balance audit history.
 ALTER TABLE orders ADD COLUMN delivery_failed_at TEXT NOT NULL DEFAULT '';
 
+CREATE TABLE IF NOT EXISTS order_delivery_events (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_order_delivery_events_type_time ON order_delivery_events(event_type, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS daily_reconciliation_reports (
   report_date TEXT PRIMARY KEY,
   revenue_atomic BIGINT NOT NULL DEFAULT 0,
