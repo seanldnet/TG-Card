@@ -504,7 +504,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if msg.Document != nil || len(msg.Photo)>0 {
 		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
 		if pendingMedia=="" && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
-			if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
+			if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="open" || latest.Status=="in_progress" || latest.Status=="waiting_user" || latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
 				fileID,fileName:="",""
 				if msg.Document!=nil{fileID=msg.Document.FileID;fileName=msg.Document.FileName}else if len(msg.Photo)>0{fileID=msg.Photo[len(msg.Photo)-1].FileID;fileName="Telegram 图片"}
 				caption:=strings.TrimSpace(msg.Caption);if caption==""{caption="用户在已结单工单后发送了图片/文件"}
