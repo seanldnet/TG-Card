@@ -4,9 +4,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-18
-> - 文档版本：1.3.0
-> - 源码核对基线：`main` 分支，commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`
-> - 本次文档更新：记录 Dujiao-Next PR A 基础设施实现范围；代码核对基线为 `main@40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`，开发分支为 `feat/dujiao-upstream-foundation`（待合并）
+> - 文档版本：1.4.0
+> - 源码核对基线：`main` 分支，commit `2044fa5234ebfd62d3e30357220b192e3a10814b`
+> - 本次文档更新：记录 Dujiao-Next PR A 合并状态与代码边界；源码基线为 `main@2044fa5234ebfd62d3e30357220b192e3a10814b`
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -84,7 +84,7 @@ flowchart LR
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
 | 系统权限与菜单 | 已实现 | 后台动态菜单/权限码接口；当前为单管理员产品结构，不应误认为完整多角色 RBAC。 |
-| 上游发卡对接 | PR A 开发中（尚未合并） | 开发分支新增 Dujiao-Next 配置迁移/API/后台动态菜单页面、双凭证 AES-256-GCM 加密、脱敏读取、HMAC-SHA256 `/ping` 连接测试及连接状态记录；目录同步、商品来源切换、采购转发和失败队列仍未实现。异次元/萌次元不提供可调用配置。详见 `docs/upstream-integration.md`。 |
+| 上游发卡对接 | 部分实现（PR #21 已合并） | Dujiao-Next 配置迁移/API/后台动态菜单页面、双凭证 AES-256-GCM 加密、脱敏读取、HMAC-SHA256 `/ping` 连接测试及连接状态记录已实现；目录同步、商品来源切换、采购转发和失败队列仍未实现。异次元/萌次元不提供可调用配置。详见 `docs/upstream-integration.md`。 |
 
 ## 4. Telegram Bot 用户端功能
 
@@ -260,7 +260,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 10. 附件修复在 Bot 停止状态和真实 Telegram 图片/文件场景下的验收。 | P0 | 本次附件修复 PR 合并后由项目所有者验收 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | P0 | 本次 CDN 修复 PR 构建后由项目所有者验收 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | P1 | 本次布局修复 PR 构建后回归 |
-| 13. 上游发卡对接：Dujiao-Next PR A 提供配置与连接测试基础；分类/商品/SKU 同步、图片本地化、价格策略、商品来源切换、采购转发、查单/回调、失败队列、退款审计和余额告警仍未实现。ACG-Faka 与 MCY 商户 API 待上游确认。 | P1 | 按 PR A→B→C→D→E 独立实施；真实商户端到端验收后才标记完成 |
+| 13. 上游发卡对接：Dujiao-Next PR A 已实现配置、双凭证加密、连接测试和后台入口；分类/商品/SKU 同步、图片本地化、价格策略、商品来源切换、采购转发、查单/回调、失败队列、退款审计和余额告警仍未实现。ACG-Faka 与 MCY 商户 API 待上游确认。 | P1 | 按 PR B→C→D→E 独立实施；真实商户端到端验收后才标记完成 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
 
@@ -397,7 +397,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 支付交易人工核对 | POST /api/payment/transactions/{transactionId}/reconcile | super 管理员 Bearer |
 | 充值赠送 | GET /api/settings/recharge-bonus、PUT /api/settings/recharge-bonus | 管理员 Bearer |
 | 支付设置 | GET /api/settings/payment、PUT /api/settings/payment | 管理员 Bearer |
-| 上游配置（PR A 分支） | GET /api/upstream/config、PUT /api/upstream/config、POST /api/upstream/test | 管理员 Bearer；凭证 AES-256-GCM 加密，读取仅返回脱敏值 |
+| 上游配置 | GET /api/upstream/config、PUT /api/upstream/config、POST /api/upstream/test | 管理员 Bearer；PR #21 实现；API Key 与 API Secret AES-256-GCM 加密，读取仅返回脱敏值 |
 | 站点设置 | GET /api/settings/site、PUT /api/settings/site、POST /api/settings/site/test-email、POST /api/settings/site/test-telegram、POST /api/settings/site/logo | 管理员 Bearer |
 | 优惠券/促销 | GET /api/promotions、POST /api/promotions、PUT /api/promotions/{id}、DELETE /api/promotions/{id} | 管理员 Bearer |
 | 兑换码 | GET /api/redemption-codes、POST /api/redemption-codes、PUT /api/redemption-codes/{id}、DELETE /api/redemption-codes/{id} | 管理员 Bearer |
@@ -517,7 +517,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #15](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载基础实现。 | 已合并；后续附件可靠性修复见 PR #19。 | 不把 PR #15 的历史实现视为当前附件修复已验收。 | 以 PR #19 镜像执行图片/文件、Bot 停止后查看及跨工单访问保护测试。 |
 | [PR #17](https://github.com/seanldnet/TG-Card/pull/17) | 文档与代码一致性审计，包含上游能力审计表。 | 已合并；审计结论已写入 README、PROJECT_STATUS 与 CHANGELOG。 | 文档审计完成；上游业务功能仍未实现。 | 保持协议证据边界；仅对有官方可核实协议的 Dujiao-Next 开发。 |
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。Publish Run #327 成功，GHCR latest 与 commit SHA 标签均已推送。 | **代码完成待项目所有者验收**：Telegram 附件真机测试、跟踪防护下零外部 CDN 请求、PC 宽屏浏览器回归均未验收。 | 项目所有者按交接验收步骤执行并回填结果；不得以 CI/镜像发布替代真机验收。 |
-| Dujiao-Next 上游基础设施 | 商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | PR A 开发分支已实现，尚未合并；包含 HTTPS 根地址校验、私网目标拦截、HMAC-SHA256 `/ping`、连接状态与错误记录。 | CI/合并/真实上游账号测试待完成。 | PR A 独立验收并合并后再开始 PR B。 |
+| [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像发布状态以本节后续记录为准。 | 完成真实商户凭证连接验收后进入 PR B。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
 ### 19.1 PR #19 镜像发布证据
@@ -569,6 +569,6 @@ curl -fsS http://127.0.0.1:38647/api/health
 - 本地构建/CI：scripts/build-admin.sh、.github/workflows/go-ci.yml、.github/workflows/admin-ci.yml。
 - Docker 运行用户、端口和数据目录：Dockerfile、docker-compose.yml。
 - 支付人工核对：cmd/server/main.go、internal/payment/manager.go、docs/payment-delivery.md。
-- Dujiao-Next PR A：internal/upstream/dujiao.go、internal/database/upstream.go、internal/database/migrations/0029_upstream_settings.sql、cmd/server/upstream.go、web/overrides/apps/web-antd/src/views/upstream/index.vue；PR A 分支状态及限制见 CHANGELOG。
+- Dujiao-Next 上游配置：internal/upstream/dujiao.go、internal/database/upstream.go、internal/database/migrations/0029_upstream_settings.sql、cmd/server/upstream.go、web/overrides/apps/web-antd/src/views/upstream/index.vue。
 
 如果未来代码与本文冲突，应以当前代码和数据库迁移为准，并在同一 PR 中修订本文和 docs/CHANGELOG.md。
