@@ -54,7 +54,7 @@ func TestUpstreamCatalogSyncIsTransactionalAndSourceAware(t *testing.T) {
 
 	visible,err:=ListVisibleProducts(ctx,db);if err!=nil{t.Fatal(err)}
 	if len(visible)!=1||visible[0].ID!=localProduct.ID{t.Fatalf("disabled upstream should expose local catalog: %+v",visible)}
-	settings:=UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",Enabled:true}
+	settings:=UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",Enabled:true,CatalogStale:true}
 	if err:=SaveUpstreamSettings(ctx,db,cfg.DBDriver,settings);err!=nil{t.Fatal(err)}
 	// Enabling or changing upstream configuration marks the catalog stale.
 	// A successful sync is required before upstream products become visible.
