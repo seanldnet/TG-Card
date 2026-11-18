@@ -249,11 +249,13 @@ func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason 
 }
 
 func (a *application) runSupplierFinanceIntegrityCheck(ctx context.Context) {
+ stale,staleErr:=database.MarkStaleSupplierFundChecks(ctx,a.db,a.driver,15*time.Minute)
+ if staleErr!=nil{log.Printf("mark stale supplier fund checks failed: %v",staleErr)}
  count,err:=database.RunRefundLedgerIntegrityCheck(ctx,a.db,a.driver)
  if err!=nil{log.Printf("refund ledger integrity check failed: %v",err);return}
- if count>0 {
+ if count>0||stale>0 {
   settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
-  a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("退款账本一致性检查发现 %d 条异常；系统未修改任何余额或流水。请在资金异常中心核查。\n处理入口：%s",count,a.procurementQueueLink(settings)),"")
+  a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("资金安全定期检查发现异常：退款账本 %d 条，供应商采购余额快照超时 %d 条。系统未修改任何余额或流水。请在资金异常中心核查。\n处理入口：%s",count,stale,a.procurementQueueLink(settings)),"")
  }
 }
 func (a *application) checkSupplierBalance(ctx context.Context) {
