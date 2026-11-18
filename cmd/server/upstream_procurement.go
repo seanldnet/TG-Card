@@ -3,8 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
-	"encoding/hex"
+		"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -280,7 +279,7 @@ func (a *application) refundUpstreamProcurement(w http.ResponseWriter,r *http.Re
 	balance,err:=database.RefundUpstreamProcurementToWallet(r.Context(),a.db,a.driver,id,claims.AdminID,input.Reason)
 	if err!=nil{writeError(w,http.StatusConflict,err.Error());return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.refund","order:"+id,clientIP(r),r.UserAgent(),input.Reason)
+	if noticeErr:=a.botManager.SendProcurementRefundNotice(r.Context(),id,balance);noticeErr!=nil{log.Printf("notify buyer about upstream procurement refund failed: order_id=%s error=%v",id,noticeErr)}
 	writeSuccess(w,http.StatusOK,map[string]any{"refunded":true,"balanceAtomic":balance})
 }
 
-var _ = sql.ErrNoRows
