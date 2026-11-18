@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"database/sql"
 	"encoding/json"
 	"fmt"
