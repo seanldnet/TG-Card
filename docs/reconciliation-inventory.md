@@ -1,0 +1,74 @@
+# 对账日报、余额一致性与库存自动化（PR2）
+
+## 范围与状态
+
+PR2 独立分支：`feat/reconciliation-inventory-safety`。本专项只处理 TG-Card 本地订单、站内余额与本地卡密库存，不包含 Dujiao-Next 采购转发、供应商扣款或上游退款逻辑。
+
+当前实现状态以 PR2 合并与 Actions 结果为准；分支实现、CI 通过、镜像发布、生产验收是四个独立状态。
+
+## 每日对账日报
+
+- 调度时区：UTC。每日 UTC 00:05 后生成前一自然日快照；服务重启后若前一日快照缺失，会在启动检查时补建。
+- 以 `report_date` 唯一键保存，避免多实例/重复调度重复生成同一天日报。
+- 订单数：按 `orders.created_at` 落在报告日内统计。
+- 营收：仅统计 USDT 订单，按 `paid_at` 落在报告日内的 `amount_minor × 10,000` 汇总为 6 位 USDT atomic。
+- 已交付数：按 `delivered_at` 落在报告日内统计。
+- 交付成功数：按 `delivered_at` 统计，不要求订单当前状态仍为 delivered，因此后续退款的已交付订单仍计入成功交付。
+- 交付失败数：按 `order_delivery_events.event_type='delivery_failed'` 的事件时间统计，按报告日内不同订单 ID 去重；重试多次同一订单在同一天只计一单。迁移会将升级时仍处于 delivery_failed 的订单按最后更新时间回填为一条历史事件。
+- 退款金额：按 `wallet_transactions` 中 `direction='credit'` 且备注前缀为“售后退款：”的流水金额统计。
+- 充值总额：按 `wallet_recharges.status='paid'` 与 `paid_at` 统计充值本金 `amount_atomic`，不把赠送额算作用户实际充值金额。
+- 未匹配交易：按报告日链上时间 `block_timestamp_ms` 统计 `status='unmatched'`。
+- 需人工核对交易：按报告日链上时间统计 `status='reconciliation_required'`。
+- 日报通过站点通知管道发送 Telegram Owner；若 SMTP 主机、账号、密码、发件邮箱和收件邮箱均配置，则同时发送邮件。SMTP 未配置时记录跳过日志，不阻塞日报快照保存。
+- 后台“对账与余额校验”页面按月份查询历史日报。历史记录是生成时快照，不会随着后续交易状态变化而静默改写。
+
+## 余额一致性校验
+
+当前余额流水的真实语义来自 `wallet_transactions.direction`：
+
+- `credit`：正向增加余额，包括充值本金、充值赠送、售后退款、管理员加款。
+- `debit`：负向减少余额，包括站内余额消费、管理员扣款。
+
+因此核对公式按实际账本实现为：
+
+`账本余额 = SUM(credit.amount_atomic) - SUM(debit.amount_atomic)`
+
+将账本余额与 `telegram_users.balance_atomic` 比较。用户需求中“退款减项”与当前代码不一致：`RefundOrderToWallet` 明确把售后退款作为余额 credit 入账，因此退款必须计入正向累计，不能错误地从余额中减去。
+
+- 调度：服务启动时执行一次，此后每 15 分钟触发；同一 UTC 小时使用唯一 run key，实际最多每小时生成一条自动检查记录。
+- 对每个 Telegram 用户计算当前余额、流水累计与差额。
+- 差额非零时保存异常明细：用户 ID、数据库余额、流水累计、差额、检查时间。
+- 有异常时通过支付风险通知通道告警 Owner；后台可查看历史检查和每次检查的差异明细。
+- 管理员可手动触发只读检查；手动操作写入管理员审计。
+- **不自动修正余额、不插入补偿流水、不修改充值/消费/退款记录。** 修复必须由管理员另行调查并按独立授权流程处理。
+
+## 库存归零自动下架
+
+- 仅适用于本地 `card` 与 `file_card` 卡密库存商品；自动下架原因单独持久化标记，避免补货自动上架覆盖管理员主动下架决定。
+- 不适用于不限量交付、纯文件交付或 Dujiao-Next 上游商品。
+- 每 5 分钟巡检本地商品的可售卡密库存。
+- 默认开启“库存归零自动下架”；可在“网站设置 → 库存自动化”关闭。
+- 归零时将商品状态设为下架并通知 Owner；原低库存阈值 5 件的提醒继续保留，形成低库存预警与归零下架两级机制。
+- “补货后自动重新上架”默认关闭。关闭时补货只增加库存，商品保持下架，管理员需在商品管理手动上架；开启后仅对系统因库存归零自动下架并带有自动下架标记的商品执行补货上架，不会擅自恢复管理员手动下架的商品。
+- 自动上/下架仅更新本地商品状态，不修改卡密、不触碰订单或余额。
+
+## 数据表与 API
+
+- `order_delivery_events`：记录交付失败事件，用于按日准确统计；订单失败状态更新与事件插入在同一事务中。
+- `daily_reconciliation_reports`：按 UTC 日期保存不可重复的日报快照。
+- `balance_reconciliation_runs`：记录每次检查汇总。
+- `balance_reconciliation_anomalies`：保存逐用户差异明细。
+- `GET /api/reconciliation/reports?month=YYYY-MM`：按月读取日报。
+- `GET /api/reconciliation/balance-runs`：读取余额检查历史。
+- `GET /api/reconciliation/balance-anomalies?runKey=...`：读取指定检查的差异。
+- `POST /api/reconciliation/balance-check`：管理员手动触发只读检查。
+
+## 验收
+
+1. 对账日报各金额与后台订单、充值、退款及支付流水按上述口径一致。
+2. 同一日期日报重复生成只保存一条；日报月份页面可查看历史。
+3. SMTP 完整配置时收到日报邮件；未配置时 Telegram 日报仍正常。
+4. 商品卡密库存归零后自动下架并告警；低库存提醒仍工作。
+5. 关闭自动重新上架时补货后仍保持下架；开启时补货后自动上架。
+6. 人为将测试用户余额改成与流水累计不一致，自动/手动校验均能发现并展示差额。
+7. 检查过程不修改任何用户余额或钱包流水。

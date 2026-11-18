@@ -88,6 +88,8 @@ type siteSettings struct {
  TelegramNotifyStockLow bool `json:"telegramNotifyStockLow"`
  TelegramNotifyDailyReport bool `json:"telegramNotifyDailyReport"`
  TelegramNotifyRiskAlert bool `json:"telegramNotifyRiskAlert"`
+ StockAutoUnlistOnZero bool `json:"stockAutoUnlistOnZero"`
+ StockAutoRelistOnRestock bool `json:"stockAutoRelistOnRestock"`
 }
 type siteSettingsView struct {
  siteSettings
@@ -180,6 +182,7 @@ func main() {
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
+	go app.runReconciliationScheduler(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
@@ -218,6 +221,10 @@ func main() {
 	api.HandleFunc("GET /api/users/{id}/wallet", app.listUserWalletLedger)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
+	api.HandleFunc("GET /api/reconciliation/reports", app.listReconciliationReports)
+	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
+	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
+	api.HandleFunc("POST /api/reconciliation/balance-check", app.runBalanceReconciliationNow)
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.updateSiteSettings)
@@ -578,6 +585,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "PaymentTransactions", "path": "/payments/transactions", "component": "/payments/index",
 			"meta": map[string]any{"icon": "lucide:arrow-left-right", "order": 4, "title": "支付交易流水"},
+		},
+		{
+			"name": "Reconciliation", "path": "/reconciliation", "component": "/reconciliation/index",
+			"meta": map[string]any{"icon": "lucide:calendar-check", "order": 4, "title": "对账与余额校验"},
 		},
 		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
@@ -1281,6 +1292,7 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if _,ok:=savedFields["telegramNotifyStockLow"];!ok{settings.TelegramNotifyStockLow=true}
  if _,ok:=savedFields["telegramNotifyDailyReport"];!ok{settings.TelegramNotifyDailyReport=true}
  if _,ok:=savedFields["telegramNotifyRiskAlert"];!ok{settings.TelegramNotifyRiskAlert=true}
+ if _,ok:=savedFields["stockAutoUnlistOnZero"];!ok{settings.StockAutoUnlistOnZero=true}
  if settings.SiteName == "" { settings.SiteName = "TG-Card" }
  if settings.SMTPPort == 0 { settings.SMTPPort = 587 }
  if settings.SMTPFromName == "" { settings.SMTPFromName = settings.SiteName }
@@ -1352,7 +1364,9 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  case "delivery_success": emailEnabled,telegramEnabled=s.EmailDeliverySuccess,s.TelegramNotifyDeliverySuccess; title="自动发货通知"
  case "support_created": emailEnabled,telegramEnabled=s.EmailSupportCreated,s.TelegramNotifySupportCreated; title="售后工单通知"
  case "stock_low": telegramEnabled=s.TelegramNotifyStockLow; title="商品库存不足提醒"
- case "daily_report": telegramEnabled=s.TelegramNotifyDailyReport; title="每日经营报告"
+ case "stock_zero": telegramEnabled=s.TelegramNotifyStockLow; title="库存归零自动下架提醒"
+ case "stock_relisted": telegramEnabled=s.TelegramNotifyStockLow; title="补货自动上架提醒"
+ case "daily_report": emailEnabled=true; telegramEnabled=s.TelegramNotifyDailyReport; title="每日对账日报"
  case "risk_alert": telegramEnabled=s.TelegramNotifyRiskAlert; title="支付风险提醒"
  default: return
  }
@@ -1372,7 +1386,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  }
  if telegramEnabled {
   targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
-  if event=="stock_low"||event=="daily_report"||event=="risk_alert"||event=="support_created"{targets=append(targets,s.TelegramOwnerID)}
+  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="support_created"{targets=append(targets,s.TelegramOwnerID)}
   sent:=map[string]bool{}
   bots,err:=database.ListBots(ctx,a.db)
   if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }

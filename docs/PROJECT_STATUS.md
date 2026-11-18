@@ -1,6 +1,6 @@
-## 2026-11-18 — PR #28 已合并并发布；生产验收待执行
+## 2026-11-18 — PR2 资金与库存安全开发中；PR #28 已发布待验收
 
-- 状态：PR #28 已合并至 main；Go CI、安全扫描、Docker 多架构镜像发布均成功。生产 Telegram 验收尚未执行。
+- 状态：PR #30（PR2）独立分支 `feat/reconciliation-inventory-safety` 正在实现对账日报、余额一致性只读检查和库存自动化；尚未合并、CI/镜像待验证。PR #28 已合并发布，生产 Telegram 验收尚未执行。
 - Merge commit：`6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`。
 - GHCR latest digest：`sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`；Publish Run [#44317232482](https://github.com/seanldnet/TG-Card/actions/runs/44317232482)。
 - Go CI [#44317232633](https://github.com/seanldnet/TG-Card/actions/runs/44317232633) 与 Security [#44317232660](https://github.com/seanldnet/TG-Card/actions/runs/44317232660) 均成功。
@@ -13,9 +13,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-18
-> - 文档版本：1.8.0
-> - 源码核对基线：`main` 分支，commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`
-> - 本次文档更新：PR #28 售后结单闭环已合并并发布；核实 GHCR latest digest；修复 Admin CI 路径过滤缺位；同步 Dujiao-Next PR B/C/D/E 边界与统一真机验收追踪表
+> - 文档版本：1.9.0
+> - 源码核对基线：`main` 分支，commit `55b09352ad902cfaf97f323300eed6b7183e55cf`（PR #29 文档/CI 修正合并后；PR2 当前为独立开发分支）
+> - 本次文档更新：PR #29 已合并，Admin CI 移除 paths 过滤；PR2 增加日报口径、余额只读校验、库存自动化实现说明及验收规则
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -88,6 +88,7 @@ flowchart LR
 | 支付设置 | 已实现 | 后台设置 TRON 收款地址、TronGrid API Key、USDT 合约及启停；API Key 加密存储、脱敏显示，保存后更新运行配置。 |
 | 优惠券/促销 | 已实现 | 促销规则的查询、创建/更新、删除；具体类型与适用规则以当前页面/API为准。 |
 | 兑换码 | 已实现 | 兑换码规则的创建/更新/删除及用户兑换处理；以当前后台页面和数据库实现为准。 |
+| 对账与余额校验 | PR2 开发中 | 每日 UTC 对账日报、日报历史、余额流水一致性只读校验与异常明细；未合并前不得视为已交付。 |
 | 售后工单 | 已实现（生产验收待执行） | Owner Bot 转发媒体、交互式回复/结单、结单通知、用户确认/重开、终态消息守卫及 10 分钟自动新工单限流均已合并；真实 Telegram/SMTP 验收待项目所有者执行。 |
 | 用户管理 | 已实现 | Telegram 用户列表、余额调整、余额流水查询。 |
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
@@ -148,7 +149,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - 低库存检查与补货通知。
 - 商品补货订阅通知。
 - 群发任务执行。
-- 每日经营摘要通知。
+- 每日经营摘要通知；PR2 分支新增每日对账日报与历史快照（待合并/发布）。
 - Bot 运行状态和错误信息记录。
 
 ## 5. 订单、库存与交付机制
@@ -535,6 +536,8 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.2 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
 | [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR head Go CI、Admin CI、安全扫描均通过；main Publish Run #44299965343 成功，latest digest `sha256:c805ce4a8aa2ee6f2adcf01d16122d15117c9e813457a740c00f2d31e7ec66ae`。 | 真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购仍未实现。 | 继续按 PR C→D→E 实施采购与资金闭环。 |
 | [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | PR1 补齐结单闭环；执行 Owner Bot 媒体/回复/结单验收。 |
+| [PR #29](https://github.com/seanldnet/TG-Card/pull/29) | 交接文档校准、18 项验收表、Admin CI paths 过滤修复、Dujiao-Next PR B/C/D/E 边界。 | 已合并；Admin frontend CI Run #44321310277 成功；未改业务代码，不产生新业务镜像。 | 文档与 CI 触发修复完成；生产验收仍按第 19.3 节执行。 | 已完成；PR2 CI 强制要求 Go、Admin、Security、Publish 四类运行。 |
+| [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 独立分支 `feat/reconciliation-inventory-safety`；新增迁移 `0037_reconciliation_inventory.sql`、日报/余额检查 API 与后台页面；CI/合并/镜像待验证。 | 尚未验收；需要测试日报口径、库存策略及人为余额差异检测。 | PR 描述含实现范围/复现条件/验证结果/文档更新；Go、Admin、Security、Publish 全部通过后合并。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功，latest digest 见第 19.3 节。Admin CI 因旧 paths 过滤未触发，已在本次文档修正分支移除过滤。 | 代码完成、CI（Go/Security）通过、镜像已发布；Telegram 真机验收待项目所有者执行。 | 按第 19.3 节统一清单验收；PR2 CI 必须包含 Go、Admin、Security、Publish 四类运行。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
@@ -614,6 +617,17 @@ curl -fsS http://127.0.0.1:38647/api/health
 **PR2 CI 强制要求**
 
 PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须存在并通过 Go CI、Admin frontend CI、Security scan；合并到 main 后 Publish workflow 必须成功并核对 GHCR digest。缺少 Admin CI 运行记录视为 CI 验证不完整，不得合并。Admin CI 已移除 paths 过滤，后续所有 main PR 均应触发。
+
+
+
+### 19.4 PR #29 文档/CI 修正与 PR2 开发状态
+
+- PR #29：[交接状态与 Admin CI 触发修复](https://github.com/seanldnet/TG-Card/pull/29)，已 squash 合并，merge commit `55b09352ad902cfaf97f323300eed6b7183e55cf`。
+- Admin frontend CI：[Run #44321310277](https://github.com/seanldnet/TG-Card/actions/runs/44321310277)，completed/success。
+- PR #29 修改主状态文档、CHANGELOG、上游专项、售后专项与 Admin workflow；没有业务代码变更，不据此声称新业务镜像已发布。
+- PR2 当前 PR：[ #30](https://github.com/seanldnet/TG-Card/pull/30)，分支 `feat/reconciliation-inventory-safety`；新增迁移 `0037_reconciliation_inventory.sql`，并新增日报、余额校验 API 与后台页面。CI、合并和镜像发布均待验证。
+- PR2 资金规则：余额校验严格只读。现有售后退款由 `RefundOrderToWallet` 记为钱包 `credit`，因此实际流水公式是 credit 合计减 debit 合计；不得把退款错误当作余额扣减。
+- 详细口径、库存开关默认值、调度频率与验收步骤见 `docs/reconciliation-inventory.md`。
 
 
 ## 20. 安全基线
