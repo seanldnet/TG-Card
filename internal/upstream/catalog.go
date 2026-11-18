@@ -49,6 +49,8 @@ type DujiaoProduct struct {
 	Images []string `json:"images"`
 	PriceAmount string `json:"price_amount"`
 	FulfillmentType string `json:"fulfillment_type"`
+	ManualFormSchema map[string]any `json:"manual_form_schema"`
+	Tags []string `json:"tags"`
 	IsActive bool `json:"is_active"`
 	CategoryID int64 `json:"category_id"`
 	SKUs []DujiaoSKU `json:"skus"`
@@ -136,7 +138,13 @@ func VariantName(title string, sku DujiaoSKU, skuCount int) string {
 	sort.Strings(keys)
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
-		value := strings.TrimSpace(fmt.Sprint(sku.SpecValues[key]))
+		raw := sku.SpecValues[key]
+		value := ""
+		if localized, ok := raw.(map[string]any); ok {
+			texts := make(map[string]string, len(localized))
+			for language, entry := range localized { texts[language] = fmt.Sprint(entry) }
+			value = LocalizedText(texts)
+		} else { value = strings.TrimSpace(fmt.Sprint(raw)) }
 		if value != "" { parts = append(parts, key+":"+value) }
 	}
 	if len(parts) > 0 { return title + " · " + strings.Join(parts, " / ") }
