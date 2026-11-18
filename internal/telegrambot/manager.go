@@ -393,10 +393,15 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 	if err != nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"商品暂时无法加载，请稍后再试。"); return }
 	for _,p:=range products {
 		if p.ID!=productID||p.Status!=1 { continue }
-		if p.SourceType=="upstream" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品的采购履约将在下一阶段开放，目前暂不可购买。"); return }
 		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
 		if keyBacked&&p.StockCount<1 { _ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。"); return }
-		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}
+		if p.SourceType=="upstream" {
+			settings,settingsErr:=database.GetUpstreamSettings(ctx,m.db,m.driver)
+			if settingsErr!=nil||!settings.Enabled||settings.CatalogStale||settings.CallbackURL=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游采购暂不可用：管理员需先启用上游目录并配置公网回调地址。"); return }
+		}
+		if p.SourceType=="upstream" && p.UpstreamStockStatus=="out_of_stock" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游商品库存不足，请返回商城选择其他商品。"); return }
+		if p.SourceType=="upstream" && p.UpstreamFulfillmentType=="manual" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品需要人工交付表单信息，目前请联系客服处理，暂不支持自助下单。"); return }
+		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}else if p.SourceType=="upstream"{stockText="上游库存："+p.UpstreamStockStatus}
 		text:="请确认订单信息：\n商品："+p.Name+"\n商品金额："+formatPrice(p.PriceMinor,p.Currency)+"\n数量：1\n"+stockText+"\n\n确认后将创建订单，需在 20 分钟内完成付款。"
 		paymentAddress,paymentEnabled:=m.paymentConfig()
 		if paymentEnabled&&paymentAddress!=""{text+="\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"}else{text+="\n支付尚未启用，请勿转账。"}
@@ -795,7 +800,7 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 	rows := make([][]map[string]string, 0)
 	for _, order := range orders {
 		switch order.Status {
-		case "paid", "delivering", "delivery_failed", "delivered":
+		case "paid", "delivering", "delivery_failed", "delivered", "procurement_pending", "procurement_failed":
 			label := truncateButtonText(order.OrderNo+" · "+order.ProductName, 48)
 			rows = append(rows, []map[string]string{{"text": label, "callback_data": "support:order:"+order.OrderNo}})
 		}
@@ -1256,6 +1261,16 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 }
 
 
+func (m *Manager) SendProcurementRefundNotice(ctx context.Context,orderID string,balance int64) error {
+	order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+	if err!=nil{return err}
+	m.mu.Lock();current:=m.workers[order.BotID];m.mu.Unlock()
+	if current==nil{return fmt.Errorf("Telegram bot for refunded order is not running")}
+	chatID,err:=strconv.ParseInt(order.TelegramChatID,10,64);if err!=nil{return err}
+	amount:=formatUSDTAtomic(order.AmountMinor*10000)
+	return m.sendMessage(ctx,current.config.Token,chatID,"上游采购未能履约，订单已退款至站内余额。\n订单号："+order.OrderNo+"\n退款金额："+amount+" USDT\n当前余额："+formatUSDTAtomic(balance)+" USDT")
+}
+
 func (m *Manager) SendWalletRechargeNotice(ctx context.Context,item database.WalletRecharge,balance int64) error {
 	m.mu.Lock();current:=m.workers[item.BotID];m.mu.Unlock()
 	if current==nil{return fmt.Errorf("Telegram bot for recharge is not running")}
@@ -1284,7 +1299,8 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 func orderStatusLabel(status string) string {
 	switch status {
 	case "pending_payment": return "待付款"
-	case "paid", "delivering": return "处理中"
+	case "paid", "delivering", "procurement_pending": return "处理中（上游采购/交付）"
+	case "procurement_failed": return "采购失败，等待人工处理"
 	case "delivery_failed": return "发货异常，系统重试中"
 	case "delivered": return "已交付"
 	case "expired": return "已关闭"
@@ -1514,6 +1530,12 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
 			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
 		}
+	case "upstream":
+		if item.Order.DeliveryPayloadJSON == "" || item.Order.DeliveryPayloadJSON == "{}" { deliveryErr = fmt.Errorf("upstream fulfillment payload is missing"); break }
+		if m.decrypt == nil { deliveryErr = fmt.Errorf("upstream fulfillment decryptor is not configured"); break }
+		payload, decryptErr := m.decrypt(item.Order.DeliveryPayloadJSON)
+		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
+		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
 	case "file_card":
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
 			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
