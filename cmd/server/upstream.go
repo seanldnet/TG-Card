@@ -23,6 +23,7 @@ type upstreamSettingsRequest struct {
 	MerchantSecret string `json:"merchantSecret"`
 	ClearCredentials bool `json:"clearCredentials"`
 	Enabled bool `json:"enabled"`
+	CatalogStale bool `json:"catalogStale"`
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
@@ -64,7 +65,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 	return upstreamSettingsView{
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
-		Enabled:item.Enabled, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
 		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
@@ -74,7 +75,7 @@ func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request
 	if _, ok := a.authenticate(w,r); !ok { return }
 	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15})
+		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,CatalogStale:true})
 		return
 	}
 	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
@@ -148,7 +149,7 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 		previous.MarkupBPS != markupBPS ||
 		previous.MarkupMinor != input.MarkupFixedMinor ||
 		previous.ExchangeRatePPM != exchangeRatePPM
-	if input.Enabled && !catalogChanged && current.SyncStatus != "success" {
+	if input.Enabled && !catalogChanged && (current.CatalogStale || current.SyncStatus != "success") {
 		writeError(w, http.StatusConflict, "请先完成一次成功的商品同步，再启用上游商品来源")
 		return
 	}
@@ -162,6 +163,7 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 
 	current.Provider = input.Provider
 	current.BaseURL = baseURL
+	current.CatalogStale = current.CatalogStale || catalogChanged
 	current.Enabled = input.Enabled && !catalogChanged
 	current.MarkupBPS = markupBPS
 	current.MarkupMinor = input.MarkupFixedMinor
