@@ -19,7 +19,7 @@ func TestUpstreamCatalogSyncIsTransactionalAndSourceAware(t *testing.T) {
 
 	if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"batch-1",
 		[]UpstreamCategoryRecord{{UpstreamID:"12",Name:"Supplier category",SortOrder:10}},
-		[]UpstreamProductRecord{{ProductID:"34",SKUID:"56",Slug:"supplier-item",CategoryID:"12",Name:"Supplier item / 1 month",Description:"Upstream description",PriceMinor:1200,PriceSnapshotMinor:1000,Currency:"USDT",StockQuantity:8,StockStatus:"in_stock",ImagePathsJSON:"[\"/uploads/upstream/item.png\"]",Active:true}},
+		[]UpstreamProductRecord{{ProductID:"34",SKUID:"56",Slug:"supplier-item",CategoryID:"12",Name:"Supplier item / 1 month",Description:"Upstream description",PriceMinor:1200,PriceSnapshotMinor:1000,Currency:"CNY",StockQuantity:8,StockStatus:"in_stock",ImagePathsJSON:"[\"/uploads/upstream/item.png\"]",Active:true}},
 	);err!=nil{t.Fatal(err)}
 
 	all,err:=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
@@ -27,7 +27,7 @@ func TestUpstreamCatalogSyncIsTransactionalAndSourceAware(t *testing.T) {
 	var upstreamProduct *Product
 	for i:=range all{if all[i].SourceType=="upstream"{upstreamProduct=&all[i]}}
 	if upstreamProduct==nil{t.Fatal("upstream product not persisted")}
-	if upstreamProduct.UpstreamProductID!="34"||upstreamProduct.UpstreamSKUID!="56"||upstreamProduct.UpstreamPriceSnapshotMinor!=1000||upstreamProduct.PriceMinor!=1200||upstreamProduct.UpstreamStockQuantity!=8{
+	if upstreamProduct.UpstreamProductID!="34"||upstreamProduct.UpstreamSKUID!="56"||upstreamProduct.UpstreamPriceSnapshotMinor!=1000||upstreamProduct.UpstreamCurrency!="CNY"||upstreamProduct.PriceMinor!=1200||upstreamProduct.UpstreamStockQuantity!=8{
 		t.Fatalf("upstream product snapshot mismatch: %+v",upstreamProduct)
 	}
 	if upstreamProduct.ImagePathsJSON!="[\"/uploads/upstream/item.png\"]"{t.Fatalf("local image paths missing: %s",upstreamProduct.ImagePathsJSON)}
