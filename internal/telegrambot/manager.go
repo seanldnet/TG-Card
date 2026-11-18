@@ -799,7 +799,7 @@ func (m *Manager) NotifyProductRestocked(ctx context.Context,productID string) {
 	products,err:=database.ListProducts(ctx,m.db);if err!=nil{return}
 	var product *database.Product
 	for i:=range products { if products[i].ID==productID { product=&products[i];break } }
-	if product==nil || product.StockCount<1 { return }
+	if product==nil || product.SourceType=="upstream" || product.StockCount<1 { return }
 	subscribers,err:=database.ClaimPendingProductStockNotifications(ctx,m.db,m.driver,productID,100,2*time.Minute)
 	if err!=nil { log.Printf("claim stock notification subscribers failed: product_id=%s error=%v",productID,err);return }
 	for _,sub:=range subscribers {
@@ -1035,10 +1035,10 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单不存在。",ownerMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status,ownerMenuKeyboard()) }
 	case strings.HasPrefix(query.Data,"owner:product:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
-		id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboard());break };for _,p:=range products { if p.ID==id { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品："+p.Name+"\n当前库存："+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"➕ 为此商品添加库存","callback_data":"owner:stockadd:"+p.ID}},{{"text":"⬅️ 返回商品列表","callback_data":"owner:addstock"}}}});break } }
+		id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboard());break };for _,p:=range products { if p.ID==id { if p.SourceType!="local" { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"上游商品库存由供应商管理，不能手动导入本地卡密。",ownerMenuKeyboard());break }; _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品："+p.Name+"\n当前库存："+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"➕ 为此商品添加库存","callback_data":"owner:stockadd:"+p.ID}},{{"text":"⬅️ 返回商品列表","callback_data":"owner:addstock"}}}});break } }
 	case strings.HasPrefix(query.Data,"owner:stockadd:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
-		id:=strings.TrimPrefix(query.Data,"owner:stockadd:");m.setPendingAction(cfg.ID,chatID,"owner_stockadd:"+id);_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送要导入的卡密，每行一条或用逗号分隔（最多 200 条）。",ownerMenuKeyboard())
+		id:=strings.TrimPrefix(query.Data,"owner:stockadd:");products,lookupErr:=database.ListProducts(ctx,m.db);if lookupErr!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboard());break};localProduct:=false;for _,p:=range products{if p.ID==id&&p.SourceType=="local"{localProduct=true;break}};if !localProduct{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"仅本地卡密商品支持手动导入库存。",ownerMenuKeyboard());break};m.setPendingAction(cfg.ID,chatID,"owner_stockadd:"+id);_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送要导入的卡密，每行一条或用逗号分隔（最多 200 条）。",ownerMenuKeyboard())
 	case strings.HasPrefix(query.Data,"owner:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		switch query.Data {
