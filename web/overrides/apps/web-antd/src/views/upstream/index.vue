@@ -14,11 +14,13 @@ interface UpstreamSettings {
   markupPercent: number;
   markupFixedMinor: number;
   syncIntervalMinutes: number;
+  exchangeRateToUSDT: number;
   lastTestStatus: string;
   lastTestAt: string;
   lastError: string;
   syncStatus: string;
   syncAt: string;
+  syncAttemptAt: string;
   syncError: string;
   updatedAt: string;
 }
@@ -26,8 +28,8 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,lastTestStatus:'not_tested',lastTestAt:'',
- lastError:'',syncStatus:'not_started',syncAt:'',syncError:'',updatedAt:'',
+ merchantSecretConfigured:false,enabled:false,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
+ lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
@@ -45,7 +47,7 @@ async function save():Promise<boolean>{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
-   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,
+   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   message.success('上游配置已安全保存');return true;
@@ -108,6 +110,9 @@ onMounted(()=>{void load();});
      </div>
      <div class="mt-2 text-xs text-gray-500">最终售价 = 上游 SKU 价 ×（1 + 百分比）+ 固定加价。固定加价以 0.01 USDT 为单位；价格按分四舍五入。</div>
     </a-form-item>
+    <a-form-item label="上游币种兑 USDT 汇率" extra="填写 1 单位上游币种可兑换多少 USDT。例如上游为 CNY 时可填 7.20；上游币种为 USDT 时自动按 1 计算。非 USDT 币种未配置汇率将拒绝同步，避免错误定价。">
+     <a-input-number v-model:value="settings.exchangeRateToUSDT" class="w-full" :min="0" :max="1000000" :step="0.01" placeholder="例如 CNY → USDT：7.20"/>
+    </a-form-item>
     <a-form-item label="自动同步间隔">
      <a-select v-model:value="settings.syncIntervalMinutes" class="w-full">
       <a-select-option :value="5">每 5 分钟</a-select-option><a-select-option :value="15">每 15 分钟</a-select-option><a-select-option :value="30">每 30 分钟</a-select-option><a-select-option :value="60">每小时</a-select-option><a-select-option :value="360">每 6 小时</a-select-option><a-select-option :value="1440">每天</a-select-option>
@@ -140,7 +145,8 @@ onMounted(()=>{void load();});
     <div class="rounded-lg border border-gray-200 p-4">
      <div class="mb-2 text-sm text-gray-500">商品同步</div>
      <a-tag color="default">{{syncLabel}}</a-tag>
-     <div v-if="settings.syncAt" class="mt-2 text-xs text-gray-500">最近同步：{{settings.syncAt}}</div>
+     <div v-if="settings.syncAt" class="mt-2 text-xs text-gray-500">最近成功同步：{{settings.syncAt}}</div>
+     <div v-if="settings.syncAttemptAt" class="mt-1 text-xs text-gray-500">最近尝试：{{settings.syncAttemptAt}}</div>
      <a-alert v-if="settings.syncError" class="mt-3" type="warning" show-icon :message="settings.syncError"/>
      <div v-else class="mt-2 text-xs text-gray-500">自动同步按上方间隔运行；同步失败会保留上一次成功的数据。</div>
      <div v-if="syncResult" class="mt-3 text-sm">本次同步：{{syncResult.categories}} 个分类 · {{syncResult.products}} 个 SKU 商品 · 图片失败 {{syncResult.imagesFailed}} 张</div>
