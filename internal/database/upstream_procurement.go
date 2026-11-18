@@ -75,8 +75,10 @@ func GetUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderNo str
 func ListDueUpstreamProcurements(ctx context.Context, db *sql.DB, driver string, limit int) ([]UpstreamProcurement,error) {
 	if limit<1||limit>100{limit=30}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at FROM upstream_procurements WHERE status IN ('queued','retry','polling','ready') AND next_attempt_at<="+placeholder(driver,1)+" ORDER BY next_attempt_at,id LIMIT "+fmt.Sprint(limit)
-	rows,err:=db.QueryContext(ctx,q,now);if err!=nil{return nil,err};defer rows.Close()
+	dueLease:="julianday(delivery_lease_until)<=julianday("+placeholder(driver,2)+") OR delivery_lease_until=''"
+	if driver=="postgres" { dueLease="CAST(delivery_lease_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ) OR delivery_lease_until=''" }
+	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at FROM upstream_procurements WHERE (status IN ('queued','retry','polling','ready') AND next_attempt_at<="+placeholder(driver,1)+") OR (status='delivering' AND ("+dueLease+")) ORDER BY next_attempt_at,id LIMIT "+fmt.Sprint(limit)
+	rows,err:=db.QueryContext(ctx,q,now,now);if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]UpstreamProcurement,0)
 	for rows.Next(){var v UpstreamProcurement;if err:=rows.Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt);err!=nil{return nil,err};items=append(items,v)}
 	return items,rows.Err()
@@ -112,7 +114,7 @@ func StoreUpstreamFulfillment(ctx context.Context, db *sql.DB, driver, orderID, 
 		q:="INSERT INTO upstream_callback_events(id,event_key,downstream_order_no,upstream_order_id,status,received_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'delivered',"+placeholder(driver,5)+") ON CONFLICT(event_key) DO NOTHING"
 		res,err:=tx.ExecContext(ctx,q,id,eventKey,orderID,upstreamID,now);if err!=nil{return false,err};n,err:=res.RowsAffected();if err!=nil{return false,err};if n==0{return false,tx.Commit()}
 	}
-	q:="UPDATE upstream_procurements SET upstream_order_id=CASE WHEN upstream_order_id IS NULL OR upstream_order_id='' THEN "+placeholder(driver,1)+" ELSE upstream_order_id END,upstream_order_no=CASE WHEN upstream_order_no='' THEN "+placeholder(driver,2)+" ELSE upstream_order_no END,status='ready',fulfillment_ciphertext="+placeholder(driver,3)+",next_attempt_at="+placeholder(driver,4)+",last_error='',updated_at="+placeholder(driver,5)+" WHERE order_no="+placeholder(driver,6)+" AND status NOT IN ('delivered','refunded')"
+	q:="UPDATE upstream_procurements SET upstream_order_id=CASE WHEN upstream_order_id IS NULL OR upstream_order_id='' THEN "+placeholder(driver,1)+" ELSE upstream_order_id END,upstream_order_no=CASE WHEN upstream_order_no='' THEN "+placeholder(driver,2)+" ELSE upstream_order_no END,status='ready',fulfillment_ciphertext="+placeholder(driver,3)+",next_attempt_at="+placeholder(driver,4)+",last_error='',updated_at="+placeholder(driver,5)+" WHERE order_no="+placeholder(driver,6)+" AND status IN ('queued','retry','polling','failed')"
 	res,err:=tx.ExecContext(ctx,q,upstreamID,upstreamNo,encryptedPayload,now,now,orderID);if err!=nil{return false,err};n,err:=res.RowsAffected();if err!=nil{return false,err}
 	if n==1 { if err:=recordUpstreamProcurementEvent(ctx,tx,driver,dbOrderID,"fulfillment_ready","fulfillment:"+orderID,"upstream fulfillment stored encrypted",now);err!=nil{return false,err} }
 	if err:=tx.Commit();err!=nil{return false,err}
