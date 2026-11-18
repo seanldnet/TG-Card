@@ -82,7 +82,7 @@ onMounted(()=>{void load();});
 </script>
 
 <template>
- <div class="mx-auto w-full min-w-0 max-w-none p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <a-card :bordered="false" :loading="loading" title="上游对接">
    <template #extra><a-tag :color="settings.enabled?'success':'default'">{{settings.enabled?'上游已启用':'上游未启用'}}</a-tag></template>
    <a-alert class="mb-5" type="info" show-icon message="当前仅开放 Dujiao-Next 官方 Open API。异次元和萌次元尚无已核实的第三方商户采购协议，因此不提供可调用配置。" />
@@ -135,7 +135,7 @@ onMounted(()=>{void load();});
     </div>
    </a-form>
   </a-card>
-  <a-card class="mt-4" :bordered="false" title="连接与同步状态">
+  <a-card :bordered="false" title="连接与同步状态">
    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <div class="rounded-lg border border-gray-200 p-4">
      <div class="mb-2 text-sm text-gray-500">连接测试</div>
