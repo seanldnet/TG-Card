@@ -42,8 +42,12 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	ping, err := upstream.DujiaoPing(ctx, settings.BaseURL, apiKey, apiSecret)
 	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
 	currency := strings.ToUpper(strings.TrimSpace(ping.Currency))
+	ratePPM := int64(1_000_000)
 	if currency != "USDT" {
-		return summary, a.failUpstreamSync(ctx, fmt.Sprintf("上游站点币种为 %q；当前 TG-Card 收款与订单结算为 USDT，未配置汇率，已停止同步以避免错误定价", currency))
+		ratePPM = settings.ExchangeRatePPM
+		if ratePPM <= 0 {
+			return summary, a.failUpstreamSync(ctx, fmt.Sprintf("上游币种为 %s；请在上游设置中配置“1 单位 %s = ? USDT”的汇率后再同步，未修改旧商品数据", currency, currency))
+		}
 	}
 	categories, err := upstream.DujiaoFetchCategories(ctx, settings.BaseURL, apiKey, apiSecret)
 	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
@@ -84,7 +88,9 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			if priceText == "" { priceText = strings.TrimSpace(product.PriceAmount) }
 			priceSnapshot, priceErr := upstream.ParseMinorUnits(priceText)
 			if priceErr != nil { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s SKU %s 价格无效，已停止本次同步", strconv.FormatInt(product.ID,10), skuID)) }
-			price, priceErr := upstream.ApplyMarkup(priceSnapshot, settings.MarkupBPS, settings.MarkupMinor)
+			basePriceUSDT, priceErr := upstream.ConvertMinorToUSDT(priceSnapshot, ratePPM)
+			if priceErr != nil { return summary, a.failUpstreamSync(ctx, "上游价格汇率换算失败："+priceErr.Error()) }
+			price, priceErr := upstream.ApplyMarkup(basePriceUSDT, settings.MarkupBPS, settings.MarkupMinor)
 			if priceErr != nil { return summary, a.failUpstreamSync(ctx, "上游加价策略计算失败："+priceErr.Error()) }
 
 			images := make([]string, 0, 5)
