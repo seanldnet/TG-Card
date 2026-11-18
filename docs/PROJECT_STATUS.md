@@ -547,6 +547,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 - 构建平台：`linux/amd64`、`linux/arm64`；日志确认 latest 与 commit SHA 标签 manifest 推送成功。
 - main Push Go CI：[Run #44291422213](https://github.com/seanldnet/TG-Card/actions/runs/44291422213)、Admin CI：[Run #44291422281](https://github.com/seanldnet/TG-Card/actions/runs/44291422281)、Security：[Run #44291422254](https://github.com/seanldnet/TG-Card/actions/runs/44291422254) 均成功。
 - 发布结论：PR #21 已进入 GHCR latest；真实 Dujiao 商户连接/同步验收仍待项目所有者提供凭证并执行。
+- PR #19 包含关系核验：GitHub compare `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb...2044fa5234ebfd62d3e30357220b192e3a10814b` 返回 `ahead_by=2 / behind_by=0`；因此当前 latest 的 2044fa 镜像是 PR #19 commit 的后代，包含 40cb88e 的附件/CDN/PC 布局修复。PR #19 原始发布 digest `sha256:05663ddbc49d9706a4fe3b4771cbc1dab427a29b15605a048d69723485fc60c6` 已被后续 latest digest `sha256:edcf23eefc6be73bd1433a94d74870cae18d2198cd75424e7918d2b6f3066479` 更新。
 
 ## 20. 安全基线
 
