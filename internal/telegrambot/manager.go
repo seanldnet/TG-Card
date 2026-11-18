@@ -1257,6 +1257,16 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 }
 
 
+func (m *Manager) SendProcurementRefundNotice(ctx context.Context,orderID string,balance int64) error {
+	order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+	if err!=nil{return err}
+	m.mu.Lock();current:=m.workers[order.BotID];m.mu.Unlock()
+	if current==nil{return fmt.Errorf("Telegram bot for refunded order is not running")}
+	chatID,err:=strconv.ParseInt(order.TelegramChatID,10,64);if err!=nil{return err}
+	amount:=formatUSDTAtomic(order.AmountMinor*10000)
+	return m.sendMessage(ctx,current.config.Token,chatID,"上游采购未能履约，订单已退款至站内余额。\n订单号："+order.OrderNo+"\n退款金额："+amount+" USDT\n当前余额："+formatUSDTAtomic(balance)+" USDT")
+}
+
 func (m *Manager) SendWalletRechargeNotice(ctx context.Context,item database.WalletRecharge,balance int64) error {
 	m.mu.Lock();current:=m.workers[item.BotID];m.mu.Unlock()
 	if current==nil{return fmt.Errorf("Telegram bot for recharge is not running")}
