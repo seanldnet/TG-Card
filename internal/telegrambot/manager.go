@@ -1522,7 +1522,7 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
 		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
 	case "file_card":
-		if strings.TrimSpace(config.FileID)=="") { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
+		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
 			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
 			if deliveryErr==nil {
 				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+strings.Join(deliveredKeys,"\n")+"\n请妥善保存，不要转发给他人。")
