@@ -21,7 +21,7 @@ async function testTelegram(){testing.value=true;try{await requestClient.post('/
 onMounted(load);
 </script>
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div><h1 class="m-0 text-xl font-semibold">网站设置</h1><p class="mb-0 mt-1 text-xs leading-5 text-gray-500">按类别分开管理。配置会保存到数据库，无需修改服务器环境变量。</p></div>
   <a-card :bordered="false" :loading="loading" :body-style="{padding:'16px'}">
    <a-tabs v-model:activeKey="activeTab" :tab-position="isMobile?'top':'left'" :tab-bar-gutter="12" class="site-settings-tabs">
