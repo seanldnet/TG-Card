@@ -1,4 +1,5 @@
 -- Daily reconciliation snapshots and read-only wallet balance audit history.
+ALTER TABLE products ADD COLUMN stock_auto_unlisted INTEGER NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS order_delivery_events (
   id TEXT PRIMARY KEY,
   order_id TEXT NOT NULL,
