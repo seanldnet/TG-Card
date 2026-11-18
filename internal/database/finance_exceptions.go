@@ -115,9 +115,8 @@ func CompleteSupplierProcurementBalanceCheck(ctx context.Context,db *sql.DB,driv
  if status!="unverifiable" {
   b,e1:=parseFinanceMinor(before);a,e2:=parseFinanceMinor(afterBalance);want,e3:=parseFinanceMinor(expectedDebit)
   if e1!=nil||e2!=nil||e3!=nil{status="unverifiable";detail="供应商余额或采购金额格式无法解析"}else{
-   observedMinor:=b-a;observed=fmt.Sprintf("%d.%02d",observedMinor/100,absFinance(observedMinor)%100)
-   delta:=observedMinor-want;diff=fmt.Sprintf("%d.%02d",delta/100,absFinance(delta)%100)
-   if delta<0{diff="-"+strings.TrimPrefix(diff,"-")}
+   observedMinor:=b-a;observed=formatFinanceMinor(observedMinor)
+   delta:=observedMinor-want;diff=formatFinanceMinor(delta)
    if absFinance(delta)>1{status="mismatch";detail="供应商余额变动与本地采购金额不一致（容差 0.01）"}
   }
  }
@@ -129,6 +128,25 @@ func CompleteSupplierProcurementBalanceCheck(ctx context.Context,db *sql.DB,driv
 }
 
 func absFinance(v int64)int64{if v<0{return -v};return v}
+func formatFinanceMinor(v int64)string{sign:="";if v<0{sign="-";v=absFinance(v)};return fmt.Sprintf("%s%d.%02d",sign,v/100,v%100)}
+
+func MarkStaleSupplierFundChecks(ctx context.Context,db *sql.DB,driver string,olderThan time.Duration)(int,error){
+ if olderThan<=0{olderThan=15*time.Minute}
+ cutoff:=time.Now().UTC().Add(-olderThan).Format(time.RFC3339Nano)
+ tx,err:=db.BeginTx(ctx,nil);if err!=nil{return 0,err};defer tx.Rollback()
+ q:="SELECT local_order_id,local_order_no FROM upstream_procurement_fund_checks WHERE status='pending' AND julianday(created_at)<=julianday("+placeholder(driver,1)+")"
+ if driver=="postgres"{q="SELECT local_order_id,local_order_no FROM upstream_procurement_fund_checks WHERE status='pending' AND CAST(created_at AS TIMESTAMPTZ)<=CAST("+placeholder(driver,1)+" AS TIMESTAMPTZ)"}
+ rows,err:=tx.QueryContext(ctx,q,cutoff);if err!=nil{return 0,err}
+ type item struct{id,no string};items:=[]item{}
+ for rows.Next(){var x item;if err:=rows.Scan(&x.id,&x.no);err!=nil{rows.Close();return 0,err};items=append(items,x)}
+ if err:=rows.Err();err!=nil{rows.Close();return 0,err};rows.Close()
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ for _,x:=range items{
+  if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurement_fund_checks SET status='unverifiable',detail='采购后余额快照未在规定时间内取得，需人工核对',checked_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status='pending'",now,now,x.id);err!=nil{return 0,err}
+  if err:=upsertFinanceExceptionTx(ctx,tx,driver,"supplier-funds:"+x.id,"supplier_balance","warning","procurement",x.id,"供应商采购资金核对未完成","订单 "+x.no+" 的采购后余额快照缺失，需人工核对");err!=nil{return 0,err}
+ }
+ if err:=tx.Commit();err!=nil{return 0,err};return len(items),nil
+}
 
 func ListSupplierFundChecks(ctx context.Context,db *sql.DB,limit int)([]SupplierFundCheck,error){
  if limit<1||limit>500{limit=100}
@@ -175,14 +193,20 @@ func ResolveUncertainProcurement(ctx context.Context,db *sql.DB,driver,orderID,a
 
 // RunRefundLedgerIntegrityCheck is read-only: it reports broken links and never adjusts wallet balances.
 func RunRefundLedgerIntegrityCheck(ctx context.Context,db *sql.DB,driver string)(int,error){
- q:="SELECT r.order_id,r.wallet_transaction_id,r.amount_atomic,r.admin_id,r.reason,o.status,w.direction,w.amount_atomic,w.admin_id,w.telegram_user_id,o.telegram_user_id FROM upstream_procurement_refunds r LEFT JOIN orders o ON o.id=r.order_id LEFT JOIN wallet_transactions w ON w.id=r.wallet_transaction_id"
+ q:="SELECT r.order_id,r.amount_atomic,o.status,w.direction,w.amount_atomic,w.admin_id,r.admin_id,w.telegram_user_id,o.telegram_user_id FROM upstream_procurement_refunds r LEFT JOIN orders o ON o.id=r.order_id LEFT JOIN wallet_transactions w ON w.id=r.wallet_transaction_id"
  rows,err:=db.QueryContext(ctx,q);if err!=nil{return 0,err};defer rows.Close()
  type anomaly struct{id,detail string};bad:=[]anomaly{}
- for rows.Next(){var orderID,ledgerID,admin,reason,orderStatus,direction,ledgerAdmin,ledgerUser,userID sql.NullString;var amount,ledgerAmount sql.NullInt64
-  if err:=rows.Scan(&orderID,&ledgerID,&amount,&admin,&reason,&orderStatus,&direction,&ledgerAmount,&ledgerAdmin,&ledgerUser,&userID);err!=nil{return 0,err}
-  if !orderStatus.Valid||orderStatus.String!="refunded"||!direction.Valid||direction.String!="credit"||!ledgerAmount.Valid||ledgerAmount.Int64!=amount.Int64||!ledgerAdmin.Valid||ledgerAdmin.String!=admin.String||!ledgerUser.Valid||ledgerUser.String!=userID.String{bad=append(bad,anomaly{orderID.String,"退款账本与订单/钱包 credit 流水关联不一致"})}
+ for rows.Next(){var orderID,orderStatus,direction,ledgerAdmin,refundAdmin,ledgerUser,userID sql.NullString;var amount,ledgerAmount sql.NullInt64
+  if err:=rows.Scan(&orderID,&amount,&orderStatus,&direction,&ledgerAmount,&ledgerAdmin,&refundAdmin,&ledgerUser,&userID);err!=nil{return 0,err}
+  if !orderID.Valid||!orderStatus.Valid||orderStatus.String!="refunded"||!direction.Valid||direction.String!="credit"||!ledgerAmount.Valid||ledgerAmount.Int64!=amount.Int64||!ledgerAdmin.Valid||!refundAdmin.Valid||ledgerAdmin.String!=refundAdmin.String||!ledgerUser.Valid||!userID.Valid||ledgerUser.String!=userID.String{bad=append(bad,anomaly{orderID.String,"退款账本与订单/钱包 credit 流水关联不一致"})}
  }
  if err:=rows.Err();err!=nil{return 0,err}
+ // A refunded procurement order must have exactly one independent refund row.
+ missing,err:=db.QueryContext(ctx,"SELECT o.id FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.status='refunded' AND p.status='refunded' AND NOT EXISTS (SELECT 1 FROM upstream_procurement_refunds r WHERE r.order_id=o.id)")
+ if err!=nil{return 0,err};for missing.Next(){var id string;if err:=missing.Scan(&id);err!=nil{missing.Close();return 0,err};bad=append(bad,anomaly{id,"订单/采购状态为已退款，但缺少独立退款账本"})};if err:=missing.Err();err!=nil{missing.Close();return 0,err};missing.Close()
+ // Detect refund credits that are not referenced by the unique procurement refund ledger.
+ orphan,err:=db.QueryContext(ctx,"SELECT w.id FROM wallet_transactions w WHERE w.direction='credit' AND w.note LIKE '上游采购失败退款：%' AND NOT EXISTS (SELECT 1 FROM upstream_procurement_refunds r WHERE r.wallet_transaction_id=w.id)")
+ if err!=nil{return 0,err};for orphan.Next(){var id string;if err:=orphan.Scan(&id);err!=nil{orphan.Close();return 0,err};bad=append(bad,anomaly{id,"存在上游采购退款 credit，但没有对应的退款账本记录"})};if err:=orphan.Err();err!=nil{orphan.Close();return 0,err};orphan.Close()
  for _,x:=range bad{if err:=CreateFinanceException(ctx,db,driver,"refund-ledger:"+x.id,"refund_ledger","critical","order",x.id,"退款账本完整性异常",x.detail);err!=nil{return len(bad),err}}
  return len(bad),nil
 }
