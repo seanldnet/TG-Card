@@ -22,6 +22,7 @@ func TestUpstreamSettingsLifecycle(t *testing.T) {
 	item := UpstreamSettings{
 		Provider: "dujiao_next", BaseURL: "https://supplier.example.com",
 		MerchantIDCiphertext: "encrypted-api-key", SecretCiphertext: "encrypted-api-secret", Enabled: true,
+		MarkupBPS:1250, MarkupMinor:25, ExchangeRatePPM:140000, SyncIntervalMinutes:30,
 	}
 	if err := SaveUpstreamSettings(ctx, db, cfg.DBDriver, item); err != nil { t.Fatal(err) }
 	loaded, err := GetUpstreamSettings(ctx, db, cfg.DBDriver)
@@ -29,6 +30,7 @@ func TestUpstreamSettingsLifecycle(t *testing.T) {
 	if loaded.Provider != item.Provider || loaded.BaseURL != item.BaseURL || loaded.MerchantIDCiphertext != item.MerchantIDCiphertext || loaded.SecretCiphertext != item.SecretCiphertext || !loaded.Enabled {
 		t.Fatalf("unexpected upstream settings: %+v", loaded)
 	}
+	if loaded.MarkupBPS!=1250||loaded.MarkupMinor!=25||loaded.ExchangeRatePPM!=140000||loaded.SyncIntervalMinutes!=30{t.Fatalf("pricing/sync settings mismatch: %+v",loaded)}
 	if loaded.LastTestStatus != "not_tested" || loaded.SyncStatus != "not_started" {
 		t.Fatalf("unexpected initial statuses: %+v", loaded)
 	}
