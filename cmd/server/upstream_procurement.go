@@ -169,6 +169,7 @@ func (a *application) completeUpstreamFulfillment(ctx context.Context,orderID,or
 }
 
 func (a *application) dispatchUpstreamOrder(ctx context.Context,orderID string) error {
+	if a.dispatchProcurement != nil { return a.dispatchProcurement(ctx,orderID) }
 	claimed,err:=database.ClaimOrderDelivery(ctx,a.db,a.driver,orderID,2*time.Minute)
 	if err!=nil{return err}
 	if !claimed{return nil}
@@ -187,6 +188,7 @@ func (a *application) procurementOrderLink(settings database.UpstreamSettings,or
 }
 
 func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason string) {
+	if a.procurementNotify != nil { a.procurementNotify(ctx,orderNo,reason); return }
 	settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
 	details:="Dujiao-Next 采购异常
 订单号："+orderNo+"
