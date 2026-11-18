@@ -1,3 +1,12 @@
+## 2026-11-18 — Dujiao-Next PR C 采购转发（独立草稿 PR）
+
+- 状态：独立分支 `feat/dujiao-next-procurement`，草稿 PR [#35](https://github.com/seanldnet/TG-Card/pull/35)；不包含 PR3–PR6 或其他功能批次。当前未合并、未发布、未真实联调。
+- 已提交：迁移 `0038_upstream_procurement.sql`；本地订单号唯一采购队列、上游订单 ID/订单号双向映射、供应商 API create/query 封装、异步轮询、回调验签/幂等与安全审计、加密 fulfillment、Telegram 交付租约、采购失败人工队列、手动重试、Owner-only 余额退款及独立 wallet credit、Owner 通知、供应商余额日报/阈值告警、上游设置页与失败队列 UI。
+- 资金边界：采购失败不修改买家余额、不改变原始 payment_method/payment_reference；只有 Owner 明确执行退款时，才单独写入站内余额 credit、订单退款状态与采购审计。
+- API 限制：官方 Open API 未提供按 downstream_order_no 的 GET 查询。上游 POST 超时且未返回上游订单 ID 时，复用相同本地订单号作为 `downstream_order_no` 重试，依赖官方幂等合同避免二次采购；不得编造不存在的查单 API。
+- 测试：数据库生命周期/余额/审计测试、供应商 HTTP mock 幂等测试、回调签名测试已加入；七类要求场景尚待 Actions 实际执行并补齐输出。
+- PR D 与 PR E 仍未完成；PR C mock 通过不等于真实上游联调。
+
 ## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 开发启动
 
 - 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-18。
