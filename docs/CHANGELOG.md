@@ -5,7 +5,7 @@
 - 实现：订单支付确认事务登记采购任务；订单创建快照上游商品/SKU；采购前复核本地订单状态和商品上架状态；本地订单号幂等创建、上游订单 ID/订单号持久化；查单轮询、回调 HMAC-SHA256 验签与幂等；交付内容加密后走 Telegram 交付；采购失败人工队列、手动重试、站内余额退款独立账本与管理员审计；供应商余额快照/阈值告警/日报。
 - 资金安全：采购失败和重试不修改原支付记录、不自动扣减或退款买家余额；退款仅在确认采购失败后由管理员手动触发，使用独立钱包 credit 流水和退款审计。
 - 协议限制：官方 Dujiao-Next API 未提供按 `downstream_order_no` 查单接口。首次 POST 网络异常且未获得上游订单 ID 时，自动流程标记 uncertain 并暂停自动重发；人工核实后使用原幂等键重试。已获得上游订单 ID 时才调用 `GET /orders/:id`。
-- 当前限制：只开放 auto 自动交付 SKU；manual 表单商品因尚无买家侧表单采集而暂不开放自助下单。真实商户端到端联调留给 PR E。
+- 配置门槛：必须在后台配置公网 HTTPS 回调地址才允许上游商品自助下单；轮询仍作为回调兜底。只开放 auto 自动交付 SKU；manual 表单商品因尚无买家侧表单采集而暂不开放自助下单。真实商户端到端联调留给 PR E。
 - 文档：同步 PROJECT_STATUS 第 5/6/19 节、upstream-integration.md，新增 upstream-procurement.md。
 - PR：[https://github.com/seanldnet/TG-Card/pull/32](https://github.com/seanldnet/TG-Card/pull/32)
 
