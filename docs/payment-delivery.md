@@ -75,3 +75,12 @@ TronGrid API credentials and the receiving address are managed from **Admin → 
 Saving the page updates the live payment watcher and Telegram bot checkout details without restarting the service. The settings are stored in the same SQLite/PostgreSQL database as orders and survive container recreation and image upgrades. .env is no longer required for payment setup. Existing installations that already set TRONGRID_API_KEY and TRON_RECEIVE_ADDRESS are imported into the database on first startup after this migration; after that, the database settings are authoritative.
 
 The payment settings page exposes the TRON receiving address, optional USDT contract override, enable/disable switch, and API-key replacement. Enabling collection is rejected unless a valid TronGrid key and valid TRON Base58Check address are present.
+
+
+## Dujiao-Next procurement state
+
+The independent Dujiao-Next procurement implementation was merged in PR #32. Paid upstream orders are registered in the durable procurement queue, rechecked before supplier submission, and tracked by local order number plus supplier order ID/number. Synchronous fulfillment, polling, and signed callbacks converge on the same encrypted fulfillment/delivery path.
+
+If the initial supplier POST times out before returning an upstream order ID, the order is parked as `uncertain` for Owner verification; it is not automatically resubmitted. The documented supplier API supports idempotency by API Key + `downstream_order_no`, but does not document a GET lookup by that local key. Manual recovery reuses the original key. Known supplier order IDs are queried using `GET /orders/:id`.
+
+Supplier failures/timeouts do not alter the original buyer payment record or automatically debit/refund the buyer wallet. Owner-confirmed refunds are a separate wallet credit with procurement and admin audit. Mock/CI success is not live supplier integration; PR E remains the only real supplier end-to-end phase.
