@@ -1,3 +1,11 @@
+## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 开发启动
+
+- 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-18。
+- PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)；GHCR multi-platform manifest digest：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。
+- Go CI [#44324284650](https://github.com/seanldnet/TG-Card/actions/runs/44324284650)、Admin CI [#44324284642](https://github.com/seanldnet/TG-Card/actions/runs/44324284642)、Security [#44324284777](https://github.com/seanldnet/TG-Card/actions/runs/44324284777) 均成功。
+- PR #19/#26/#28 验收项使用 PR #28 digest `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04` 记录为已验收；PR2 E1–E10 使用上述 PR2 digest 记录为已验收。PR #27 Owner Bot C1–C4 未被本次明确列入验收范围，继续待验收。
+- 采购转发、供应商扣款、异步查单/回调、失败人工队列、退款审计现进入独立 PR C；PR D 资金安全与 PR E 真实上游联调仍未完成。
+
 ## 2026-11-18 — PR2 资金与库存安全（独立开发分支）
 
 - 状态：PR #30 已创建并开放审查，分支 `feat/reconciliation-inventory-safety`；CI 运行中，合并/镜像待验证，生产验收未执行。

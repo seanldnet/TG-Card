@@ -4,7 +4,7 @@
 
 PR2 独立分支：`feat/reconciliation-inventory-safety`。本专项只处理 TG-Card 本地订单、站内余额与本地卡密库存，不包含 Dujiao-Next 采购转发、供应商扣款或上游退款逻辑。
 
-当前实现状态以 PR2 合并与 Actions 结果为准；分支实现、CI 通过、镜像发布、生产验收是四个独立状态。
+PR2 已合并并发布，项目所有者于 2026-11-18 确认生产更新至 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未反馈异常，按默认通过记录。
 
 ## 每日对账日报
 
