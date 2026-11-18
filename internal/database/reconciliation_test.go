@@ -27,7 +27,7 @@ func TestDailyReconciliationReportSnapshotAndMetrics(t *testing.T){
 	created:="2026-11-17T01:00:00Z"
 	paid:="2026-11-17T02:00:00Z"
 	delivered:="2026-11-17T03:00:00Z"
-	if _,err:=db.ExecContext(ctx,`INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,paid_at,delivered_at) VALUES('o1','ORD-1','u1','u1','Test',1234,1,1234,'USDT','refunded','2026-11-18T00:00:00Z',?,?,?,?)`,created,delivered,paid,delivered);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,`INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,paid_at,delivered_at) VALUES('o1','ORD-1','u1','u1','Test',300000,1,300000,'USDT','refunded','2026-11-18T00:00:00Z',?,?,?,?)`,created,delivered,paid,delivered);err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,`INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at) VALUES('e1','o1','delivery_failed','temporary error',?)`,created);err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,`INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES('w1','u1','','credit',2000000,2000000,'售后退款：ORD-1',?)`,created);err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,`INSERT INTO wallet_recharges(id,recharge_no,bot_id,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,status,expires_at,created_at,paid_at) VALUES('r1','R-1','','u1','u1',3000000,3000001,'paid','2026-11-18T00:00:00Z',?,?)`,created,paid);err!=nil{t.Fatal(err)}
@@ -36,7 +36,7 @@ func TestDailyReconciliationReportSnapshotAndMetrics(t *testing.T){
 	if _,err:=db.ExecContext(ctx,`INSERT INTO payment_transactions(id,provider,transaction_id,amount_atomic,block_timestamp_ms,status,first_seen_at,updated_at) VALUES('p2','trc20-usdt','tx-review',1000000,?,'reconciliation_required',?,?)`,ms,created,created);err!=nil{t.Fatal(err)}
 	report,err:=BuildDailyReconciliationReport(ctx,db,"sqlite",day)
 	if err!=nil{t.Fatal(err)}
-	if report.OrderCount!=1||report.RevenueAtomic!=12340000||report.DeliveredCount!=1||report.DeliveryFailedCount!=1||report.RefundAtomic!=2000000||report.RechargeAtomic!=3000000||report.UnmatchedTransactionCount!=1||report.ManualReviewTransactionCount!=1{t.Fatalf("unexpected report: %+v",report)}
+	if report.OrderCount!=1||report.RevenueAtomic!=3000000000||report.DeliveredCount!=1||report.DeliveryFailedCount!=1||report.RefundAtomic!=2000000||report.RechargeAtomic!=3000000||report.UnmatchedTransactionCount!=1||report.ManualReviewTransactionCount!=1{t.Fatalf("unexpected report: %+v",report)}
 	if _,created,err:=SaveDailyReconciliationReport(ctx,db,"sqlite",report);err!=nil||!created{t.Fatalf("first save: created=%v err=%v",created,err)}
 	if _,created,err:=SaveDailyReconciliationReport(ctx,db,"sqlite",report);err!=nil||created{t.Fatalf("duplicate save should be idempotent: created=%v err=%v",created,err)}
 	items,err:=ListDailyReconciliationReports(ctx,db,"sqlite","2026-11")
