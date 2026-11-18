@@ -79,7 +79,8 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		description := upstream.CleanDescription(product.Description, product.Content)
 		skus := product.SKUs
 		if len(skus) == 0 {
-			skus = []upstream.DujiaoSKU{{ID: 0, Code: "default", PriceAmount: product.PriceAmount, StockStatus: "unknown", IsActive: product.IsActive}}
+			if len(imageWarnings) < 5 { imageWarnings = append(imageWarnings, fmt.Sprintf("商品 %s 没有可同步 SKU，已跳过", title)) }
+			continue
 		}
 		for _, sku := range skus {
 			skuID := strconv.FormatInt(sku.ID, 10)
@@ -94,18 +95,22 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			if priceErr != nil { return summary, a.failUpstreamSync(ctx, "上游加价策略计算失败："+priceErr.Error()) }
 
 			images := make([]string, 0, 5)
+			imageFailed := false
 			for index, imageURL := range product.Images {
 				if index >= 5 { break }
 				localPath, imageErr := upstream.DownloadImage(ctx, imageURL, a.dataDir)
 				if imageErr != nil {
 					summary.ImagesFailed++
+					imageFailed = true
 					if len(imageWarnings) < 5 { imageWarnings = append(imageWarnings, fmt.Sprintf("商品 %s 图片下载失败", title)) }
 					continue
 				}
 				images = append(images, localPath)
 			}
-			imageJSON := ""
-			if len(images) > 0 {
+			imageJSON := "[]"
+			if len(product.Images) > 0 && imageFailed {
+				imageJSON = "" // Preserve the last known local images when any download fails.
+			} else if len(images) > 0 {
 				encoded, marshalErr := json.Marshal(images)
 				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "商品图片路径序列化失败") }
 				imageJSON = string(encoded)
