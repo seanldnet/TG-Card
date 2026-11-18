@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+func ensureLocalCategory(ctx context.Context, db *sql.DB, driver, categoryID string) error {
+	if categoryID == "" { return nil }
+	var source string
+	err := db.QueryRowContext(ctx, "SELECT COALESCE(source_type,'local') FROM product_categories WHERE id="+placeholder(driver,1), categoryID).Scan(&source)
+	if err != nil { return err }
+	if source != "local" { return fmt.Errorf("local products cannot reference upstream categories") }
+	return nil
+}
+
 type UpstreamCategoryRecord struct {
 	UpstreamID string
 	ParentID string
