@@ -1638,52 +1638,42 @@ func formatUSDTAtomic(value int64) string {
 	if value < 0 { value = 0 }
 	return fmt.Sprintf("%d.%06d", value/1_000_000, value%1_000_000)
 }
-// DownloadSupportAttachment retrieves a Telegram file using only the Bot configured on the ticket.
+// AttachmentError carries a safe classification and Telegram diagnostics.
+type AttachmentError struct { Kind string; TelegramCode int; Description string; Err error }
+func (e *AttachmentError) Error() string { if e.Description!="" { return e.Description }; if e.Err!=nil{return e.Err.Error()}; return e.Kind }
+
+// DownloadSupportAttachment reads the encrypted credential persisted for the ticket's Bot.
+// It deliberately does not depend on a live polling worker.
 func (m *Manager) DownloadSupportAttachment(ctx context.Context, botID, fileID string) ([]byte, string, error) {
-	if strings.TrimSpace(botID) == "" || strings.TrimSpace(fileID) == "" {
-		return nil, "", fmt.Errorf("attachment reference is incomplete")
-	}
-	m.mu.Lock()
-	current, ok := m.workers[botID]
-	var token string
-	if ok { token = current.config.Token }
-	m.mu.Unlock()
-	if !ok || token == "" {
-		return nil, "", fmt.Errorf("the Telegram Bot for this ticket is not running")
-	}
-
-	getURL := "https://api.telegram.org/bot" + token + "/getFile?file_id=" + url.QueryEscape(fileID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getURL, nil)
-	if err != nil { return nil, "", err }
-	response, err := m.client.Do(req)
-	if err != nil { return nil, "", fmt.Errorf("Telegram getFile request failed: %w", err) }
-	defer response.Body.Close()
-	var result struct {
-		OK bool `json:"ok"`
-		Description string `json:"description"`
-		Result struct { FilePath string `json:"file_path"` } `json:"result"`
-	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
-		return nil, "", fmt.Errorf("decode Telegram getFile response: %w", err)
-	}
-	if response.StatusCode != http.StatusOK || !result.OK || strings.TrimSpace(result.Result.FilePath) == "" {
-		return nil, "", fmt.Errorf("Telegram getFile rejected the attachment: %s", result.Description)
-	}
-
-	fileURL := "https://api.telegram.org/file/bot" + token + "/" + strings.TrimLeft(result.Result.FilePath, "/")
-	fileReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
-	if err != nil { return nil, "", err }
-	fileResponse, err := m.client.Do(fileReq)
-	if err != nil { return nil, "", fmt.Errorf("Telegram file download failed: %w", err) }
-	defer fileResponse.Body.Close()
-	if fileResponse.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("Telegram file download returned HTTP %d", fileResponse.StatusCode)
-	}
-	const maxAttachmentSize = 20 * 1024 * 1024
-	data, err := io.ReadAll(io.LimitReader(fileResponse.Body, maxAttachmentSize+1))
-	if err != nil { return nil, "", fmt.Errorf("read Telegram attachment: %w", err) }
-	if len(data) > maxAttachmentSize { return nil, "", fmt.Errorf("attachment exceeds the 20 MiB download limit") }
-	return data, result.Result.FilePath, nil
+ if strings.TrimSpace(botID)==""||strings.TrimSpace(fileID)=="" { return nil,"",&AttachmentError{Kind:"invalid_reference",Description:"附件引用信息不完整"} }
+ if m.db==nil||m.decrypt==nil { return nil,"",&AttachmentError{Kind:"unknown",Description:"附件服务暂不可用：无法读取机器人配置"} }
+ var ciphertext string
+ if err:=m.db.QueryRowContext(ctx,"SELECT token_ciphertext FROM bots WHERE id = ?",botID).Scan(&ciphertext);err!=nil {
+  if err==sql.ErrNoRows{return nil,"",&AttachmentError{Kind:"bot_missing",Description:"该工单关联的机器人配置不存在"}}
+  return nil,"",&AttachmentError{Kind:"unknown",Description:"读取机器人配置失败",Err:err}
+ }
+ token,err:=m.decrypt(ciphertext);if err!=nil||strings.TrimSpace(token)==""{return nil,"",&AttachmentError{Kind:"unknown",Description:"机器人凭据解密失败",Err:err}}
+ const maxAttachmentSize=20*1024*1024
+ getCtx,cancel:=context.WithTimeout(ctx,20*time.Second);defer cancel()
+ getURL:="https://api.telegram.org/bot"+token+"/getFile?file_id="+url.QueryEscape(fileID)
+ req,err:=http.NewRequestWithContext(getCtx,http.MethodGet,getURL,nil);if err!=nil{return nil,"",&AttachmentError{Kind:"unknown",Description:"创建 Telegram 文件请求失败",Err:err}}
+ response,err:=m.client.Do(req);if err!=nil{return nil,"",&AttachmentError{Kind:"telegram_error",Description:"Telegram 文件信息请求失败",Err:err}};defer response.Body.Close()
+ var result struct{OK bool `json:"ok"`;ErrorCode int `json:"error_code"`;Description string `json:"description"`;Result struct{FilePath string `json:"file_path"`;FileSize int64 `json:"file_size"`} `json:"result"`}
+ if err:=json.NewDecoder(io.LimitReader(response.Body,1<<20)).Decode(&result);err!=nil{return nil,"",&AttachmentError{Kind:"telegram_error",Description:"Telegram 文件信息响应无法解析",Err:err}}
+ if result.Result.FileSize>maxAttachmentSize{return nil,"",&AttachmentError{Kind:"too_large",TelegramCode:result.ErrorCode,Description:"附件超过 20MB 限制"}}
+ if response.StatusCode!=http.StatusOK||!result.OK||strings.TrimSpace(result.Result.FilePath)==""{
+  kind:="telegram_error";desc:=strings.ToLower(result.Description)
+  if result.ErrorCode==400||strings.Contains(desc,"file_id")||strings.Contains(desc,"file reference"){kind="expired"}
+  return nil,"",&AttachmentError{Kind:kind,TelegramCode:result.ErrorCode,Description:result.Description}
+ }
+ fileCtx,fileCancel:=context.WithTimeout(ctx,30*time.Second);defer fileCancel()
+ fileURL:="https://api.telegram.org/file/bot"+token+"/"+strings.TrimLeft(result.Result.FilePath,"/")
+ fileReq,err:=http.NewRequestWithContext(fileCtx,http.MethodGet,fileURL,nil);if err!=nil{return nil,"",&AttachmentError{Kind:"unknown",Description:"创建附件下载请求失败",Err:err}}
+ fileResponse,err:=m.client.Do(fileReq);if err!=nil{return nil,"",&AttachmentError{Kind:"telegram_error",Description:"Telegram 附件下载失败",Err:err}};defer fileResponse.Body.Close()
+ if fileResponse.StatusCode!=http.StatusOK{return nil,"",&AttachmentError{Kind:"telegram_error",Description:fmt.Sprintf("Telegram 文件下载 HTTP %d",fileResponse.StatusCode)}}
+ data,err:=io.ReadAll(io.LimitReader(fileResponse.Body,maxAttachmentSize+1));if err!=nil{return nil,"",&AttachmentError{Kind:"telegram_error",Description:"读取 Telegram 附件失败",Err:err}}
+ if len(data)>maxAttachmentSize{return nil,"",&AttachmentError{Kind:"too_large",Description:"附件超过 20MB 限制"}}
+ return data,result.Result.FilePath,nil
 }
 
 // SendSupportReply delivers an administrator response to the Telegram user who opened the ticket.

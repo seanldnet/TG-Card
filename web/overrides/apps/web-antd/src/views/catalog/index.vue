@@ -118,7 +118,7 @@ onMounted(loadAll);
 </script>
 
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-5 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-5 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">商品与库存</h1><p class="mb-0 mt-1 text-xs text-gray-500">管理商城商品、分类及自动发货卡密库存</p></div>
   </div>

@@ -1,3 +1,17 @@
+## 2026-11-18 — 附件下载、静态资源与 PC 内容区修复
+
+- 状态：PR 中；Go CI、Admin 前端 CI、安全扫描均已通过；真实环境验收未完成。
+- 复现条件：售后附件端点依赖内存 Bot worker，下载失败日志不足；Vben 默认 Logo/头像使用 unpkg static-source；后台外层容器 max-width 限制大屏宽度。
+- 附件：`internal/telegrambot/manager.go` 从 `bots.token_ciphertext` 读取工单所属 Bot Token 并使用既有 decrypt 函数解密，不再依赖运行 worker；getFile 与下载链路分别设置超时；20 MiB 限制。
+- 附件错误与日志：`cmd/server/support.go` 区分附件失效、文件过大、Telegram 异常、未知错误；结构化记录 ticket/message/bot、脱敏 file_id 前缀、Telegram 错误码/描述和成功字节数，不记录 Token。
+- 前端提示：`web/overrides/apps/web-antd/src/views/support/index.vue` 根据 HTTP 410/413/502 显示不同文案。
+- CDN：新增本地 `src/assets/tg-card-logo.svg`，覆盖 Vben preferences 的 `logo.source` 和 `app.defaultAvatar`。
+- PC 布局：订单、工单、商品、仪表盘、支付、用户、站点/支付设置等页面移除外层固定最大宽度，保留移动端断点。
+- 上游协议：更新 `docs/upstream-integration.md`。Dujiao-Next 按官方 Open API 核实 HMAC-SHA256、目录/SKU、ping 余额、采购、查单与回调；ACG-Faka/MCY 未找到可核验的商户采购 API，保持待上游确认。
+- 文档：同步更新 `docs/PROJECT_STATUS.md`；保留问题五审计记录。
+- CI：Go backend CI、Admin frontend CI、安全扫描通过。Actions: [Go](https://github.com/seanldnet/TG-Card/actions/runs/44287702230)、[Admin](https://github.com/seanldnet/TG-Card/actions/runs/44287701536)、[Security](https://github.com/seanldnet/TG-Card/actions/runs/44287701277)。
+- 未验收：Telegram 真机图片/文件预览下载、Bot 停止后查看历史附件、浏览器跟踪防护 Network 零外部域请求、PC 宽屏真实浏览器回归、真实上游下单。以上由项目所有者执行，不由 Agent 代标已验收。
+
 ## 2026-11-18 — 上游发卡能力与文档一致性审计（问题五）
 
 - 状态：审计结论已写入文档；代码功能未因此宣称交付。

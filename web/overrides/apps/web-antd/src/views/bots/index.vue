@@ -54,7 +54,7 @@ onUnmounted(()=>{if(runtimeTimer)clearInterval(runtimeTimer)});
 </script>
 
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-5 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-5 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">机器人管理</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一管理 Telegram 商城机器人及运行状态</p></div>
    <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">

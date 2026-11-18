@@ -37,7 +37,7 @@ async function submitBalance(){
 onMounted(load);
 </script>
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div><h1 class="m-0 text-xl font-semibold">用户管理</h1><p class="mb-0 mt-1 text-xs leading-5 text-gray-500">自动收集通过机器人互动的 Telegram 用户资料、订单消费及站内余额。</p></div>
   <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
    <a-card :bordered="false"><div class="flex items-center justify-between"><div><div class="text-sm text-gray-500">用户总数</div><div class="mt-2 text-2xl font-bold">{{users.length}}</div></div><span class="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:account-group-outline" class="text-2xl"/></span></div></a-card>

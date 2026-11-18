@@ -25,7 +25,7 @@ async function submit(){
 onMounted(load);
 </script>
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3"><div><h1 class="m-0 text-xl font-semibold">群发通知</h1><p class="mb-0 mt-1 text-xs text-gray-500">支持立即发送或定时发送，自动排除已退订用户并记录每位收件人的发送结果</p></div><a-button :loading="loading" @click="load">刷新任务</a-button></div>
   <a-card :bordered="false" title="创建群发任务">
    <a-form layout="vertical">
