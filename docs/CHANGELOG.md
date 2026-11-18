@@ -6,17 +6,17 @@
 - PR #19/#26/#28 验收项使用 PR #28 digest `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04` 记录为已验收；PR2 E1–E10 使用上述 PR2 digest 记录为已验收。PR #27 Owner Bot C1–C4 未被本次明确列入验收范围，继续待验收。
 - 采购转发、供应商扣款、异步查单/回调、失败人工队列、退款审计现进入独立 PR C；PR D 资金安全与 PR E 真实上游联调仍未完成。
 
-## 2026-11-18 — PR2 资金与库存安全（独立开发分支）
+## 2026-11-18 — PR2 资金与库存安全（已合并、发布并验收）
 
-- 状态：PR #30 已创建并开放审查，分支 `feat/reconciliation-inventory-safety`；CI 运行中，合并/镜像待验证，生产验收未执行。
+- 状态：PR #30 已合并至 main，Go CI、Admin CI、安全扫描、Docker Publish 均成功；生产验收由项目所有者按默认通过确认，日期 2026-11-18。
 - 实现范围：UTC 每日对账日报及历史快照；用户余额与钱包流水只读一致性检查；本地卡密商品库存归零自动下架、补货后按设置手动/自动上架。
 - 数据库：新增迁移 `0037_reconciliation_inventory.sql`，记录交付失败事件、日报快照、余额检查运行和异常明细。
 - API/后台：新增对账日报月度查询、余额检查历史/差异查询、手动只读检查接口；新增“对账与余额校验”页面；网站设置新增库存归零下架/补货自动上架开关。
 - 调度：日报每日 UTC 00:05 后生成前一日快照；余额校验启动时执行并每 15 分钟触发、按小时幂等；库存每 5 分钟巡检。
 - 统计口径与资金边界：日报按 paid_at/created_at/delivered_at/失败事件/退款 credit/充值本金/链上时间统计。余额只读核验按 wallet_transactions credit - debit；售后退款在当前实现中是 credit，故计入正向流水。任何差异均只记录和告警，不自动修正余额。
-- 验证：新增日报指标、快照幂等、余额差异检测且不自动修正的 SQLite 测试；完整 Go/Admin/Security CI 尚待 PR workflow。
+- 验证：新增日报指标、快照幂等、余额差异检测且不自动修正的 SQLite 测试；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 均成功。
 - 文档：同步更新 `docs/PROJECT_STATUS.md`、本日志与新增 `docs/reconciliation-inventory.md`。
-- 验收：日报与后台金额一致、SMTP/Telegram 通知、库存归零下架与补货策略、人工制造余额差异后告警，均待测试环境执行。
+- 验收：项目所有者确认生产已更新至 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未收到异常反馈，按默认通过处理（2026-11-18）。
 - 红线：本 PR 不包含 Dujiao-Next 采购转发、供应商扣款或退款逻辑；不自动改余额。
 
 ## 2026-11-18 — PR #29 交接文档校准与 Admin CI 触发修复
@@ -303,4 +303,4 @@
 - 验证：
   - PR 创建时 Go 测试和安全扫描检查已排队，最终结果待补录。
   - Telegram 端到端验收待完成。
-- 发布镜像：待发布
+- 发布镜像：`ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`
