@@ -23,7 +23,6 @@ type upstreamSettingsRequest struct {
 	MerchantSecret string `json:"merchantSecret"`
 	ClearCredentials bool `json:"clearCredentials"`
 	Enabled bool `json:"enabled"`
-	CatalogStale bool `json:"catalogStale"`
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
@@ -37,6 +36,7 @@ type upstreamSettingsView struct {
 	MerchantIDConfigured bool `json:"merchantIdConfigured"`
 	MerchantSecretConfigured bool `json:"merchantSecretConfigured"`
 	Enabled bool `json:"enabled"`
+	CatalogStale bool `json:"catalogStale"`
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
