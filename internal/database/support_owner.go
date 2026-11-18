@@ -103,3 +103,102 @@ func SupportTicketAttachmentExists(ctx context.Context, db *sql.DB, driver, tick
  if err:=db.QueryRowContext(ctx,query,strings.TrimSpace(ticketID),strings.TrimSpace(senderType),strings.TrimSpace(senderID),strings.TrimSpace(fileID)).Scan(&exists);err!=nil{return false,err}
  return exists>0,nil
 }
+
+
+// ResolveSupportTicket is the shared, idempotent transition used by Owner Bot and admin API.
+func ResolveSupportTicket(ctx context.Context, db *sql.DB, driver, ticketID, actorType, actorID string) (bool, error) {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil { return false, err }
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE support_tickets SET status='resolved',updated_at="+placeholder(driver,1)+",resolved_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status IN ('open','in_progress','waiting_user')"
+	result, err := tx.ExecContext(ctx, query, now, now, strings.TrimSpace(ticketID))
+	if err != nil { return false, err }
+	n, err := result.RowsAffected()
+	if err != nil { return false, err }
+	if n == 0 {
+		var status string
+		if err := tx.QueryRowContext(ctx, "SELECT status FROM support_tickets WHERE id="+placeholder(driver,1), strings.TrimSpace(ticketID)).Scan(&status); err != nil { return false, err }
+		if status == "resolved" || status == "closed" || status == "rejected" { return false, nil }
+		return false, fmt.Errorf("ticket is not resolvable from its current state")
+	}
+	id, err := randomID()
+	if err != nil { return false, err }
+	audit := "INSERT INTO support_ticket_audits(id,ticket_id,action,actor_id,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
+	if _, err := tx.ExecContext(ctx, audit, id, ticketID, "resolved", strings.TrimSpace(actorID), "actor_type="+strings.TrimSpace(actorType), now); err != nil { return false, err }
+	messageID, err := randomID()
+	if err != nil { return false, err }
+	msgQuery := "INSERT INTO support_ticket_messages(id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at,telegram_update_id) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
+	if _, err := tx.ExecContext(ctx, msgQuery, messageID, ticketID, "system", "", "工单已结单", "", "", now, ""); err != nil { return false, err }
+	if err := tx.Commit(); err != nil { return false, err }
+	return true, nil
+}
+
+// ConfirmSupportTicketResolved records the user's explicit confirmation exactly once.
+func ConfirmSupportTicketResolved(ctx context.Context, db *sql.DB, driver, ticketID, telegramUserID string) (bool, error) {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil { return false, err }
+	defer tx.Rollback()
+	var status, owner string
+	if err := tx.QueryRowContext(ctx, "SELECT status,telegram_user_id FROM support_tickets WHERE id="+placeholder(driver,1), strings.TrimSpace(ticketID)).Scan(&status, &owner); err != nil { return false, err }
+	if owner != strings.TrimSpace(telegramUserID) { return false, fmt.Errorf("ticket does not belong to this Telegram user") }
+	if status != "resolved" { return false, fmt.Errorf("ticket is not awaiting user confirmation") }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	id, err := randomID()
+	if err != nil { return false, err }
+	query := "INSERT INTO support_ticket_audits(id,ticket_id,action,actor_id,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+") ON CONFLICT(ticket_id,action,actor_id) DO NOTHING"
+	result, err := tx.ExecContext(ctx, query, id, ticketID, "user_confirmed_resolved", strings.TrimSpace(telegramUserID), "用户确认问题已解决", now)
+	if err != nil { return false, err }
+	n, err := result.RowsAffected()
+	if err != nil { return false, err }
+	if n == 0 { return false, tx.Commit() }
+	messageID, err := randomID()
+	if err != nil { return false, err }
+	msgQuery := "INSERT INTO support_ticket_messages(id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at,telegram_update_id) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
+	if _, err := tx.ExecContext(ctx, msgQuery, messageID, ticketID, "system", "", "用户确认问题已解决", "", "", now, ""); err != nil { return false, err }
+	if err := tx.Commit(); err != nil { return false, err }
+	return true, nil
+}
+
+// ReopenSupportTicket reopens a resolved ticket at the user's request and audits the transition.
+func ReopenSupportTicket(ctx context.Context, db *sql.DB, driver, ticketID, telegramUserID string) (bool, error) {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil { return false, err }
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE support_tickets SET status='in_progress',updated_at="+placeholder(driver,1)+",resolved_at='' WHERE id="+placeholder(driver,2)+" AND telegram_user_id="+placeholder(driver,3)+" AND status='resolved'"
+	result, err := tx.ExecContext(ctx, query, now, strings.TrimSpace(ticketID), strings.TrimSpace(telegramUserID))
+	if err != nil { return false, err }
+	n, err := result.RowsAffected()
+	if err != nil { return false, err }
+	if n == 0 {
+		var status, owner string
+		if err := tx.QueryRowContext(ctx, "SELECT status,telegram_user_id FROM support_tickets WHERE id="+placeholder(driver,1), strings.TrimSpace(ticketID)).Scan(&status, &owner); err != nil { return false, err }
+		if owner != strings.TrimSpace(telegramUserID) { return false, fmt.Errorf("ticket does not belong to this Telegram user") }
+		if status == "open" || status == "in_progress" || status == "waiting_user" { return false, nil }
+		return false, fmt.Errorf("ticket is not reopenable from its current state")
+	}
+	id, err := randomID()
+	if err != nil { return false, err }
+	audit := "INSERT INTO support_ticket_audits(id,ticket_id,action,actor_id,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
+	if _, err := tx.ExecContext(ctx, audit, id, ticketID, "user_reopened", strings.TrimSpace(telegramUserID), "用户表示问题仍未解决并重新开启工单", now); err != nil { return false, err }
+	messageID, err := randomID()
+	if err != nil { return false, err }
+	msgQuery := "INSERT INTO support_ticket_messages(id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at,telegram_update_id) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
+	if _, err := tx.ExecContext(ctx, msgQuery, messageID, ticketID, "system", "", "用户表示问题仍未解决，工单重新开启", "", "", now, ""); err != nil { return false, err }
+	if err := tx.Commit(); err != nil { return false, err }
+	return true, nil
+}
+
+// AcquireSupportFollowupSlot limits automatic ticket recreation to one per Bot/user in ten minutes.
+func AcquireSupportFollowupSlot(ctx context.Context, db *sql.DB, driver, botID, telegramUserID string) (bool, error) {
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
+	cutoff := now.Add(-10*time.Minute).Format(time.RFC3339Nano)
+	query := "INSERT INTO support_followup_throttles(bot_id,telegram_user_id,last_ticket_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(bot_id,telegram_user_id) DO UPDATE SET last_ticket_at=excluded.last_ticket_at WHERE support_followup_throttles.last_ticket_at <= "+placeholder(driver,4)
+	result, err := db.ExecContext(ctx, query, strings.TrimSpace(botID), strings.TrimSpace(telegramUserID), nowText, cutoff)
+	if err != nil { return false, err }
+	n, err := result.RowsAffected()
+	if err != nil { return false, err }
+	return n == 1, nil
+}
