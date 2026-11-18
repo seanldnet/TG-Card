@@ -84,7 +84,7 @@ flowchart LR
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
 | 系统权限与菜单 | 已实现 | 后台动态菜单/权限码接口；当前为单管理员产品结构，不应误认为完整多角色 RBAC。 |
-| 上游发卡对接 | 部分实现（PR #21 已合并；PR #24 开发中） | PR #21 提供配置、双凭证加密和连接测试；PR #24 开发分类/商品/SKU 同步、图片本地化、加价/汇率快照、手动/定时同步、来源切换与下架隐藏。采购转发、订单查单/回调和失败队列仍未实现。异次元/萌次元不提供可调用配置。详见 `docs/upstream-integration.md`。 |
+| 上游发卡对接 | 部分实现（PR #21 已合并；PR #25 开发中） | PR #21 提供配置、双凭证加密和连接测试；PR #25 开发分类/商品/SKU 同步、图片本地化、加价/汇率快照、手动/定时同步、来源切换与下架隐藏。采购转发、订单查单/回调和失败队列仍未实现。异次元/萌次元不提供可调用配置。详见 `docs/upstream-integration.md`。 |
 
 ## 4. Telegram Bot 用户端功能
 
@@ -518,7 +518,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #17](https://github.com/seanldnet/TG-Card/pull/17) | 文档与代码一致性审计，包含上游能力审计表。 | 已合并；审计结论已写入 README、PROJECT_STATUS 与 CHANGELOG。 | 文档审计完成；上游业务功能仍未实现。 | 保持协议证据边界；仅对有官方可核实协议的 Dujiao-Next 开发。 |
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。Publish Run #327 成功，GHCR latest 与 commit SHA 标签均已推送。 | **代码完成待项目所有者验收**：Telegram 附件真机测试、跟踪防护下零外部 CDN 请求、PC 宽屏浏览器回归均未验收。 | 项目所有者按交接验收步骤执行并回填结果；不得以 CI/镜像发布替代真机验收。 |
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.1 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
-| [PR #24](https://github.com/seanldnet/TG-Card/pull/24) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 开发分支已实现，PR/CI/合并待完成；包含事务式 upsert、缺失商品下架、同步失败保留旧目录、手动/定时同步。 | CI、真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购在 PR C 前禁用。 | PR #24 CI 通过并合并后再开始 PR C。 |
+| [PR #25](https://github.com/seanldnet/TG-Card/pull/25) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 开发分支已实现，PR/CI/合并待完成；包含事务式 upsert、缺失商品下架、同步失败保留旧目录、手动/定时同步。 | CI、真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购在 PR C 前禁用。 | PR #25 CI 通过并合并后再开始 PR C。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
 ### 19.1 PR #19 镜像发布证据
