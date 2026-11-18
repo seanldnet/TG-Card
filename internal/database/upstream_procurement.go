@@ -26,6 +26,7 @@ type UpstreamProcurement struct {
 	LastError string
 	FulfillmentCiphertext string
 	DeliveredAt string
+	UpdatedAt string
 }
 
 func EnqueuePaidUpstreamOrders(ctx context.Context, db *sql.DB, driver string, timeout time.Duration) (int, error) {
@@ -67,8 +68,8 @@ func recordUpstreamProcurementEvent(ctx context.Context, tx *sql.Tx, driver, ord
 
 func GetUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderNo string) (UpstreamProcurement,error) {
 	var v UpstreamProcurement
-	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at FROM upstream_procurements WHERE order_no="+placeholder(driver,1)
-	err:=db.QueryRowContext(ctx,q,strings.TrimSpace(orderNo)).Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt)
+	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at,updated_at FROM upstream_procurements WHERE order_no="+placeholder(driver,1)
+	err:=db.QueryRowContext(ctx,q,strings.TrimSpace(orderNo)).Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt,&v.UpdatedAt)
 	return v,err
 }
 
@@ -77,10 +78,10 @@ func ListDueUpstreamProcurements(ctx context.Context, db *sql.DB, driver string,
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
 	dueLease:="julianday(delivery_lease_until)<=julianday("+placeholder(driver,2)+") OR delivery_lease_until=''"
 	if driver=="postgres" { dueLease="CAST(delivery_lease_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ) OR delivery_lease_until=''" }
-	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at FROM upstream_procurements WHERE (status IN ('queued','retry','polling','ready') AND next_attempt_at<="+placeholder(driver,1)+") OR (status='delivering' AND ("+dueLease+")) ORDER BY next_attempt_at,id LIMIT "+fmt.Sprint(limit)
+	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at,updated_at FROM upstream_procurements WHERE (status IN ('queued','retry','polling','ready') AND next_attempt_at<="+placeholder(driver,1)+") OR (status='delivering' AND ("+dueLease+")) ORDER BY next_attempt_at,id LIMIT "+fmt.Sprint(limit)
 	rows,err:=db.QueryContext(ctx,q,now,now);if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]UpstreamProcurement,0)
-	for rows.Next(){var v UpstreamProcurement;if err:=rows.Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt);err!=nil{return nil,err};items=append(items,v)}
+	for rows.Next(){var v UpstreamProcurement;if err:=rows.Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt,&v.UpdatedAt);err!=nil{return nil,err};items=append(items,v)}
 	return items,rows.Err()
 }
 
@@ -174,7 +175,7 @@ func RetryUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderID s
 
 func ListFailedUpstreamProcurements(ctx context.Context, db *sql.DB, driver string, limit int) ([]UpstreamProcurement,error) {
 	if limit<1||limit>200{limit=100}
-	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at FROM upstream_procurements WHERE status='failed' ORDER BY updated_at DESC LIMIT "+fmt.Sprint(limit)
+	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at,updated_at FROM upstream_procurements WHERE status='failed' ORDER BY updated_at DESC LIMIT "+fmt.Sprint(limit)
 	rows,err:=db.QueryContext(ctx,q);if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]UpstreamProcurement,0)
 	for rows.Next(){var v UpstreamProcurement;if err:=rows.Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt);err!=nil{return nil,err};items=append(items,v)}
