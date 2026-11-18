@@ -1,3 +1,25 @@
+## 2026-11-18 — PR2 资金与库存安全（独立开发分支）
+
+- 状态：实现进行中，分支 `feat/reconciliation-inventory-safety`；尚未创建 PR，CI/合并/镜像待验证，生产验收未执行。
+- 实现范围：UTC 每日对账日报及历史快照；用户余额与钱包流水只读一致性检查；本地卡密商品库存归零自动下架、补货后按设置手动/自动上架。
+- 数据库：新增迁移 `0037_reconciliation_inventory.sql`，记录交付失败事件、日报快照、余额检查运行和异常明细。
+- API/后台：新增对账日报月度查询、余额检查历史/差异查询、手动只读检查接口；新增“对账与余额校验”页面；网站设置新增库存归零下架/补货自动上架开关。
+- 调度：日报每日 UTC 00:05 后生成前一日快照；余额校验启动时执行并每 15 分钟触发、按小时幂等；库存每 5 分钟巡检。
+- 统计口径与资金边界：日报按 paid_at/created_at/delivered_at/失败事件/退款 credit/充值本金/链上时间统计。余额只读核验按 wallet_transactions credit - debit；售后退款在当前实现中是 credit，故计入正向流水。任何差异均只记录和告警，不自动修正余额。
+- 验证：新增日报指标、快照幂等、余额差异检测且不自动修正的 SQLite 测试；完整 Go/Admin/Security CI 尚待 PR workflow。
+- 文档：同步更新 `docs/PROJECT_STATUS.md`、本日志与新增 `docs/reconciliation-inventory.md`。
+- 验收：日报与后台金额一致、SMTP/Telegram 通知、库存归零下架与补货策略、人工制造余额差异后告警，均待测试环境执行。
+- 红线：本 PR 不包含 Dujiao-Next 采购转发、供应商扣款或退款逻辑；不自动改余额。
+
+## 2026-11-18 — PR #29 交接文档校准与 Admin CI 触发修复
+
+- 状态：已合并至 main，merge commit `55b09352ad902cfaf97f323300eed6b7183e55cf`。
+- 实现范围：校准 PR #28 合并/CI/GHCR digest 证据；修正 PROJECT_STATUS 元信息与追踪表；修正 Dujiao-Next PR B 已合并状态及 PR C/D/E 待开发边界；增加 18 项统一生产验收表；售后专项标注 PR #28 已合并。
+- 根因：Admin frontend CI 原先对 workflow、`web/**`、`scripts/**`、README 使用 paths 过滤，PR #28 未改这些路径而没有 Admin CI run。
+- 修复：移除 Admin CI 的 paths 过滤，所有 main push 与面向 main 的 PR 均触发。PR #29 Admin CI [Run #44321310277](https://github.com/seanldnet/TG-Card/actions/runs/44321310277) 成功。
+- 验证：文档与 workflow 修改已合并；该 PR 不改业务代码，不触发新的业务镜像发布。PR2 必须核对 Go、Admin、Security、Publish 四类 Actions。
+- 验收：PR #19、#26、#27、#28 真机项目仍待项目所有者按 PROJECT_STATUS 第 19.3 节逐项回填。
+
 ## 2026-11-18 — PR #28 售后结单闭环发布核验与后续路线修订
 
 - 状态：PR #28 已合并至 main；Go CI、安全扫描、Docker 多架构镜像均成功；生产 Telegram 验收待项目所有者执行。
