@@ -21,12 +21,12 @@ func TestUpstreamSettingsLifecycle(t *testing.T) {
 	}
 	item := UpstreamSettings{
 		Provider: "dujiao_next", BaseURL: "https://supplier.example.com",
-		MerchantID: "api-key", SecretCiphertext: "encrypted-secret", Enabled: true,
+		MerchantIDCiphertext: "encrypted-api-key", SecretCiphertext: "encrypted-api-secret", Enabled: true,
 	}
 	if err := SaveUpstreamSettings(ctx, db, cfg.DBDriver, item); err != nil { t.Fatal(err) }
 	loaded, err := GetUpstreamSettings(ctx, db, cfg.DBDriver)
 	if err != nil { t.Fatal(err) }
-	if loaded.Provider != item.Provider || loaded.BaseURL != item.BaseURL || loaded.MerchantID != item.MerchantID || loaded.SecretCiphertext != item.SecretCiphertext || !loaded.Enabled {
+	if loaded.Provider != item.Provider || loaded.BaseURL != item.BaseURL || loaded.MerchantIDCiphertext != item.MerchantIDCiphertext || loaded.SecretCiphertext != item.SecretCiphertext || !loaded.Enabled {
 		t.Fatalf("unexpected upstream settings: %+v", loaded)
 	}
 	if loaded.LastTestStatus != "not_tested" || loaded.SyncStatus != "not_started" {
@@ -38,11 +38,11 @@ func TestUpstreamSettingsLifecycle(t *testing.T) {
 	if loaded.LastTestStatus != "success" || loaded.LastTestAt == "" { t.Fatalf("test result not persisted: %+v", loaded) }
 
 	item.Enabled = false
-	item.MerchantID = "rotated-key"
+	item.MerchantIDCiphertext = "rotated-encrypted-key"
 	if err := SaveUpstreamSettings(ctx, db, cfg.DBDriver, item); err != nil { t.Fatal(err) }
 	loaded, err = GetUpstreamSettings(ctx, db, cfg.DBDriver)
 	if err != nil { t.Fatal(err) }
-	if loaded.Enabled || loaded.MerchantID != "rotated-key" || loaded.LastTestStatus != "not_tested" {
+	if loaded.Enabled || loaded.MerchantIDCiphertext != "rotated-encrypted-key" || loaded.LastTestStatus != "not_tested" {
 		t.Fatalf("upstream update did not reset status correctly: %+v", loaded)
 	}
 }
