@@ -31,6 +31,13 @@ func (a *application) runReconciliationScheduler(ctx context.Context) {
 	}
 }
 
+func formatSignedUSDTAtomic(value int64) string {
+	if value < 0 {
+		return "-" + formatUSDTAtomic(-value)
+	}
+	return formatUSDTAtomic(value)
+}
+
 func (a *application) runScheduledDailyReport(ctx context.Context,now time.Time) {
 	if now.UTC().Hour()==0&&now.UTC().Minute()<5{return}
 	day:=now.UTC().AddDate(0,0,-1)
@@ -53,7 +60,7 @@ func (a *application) runScheduledBalanceCheck(ctx context.Context) {
 	if !created||run.MismatchUsers==0{return}
 	var b strings.Builder
 	fmt.Fprintf(&b,"余额流水一致性检查发现异常\n检查时间：%s\n检查用户：%d\n异常用户：%d\n差异绝对值合计：%s USDT\n",run.RunAt,run.CheckedUsers,run.MismatchUsers,formatUSDTAtomic(run.TotalDifferenceAtomic))
-	for i,item:=range anomalies{if i>=20{fmt.Fprintf(&b,"其余 %d 条异常请在后台查看。\n",len(anomalies)-20);break};fmt.Fprintf(&b,"用户 %s：当前余额 %s，流水累计 %s，差额 %s USDT\n",item.TelegramUserID,formatUSDTAtomic(item.RecordedBalanceAtomic),formatUSDTAtomic(item.LedgerBalanceAtomic),formatUSDTAtomic(item.DifferenceAtomic))}
+	for i,item:=range anomalies{if i>=20{fmt.Fprintf(&b,"其余 %d 条异常请在后台查看。\n",len(anomalies)-20);break};fmt.Fprintf(&b,"用户 %s：当前余额 %s，流水累计 %s，差额 %s USDT\n",item.TelegramUserID,formatUSDTAtomic(item.RecordedBalanceAtomic),formatUSDTAtomic(item.LedgerBalanceAtomic),formatSignedUSDTAtomic(item.DifferenceAtomic))}
 	a.notifySiteEvent(ctx,"risk_alert",b.String(),"")
 	log.Printf("wallet balance reconciliation found mismatches: run_key=%s users=%d",run.RunKey,run.MismatchUsers)
 }
@@ -88,5 +95,9 @@ func (a *application) runBalanceReconciliationNow(w http.ResponseWriter,r *http.
 	run,anomalies,_,err:=database.RunWalletBalanceReconciliation(r.Context(),a.db,a.driver,runKey)
 	if err!=nil{writeError(w,http.StatusInternalServerError,"余额一致性检查失败");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.reconciliation.run","wallet:reconciliation",clientIP(r),r.UserAgent(),fmt.Sprintf("checked=%d mismatches=%d",run.CheckedUsers,run.MismatchUsers))
+	if run.MismatchUsers>0 {
+		details:=fmt.Sprintf("管理员手动余额校验发现异常\n检查用户：%d\n异常用户：%d\n差异绝对值合计：%s USDT",run.CheckedUsers,run.MismatchUsers,formatUSDTAtomic(run.TotalDifferenceAtomic))
+		a.notifySiteEvent(r.Context(),"risk_alert",details,"")
+	}
 	writeSuccess(w,http.StatusOK,map[string]any{"run":run,"anomalies":anomalies,"autoCorrection":false})
 }
