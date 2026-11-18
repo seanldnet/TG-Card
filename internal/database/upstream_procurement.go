@@ -222,3 +222,12 @@ func ClaimUpstreamBalanceAlert(ctx context.Context,db *sql.DB,driver,day,balance
 	q:="INSERT INTO upstream_balance_alerts(alert_date,balance,threshold,currency,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+") ON CONFLICT(alert_date) DO NOTHING"
 	res,err:=db.ExecContext(ctx,q,day,balance,threshold,currency,now);if err!=nil{return false,err};n,err:=res.RowsAffected();if err!=nil{return false,err};return n==1,nil
 }
+
+func CancelUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,reason string)error{
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='cancelled',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status IN ('queued','polling')",reason,now,orderID);err!=nil{return err}
+	id,e:=randomID();if e!=nil{return e}
+	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'skipped',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,reason,now);err!=nil{return err}
+	return tx.Commit()
+}
