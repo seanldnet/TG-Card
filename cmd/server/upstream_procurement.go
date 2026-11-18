@@ -207,7 +207,7 @@ func (a *application) procurementQueueLink(settings database.UpstreamSettings) s
 func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason string) {
 	if a.procurementNotify != nil { a.procurementNotify(ctx,orderNo,reason); return }
 	settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
-	details:="Dujiao-Next 采购异常\n订单号："+orderNo+"\n原因："+reason+"\n订单入口："+a.procurementOrderLink(settings)
+	details:="Dujiao-Next 采购异常\n订单号："+orderNo+"\n原因："+reason+"\n订单入口："+a.procurementOrderLink(settings,orderNo)
 	a.notifySiteEvent(ctx,"risk_alert",details,"")
 }
 
