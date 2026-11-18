@@ -35,7 +35,7 @@ async function load(){
  catch(error:any){message.error(error?.response?.data?.message||'上游配置加载失败');}
  finally{loading.value=false;}
 }
-async function save(){
+async function save():Promise<boolean>{
  saving.value=true;
  try{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
@@ -43,11 +43,13 @@ async function save(){
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
-  message.success('上游配置已安全保存');
- }catch(error:any){message.error(error?.response?.data?.message||'上游配置保存失败');}
+  message.success('上游配置已安全保存');return true;
+ }catch(error:any){message.error(error?.response?.data?.message||'上游配置保存失败');return false;}
  finally{saving.value=false;}
 }
 async function testConnection(){
+ if(clearCredentials.value){message.warning('请先保存配置后再测试连接，不能在清除凭证后测试');return;}
+ if(merchantId.value||merchantSecret.value||!settings.merchantIdConfigured||!settings.merchantSecretConfigured){const saved=await save();if(!saved)return;}
  testing.value=true;testResult.value=null;
  try{
   const data=await requestClient.post<any>('/upstream/test',{});
