@@ -17,7 +17,8 @@ async function loadAttachmentPreviews(items:TicketMessage[]){
    const blob=await requestClient.get<Blob>('/support/tickets/'+item.ticketId+'/attachments/'+item.id,{responseType:'blob'});
    const url=URL.createObjectURL(blob);attachmentUrls.value[item.id]=url;attachmentIsImage.value[item.id]=blob.type.startsWith('image/');
   }catch(error:any){
-   const detail=error?.response?.data?.message||'附件获取失败，请检查 Bot 运行状态后重试';
+   const status=error?.response?.status;
+   const detail=status===410?'附件已失效，请让用户重新上传':status===413?'附件超过 20MB 限制':status===502?'Telegram 暂时无法提供附件，请稍后重试':error?.response?.data?.message||'附件获取失败，请稍后重试';
    message.warning((item.attachmentName||'工单附件')+'：'+detail);
   }
  }));
