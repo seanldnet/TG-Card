@@ -15,6 +15,10 @@ interface UpstreamSettings {
   markupPercent: number;
   markupFixedMinor: number;
   syncIntervalMinutes: number;
+  procurementPollIntervalSeconds: number;
+  procurementTimeoutMinutes: number;
+  supplierLowBalanceThreshold: string;
+  callbackUrl: string;
   exchangeRateToUSDT: number;
   lastTestStatus: string;
   lastTestAt: string;
@@ -29,7 +33,7 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
+ merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,procurementPollIntervalSeconds:30,procurementTimeoutMinutes:30,supplierLowBalanceThreshold:'0',callbackUrl:'',exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
@@ -49,7 +53,7 @@ async function save():Promise<boolean>{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
-   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,
+   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,procurementPollIntervalSeconds:settings.procurementPollIntervalSeconds,procurementTimeoutMinutes:settings.procurementTimeoutMinutes,supplierLowBalanceThreshold:settings.supplierLowBalanceThreshold,callbackUrl:settings.callbackUrl,exchangeRateToUSDT:settings.exchangeRateToUSDT,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
@@ -126,7 +130,14 @@ onMounted(()=>{void load();});
       <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
      </div>
     </a-form-item>
-    <a-alert class="mb-4" type="warning" show-icon message="上游商品同步和目录切换已开放；买家采购/付款转发将在 PR C 完成前保持禁用，不会创建本地假订单或扣款。" />
+    <a-divider />
+    <a-form-item label="上游采购回调地址" extra="请填写本站公网 HTTPS 地址，路径固定为 /api/v1/upstream/callback。配置后上游交付完成会主动回调；轮询仍作为兜底。">
+     <a-input v-model:value="settings.callbackUrl" placeholder="https://你的域名/api/v1/upstream/callback" autocomplete="url"/>
+    </a-form-item>
+    <a-form-item label="采购查单轮询间隔（秒）"><a-input-number v-model:value="settings.procurementPollIntervalSeconds" class="w-full" :min="5" :max="3600" :step="5"/></a-form-item>
+    <a-form-item label="采购等待超时（分钟）"><a-input-number v-model:value="settings.procurementTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></a-form-item>
+    <a-form-item label="供应商余额低于此值时告警" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" placeholder="例如 100.00"/></a-form-item>
+    <a-alert class="mb-4" type="info" show-icon message="采购将在本地订单支付确认后异步执行；上游回调与查单轮询共同推进交付。采购失败只进入人工处理队列，不自动退款或修改买家已支付资金。" />
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
