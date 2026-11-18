@@ -50,7 +50,7 @@ func newProcurementFixture(t *testing.T,api upstream.ProcurementAPI) procurement
 	db.SetMaxOpenConns(1)
 	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{db.Close();t.Fatal(err)}
 	t.Cleanup(func(){db.Close()})
-	settings:=database.UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",MerchantIDCiphertext:"api-key-cipher",SecretCiphertext:"api-secret-cipher",Enabled:true,CatalogStale:false,SyncIntervalMinutes:15,ProcurementPollIntervalSeconds:5,ProcurementTimeoutMinutes:30,SupplierLowBalanceThreshold:"0"}
+	settings:=database.UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",MerchantIDCiphertext:"api-key-cipher",SecretCiphertext:"api-secret-cipher",Enabled:true,CatalogStale:false,SyncIntervalMinutes:15,ProcurementPollIntervalSeconds:5,ProcurementTimeoutMinutes:30,SupplierLowBalanceThreshold:"0",CallbackURL:"https://tg.example.com/api/v1/upstream/callback"}
 	if err:=database.SaveUpstreamSettings(ctx,db,"sqlite",settings);err!=nil{t.Fatal(err)}
 	_,err=db.ExecContext(ctx,`INSERT INTO products(id,name,description,price_minor,currency,delivery_type,status,bulk_discount_json,delivery_config_json,source_type,upstream_product_id,upstream_sku_id,upstream_fulfillment_type,upstream_manual_form_schema_json,created_at,updated_at) VALUES('local-prod','Test upstream product','',1000,'USDT','upstream',1,'[]','{}','upstream','11','22','auto','{}',?,?)`,time.Now().UTC().Format(time.RFC3339Nano),time.Now().UTC().Format(time.RFC3339Nano))
 	if err!=nil{t.Fatal(err)}
