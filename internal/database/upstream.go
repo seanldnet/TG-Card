@@ -10,7 +10,7 @@ import (
 type UpstreamSettings struct {
 	Provider string
 	BaseURL string
-	MerchantID string
+	MerchantIDCiphertext string
 	SecretCiphertext string
 	Enabled bool
 	LastTestStatus string
@@ -26,8 +26,8 @@ func GetUpstreamSettings(ctx context.Context, db *sql.DB, driver string) (Upstre
 	var item UpstreamSettings
 	var enabled int
 	var lastTestAt, syncAt sql.NullString
-	err := db.QueryRowContext(ctx, "SELECT provider, base_url, merchant_id, secret_ciphertext, enabled, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, updated_at FROM upstream_settings WHERE id = 1").
-		Scan(&item.Provider, &item.BaseURL, &item.MerchantID, &item.SecretCiphertext, &enabled, &item.LastTestStatus, &lastTestAt, &item.LastError, &item.SyncStatus, &syncAt, &item.SyncError, &item.UpdatedAt)
+	err := db.QueryRowContext(ctx, "SELECT provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, updated_at FROM upstream_settings WHERE id = 1").
+		Scan(&item.Provider, &item.BaseURL, &item.MerchantIDCiphertext, &item.SecretCiphertext, &enabled, &item.LastTestStatus, &lastTestAt, &item.LastError, &item.SyncStatus, &syncAt, &item.SyncError, &item.UpdatedAt)
 	if err != nil { return UpstreamSettings{}, err }
 	item.Enabled = enabled == 1
 	if lastTestAt.Valid { item.LastTestAt = lastTestAt.String }
@@ -39,10 +39,10 @@ func SaveUpstreamSettings(ctx context.Context, db *sql.DB, driver string, item U
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	enabled := 0
 	if item.Enabled { enabled = 1 }
-	query := "INSERT INTO upstream_settings(id, provider, base_url, merchant_id, secret_ciphertext, enabled, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, created_at, updated_at) VALUES ("+
+	query := "INSERT INTO upstream_settings(id, provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, created_at, updated_at) VALUES ("+
 		placeholder(driver,1)+", "+placeholder(driver,2)+", "+placeholder(driver,3)+", "+placeholder(driver,4)+", "+placeholder(driver,5)+", "+placeholder(driver,6)+", 'not_tested', NULL, '', 'not_started', NULL, '', "+placeholder(driver,7)+", "+placeholder(driver,8)+") "+
-		"ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, merchant_id=excluded.merchant_id, secret_ciphertext=excluded.secret_ciphertext, enabled=excluded.enabled, last_test_status='not_tested', last_test_at=NULL, last_error='', updated_at=excluded.updated_at"
-	if _, err := db.ExecContext(ctx, query, 1, item.Provider, item.BaseURL, item.MerchantID, item.SecretCiphertext, enabled, now, now); err != nil {
+		"ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, merchant_id_ciphertext=excluded.merchant_id_ciphertext, secret_ciphertext=excluded.secret_ciphertext, enabled=excluded.enabled, last_test_status='not_tested', last_test_at=NULL, last_error='', updated_at=excluded.updated_at"
+	if _, err := db.ExecContext(ctx, query, 1, item.Provider, item.BaseURL, item.MerchantIDCiphertext, item.SecretCiphertext, enabled, now, now); err != nil {
 		return fmt.Errorf("save upstream settings: %w", err)
 	}
 	return nil
