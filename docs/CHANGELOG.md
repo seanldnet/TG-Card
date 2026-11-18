@@ -1,3 +1,34 @@
+## 2026-11-18 — 上游发卡能力与文档一致性审计（问题五）
+
+- 状态：审计结论已写入文档；代码功能未因此宣称交付。
+- 源码基线：`main@41ef99ac935407dfd896b74840e220b3ba766400`。
+- 检查范围：`README.md`、`docs/*`、`web/overrides/`、`internal/`、`cmd/`，并核对数据库迁移、后台路由/页面及动态菜单注册。
+- 关键代码证据：
+  - `internal/upstream/adapter.go` 只有 provider-neutral 数据结构、Provider 常量及 Adapter 接口定义。
+  - `internal/upstream/adapter_test.go` 仅覆盖 Provider 标识和未知库存语义。
+  - `internal/database/migrations/` 没有上游配置/商品来源迁移。
+  - `cmd/server/main.go` 未注册上游配置、同步、测试连接或余额 API。
+  - `web/overrides/apps/web-antd/src/views/` 没有上游对接页面；路由/动态菜单也没有上游入口。
+  - 未发现 ACG-Faka、MCY Shop 或 Dujiao-Next 的可调用 provider adapter 实现。
+- 审计结论表：
+
+| 能力项 | 文档位置 | 代码证据 | 真实状态 |
+|---|---|---|---|
+| Dujiao-Next 目录/商品协议 | `docs/upstream-integration.md` 第 5 节 | 无 provider adapter、API 路由、配置表或后台页面 | 仅文档调研/规划，未实现 |
+| Dujiao-Next 下单/查单/余额 | `docs/upstream-integration.md` 第 5 节 | 无网络请求、签名、订单转发或余额查询代码 | 仅文档调研/规划，未实现 |
+| 异次元（ACG-Faka）目录/下单/查单 | `docs/upstream-integration.md` 第 3 节 | 无 ACG 请求/签名适配器与后台入口 | 仅文档调研/规划，未实现 |
+| 萌次元（MCY Shop）外部商户 API | `docs/upstream-integration.md` 第 4 节 | 无 MCY adapter；文档明确官方外部商户协议待确认 | 仅源码线索与待确认事项，未实现 |
+| 通用上游适配器契约 | `internal/upstream/adapter.go` | Provider 常量、数据类型、接口与 `ErrUnsupported` | 部分实现：仅接口契约，无 provider 网络实现及后台入口 |
+| 上游配置、密钥管理、连接测试 | `docs/upstream-integration.md` 第 7 节（实施规划） | 无上游配置表/API/页面；无该模块密钥读写流程 | 纯规划，未实现 |
+| 上游目录同步、图片本地化、来源过滤 | `docs/upstream-integration.md` 第 7 节（实施规划） | 无同步任务、来源字段迁移或 catalog service | 纯规划，未实现 |
+| 上游采购转发、幂等、失败队列、退款/告警 | `docs/upstream-integration.md` 第 7 节（实施规划） | 无上游采购调用、订单状态/队列/余额告警实现 | 纯规划，未实现 |
+| README 对上游集成的描述 | `README.md` | README 未宣称上游已交付；新增明确边界说明 | 已修正文档口径 |
+
+- 结论：此前文档中的接口协议说明属于调研资料，不等于产品已集成。凡仅有通用契约而无 provider 网络实现/后台入口的能力，统一标注为“部分实现：仅接口契约，缺少 provider 实现与后台入口”；各供应商业务能力均不得标记为“已实现”。
+- 文档更新：README 增加上游调研入口和未实现声明；PROJECT_STATUS 增加上游模块真实状态及未完成追踪；本记录补充审计证据表。
+- 验证：基于 main 树结构、Go 源文件、迁移文件、后台页面/路由目录和项目文档静态核对；未执行代码测试（本次仅文档审计）。
+- 后续：按指定顺序进入附件、CDN、PC 布局，再对有官方证据的供应商协议实施；MCY 未确认项继续保持不实现。
+ 
 # TG-Card 开发与修复日志
 
 ## 2026-11-18 — 售后工单附件后台预览与下载（阶段一，P0）
