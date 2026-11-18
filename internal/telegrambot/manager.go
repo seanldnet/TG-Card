@@ -1423,7 +1423,23 @@ func (m *Manager) redeliverOrder(ctx context.Context, cfg Config, query Callback
 // DeliverPaidOrder sends the card associated with a verified, paid order.
 // Payment adapters must call this only after independently verifying settlement.
 func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
+	// Upstream-mapped orders must only be delivered after upstream fulfillment.
+	if item.Order.DeliveryType == "upstream" { return nil }
 	return m.deliverPaidOrder(ctx, item, false)
+}
+
+// DeliverUpstreamPayload sends an already verified upstream fulfillment to the buyer.
+// Procurement state is finalized by the server only after this Telegram send succeeds.
+func (m *Manager) DeliverUpstreamPayload(ctx context.Context, botID, chatID, orderNo, payload string) error {
+	m.mu.Lock()
+	current := m.workers[botID]
+	m.mu.Unlock()
+	if current == nil { return fmt.Errorf("Telegram bot for upstream order is not running") }
+	target, err := strconv.ParseInt(chatID, 10, 64)
+	if err != nil { return fmt.Errorf("invalid Telegram chat ID: %w", err) }
+	payload = strings.TrimSpace(payload)
+	if payload == "" { return fmt.Errorf("upstream fulfillment payload is empty") }
+	return m.sendMessage(ctx, current.config.Token, target, "订单："+orderNo+"\n上游商品交付内容：\n"+payload+"\n请妥善保存，不要转发给他人。")
 }
 
 // RedeliverPaidOrder sends the already-purchased entitlement again without changing
