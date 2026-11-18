@@ -1,8 +1,9 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -57,16 +58,13 @@ func upstreamSettingsResponse(item database.UpstreamSettings) upstreamSettingsVi
 func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w,r); !ok { return }
 	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
-	if errors.Is(err, http.ErrNoCookie) { writeError(w,http.StatusInternalServerError,"读取上游配置失败"); return }
-	if errors.Is(err, databaseNoRows()) {
+	if errors.Is(err, sql.ErrNoRows) {
 		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started"})
 		return
 	}
 	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
 	writeSuccess(w,http.StatusOK,upstreamSettingsResponse(item))
 }
-
-func databaseNoRows() error { return sqlErrNoRows }
 
 func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
@@ -81,15 +79,14 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	input.MerchantSecret=strings.TrimSpace(input.MerchantSecret)
 	if len(input.MerchantID)>512||len(input.MerchantSecret)>1024{writeError(w,http.StatusBadRequest,"上游 API 凭证长度无效");return}
 	current,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver)
-	if err!=nil&&!errors.Is(err,sqlErrNoRows){log.Printf("load upstream config before update: %v",err);writeError(w,http.StatusInternalServerError,"读取现有上游配置失败");return}
+	if err!=nil&&!errors.Is(err,sql.ErrNoRows){log.Printf("load upstream config before update: %v",err);writeError(w,http.StatusInternalServerError,"读取现有上游配置失败");return}
 	if input.ClearCredentials { current.MerchantID="";current.SecretCiphertext="" }
 	if input.MerchantID!="" { current.MerchantID=input.MerchantID }
 	if input.MerchantSecret!="" {
 		current.SecretCiphertext,err=a.secrets.Encrypt(input.MerchantSecret)
 		if err!=nil{writeError(w,http.StatusInternalServerError,"上游密钥加密失败");return}
 	}
-	if input.Enabled&&(current.MerchantID==""||current.SecretCiphertext==""){writeError(w,http.StatusBadRequest,"启用上游前必须配置 API Key（商户 ID）和 API Secret")}
-	if input.Enabled&&(current.MerchantID==""||current.SecretCiphertext==""){return}
+	if input.Enabled&&(current.MerchantID==""||current.SecretCiphertext==""){writeError(w,http.StatusBadRequest,"启用上游前必须配置 API Key（商户 ID）和 API Secret");return}
 	current.Provider=input.Provider;current.BaseURL=baseURL;current.Enabled=input.Enabled
 	if err:=database.SaveUpstreamSettings(r.Context(),a.db,a.driver,current);err!=nil{log.Printf("save upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"保存上游配置失败");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.settings.update","upstream:"+input.Provider,clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t; base_url=%s; credentials_changed=%t",input.Enabled,baseURL,input.MerchantID!=""||input.MerchantSecret!=""||input.ClearCredentials))
