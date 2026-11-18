@@ -34,12 +34,6 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	if err != nil { return summary, fmt.Errorf("请先保存 Dujiao-Next 上游配置") }
 	if err := database.SaveUpstreamSyncResult(ctx, a.db, a.driver, "running", ""); err != nil { return summary, fmt.Errorf("无法更新同步状态：%w", err) }
 
-	failed := true
-	defer func() {
-		if failed {
-			// The detailed error is written by the explicit failure path below.
-		}
-	}()
 	apiKey, err := a.secrets.Decrypt(settings.MerchantIDCiphertext)
 	if err != nil { return summary, a.failUpstreamSync(ctx, "无法解密上游 API Key，请检查持久化数据目录") }
 	apiSecret, err := a.secrets.Decrypt(settings.SecretCiphertext)
@@ -133,13 +127,14 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 	if err := database.SaveUpstreamSyncResult(ctx, a.db, a.driver, "success", summary.Warning); err != nil {
 		log.Printf("save successful upstream sync status failed: %v", err)
 	}
-	failed = false
 	return summary, nil
 }
 
 func (a *application) failUpstreamSync(ctx context.Context, message string) error {
 	if len(message) > 800 { message = message[:800] }
-	if err := database.SaveUpstreamSyncResult(ctx, a.db, a.driver, "failed", message); err != nil {
+	saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := database.SaveUpstreamSyncResult(saveCtx, a.db, a.driver, "failed", message); err != nil {
 		log.Printf("save failed upstream sync status failed: %v", err)
 	}
 	return errors.New(message)
