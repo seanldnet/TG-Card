@@ -185,22 +185,21 @@ func ResolveUncertainProcurement(ctx context.Context,db *sql.DB,driver,orderID,a
  if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'owner_resolution',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,resolution+": "+note,adminID,now);err!=nil{return err}
  if resolution=="not_accepted"{
   if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败",note);err!=nil{return err}
- }else{
-  if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note="+placeholder(driver,1)+",resolved_by="+placeholder(driver,2)+",resolved_at="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+" WHERE source_key="+placeholder(driver,5),note,adminID,now,now,"procurement-uncertain:"+orderID);err!=nil{return err}
  }
+ if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note="+placeholder(driver,1)+",resolved_by="+placeholder(driver,2)+",resolved_at="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+" WHERE source_key="+placeholder(driver,5),note,adminID,now,now,"procurement-uncertain:"+orderID);err!=nil{return err}
  return tx.Commit()
 }
 
 // RunRefundLedgerIntegrityCheck is read-only: it reports broken links and never adjusts wallet balances.
 func RunRefundLedgerIntegrityCheck(ctx context.Context,db *sql.DB,driver string)(int,error){
- q:="SELECT r.order_id,r.amount_atomic,o.status,w.direction,w.amount_atomic,w.admin_id,r.admin_id,w.telegram_user_id,o.telegram_user_id FROM upstream_procurement_refunds r LEFT JOIN orders o ON o.id=r.order_id LEFT JOIN wallet_transactions w ON w.id=r.wallet_transaction_id"
- rows,err:=db.QueryContext(ctx,q);if err!=nil{return 0,err};defer rows.Close()
+ q:="SELECT r.order_id,r.amount_atomic,o.status,w.direction,w.amount_atomic,w.admin_id,r.admin_id,w.telegram_user_id,o.telegram_user_id,o.amount_minor,r.reason FROM upstream_procurement_refunds r LEFT JOIN orders o ON o.id=r.order_id LEFT JOIN wallet_transactions w ON w.id=r.wallet_transaction_id"
+ rows,err:=db.QueryContext(ctx,q);if err!=nil{return 0,err}
  type anomaly struct{id,detail string};bad:=[]anomaly{}
- for rows.Next(){var orderID,orderStatus,direction,ledgerAdmin,refundAdmin,ledgerUser,userID sql.NullString;var amount,ledgerAmount sql.NullInt64
-  if err:=rows.Scan(&orderID,&amount,&orderStatus,&direction,&ledgerAmount,&ledgerAdmin,&refundAdmin,&ledgerUser,&userID);err!=nil{return 0,err}
-  if !orderID.Valid||!orderStatus.Valid||orderStatus.String!="refunded"||!direction.Valid||direction.String!="credit"||!ledgerAmount.Valid||ledgerAmount.Int64!=amount.Int64||!ledgerAdmin.Valid||!refundAdmin.Valid||ledgerAdmin.String!=refundAdmin.String||!ledgerUser.Valid||!userID.Valid||ledgerUser.String!=userID.String{bad=append(bad,anomaly{orderID.String,"退款账本与订单/钱包 credit 流水关联不一致"})}
+ for rows.Next(){var orderID,orderStatus,direction,ledgerAdmin,refundAdmin,ledgerUser,userID,reason sql.NullString;var amount,ledgerAmount,orderAmount sql.NullInt64
+  if err:=rows.Scan(&orderID,&amount,&orderStatus,&direction,&ledgerAmount,&ledgerAdmin,&refundAdmin,&ledgerUser,&userID,&orderAmount,&reason);err!=nil{rows.Close();return 0,err}
+  if !orderID.Valid||!orderStatus.Valid||orderStatus.String!="refunded"||!direction.Valid||direction.String!="credit"||!ledgerAmount.Valid||ledgerAmount.Int64!=amount.Int64||!ledgerAdmin.Valid||!refundAdmin.Valid||ledgerAdmin.String!=refundAdmin.String||!ledgerUser.Valid||!userID.Valid||ledgerUser.String!=userID.String||!orderAmount.Valid||amount.Int64!=orderAmount.Int64*10000||!reason.Valid||strings.TrimSpace(reason.String)==""{bad=append(bad,anomaly{orderID.String,"退款账本与订单金额/状态/管理员/买家及钱包 credit 流水关联不一致"})}
  }
- if err:=rows.Err();err!=nil{return 0,err}
+ if err:=rows.Err();err!=nil{rows.Close();return 0,err};if err:=rows.Close();err!=nil{return 0,err}
  // A refunded procurement order must have exactly one independent refund row.
  missing,err:=db.QueryContext(ctx,"SELECT o.id FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.status='refunded' AND p.status='refunded' AND NOT EXISTS (SELECT 1 FROM upstream_procurement_refunds r WHERE r.order_id=o.id)")
  if err!=nil{return 0,err};for missing.Next(){var id string;if err:=missing.Scan(&id);err!=nil{missing.Close();return 0,err};bad=append(bad,anomaly{id,"订单/采购状态为已退款，但缺少独立退款账本"})};if err:=missing.Err();err!=nil{missing.Close();return 0,err};missing.Close()
