@@ -21,6 +21,7 @@ type UpstreamSettings struct {
 	LastError string
 	SyncStatus string
 	SyncAt string
+	SyncAttemptAt string
 	SyncError string
 	UpdatedAt string
 }
@@ -28,13 +29,14 @@ type UpstreamSettings struct {
 func GetUpstreamSettings(ctx context.Context, db *sql.DB, driver string) (UpstreamSettings, error) {
 	var item UpstreamSettings
 	var enabled int
-	var lastTestAt, syncAt sql.NullString
-	err := db.QueryRowContext(ctx, "SELECT provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, markup_bps, markup_minor, sync_interval_minutes, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, updated_at FROM upstream_settings WHERE id = 1").
-		Scan(&item.Provider, &item.BaseURL, &item.MerchantIDCiphertext, &item.SecretCiphertext, &enabled, &item.MarkupBPS, &item.MarkupMinor, &item.SyncIntervalMinutes, &item.LastTestStatus, &lastTestAt, &item.LastError, &item.SyncStatus, &syncAt, &item.SyncError, &item.UpdatedAt)
+	var lastTestAt, syncAt, lastAttemptAt sql.NullString
+	err := db.QueryRowContext(ctx, "SELECT provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, markup_bps, markup_minor, sync_interval_minutes, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_attempt_at, sync_error, updated_at FROM upstream_settings WHERE id = 1").
+		Scan(&item.Provider, &item.BaseURL, &item.MerchantIDCiphertext, &item.SecretCiphertext, &enabled, &item.MarkupBPS, &item.MarkupMinor, &item.SyncIntervalMinutes, &item.LastTestStatus, &lastTestAt, &item.LastError, &item.SyncStatus, &syncAt, &lastAttemptAt, &item.SyncError, &item.UpdatedAt)
 	if err != nil { return UpstreamSettings{}, err }
 	item.Enabled = enabled == 1
 	if lastTestAt.Valid { item.LastTestAt = lastTestAt.String }
 	if syncAt.Valid { item.SyncAt = syncAt.String }
+	if lastAttemptAt.Valid { item.SyncAttemptAt = lastAttemptAt.String }
 	return item, nil
 }
 
@@ -66,8 +68,8 @@ func SaveUpstreamTestResult(ctx context.Context, db *sql.DB, driver, status, mes
 
 func SaveUpstreamSyncResult(ctx context.Context, db *sql.DB, driver, status, message string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE upstream_settings SET sync_status="+placeholder(driver,1)+", sync_error="+placeholder(driver,2)+", sync_at=CASE WHEN "+placeholder(driver,3)+"='success' THEN "+placeholder(driver,4)+" ELSE sync_at END, updated_at="+placeholder(driver,5)+" WHERE id=1"
-	result, err := db.ExecContext(ctx, query, status, message, status, now, now)
+	query := "UPDATE upstream_settings SET sync_status="+placeholder(driver,1)+", sync_error="+placeholder(driver,2)+", sync_attempt_at="+placeholder(driver,3)+", sync_at=CASE WHEN "+placeholder(driver,4)+"='success' THEN "+placeholder(driver,5)+" ELSE sync_at END, updated_at="+placeholder(driver,6)+" WHERE id=1"
+	result, err := db.ExecContext(ctx, query, status, message, now, status, now, now)
 	if err != nil { return fmt.Errorf("save upstream sync result: %w", err) }
 	affected, err := result.RowsAffected()
 	if err != nil { return err }
