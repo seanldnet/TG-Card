@@ -16,7 +16,7 @@
 - 配置/部署影响：无新增环境变量；复用 Bot 现有 Owner ID、站点 SMTP 与 Telegram 通知设置；迁移由现有启动迁移器自动执行。
 - 兼容性与已知限制：旧附件下载 API 保留供历史兼容，但当前后台不再请求；Telegram 媒体转发依赖创建工单的 Bot 能访问原 file_id 且 Owner 已私聊启动该 Bot。消息发送成功与时间线写入之间仍存在网络/数据库故障窗口；不宣称跨 Telegram API 的严格 exactly-once。
 - 验证：
-  - 自动化测试：本分支新增数据库会话/审计/幂等路径；完整 Go CI 尚待 Actions 验证。
+  - 自动化测试：新增 Owner 会话持久化/超时、结单审计幂等、重复 Telegram update 与重复附件去重测试；完整 Go CI 尚待 Actions 验证。
   - 前端构建：Admin CI 尚待 Actions 验证。
   - Telegram/SMTP/浏览器端到端：尚未执行；由项目所有者按专项验收清单执行。
 - 发布镜像：未发布；不得拉取本分支功能作为已发布版本。
