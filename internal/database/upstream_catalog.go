@@ -102,6 +102,7 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE products SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream products missing from successful sync: %w", err) }
 	if _, err := tx.ExecContext(ctx, "UPDATE product_categories SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream categories missing from successful sync: %w", err) }
+	if _, err := tx.ExecContext(ctx, "UPDATE upstream_settings SET catalog_stale=0 WHERE id=1"); err != nil { return fmt.Errorf("mark upstream catalog fresh: %w", err) }
 	return tx.Commit()
 }
 
@@ -109,7 +110,7 @@ func currentCatalogSource(ctx context.Context, db *sql.DB) (string, error) {
 	settings, err := GetUpstreamSettings(ctx, db, "")
 	if err == sql.ErrNoRows { return "local", nil }
 	if err != nil { return "", err }
-	if settings.Enabled { return "upstream", nil }
+	if settings.Enabled && !settings.CatalogStale { return "upstream", nil }
 	return "local", nil
 }
 
