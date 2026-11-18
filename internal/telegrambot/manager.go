@@ -1286,6 +1286,7 @@ func orderStatusLabel(status string) string {
 	case "pending_payment": return "待付款"
 	case "paid", "delivering": return "处理中"
 	case "delivery_failed": return "发货异常，系统重试中"
+	case "purchase_failed": return "采购失败，待人工处理"
 	case "delivered": return "已交付"
 	case "expired": return "已关闭"
 	case "refunded": return "已退款"
