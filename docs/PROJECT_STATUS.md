@@ -94,7 +94,7 @@ flowchart LR
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
 | 系统权限与菜单 | 已实现 | 后台动态菜单/权限码接口；当前为单管理员产品结构，不应误认为完整多角色 RBAC。 |
-| 上游发卡对接 | 部分实现（PR #21、#26 已合并；PR C #32 开发中） | PR A/B 已合并；PR C 独立 Draft PR，Go CI #44334042245、Admin CI #44334041865、Security #44334041884 均通过，十项 mock 测试通过，尚未合并。手动表单商品暂不开放自助购买；PR D/E 未完成。异次元/萌次元不开发适配器。详见 `docs/upstream-integration.md`。 |
+| 上游发卡对接 | 部分实现（PR A/B/C 已合并） | PR C #32 已合并，十项 mock 测试及 Go/Admin/Security/Publish 验证通过；manual 表单商品暂不开放自助购买；PR D/E 未完成，真实商户联调仅属 PR E。异次元/萌次元不开发适配器。详见 `docs/upstream-integration.md`。 |
 
 ## 4. Telegram Bot 用户端功能
 
@@ -278,7 +278,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 10. 旧网站附件预览/下载方案 | 已由产品决策替代并关闭 | 改为 Bot 转发 Owner；历史附件字段和 API 保留，媒体验收转入新售后工作流清单 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | P0 | 本次 CDN 修复 PR 构建后由项目所有者验收 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | P1 | 本次布局修复 PR 构建后回归 |
-| 13. 上游发卡对接：PR A/B 已合并；PR C（PR #32）独立 Draft PR，Go/Admin/Security CI 与十项 mock 测试通过，待合并；PR D 资金安全、PR E 真实商户联调仍未完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR C 合并后再进入 PR D；真实商户端到端验收仅在 PR E 执行 |
+| 13. 上游发卡对接：PR A/B/C 已合并；PR C mock/CI 已通过；PR D 资金安全、PR E 真实商户联调仍未完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR C 合并后再进入 PR D；真实商户端到端验收仅在 PR E 执行 |
 | 14. 售后 Owner Bot 工作流：媒体转发、Owner 菜单、直接回复/继续沟通、结单幂等、超时与通知。 | P0 | 本专项 PR CI 通过后，由项目所有者按 `docs/support-tickets.md` 执行真实 Telegram、SMTP、串单与失败场景验收 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
