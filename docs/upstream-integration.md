@@ -73,7 +73,7 @@ PR C、PR D、PR E 均独立 PR，按 C→D→E 顺序推进；采购链路不�
 
 ## 5. PR C/D/E 实施状态（2026-11-18）
 
-- PR C（Dujiao-Next 采购转发）已在独立 Draft PR #32 实现；Go/Admin/Security CI 与十项 mock 测试通过，尚未合并。合并前仍不得标记为生产已实现或已联调。
+- PR C（Dujiao-Next 采购转发）已在独立 PR #32 合并；Go/Admin/Security CI、merge Publish 与十项 mock 测试通过。未执行真实商户联调，不得标记为已联调。
 - PR C 当前实现：支付确认后复核本地订单/商品状态；以本地订单号作为 `downstream_order_no`；持久化本地/上游订单双向映射；取得上游订单 ID 后按配置轮询；回调验签、去重、加密交付；失败人工队列、手动恢复、独立退款账本/审计；供应商余额日报和阈值告警。
 - 官方 API 未提供按 `downstream_order_no` 查询接口。首次 POST 网络异常且未取得上游订单 ID 时进入 `uncertain` 并暂停自动重发；人工恢复沿用原幂等键。不得盲目换幂等号造成重复扣款。
 - 回调端点 `POST /api/v1/upstream/callback`，按官方 HMAC-SHA256 原始请求体签名、API Key 与 ±60 秒时间戳校验。后台必须配置公网 HTTPS 回调地址后才允许上游商品自助下单。
