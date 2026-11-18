@@ -58,7 +58,7 @@ async function submitReconciliation(){
 onMounted(loadTransactions);
 </script>
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="tg-mobile-metric-grid md:grid md:grid-cols-4 md:gap-4">
    <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">链上流水</div><div class="mt-2 text-2xl font-bold">{{transactions.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:bank-transfer" class="block text-2xl" /></span></div></a-card>
    <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">已匹配</div><div class="mt-2 text-2xl font-bold">{{matchedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:check-circle-outline" class="block text-2xl" /></span></div></a-card>
