@@ -50,28 +50,7 @@ func ClearSupportOwnerSession(ctx context.Context, db *sql.DB, driver, botID, ow
 }
 
 func ResolveSupportTicketByOwner(ctx context.Context, db *sql.DB, driver, ticketID, ownerID string) (bool, error) {
-  tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-  if err != nil { return false, err }
-  defer tx.Rollback()
-  now := time.Now().UTC().Format(time.RFC3339Nano)
-  query := "UPDATE support_tickets SET status='resolved',updated_at="+placeholder(driver,1)+",resolved_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status IN ('open','in_progress','waiting_user')"
-  result, err := tx.ExecContext(ctx, query, now, now, strings.TrimSpace(ticketID))
-  if err != nil { return false, err }
-  n, err := result.RowsAffected()
-  if err != nil { return false, err }
-  if n == 0 {
-    var status string
-    if err := tx.QueryRowContext(ctx,"SELECT status FROM support_tickets WHERE id="+placeholder(driver,1),ticketID).Scan(&status); err != nil { return false, err }
-    if status == "resolved" || status == "closed" || status == "rejected" { return false, nil }
-    return false, fmt.Errorf("ticket is not resolvable from its current state")
-  }
-  id, err := randomID()
-  if err != nil { return false, err }
-  audit := "INSERT INTO support_ticket_audits(id,ticket_id,action,actor_id,details,created_at) VALUES("+
-    placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
-  if _, err := tx.ExecContext(ctx,audit,id,ticketID,"resolved",strings.TrimSpace(ownerID),"Owner 通过 Telegram 工单菜单结单",now); err != nil { return false, err }
-  if err := tx.Commit(); err != nil { return false, err }
-  return true, nil
+  return ResolveSupportTicket(ctx, db, driver, ticketID, "owner", ownerID)
 }
 
 func ListPendingSupportTickets(ctx context.Context, db *sql.DB, driver string) ([]SupportTicket, error) {
@@ -146,7 +125,7 @@ func ConfirmSupportTicketResolved(ctx context.Context, db *sql.DB, driver, ticke
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id, err := randomID()
 	if err != nil { return false, err }
-	query := "INSERT INTO support_ticket_audits(id,ticket_id,action,actor_id,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+") ON CONFLICT(ticket_id,action,actor_id) DO NOTHING"
+	query := "INSERT INTO support_ticket_audits(id,ticket_id,action,actor_id,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+") ON CONFLICT DO NOTHING"
 	result, err := tx.ExecContext(ctx, query, id, ticketID, "user_confirmed_resolved", strings.TrimSpace(telegramUserID), "用户确认问题已解决", now)
 	if err != nil { return false, err }
 	n, err := result.RowsAffected()
