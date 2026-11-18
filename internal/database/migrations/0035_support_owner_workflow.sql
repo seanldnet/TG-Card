@@ -20,3 +20,5 @@ CREATE TABLE IF NOT EXISTS support_ticket_audits (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_support_ticket_audits_ticket_created ON support_ticket_audits(ticket_id, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_support_ticket_messages_attachment_dedupe ON support_ticket_messages(ticket_id, sender_type, sender_id, attachment_file_id) WHERE attachment_file_id <> '';
