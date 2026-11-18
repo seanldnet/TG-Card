@@ -60,7 +60,7 @@ func BuildDailyReconciliationReport(ctx context.Context, db *sql.DB, driver stri
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveredCount);err!=nil{return out,err}
 	q = "SELECT COUNT(DISTINCT order_id) FROM order_delivery_events WHERE event_type='delivery_failed' AND " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.DeliveryFailedCount);err!=nil{return out,err}
-	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_transactions WHERE direction='credit' AND note LIKE '售后退款：%' AND " + dailyTimeExpr(driver,"created_at")
+	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_transactions WHERE direction='credit' AND (note LIKE '售后退款：%' OR note LIKE '上游采购失败退款：%') AND " + dailyTimeExpr(driver,"created_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RefundAtomic);err!=nil{return out,err}
 	q = "SELECT COALESCE(SUM(amount_atomic),0) FROM wallet_recharges WHERE status='paid' AND paid_at IS NOT NULL AND " + dailyTimeExpr(driver,"paid_at")
 	if err:=db.QueryRowContext(ctx,q,startText,endText).Scan(&out.RechargeAtomic);err!=nil{return out,err}
@@ -92,7 +92,7 @@ func ListDailyReconciliationReports(ctx context.Context,db *sql.DB,driver,month 
 	q:="SELECT report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,supplier_balance,supplier_currency,supplier_balance_checked_at,generated_at FROM daily_reconciliation_reports WHERE report_date>="+placeholder(driver,1)+" AND report_date<"+placeholder(driver,2)+" ORDER BY report_date DESC"
 	rows,err:=db.QueryContext(ctx,q,start.Format("2006-01-02"),end.Format("2006-01-02"));if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]DailyReconciliationReport,0)
-	for rows.Next(){var v DailyReconciliationReport;if err:=rows.Scan(&v.ReportDate,&v.RevenueAtomic,&v.OrderCount,&v.DeliveredCount,&v.DeliveryFailedCount,&v.RefundAtomic,&v.RechargeAtomic,&v.UnmatchedTransactionCount,&v.ManualReviewTransactionCount,&v.GeneratedAt);err!=nil{return nil,err};items=append(items,v)}
+	for rows.Next(){var v DailyReconciliationReport;if err:=rows.Scan(&v.ReportDate,&v.RevenueAtomic,&v.OrderCount,&v.DeliveredCount,&v.DeliveryFailedCount,&v.RefundAtomic,&v.RechargeAtomic,&v.UnmatchedTransactionCount,&v.ManualReviewTransactionCount,&v.SupplierBalance,&v.SupplierCurrency,&v.SupplierBalanceCheckedAt,&v.GeneratedAt);err!=nil{return nil,err};items=append(items,v)}
 	return items,rows.Err()
 }
 
