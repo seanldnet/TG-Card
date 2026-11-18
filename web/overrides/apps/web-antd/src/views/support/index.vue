@@ -17,7 +17,8 @@ async function loadAttachmentPreviews(items:TicketMessage[]){
    const blob=await requestClient.get<Blob>('/support/tickets/'+item.ticketId+'/attachments/'+item.id,{responseType:'blob'});
    const url=URL.createObjectURL(blob);attachmentUrls.value[item.id]=url;attachmentIsImage.value[item.id]=blob.type.startsWith('image/');
   }catch(error:any){
-   const detail=error?.response?.data?.message||'附件获取失败，请检查 Bot 运行状态后重试';
+   const status=error?.response?.status;
+   const detail=status===410?'附件已失效，请让用户重新上传':status===413?'附件超过 20MB 限制':status===502?'Telegram 暂时无法提供附件，请稍后重试':error?.response?.data?.message||'附件获取失败，请稍后重试';
    message.warning((item.attachmentName||'工单附件')+'：'+detail);
   }
  }));
@@ -74,7 +75,7 @@ onMounted(loadTickets);
 onUnmounted(clearAttachmentUrls);
 </script>
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="tg-mobile-metric-grid md:grid md:grid-cols-3 md:gap-4">
    <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">工单总数</div><div class="mt-2 text-2xl font-bold">{{tickets.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:ticket-outline" class="block text-2xl" /></span></div></a-card>
    <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">待处理</div><div class="mt-2 text-2xl font-bold">{{openCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:clock-alert-outline" class="block text-2xl" /></span></div></a-card>
