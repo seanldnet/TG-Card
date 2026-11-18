@@ -46,6 +46,8 @@ type application struct {
 	loginMu sync.Mutex
 	upstreamSyncMu sync.Mutex
 	procurementAPI upstream.ProcurementAPI
+	procurementNotify func(context.Context,string,string)
+	dispatchProcurement func(context.Context,string) error
 	loginFailures map[string][]time.Time
 }
 
