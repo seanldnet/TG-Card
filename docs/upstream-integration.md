@@ -44,7 +44,7 @@ API 根路径为 `/api/v1/upstream`。认证头为 `Dujiao-Next-Api-Key`、`Duji
 
 ## 4. TG-Card 实施边界
 
-当前 main 基线 `40cb88e` 只有 provider-neutral Adapter 契约，尚无上游配置、后台页面或 provider 网络实现。开发分支 `feat/dujiao-upstream-foundation` 的 PR A 候选实现新增 Dujiao-Next 配置存储、双凭证加密、连接测试及状态展示；该分支在 PR 合并前不应视为 main 已交付能力。
+PR A 开发前的 main 基线 `40cb88e` 只有 provider-neutral Adapter 契约，尚无上游配置、后台页面或 provider 网络实现。开发分支 `feat/dujiao-upstream-foundation` 的 PR A 候选实现新增 Dujiao-Next 配置存储、双凭证加密、连接测试及状态展示；该分支在 PR 合并前不应视为 main 已交付能力。
 
 PR A 的边界仅限配置与连接测试：不执行目录同步、商品映射、图片下载、商品展示切换、采购转发、订单查单/回调、失败队列、退款或余额告警。上述能力按 PR B、C、D、E 继续独立实施。
 
