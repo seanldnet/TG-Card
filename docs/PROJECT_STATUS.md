@@ -12,9 +12,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-18
-> - 文档版本：1.6.0
-> - 源码核对基线：`main` 分支，commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`
-> - 本次文档更新：记录 Dujiao-Next PR B 已合并，以及独立售后 Owner Bot 工作流分支的开发范围；本专项尚待 CI、PR 合并与真实 Telegram 验收
+> - 文档版本：1.7.0
+> - 源码核对基线：`main` 分支，commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`
+> - 本次文档更新：PR #27 Owner Bot 基础流程已合并并发布；新增 PR1 售后结单闭环独立分支，等待 CI/合并；真实 Telegram 验收仍由项目所有者执行
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -87,7 +87,7 @@ flowchart LR
 | 支付设置 | 已实现 | 后台设置 TRON 收款地址、TronGrid API Key、USDT 合约及启停；API Key 加密存储、脱敏显示，保存后更新运行配置。 |
 | 优惠券/促销 | 已实现 | 促销规则的查询、创建/更新、删除；具体类型与适用规则以当前页面/API为准。 |
 | 兑换码 | 已实现 | 兑换码规则的创建/更新/删除及用户兑换处理；以当前后台页面和数据库实现为准。 |
-| 售后工单 | 部分实现（Owner Bot 流程开发中） | 原附件字段和读取 API 保留；新方案由 Bot 将媒体转发至 Bot Owner，Owner 使用 Inline Keyboard 查看、回复、继续沟通和结单；网站仅展示文字与附件占位。当前分支尚待 CI、合并和 Telegram 真机验收。 |
+| 售后工单 | 部分实现（Owner Bot 基础流程已发布；结单闭环 PR1 开发中） | Bot 转发媒体至 Owner、Owner 回复与结单基础流程已发布；PR1 补充用户结单通知、用户确认/重开、终态消息守卫及 10 分钟新工单限流。生产 Telegram 验收待项目所有者执行。 |
 | 用户管理 | 已实现 | Telegram 用户列表、余额调整、余额流水查询。 |
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
@@ -209,6 +209,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - Owner 点击“开始回复”后，直接发送文字/图片/文件即可回复用户；发送成功后弹出“是，结单 / 否，继续沟通”。不点击按钮直接继续发消息仍归属当前激活工单，并再次弹出结单确认。
 - Owner 激活会话持久化于数据库，默认 30 分钟超时；同一 Bot + Owner 同时只保留一个激活工单。新工单通知不会抢占当前会话。
 - Owner 结单通过数据库事务更新状态并写审计；重复点击结单不重复写审计。发送给用户失败时向 Owner 显示 Telegram 错误，工单不结单。
+- PR1（独立分支 `fix/support-resolution-lifecycle`）增加结单后用户通知与“问题已解决/仍有问题”按钮；用户确认、重新开启均写工单时间线与审计。所有用户补充消息转发前检查工单状态；已解决/已关闭/已拒绝工单收到新消息时自动新建关联原订单的工单，并按用户维度 10 分钟限流。
 - Owner 未配置时仅存档工单及消息，日志记录未配置 Owner，工单创建主流程不受影响。
 - 站点已有 `support_created` 事件继续发送配置的 Telegram 通知和 SMTP 邮件；通知失败只记录日志，不回滚工单。
 - 网站工单页仅展示文字消息；附件显示 `[图片]` / `[文件]` 占位并提示“附件请通过机器人查看”。前端不再调用附件读取端点。
@@ -217,7 +218,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 
 实现/验收状态：
 - Owner 会话、更新幂等键、结单审计表由迁移 `0035_support_owner_workflow.sql` 提供；无需新增环境变量。
-- 本次独立分支的 CI、PR 合并和镜像发布状态必须以第 19 节追踪表及实际 Actions 为准。
+- PR #27 已合并至 main（merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`），镜像发布 Run `44308515206` 成功，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。PR1 结单闭环当前仍在独立分支，未合并、未发布。
 - 真实 Telegram 图片/文件转发、连续三条消息、不切换按钮继续沟通、双工单串单、用户拉黑 Bot、Owner 未配置、SMTP 与站点 Telegram 通知，均需项目所有者真机验收。
 - 旧的“网站附件无法查看”问题以 Bot 转发 Owner 方案替代关闭；媒体在网站不再预览或下载属于产品决策，不是未修复故障。
 
@@ -532,7 +533,8 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。Publish Run #327 成功，GHCR latest 与 commit SHA 标签均已推送。 | **代码完成待项目所有者验收**：Telegram 附件真机测试、跟踪防护下零外部 CDN 请求、PC 宽屏浏览器回归均未验收。 | 项目所有者按交接验收步骤执行并回填结果；不得以 CI/镜像发布替代真机验收。 |
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.2 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
 | [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR head Go CI、Admin CI、安全扫描均通过；main Publish Run #44299965343 成功，latest digest `sha256:c805ce4a8aa2ee6f2adcf01d16122d15117c9e813457a740c00f2d31e7ec66ae`。 | 真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购仍未实现。 | 继续按 PR C→D→E 实施采购与资金闭环。 |
-| [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后流程改造：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 开发分支 `feat/support-owner-bot-workflow`；新增迁移 0035、Owner 会话/审计与更新幂等；CI/合并/镜像发布待核验。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | 验证 9 项售后场景、移动端/PC 卡片间距、通知失败不影响工单创建。 |
+| [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | PR1 补齐结单闭环；执行 Owner Bot 媒体/回复/结单验收。 |
+| PR1（本批次） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 独立分支 `fix/support-resolution-lifecycle`；新增迁移 `0036_support_resolution_lifecycle.sql`；CI/PR/镜像待完成。 | 尚未验收；真实 Telegram 由项目所有者执行。 | PR1 CI 通过并合并后再开始 PR2。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
 ### 19.1 PR #19 镜像发布证据
