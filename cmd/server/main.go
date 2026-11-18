@@ -1354,7 +1354,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  }
  if telegramEnabled {
   targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
-  if event=="stock_low"||event=="daily_report"||event=="risk_alert"{targets=append(targets,s.TelegramOwnerID)}
+  if event=="stock_low"||event=="daily_report"||event=="risk_alert"||event=="support_created"{targets=append(targets,s.TelegramOwnerID)}
   sent:=map[string]bool{}
   bots,err:=database.ListBots(ctx,a.db)
   if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }
