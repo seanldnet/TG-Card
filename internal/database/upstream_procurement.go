@@ -216,3 +216,9 @@ func LatestUpstreamBalanceSnapshot(ctx context.Context,db *sql.DB)(string,string
 	err:=db.QueryRowContext(ctx,"SELECT balance,currency,checked_at FROM upstream_balance_snapshots ORDER BY checked_at DESC LIMIT 1").Scan(&balance,&currency,&checked)
 	return balance,currency,checked,err
 }
+
+func ClaimUpstreamBalanceAlert(ctx context.Context,db *sql.DB,driver,day,balance,threshold,currency string)(bool,error){
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	q:="INSERT INTO upstream_balance_alerts(alert_date,balance,threshold,currency,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+") ON CONFLICT(alert_date) DO NOTHING"
+	res,err:=db.ExecContext(ctx,q,day,balance,threshold,currency,now);if err!=nil{return false,err};n,err:=res.RowsAffected();if err!=nil{return false,err};return n==1,nil
+}
