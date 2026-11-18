@@ -1,3 +1,23 @@
+## 2026-11-18 — PR1 售后结单闭环（P0，独立分支）
+
+- 状态：实现已提交至 `fix/support-resolution-lifecycle`；等待 Go/Admin CI、PR 审查、合并与镜像发布。真实 Telegram 验收未执行。
+- 影响模块：`internal/telegrambot/manager.go`、`internal/database/support_owner.go`、`internal/database/support_owner_test.go`、`cmd/server/main.go`、售后专项文档。
+- 实现内容：
+  - Owner Bot 与后台 API 结单共用数据库状态转换；首次成功结单写审计和系统时间线，重复结单不重复通知。
+  - 结单后 Bot 私聊用户发送工单号、处理结果及“如仍有问题可直接回复本消息继续沟通”，并提供“问题已解决 / 仍有问题，继续沟通”按钮。
+  - 用户确认解决写入确认审计与时间线；用户选择仍有问题时，将原工单从 `resolved` 重新开启为 `in_progress`，记录审计/时间线并通知 Owner，附进入工单按钮。
+  - 所有用户后续文字/图片/文件消息转发前检查工单状态；`open/in_progress/waiting_user` 才允许写入和转发。终态工单不再被旧会话激活。
+  - 终态工单收到用户新消息时，按原用户/订单自动创建新工单、通知 Owner，并写入旧工单关联说明；同一 Telegram 用户 10 分钟内最多自动新建一次，节流记录跨 Bot 持久化。
+  - 通知失败只记录日志，不回滚已完成的状态变更；新工单创建失败或限流时向用户返回明确提示。
+- 数据库迁移：新增 `0036_support_resolution_lifecycle.sql`，新增按 Telegram 用户维度的持久化 10 分钟节流表，并为用户确认审计建立幂等唯一索引。升级由启动迁移器自动执行；回滚需先备份数据库并停止旧版本应用，再回滚代码、删除节流表和对应索引；不得手工删除历史工单/审计/时间线数据。
+- 兼容性：复用既有工单状态值和 Telegram Bot 配置，无新增环境变量；终态包括 `resolved/closed/rejected`。旧附件 API 与字段不变。
+- 验证：
+  - 新增数据库测试覆盖结单幂等、用户确认、用户重开、审计/时间线和 10 分钟限流。
+  - Go CI、Admin CI：等待 Actions。
+  - 真实 Telegram：结单通知、按钮确认/重开、后台结单通知、终态后发消息自动新建工单、10 分钟防刷、重复回调与拉黑 Bot 通知失败，待项目所有者验收。
+- 未覆盖：不自动重开 `closed/rejected` 工单；自动新建仅针对关联订单仍符合售后资格且不存在其他活动工单的情况；消息发送与数据库提交无法提供跨 Telegram API 的严格 exactly-once。
+- 发布镜像：尚未发布。CI 通过不等于真实环境验收通过。
+
 ## 2026-11-18 — 售后工单改为 Bot 转发 Owner 与交互式回复（独立 PR #27）
 
 - 状态：开发分支已提交；CI、PR 合并、镜像发布及真实 Telegram/SMTP 验收待完成。
