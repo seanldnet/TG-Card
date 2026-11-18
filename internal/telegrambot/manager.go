@@ -503,6 +503,15 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	if m.isOwner(cfg,msg.From.ID) && m.handleActiveOwnerSupportMessage(ctx,cfg,msg) { return }
 	if msg.Document != nil || len(msg.Photo)>0 {
 		pendingMedia := m.takePendingAction(cfg.ID,msg.Chat.ID)
+		if pendingMedia=="" && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
+			if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="open" || latest.Status=="in_progress" || latest.Status=="waiting_user" || latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
+				fileID,fileName:="",""
+				if msg.Document!=nil{fileID=msg.Document.FileID;fileName=msg.Document.FileName}else if len(msg.Photo)>0{fileID=msg.Photo[len(msg.Photo)-1].FileID;fileName="Telegram 图片"}
+				caption:=strings.TrimSpace(msg.Caption);if caption==""{caption="用户在已结单工单后发送了图片/文件"}
+				m.handleUserSupportFollowup(ctx,cfg,msg,latest.ID,caption,fileID,fileName)
+				return
+			}
+		}
 		if strings.HasPrefix(pendingMedia,"support_description:") {
 			orderNo:=strings.TrimPrefix(pendingMedia,"support_description:")
 			fileID,fileName:="","";if msg.Document!=nil{fileID=msg.Document.FileID;fileName=msg.Document.FileName}else{photo:=msg.Photo[len(msg.Photo)-1];fileID=photo.FileID;fileName="Telegram 图片"}
@@ -517,20 +526,13 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		if strings.HasPrefix(pendingMedia,"support_followup:") {
 			ticketID := strings.TrimPrefix(pendingMedia,"support_followup:")
 			fileID, fileName := "", ""
-			if msg.Document != nil { fileID=msg.Document.FileID; fileName=msg.Document.FileName } else { photo:=msg.Photo[len(msg.Photo)-1]; fileID=photo.FileID; fileName="Telegram 图片" }
+			if msg.Document != nil { fileID=msg.Document.FileID; fileName=msg.Document.FileName } else if len(msg.Photo)>0 { photo:=msg.Photo[len(msg.Photo)-1]; fileID=photo.FileID; fileName="Telegram 图片" }
 			caption := strings.TrimSpace(msg.Caption)
 			if caption == "" { caption = "用户提交了售后凭证" }
-			updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
-			updateExists,updateErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),updateKey)
-			if updateErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验消息是否重复，请稍后重试。") } else if updateExists { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已记录，无需重复提交。") } else {
-			duplicate,dupErr:=database.SupportTicketAttachmentExists(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),fileID)
-			if dupErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验附件是否重复，请稍后重试。") } else if duplicate { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这份附件已记录，无需重复提交。") } else if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),caption,fileID,fileName,strconv.FormatInt(msg.MessageID,10));err!=nil {
-				_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"凭证保存失败，请稍后重试。")
-			} else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"文字说明和附件已一起添加到售后工单。你可以继续单独发送文字、图片或文件。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,caption,fileID,fileName) }
-			}
-			m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia)
+			m.handleUserSupportFollowup(ctx,cfg,msg,ticketID,caption,fileID,fileName)
 			return
 		}
+
 		if !m.isOwner(cfg,msg.From.ID) { _ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"请先从“申请售后”提交工单，再发送图片或文件；文字说明可直接写在图片说明中。",supportBackKeyboard()); return }
 		if msg.Document != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id：\n"+msg.Document.FileID) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到图片，可在 Telegram file_id 中查看凭证。\n"+msg.Photo[len(msg.Photo)-1].FileID) }
 		return
@@ -538,6 +540,12 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
+	if pending=="" && !strings.HasPrefix(text,"/") && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
+		if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
+			m.handleUserSupportFollowup(ctx,cfg,msg,latest.ID,text,"","")
+			return
+		}
+	}
 	if pending != "" && !strings.HasPrefix(text, "/") {
 		switch {
 		case strings.HasPrefix(pending,"owner_stockadd:"):
@@ -586,11 +594,9 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			return
 		case strings.HasPrefix(pending,"support_followup:"):
 			ticketID := strings.TrimPrefix(pending,"support_followup:")
-			updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
-			duplicate,dupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),updateKey)
-			if dupErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验消息是否重复，请稍后重试。") } else if duplicate { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已记录，无需重复提交。") } else if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticketID,"user",strconv.FormatInt(msg.From.ID,10),text,"","",strconv.FormatInt(msg.MessageID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明保存失败，请重试。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充说明已添加到售后工单。");m.notifyOwnerSupportMessage(ctx,cfg,ticketID,text,"","") }
-			m.setPendingAction(cfg.ID,msg.Chat.ID,pending)
+			m.handleUserSupportFollowup(ctx,cfg,msg,ticketID,text,"","")
 			return
+
 		case strings.HasPrefix(pending, "support_description:"):
 			orderNo := strings.TrimPrefix(pending, "support_description:")
 			description := strings.TrimSpace(text)
@@ -1044,6 +1050,30 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if !m.isOwner(cfg,query.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",query.From.ID,banErr);_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法验证账号状态");return };if banned { _ = m.answerCallback(ctx,cfg.Token,query.ID,"账号已被限制使用");return } }
 	}
 	switch {
+	case strings.HasPrefix(query.Data,"support:user:"):
+		parts:=strings.Split(query.Data,":")
+		if len(parts)<4 { _=m.answerCallback(ctx,cfg.Token,query.ID,"操作无效");return }
+		ticketID,action:=parts[3],parts[2]
+		if action=="resolved" {
+			_,err:=database.ConfirmSupportTicketResolved(ctx,m.db,m.driver,ticketID,strconv.FormatInt(query.From.ID,10))
+			if err!=nil { _=m.answerCallback(ctx,cfg.Token,query.ID,"确认失败："+err.Error());return }
+			_=m.answerCallback(ctx,cfg.Token,query.ID,"感谢确认，工单已完成")
+			_=m.sendMessage(ctx,cfg.Token,chatID,"感谢你的确认！工单已标记为已解决。")
+			return
+		}
+		if action=="reopen" {
+			reopened,err:=database.ReopenSupportTicket(ctx,m.db,m.driver,ticketID,strconv.FormatInt(query.From.ID,10))
+			if err!=nil { _=m.answerCallback(ctx,cfg.Token,query.ID,"重新开启失败："+err.Error());return }
+			if !reopened { _=m.answerCallback(ctx,cfg.Token,query.ID,"工单当前状态无需重新开启");return }
+			ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID)
+			if err!=nil { _=m.answerCallback(ctx,cfg.Token,query.ID,"工单读取失败");return }
+			m.setPendingAction(cfg.ID,chatID,"support_followup:"+ticket.ID)
+			m.notifyOwnerSupportReopened(ctx,cfg,ticket)
+			_=m.answerCallback(ctx,cfg.Token,query.ID,"工单已重新开启")
+			_=m.sendMessage(ctx,cfg.Token,chatID,"工单 "+ticket.TicketNo+" 已重新开启，你可以直接发送补充内容。")
+			return
+		}
+		_=m.answerCallback(ctx,cfg.Token,query.ID,"未知操作")
 	case strings.HasPrefix(query.Data,"support:owner:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		m.handleOwnerSupportCallback(ctx,cfg,query)
@@ -1670,6 +1700,79 @@ func (m *Manager) sendMessageMarkup(ctx context.Context, token string, chatID in
 	return nil
 }
 
+
+func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg Message,ticketID,text,fileID,fileName string) {
+ userID:=strconv.FormatInt(msg.From.ID,10)
+ ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID)
+ if err!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单记录暂时无法读取，请稍后重新申请售后。");return }
+ if ticket.TelegramUserID!=userID || ticket.BotID!=cfg.ID { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单与当前账号不匹配，请重新申请售后。");return }
+ updateID:=strconv.FormatInt(msg.MessageID,10)
+ if ticket.Status=="open" || ticket.Status=="in_progress" || ticket.Status=="waiting_user" {
+  duplicate,dupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"user",userID,updateID)
+  if dupErr!=nil { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"无法核验消息是否重复，请稍后重试。");return }
+  if duplicate { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已记录，无需重复提交。");return }
+  if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"user",userID,text,fileID,fileName,updateID);err!=nil {
+   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容保存失败，请稍后重试。");return
+  }
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容已添加到工单。")
+  m.notifyOwnerSupportMessage(ctx,cfg,ticket.ID,text,fileID,fileName)
+  m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
+  return
+ }
+ if ticket.Status!="resolved" && ticket.Status!="closed" && ticket.Status!="rejected" {
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单状态暂不允许继续沟通，请联系平台客服。")
+  return
+ }
+ allowed,err:=database.AcquireSupportFollowupSlot(ctx,m.db,m.driver,cfg.ID,userID)
+ if err!=nil { log.Printf("support follow-up throttle lookup failed: bot_id=%s user_id=%s error=%v",cfg.ID,userID,err);_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法重新创建工单，请稍后重试。");return }
+ if !allowed { _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"你刚刚已重新提交过售后，请 10 分钟后再创建新工单。");return }
+ description:=strings.TrimSpace(text)
+ if description=="" { description="用户在已结单工单后补充了图片/文件" }
+ next,err:=database.CreateSupportTicket(ctx,m.db,m.driver,cfg.ID,userID,strconv.FormatInt(msg.Chat.ID,10),ticket.OrderNo,ticket.Category,description)
+ if err!=nil { log.Printf("create follow-up support ticket failed: old_ticket_id=%s error=%v",ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"重新创建工单失败："+err.Error());return }
+ if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,next.ID,"user",userID,description,fileID,fileName,updateID);err!=nil {
+  log.Printf("append follow-up ticket initial message failed: ticket_id=%s error=%v",next.ID,err)
+ }
+ _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "用户在已结单工单后继续联系，已自动创建新工单 "+next.TicketNo,"","")
+ m.notifyOwnerSupportTicket(ctx,cfg,next.ID)
+ m.Notify("support_created","用户在已结单工单后重新联系，已创建新工单："+next.TicketNo+"\n原工单："+ticket.TicketNo+"\n订单号："+next.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
+ m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+next.ID)
+ _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"原工单 "+ticket.TicketNo+" 已结单，已为你重新创建工单 #"+next.TicketNo+"。你可以继续发送文字、图片或文件。")
+}
+
+func (m *Manager) notifyOwnerSupportReopened(ctx context.Context,cfg Config,ticket database.SupportTicket) {
+ owner,err:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
+ if err!=nil || owner==0 { log.Printf("support reopen owner notification skipped: bot_id=%s ticket_id=%s reason=owner_not_configured_or_invalid",cfg.ID,ticket.ID);return }
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"进入工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}}}}
+ body:="⚠️ 用户表示问题仍未解决，工单已重新开启。\n用户："+ticket.TelegramUserID+"\n工单："+ticket.TicketNo+"\n订单："+ticket.OrderNo
+ if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil { log.Printf("support reopen owner notification failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err) }
+}
+
+
+func placeholderForTelegram(driver string,index int) string { if driver=="postgres" { return "$"+strconv.Itoa(index) }; return "?" }
+func (m *Manager) NotifySupportResolved(ctx context.Context,ticket database.SupportTicket) error {
+ m.mu.Lock()
+ current,ok:=m.workers[ticket.BotID]
+ var cfg Config
+ if ok { cfg=current.config }
+ m.mu.Unlock()
+ if !ok {
+  if m.db==nil || m.decrypt==nil { return fmt.Errorf("Telegram bot credentials are unavailable for this support ticket") }
+  var ciphertext string
+  query:="SELECT token_ciphertext FROM bots WHERE id="+placeholderForTelegram(m.driver,1)
+  if err:=m.db.QueryRowContext(ctx,query,ticket.BotID).Scan(&ciphertext);err!=nil{return fmt.Errorf("load support Bot credentials: %w",err)}
+  token,err:=m.decrypt(ciphertext);if err!=nil{return fmt.Errorf("decrypt support Bot credentials: %w",err)}
+  cfg.Token=token
+ }
+ chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
+ if err!=nil { return fmt.Errorf("invalid support ticket chat ID: %w",err) }
+ result:="工单已由客服处理并结单。"
+ if strings.TrimSpace(ticket.AdminReply)!="" { result=ticket.AdminReply }
+ body:="售后工单已结单\n工单号："+ticket.TicketNo+"\n处理结果："+result+"\n如仍有问题可直接回复本消息继续沟通。"
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"问题已解决","callback_data":"support:user:resolved:"+ticket.ID},{"text":"仍有问题，继续沟通","callback_data":"support:user:reopen:"+ticket.ID}}}}
+ return m.sendMessageMarkup(ctx,cfg.Token,chatID,body,keyboard)
+}
+
 func (m *Manager) notifyOwnerSupportTicket(ctx context.Context,cfg Config,ticketID string) {
  if strings.TrimSpace(cfg.OwnerID)=="" { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=owner_not_configured",cfg.ID,ticketID);return }
  ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
@@ -1684,11 +1787,18 @@ func (m *Manager) notifyOwnerSupportTicket(ctx context.Context,cfg Config,ticket
 }
 
 func (m *Manager) notifyOwnerSupportMessage(ctx context.Context,cfg Config,ticketID,text,fileID,fileName string) {
+ ticket, statusErr := database.GetSupportTicket(ctx,m.db,m.driver,ticketID)
+ if statusErr != nil { log.Printf("support owner message skipped: ticket_id=%s error=%v",ticketID,statusErr); return }
+ if ticket.Status != "open" && ticket.Status != "in_progress" && ticket.Status != "waiting_user" {
+  log.Printf("support owner message skipped: ticket_id=%s status=%s",ticketID,ticket.Status)
+  return
+ }
+
  if strings.TrimSpace(cfg.OwnerID)=="" { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=owner_not_configured",cfg.ID,ticketID);return }
  owner,err:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  if err!=nil||owner==0 { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=invalid_owner_id",cfg.ID,ticketID);return }
  if fileID!="" { if err:=m.sendSupportMedia(ctx,cfg.Token,owner,fileID,fileName,text);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err);return} } else if strings.TrimSpace(text)!="" { if err:=m.sendMessage(ctx,cfg.Token,owner,"用户补充：\n"+text);err!=nil{log.Printf("support owner text forward failed: ticket_id=%s error=%v",ticketID,err);return} }
- ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
+ ticket,err=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
  keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"查看工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":"待处理列表","callback_data":"support:owner:list:0"}}}}
  body:="🧾 工单补充消息："+ticket.TicketNo+"\n用户："+ticket.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+ticket.OrderNo+"\n问题："+truncateButtonText(ticket.Description,700)
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil{log.Printf("support owner follow-up notification failed: ticket_id=%s error=%v",ticketID,err)}
@@ -1731,10 +1841,10 @@ func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q Ca
   _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单："+ticket.TicketNo,ownerSupportReplyKeyboard())
  case "resolve":
   if len(parts)<4{return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return}
-  if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。")};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+  if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,parts[3]);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
  case "confirm":
   if len(parts)<5{return};ticketID,choice:=parts[3],parts[4]
-  if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。")};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+  if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
   }else{ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return};if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);return};_=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticketID,"reply",30*time.Minute);_=m.sendMessage(ctx,cfg.Token,chatID,"继续回复即可。")}
  }
 }
@@ -1857,6 +1967,8 @@ func (m *Manager) DownloadSupportAttachment(ctx context.Context, botID, fileID s
  if len(data)>maxAttachmentSize{return nil,"",&AttachmentError{Kind:"too_large",Description:"附件超过 20MB 限制"}}
  return data,result.Result.FilePath,nil
 }
+
+
 
 // SendSupportReply delivers an administrator response to the Telegram user who opened the ticket.
 func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportTicket) error {
