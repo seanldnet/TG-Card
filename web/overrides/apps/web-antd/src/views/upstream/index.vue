@@ -11,6 +11,7 @@ interface UpstreamSettings {
   merchantIdConfigured: boolean;
   merchantSecretConfigured: boolean;
   enabled: boolean;
+  catalogStale: boolean;
   markupPercent: number;
   markupFixedMinor: number;
   syncIntervalMinutes: number;
@@ -28,7 +29,7 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
+ merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
@@ -121,8 +122,8 @@ onMounted(()=>{void load();});
     </a-form-item>
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
-      <a-switch v-model:checked="settings.enabled" :disabled="settings.syncStatus!=='success'&&!settings.enabled"/>
-      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
+      <a-switch v-model:checked="settings.enabled" :disabled="settings.catalogStale||settings.syncStatus!=='success'&&!settings.enabled"/>
+      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
      </div>
     </a-form-item>
     <a-alert class="mb-4" type="warning" show-icon message="上游商品同步和目录切换已开放；买家采购/付款转发将在 PR C 完成前保持禁用，不会创建本地假订单或扣款。" />
