@@ -76,3 +76,11 @@ CREATE INDEX IF NOT EXISTS idx_upstream_balance_snapshots_time
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_balance TEXT NOT NULL DEFAULT '';
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_currency TEXT NOT NULL DEFAULT '';
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_balance_checked_at TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS upstream_balance_alerts (
+  alert_date TEXT PRIMARY KEY,
+  balance TEXT NOT NULL,
+  threshold TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
