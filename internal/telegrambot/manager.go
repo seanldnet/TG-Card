@@ -1945,21 +1945,6 @@ func (m *Manager) DownloadSupportAttachment(ctx context.Context, botID, fileID s
 }
 
 
-func (m *Manager) NotifySupportResolved(ctx context.Context,ticket database.SupportTicket) error {
- m.mu.Lock()
- current,ok:=m.workers[ticket.BotID]
- var cfg Config
- if ok { cfg=current.config }
- m.mu.Unlock()
- if !ok { return fmt.Errorf("Telegram bot for this support ticket is not running") }
- chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
- if err!=nil { return fmt.Errorf("invalid support ticket chat ID: %w",err) }
- result:="工单已由客服处理并结单。"
- if strings.TrimSpace(ticket.AdminReply)!="" { result=ticket.AdminReply }
- body:="售后工单已结单\n工单号："+ticket.TicketNo+"\n处理结果："+result+"\n如仍有问题可直接回复本消息继续沟通。"
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"问题已解决","callback_data":"support:user:resolved:"+ticket.ID},{"text":"仍有问题，继续沟通","callback_data":"support:user:reopen:"+ticket.ID}}}}
- return m.sendMessageMarkup(ctx,cfg.Token,chatID,body,keyboard)
-}
 
 // SendSupportReply delivers an administrator response to the Telegram user who opened the ticket.
 func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportTicket) error {
