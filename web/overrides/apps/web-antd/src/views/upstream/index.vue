@@ -19,6 +19,7 @@ interface UpstreamSettings {
   callbackUrl: string;
   purchasePollIntervalSeconds: number;
   purchaseTimeoutMinutes: number;
+  supplierBalanceAlertThreshold: string;
   lastTestStatus: string;
   lastTestAt: string;
   lastError: string;
@@ -32,7 +33,7 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,callbackUrl:'',purchasePollIntervalSeconds:15,purchaseTimeoutMinutes:30,lastTestStatus:'not_tested',lastTestAt:'',
+ merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,callbackUrl:'',purchasePollIntervalSeconds:15,purchaseTimeoutMinutes:30,supplierBalanceAlertThreshold:'10',lastTestStatus:'not_tested',lastTestAt:'',
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
@@ -52,7 +53,7 @@ async function save():Promise<boolean>{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
-   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,callbackUrl:settings.callbackUrl,purchasePollIntervalSeconds:settings.purchasePollIntervalSeconds,purchaseTimeoutMinutes:settings.purchaseTimeoutMinutes,
+   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,callbackUrl:settings.callbackUrl,purchasePollIntervalSeconds:settings.purchasePollIntervalSeconds,purchaseTimeoutMinutes:settings.purchaseTimeoutMinutes,supplierBalanceAlertThreshold:settings.supplierBalanceAlertThreshold,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
@@ -132,6 +133,9 @@ onMounted(()=>{void load();});
       <div><div class="mb-1 text-xs text-gray-500">轮询间隔（秒）</div><a-input-number v-model:value="settings.purchasePollIntervalSeconds" class="w-full" :min="5" :max="300" :step="5"/></div>
       <div><div class="mb-1 text-xs text-gray-500">采购总超时（分钟）</div><a-input-number v-model:value="settings.purchaseTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></div>
      </div>
+    </a-form-item>
+    <a-form-item label="供应商余额低额预警阈值" extra="单位为供应商 ping 返回的币种；余额低于此值时每日对账日报会标记并通过风险通知提醒 Owner。默认 10。">
+     <a-input-number v-model:value="settings.supplierBalanceAlertThreshold" class="w-full" :min="0.000001" :max="1000000000" :step="1"/>
     </a-form-item>
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
