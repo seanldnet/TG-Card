@@ -13,6 +13,7 @@ type UpstreamSettings struct {
 	MerchantIDCiphertext string
 	SecretCiphertext string
 	Enabled bool
+	CatalogStale bool
 	MarkupBPS int64
 	MarkupMinor int64
 	ExchangeRatePPM int64
@@ -29,12 +30,13 @@ type UpstreamSettings struct {
 
 func GetUpstreamSettings(ctx context.Context, db *sql.DB, driver string) (UpstreamSettings, error) {
 	var item UpstreamSettings
-	var enabled int
+	var enabled, catalogStale int
 	var lastTestAt, syncAt, lastAttemptAt sql.NullString
-	err := db.QueryRowContext(ctx, "SELECT provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, markup_bps, markup_minor, exchange_rate_ppm, sync_interval_minutes, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_attempt_at, sync_error, updated_at FROM upstream_settings WHERE id = 1").
-		Scan(&item.Provider, &item.BaseURL, &item.MerchantIDCiphertext, &item.SecretCiphertext, &enabled, &item.MarkupBPS, &item.MarkupMinor, &item.ExchangeRatePPM, &item.SyncIntervalMinutes, &item.LastTestStatus, &lastTestAt, &item.LastError, &item.SyncStatus, &syncAt, &lastAttemptAt, &item.SyncError, &item.UpdatedAt)
+	err := db.QueryRowContext(ctx, "SELECT provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, catalog_stale, markup_bps, markup_minor, exchange_rate_ppm, sync_interval_minutes, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_attempt_at, sync_error, updated_at FROM upstream_settings WHERE id = 1").
+		Scan(&item.Provider, &item.BaseURL, &item.MerchantIDCiphertext, &item.SecretCiphertext, &enabled, &catalogStale, &item.MarkupBPS, &item.MarkupMinor, &item.ExchangeRatePPM, &item.SyncIntervalMinutes, &item.LastTestStatus, &lastTestAt, &item.LastError, &item.SyncStatus, &syncAt, &lastAttemptAt, &item.SyncError, &item.UpdatedAt)
 	if err != nil { return UpstreamSettings{}, err }
 	item.Enabled = enabled == 1
+	item.CatalogStale = catalogStale == 1
 	if lastTestAt.Valid { item.LastTestAt = lastTestAt.String }
 	if syncAt.Valid { item.SyncAt = syncAt.String }
 	if lastAttemptAt.Valid { item.SyncAttemptAt = lastAttemptAt.String }
@@ -47,10 +49,10 @@ func SaveUpstreamSettings(ctx context.Context, db *sql.DB, driver string, item U
 	if item.Enabled { enabled = 1 }
 	interval := item.SyncIntervalMinutes
 	if interval < 5 || interval > 1440 { interval = 15 }
-	query := "INSERT INTO upstream_settings(id, provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, markup_bps, markup_minor, exchange_rate_ppm, sync_interval_minutes, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, created_at, updated_at) VALUES ("+
-		placeholder(driver,1)+", "+placeholder(driver,2)+", "+placeholder(driver,3)+", "+placeholder(driver,4)+", "+placeholder(driver,5)+", "+placeholder(driver,6)+", "+placeholder(driver,7)+", "+placeholder(driver,8)+", "+placeholder(driver,9)+", "+placeholder(driver,10)+", 'not_tested', NULL, '', 'not_started', NULL, '', "+placeholder(driver,11)+", "+placeholder(driver,12)+") "+
-		"ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, merchant_id_ciphertext=excluded.merchant_id_ciphertext, secret_ciphertext=excluded.secret_ciphertext, enabled=excluded.enabled, markup_bps=excluded.markup_bps, markup_minor=excluded.markup_minor, exchange_rate_ppm=excluded.exchange_rate_ppm, sync_interval_minutes=excluded.sync_interval_minutes, last_test_status='not_tested', last_test_at=NULL, last_error='', updated_at=excluded.updated_at"
-	if _, err := db.ExecContext(ctx, query, 1, item.Provider, item.BaseURL, item.MerchantIDCiphertext, item.SecretCiphertext, enabled, item.MarkupBPS, item.MarkupMinor, item.ExchangeRatePPM, interval, now, now); err != nil {
+	query := "INSERT INTO upstream_settings(id, provider, base_url, merchant_id_ciphertext, secret_ciphertext, enabled, catalog_stale, markup_bps, markup_minor, exchange_rate_ppm, sync_interval_minutes, last_test_status, last_test_at, last_error, sync_status, sync_at, sync_error, created_at, updated_at) VALUES ("+
+		placeholder(driver,1)+", "+placeholder(driver,2)+", "+placeholder(driver,3)+", "+placeholder(driver,4)+", "+placeholder(driver,5)+", "+placeholder(driver,6)+", "+placeholder(driver,7)+", "+placeholder(driver,8)+", "+placeholder(driver,9)+", "+placeholder(driver,10)+", "+placeholder(driver,11)+", 'not_tested', NULL, '', 'not_started', NULL, '', "+placeholder(driver,11)+", "+placeholder(driver,12)+") "+
+		"ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, base_url=excluded.base_url, merchant_id_ciphertext=excluded.merchant_id_ciphertext, secret_ciphertext=excluded.secret_ciphertext, enabled=excluded.enabled, catalog_stale=excluded.catalog_stale, markup_bps=excluded.markup_bps, markup_minor=excluded.markup_minor, exchange_rate_ppm=excluded.exchange_rate_ppm, sync_interval_minutes=excluded.sync_interval_minutes, last_test_status='not_tested', last_test_at=NULL, last_error='', updated_at=excluded.updated_at"
+	if _, err := db.ExecContext(ctx, query, 1, item.Provider, item.BaseURL, item.MerchantIDCiphertext, item.SecretCiphertext, enabled, boolInt(item.CatalogStale), item.MarkupBPS, item.MarkupMinor, item.ExchangeRatePPM, interval, now, now); err != nil {
 		return fmt.Errorf("save upstream settings: %w", err)
 	}
 	return nil
