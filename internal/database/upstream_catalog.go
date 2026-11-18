@@ -39,11 +39,6 @@ type UpstreamProductRecord struct {
 	CategoryID string
 	Name string
 	Description string
-	SKUCode string
-	SpecValuesJSON string
-	FulfillmentType string
-	ManualFormSchemaJSON string
-	TagsJSON string
 	PriceMinor int64
 	PriceSnapshotMinor int64
 	Currency string
