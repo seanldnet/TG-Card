@@ -82,39 +82,106 @@ func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request
 }
 
 func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Request) {
-	claims,ok:=a.authenticate(w,r);if !ok{return}
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
 	var input upstreamSettingsRequest
-	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&input);err!=nil{writeError(w,http.StatusBadRequest,"上游配置格式无效");return}
-	input.Provider=strings.TrimSpace(input.Provider)
-	if input.Provider=="" { input.Provider=string(upstream.ProviderDujiaoNext) }
-	if input.Provider!=string(upstream.ProviderDujiaoNext) { writeError(w,http.StatusBadRequest,"当前仅支持已核实官方协议的 Dujiao-Next；其他上游待官方确认");return }
-	baseURL,err:=upstream.ValidateDujiaoBaseURL(input.BaseURL)
-	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
-	input.MerchantID=strings.TrimSpace(input.MerchantID)
-	input.MerchantSecret=strings.TrimSpace(input.MerchantSecret)
-	if len(input.MerchantID)>512||len(input.MerchantSecret)>1024{writeError(w,http.StatusBadRequest,"上游 API 凭证长度无效");return}
-	if math.IsNaN(input.MarkupPercent)||math.IsInf(input.MarkupPercent,0)||input.MarkupPercent<0||input.MarkupPercent>1000||input.MarkupFixedMinor<0||input.MarkupFixedMinor>9_000_000_000_000{writeError(w,http.StatusBadRequest,"上游加价策略无效：百分比需为 0–1000%，固定加价不能为负数");return}
-	if math.IsNaN(input.ExchangeRateToUSDT)||math.IsInf(input.ExchangeRateToUSDT,0)||input.ExchangeRateToUSDT<0||input.ExchangeRateToUSDT>1_000_000{writeError(w,http.StatusBadRequest,"汇率必须为 0–1000000；非 USDT 上游币种必须配置大于 0 的汇率");return}
-	if input.SyncIntervalMinutes==0{input.SyncIntervalMinutes=15}
-	if input.SyncIntervalMinutes<5||input.SyncIntervalMinutes>1440{writeError(w,http.StatusBadRequest,"自动同步间隔必须为 5–1440 分钟");return}
-	current,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver)
-	if err!=nil&&!errors.Is(err,sql.ErrNoRows){log.Printf("load upstream config before update: %v",err);writeError(w,http.StatusInternalServerError,"读取现有上游配置失败");return}
-	if input.ClearCredentials { current.MerchantIDCiphertext="";current.SecretCiphertext="" }
-	if input.MerchantID!="" {
-		current.MerchantIDCiphertext,err=a.secrets.Encrypt(input.MerchantID)
-		if err!=nil{writeError(w,http.StatusInternalServerError,"上游 API Key 加密失败");return}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "上游配置格式无效")
+		return
 	}
-	if input.MerchantSecret!="" {
-		current.SecretCiphertext,err=a.secrets.Encrypt(input.MerchantSecret)
-		if err!=nil{writeError(w,http.StatusInternalServerError,"上游 API Secret 加密失败");return}
+	input.Provider = strings.TrimSpace(input.Provider)
+	if input.Provider == "" { input.Provider = string(upstream.ProviderDujiaoNext) }
+	if input.Provider != string(upstream.ProviderDujiaoNext) {
+		writeError(w, http.StatusBadRequest, "当前仅支持已核实官方协议的 Dujiao-Next；其他上游待官方确认")
+		return
 	}
-	if input.Enabled&&(current.MerchantIDCiphertext==""||current.SecretCiphertext==""){writeError(w,http.StatusBadRequest,"启用上游前必须配置 API Key（商户 ID）和 API Secret");return}
-	current.Provider=input.Provider;current.BaseURL=baseURL;current.Enabled=input.Enabled
-	current.MarkupBPS=int64(math.Round(input.MarkupPercent*100));current.MarkupMinor=input.MarkupFixedMinor;current.ExchangeRatePPM=int64(math.Round(input.ExchangeRateToUSDT*1_000_000));current.SyncIntervalMinutes=input.SyncIntervalMinutes
-	if err:=database.SaveUpstreamSettings(r.Context(),a.db,a.driver,current);err!=nil{log.Printf("save upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"保存上游配置失败");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.settings.update","upstream:"+input.Provider,clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t; base_url=%s; credentials_changed=%t",input.Enabled,baseURL,input.MerchantID!=""||input.MerchantSecret!=""||input.ClearCredentials))
-	saved,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver);if err!=nil{writeError(w,http.StatusInternalServerError,"配置已保存但读取失败");return}
-	writeSuccess(w,http.StatusOK,a.upstreamSettingsResponse(saved))
+	baseURL, err := upstream.ValidateDujiaoBaseURL(input.BaseURL)
+	if err != nil { writeError(w, http.StatusBadRequest, err.Error()); return }
+	input.MerchantID = strings.TrimSpace(input.MerchantID)
+	input.MerchantSecret = strings.TrimSpace(input.MerchantSecret)
+	if len(input.MerchantID) > 512 || len(input.MerchantSecret) > 1024 {
+		writeError(w, http.StatusBadRequest, "上游 API 凭证长度无效")
+		return
+	}
+	if math.IsNaN(input.MarkupPercent) || math.IsInf(input.MarkupPercent, 0) || input.MarkupPercent < 0 || input.MarkupPercent > 1000 || input.MarkupFixedMinor < 0 || input.MarkupFixedMinor > 9_000_000_000_000 {
+		writeError(w, http.StatusBadRequest, "上游加价策略无效：百分比需为 0–1000%，固定加价不能为负数")
+		return
+	}
+	if math.IsNaN(input.ExchangeRateToUSDT) || math.IsInf(input.ExchangeRateToUSDT, 0) || input.ExchangeRateToUSDT < 0 || input.ExchangeRateToUSDT > 1_000_000 {
+		writeError(w, http.StatusBadRequest, "汇率必须为 0–1000000；非 USDT 上游币种必须配置大于 0 的汇率")
+		return
+	}
+	if input.SyncIntervalMinutes == 0 { input.SyncIntervalMinutes = 15 }
+	if input.SyncIntervalMinutes < 5 || input.SyncIntervalMinutes > 1440 {
+		writeError(w, http.StatusBadRequest, "自动同步间隔必须为 5–1440 分钟")
+		return
+	}
+
+	current, err := database.GetUpstreamSettings(r.Context(), a.db, a.driver)
+	hasCurrent := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("load upstream config before update: %v", err)
+		writeError(w, http.StatusInternalServerError, "读取现有上游配置失败")
+		return
+	}
+	previous := current
+	if input.ClearCredentials { current.MerchantIDCiphertext = ""; current.SecretCiphertext = "" }
+	if input.MerchantID != "" {
+		current.MerchantIDCiphertext, err = a.secrets.Encrypt(input.MerchantID)
+		if err != nil { writeError(w, http.StatusInternalServerError, "上游 API Key 加密失败"); return }
+	}
+	if input.MerchantSecret != "" {
+		current.SecretCiphertext, err = a.secrets.Encrypt(input.MerchantSecret)
+		if err != nil { writeError(w, http.StatusInternalServerError, "上游 API Secret 加密失败"); return }
+	}
+	if current.MerchantIDCiphertext == "" || current.SecretCiphertext == "" {
+		if input.Enabled { writeError(w, http.StatusBadRequest, "启用上游前必须配置 API Key（商户 ID）和 API Secret"); return }
+	}
+
+	markupBPS := int64(math.Round(input.MarkupPercent * 100))
+	exchangeRatePPM := int64(math.Round(input.ExchangeRateToUSDT * 1_000_000))
+	catalogChanged := !hasCurrent ||
+		previous.Provider != input.Provider ||
+		previous.BaseURL != baseURL ||
+		previous.MerchantIDCiphertext != current.MerchantIDCiphertext ||
+		previous.SecretCiphertext != current.SecretCiphertext ||
+		previous.MarkupBPS != markupBPS ||
+		previous.MarkupMinor != input.MarkupFixedMinor ||
+		previous.ExchangeRatePPM != exchangeRatePPM
+	if input.Enabled && !catalogChanged && current.SyncStatus != "success" {
+		writeError(w, http.StatusConflict, "请先完成一次成功的商品同步，再启用上游商品来源")
+		return
+	}
+	if catalogChanged {
+		if !a.upstreamSyncMu.TryLock() {
+			writeError(w, http.StatusConflict, "商品同步正在进行，暂不能修改上游凭证、站点或价格策略")
+			return
+		}
+		defer a.upstreamSyncMu.Unlock()
+	}
+
+	current.Provider = input.Provider
+	current.BaseURL = baseURL
+	current.Enabled = input.Enabled && !catalogChanged
+	current.MarkupBPS = markupBPS
+	current.MarkupMinor = input.MarkupFixedMinor
+	current.ExchangeRatePPM = exchangeRatePPM
+	current.SyncIntervalMinutes = input.SyncIntervalMinutes
+	if err := database.SaveUpstreamSettings(r.Context(), a.db, a.driver, current); err != nil {
+		log.Printf("save upstream settings: %v", err)
+		writeError(w, http.StatusInternalServerError, "保存上游配置失败")
+		return
+	}
+	if catalogChanged {
+		if err := database.SaveUpstreamSyncResult(r.Context(), a.db, a.driver, "not_started", "上游站点、凭证或价格策略已变更，请重新同步商品后再启用"); err != nil {
+			log.Printf("mark upstream catalog stale: %v", err)
+		}
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "upstream.settings.update", "upstream:"+input.Provider, clientIP(r), r.UserAgent(),
+		fmt.Sprintf("enabled=%t; base_url=%s; catalog_changed=%t; credentials_changed=%t", current.Enabled, baseURL, catalogChanged, previous.MerchantIDCiphertext != current.MerchantIDCiphertext || previous.SecretCiphertext != current.SecretCiphertext))
+	saved, err := database.GetUpstreamSettings(r.Context(), a.db, a.driver)
+	if err != nil { writeError(w, http.StatusInternalServerError, "配置已保存但读取失败"); return }
+	writeSuccess(w, http.StatusOK, a.upstreamSettingsResponse(saved))
 }
 
 func (a *application) testUpstreamConnection(w http.ResponseWriter,r *http.Request) {
