@@ -46,10 +46,14 @@ func ValidateDujiaoBaseURL(raw string) (string, error) {
 	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
 		return "", fmt.Errorf("站点地址主机名无效")
 	}
-	if ip := net.ParseIP(host); ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast()) {
+	if ip := net.ParseIP(host); ip != nil && (!isPublicIP(ip)) {
 		return "", fmt.Errorf("站点地址不能指向本地或私有网络 IP")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func isPublicIP(ip net.IP) bool {
+	return ip != nil && ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsUnspecified() && !ip.IsMulticast()
 }
 
 func DujiaoSignature(method, path, timestamp string, body []byte, apiSecret string) string {
@@ -76,8 +80,24 @@ func DujiaoPing(ctx context.Context, baseURL, apiKey, apiSecret string) (DujiaoP
 	req.Header.Set("Dujiao-Next-Signature", DujiaoSignature(http.MethodPost, path, timestamp, body, apiSecret))
 	req.Header.Set("Content-Type", "application/json")
 
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	transport := &http.Transport{
+		Proxy: nil,
+		DialContext: func(dialCtx context.Context, network, address string) (net.Conn, error) {
+			host, port, splitErr := net.SplitHostPort(address)
+			if splitErr != nil { return nil, splitErr }
+			ips, lookupErr := net.DefaultResolver.LookupIPAddr(dialCtx, host)
+			if lookupErr != nil { return nil, fmt.Errorf("resolve upstream host: %w", lookupErr) }
+			for _, candidate := range ips {
+				if !isPublicIP(candidate.IP) { return nil, fmt.Errorf("upstream host resolves to a non-public IP address") }
+			}
+			if len(ips) == 0 { return nil, fmt.Errorf("upstream host has no IP addresses") }
+			return dialer.DialContext(dialCtx, network, net.JoinHostPort(ips[0].IP.String(), port))
+		},
+	}
 	client := &http.Client{
 		Timeout: 12 * time.Second,
+		Transport: transport,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	response, err := client.Do(req)
