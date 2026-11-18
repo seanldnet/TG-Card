@@ -77,7 +77,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
 </script>
 
 <template>
-  <div class="mx-auto w-full min-w-0 max-w-none p-3 md:p-6">
+  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
     <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
       <template #extra>
         <a-tag :color="settings.enabled ? 'success' : 'default'">
@@ -138,7 +138,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
         </div>
       </a-form>
     </a-card>
-    <a-card class="mt-4" :bordered="false" title="充值赠送规则">
+    <a-card :bordered="false" title="充值赠送规则">
       <a-alert class="mb-4" type="info" show-icon message="规则按充值本金匹配最高门槛；固定赠送填写 USDT 金额，百分比赠送填写百分数。创建充值单时会锁定赠送金额，支付确认时与本金在同一事务中入账，重复回调不会重复赠送。"/>
       <div class="mb-4 flex flex-wrap items-center gap-3"><a-switch v-model:checked="bonusRule.enabled"/><span>启用充值赠送</span><a-button size="small" @click="addBonusTier">添加阶梯</a-button></div>
       <div v-for="(tier,index) in bonusRule.tiers" :key="index" class="mb-3 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 md:grid-cols-3">

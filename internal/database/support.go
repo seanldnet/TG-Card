@@ -146,26 +146,54 @@ type SupportTicketMessage struct {
 
 // AppendSupportTicketMessage stores each customer/admin exchange as an immutable timeline entry.
 func AppendSupportTicketMessage(ctx context.Context, db *sql.DB, driver, ticketID, senderType, senderID, message, attachmentFileID, attachmentName string) (SupportTicketMessage, error) {
-	ticketID = strings.TrimSpace(ticketID)
-	senderType = strings.TrimSpace(senderType)
-	senderID = strings.TrimSpace(senderID)
-	message = strings.TrimSpace(message)
-	attachmentFileID = strings.TrimSpace(attachmentFileID)
-	attachmentName = strings.TrimSpace(attachmentName)
-	if ticketID == "" || (senderType != "user" && senderType != "admin" && senderType != "system") {
-		return SupportTicketMessage{}, fmt.Errorf("invalid support message")
-	}
-	if len(message) > 5000 || len(attachmentFileID) > 512 || len(attachmentName) > 255 || (message == "" && attachmentFileID == "") {
-		return SupportTicketMessage{}, fmt.Errorf("message or attachment is required and must be within size limits")
-	}
-	id, err := randomID()
-	if err != nil { return SupportTicketMessage{}, err }
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	item := SupportTicketMessage{ID:id, TicketID:ticketID, SenderType:senderType, SenderID:senderID, Message:message, AttachmentFileID:attachmentFileID, AttachmentName:attachmentName, CreatedAt:now}
-	query := "INSERT INTO support_ticket_messages(id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at) VALUES(" +
-		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")"
-	if _, err := db.ExecContext(ctx, query, item.ID,item.TicketID,item.SenderType,item.SenderID,item.Message,item.AttachmentFileID,item.AttachmentName,item.CreatedAt); err != nil { return SupportTicketMessage{}, err }
-	return item, nil
+ return AppendSupportTicketMessageWithUpdateID(ctx, db, driver, ticketID, senderType, senderID, message, attachmentFileID, attachmentName, "")
+}
+
+// AppendSupportTicketMessageWithUpdateID is idempotent for Telegram updates. A repeated update
+// returns the already persisted message instead of duplicating the timeline entry.
+func AppendSupportTicketMessageWithUpdateID(ctx context.Context, db *sql.DB, driver, ticketID, senderType, senderID, message, attachmentFileID, attachmentName, updateID string) (SupportTicketMessage, error) {
+ ticketID = strings.TrimSpace(ticketID)
+ senderType = strings.TrimSpace(senderType)
+ senderID = strings.TrimSpace(senderID)
+ message = strings.TrimSpace(message)
+ attachmentFileID = strings.TrimSpace(attachmentFileID)
+ attachmentName = strings.TrimSpace(attachmentName)
+ updateID = strings.TrimSpace(updateID)
+ if ticketID == "" || (senderType != "user" && senderType != "admin" && senderType != "system") {
+  return SupportTicketMessage{}, fmt.Errorf("invalid support message")
+ }
+ if len(message) > 5000 || len(attachmentFileID) > 512 || len(attachmentName) > 255 || (message == "" && attachmentFileID == "") {
+  return SupportTicketMessage{}, fmt.Errorf("message or attachment is required and must be within size limits")
+ }
+ if attachmentFileID != "" {
+  var existing SupportTicketMessage
+  lookup := "SELECT id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at FROM support_ticket_messages WHERE ticket_id="+placeholder(driver,1)+" AND sender_type="+placeholder(driver,2)+" AND sender_id="+placeholder(driver,3)+" AND attachment_file_id="+placeholder(driver,4)
+  err := db.QueryRowContext(ctx,lookup,ticketID,senderType,senderID,attachmentFileID).Scan(&existing.ID,&existing.TicketID,&existing.SenderType,&existing.SenderID,&existing.Message,&existing.AttachmentFileID,&existing.AttachmentName,&existing.CreatedAt)
+  if err == nil { return existing,nil }
+  if err != sql.ErrNoRows { return SupportTicketMessage{},err }
+ }
+ if updateID != "" {
+  var existing SupportTicketMessage
+  query := "SELECT id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at FROM support_ticket_messages WHERE ticket_id="+placeholder(driver,1)+" AND sender_type="+placeholder(driver,2)+" AND sender_id="+placeholder(driver,3)+" AND telegram_update_id="+placeholder(driver,4)
+  err := db.QueryRowContext(ctx,query,ticketID,senderType,senderID,updateID).Scan(&existing.ID,&existing.TicketID,&existing.SenderType,&existing.SenderID,&existing.Message,&existing.AttachmentFileID,&existing.AttachmentName,&existing.CreatedAt)
+  if err == nil { return existing,nil }
+  if err != sql.ErrNoRows { return SupportTicketMessage{},err }
+ }
+ id, err := randomID()
+ if err != nil { return SupportTicketMessage{}, err }
+ now := time.Now().UTC().Format(time.RFC3339Nano)
+ item := SupportTicketMessage{ID:id, TicketID:ticketID, SenderType:senderType, SenderID:senderID, Message:message, AttachmentFileID:attachmentFileID, AttachmentName:attachmentName, CreatedAt:now}
+ query := "INSERT INTO support_ticket_messages(id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at,telegram_update_id) VALUES(" +
+  placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
+ if _, err := db.ExecContext(ctx, query, item.ID,item.TicketID,item.SenderType,item.SenderID,item.Message,item.AttachmentFileID,item.AttachmentName,item.CreatedAt,updateID); err != nil {
+  if updateID != "" {
+   var existing SupportTicketMessage
+   lookup := "SELECT id,ticket_id,sender_type,sender_id,message,attachment_file_id,attachment_name,created_at FROM support_ticket_messages WHERE ticket_id="+placeholder(driver,1)+" AND sender_type="+placeholder(driver,2)+" AND sender_id="+placeholder(driver,3)+" AND telegram_update_id="+placeholder(driver,4)
+   if scanErr := db.QueryRowContext(ctx,lookup,ticketID,senderType,senderID,updateID).Scan(&existing.ID,&existing.TicketID,&existing.SenderType,&existing.SenderID,&existing.Message,&existing.AttachmentFileID,&existing.AttachmentName,&existing.CreatedAt); scanErr == nil { return existing,nil }
+  }
+  return SupportTicketMessage{}, err
+ }
+ return item, nil
 }
 
 func ListSupportTicketMessages(ctx context.Context, db *sql.DB, driver, ticketID string) ([]SupportTicketMessage, error) {
