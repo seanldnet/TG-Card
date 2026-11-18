@@ -60,3 +60,16 @@ func TestWalletBalanceReconciliationDetectsWithoutRepair(t *testing.T){
 	again,_,created,err:=RunWalletBalanceReconciliation(ctx,db,"sqlite","test-mismatch")
 	if err!=nil||created||again.MismatchUsers!=1{t.Fatalf("duplicate run should be idempotent: %+v created=%v err=%v",again,created,err)}
 }
+
+func TestStockAutoUnlistMarkerDoesNotOverrideManualListingChoice(t *testing.T){
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Card item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1})
+	if err!=nil{t.Fatal(err)}
+	if err:=MarkLocalProductAutoUnlisted(ctx,db,"sqlite",product.ID);err!=nil{t.Fatal(err)}
+	items,err:=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
+	if len(items)!=1||items[0].Status!=0||!items[0].StockAutoUnlisted{t.Fatalf("expected auto-unlisted marker: %+v",items)}
+	if err:=SetLocalProductAvailability(ctx,db,"sqlite",product.ID,true);err!=nil{t.Fatal(err)}
+	items,err=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
+	if len(items)!=1||items[0].Status!=1||items[0].StockAutoUnlisted{t.Fatalf("manual relist must clear auto-unlist marker: %+v",items)}
+}
