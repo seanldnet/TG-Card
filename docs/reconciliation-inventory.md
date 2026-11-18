@@ -79,3 +79,8 @@ PR2 已合并并发布，项目所有者于 2026-11-18 确认生产更新至 dig
 - 项目所有者确认生产已更新至 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未收到异常反馈，PR2 本专项按默认通过记录。
 - 验收项：日报核心统计与后台一致、历史月份查询、Owner Telegram 通知、SMTP 邮件通知、库存归零自动下架及告警、低库存 5 件预警、补货自动上架开关行为、管理员手动下架保护、余额差异检测与告警、检查过程不自动修改余额，均记录为已验收（2026-11-18）。
 - 验收依据是项目所有者明确授权的默认通过结论，不表示开发侧另行执行了生产环境逐项真机操作。采购转发不属于 PR2 范围，转入独立 PR C。
+
+
+## Dujiao-Next supplier balance (PR C draft)
+
+When Dujiao-Next is enabled, the daily UTC report attempts the official `POST /api/v1/upstream/ping` balance check. The report stores supplier balance, currency and check timestamp. The configured threshold is expressed in the supplier-returned currency; a lower balance triggers an Owner notification. A failed supplier balance request is logged and does not prevent the rest of the daily reconciliation report from being generated. This monitoring is separate from buyer wallet reconciliation and never changes supplier or buyer balances.
