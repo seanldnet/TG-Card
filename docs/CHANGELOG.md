@@ -1,26 +1,20 @@
-## 2026-11-18 — PR1 售后结单闭环（P0，独立分支）
+## 2026-11-18 — PR #28 售后结单闭环发布核验与后续路线修订
 
-- 状态：实现已提交至 `fix/support-resolution-lifecycle`；等待 Go/Admin CI、PR 审查、合并与镜像发布。真实 Telegram 验收未执行。
-- 影响模块：`internal/telegrambot/manager.go`、`internal/database/support_owner.go`、`internal/database/support_owner_test.go`、`cmd/server/main.go`、售后专项文档。
-- 实现内容：
-  - Owner Bot 与后台 API 结单共用数据库状态转换；首次成功结单写审计和系统时间线，重复结单不重复通知。
-  - 结单后 Bot 私聊用户发送工单号、处理结果及“如仍有问题可直接回复本消息继续沟通”，并提供“问题已解决 / 仍有问题，继续沟通”按钮。
-  - 用户确认解决写入确认审计与时间线；用户选择仍有问题时，将原工单从 `resolved` 重新开启为 `in_progress`，记录审计/时间线并通知 Owner，附进入工单按钮。
-  - 所有用户后续文字/图片/文件消息转发前检查工单状态；`open/in_progress/waiting_user` 才允许写入和转发。终态工单不再被旧会话激活。
-  - 终态工单收到用户新消息时，按原用户/订单自动创建新工单、通知 Owner，并写入旧工单关联说明；同一 Telegram 用户 10 分钟内最多自动新建一次，节流记录跨 Bot 持久化。
-  - 通知失败只记录日志，不回滚已完成的状态变更；新工单创建失败或限流时向用户返回明确提示。
-- 数据库迁移：新增 `0036_support_resolution_lifecycle.sql`，新增按 Telegram 用户维度的持久化 10 分钟节流表，并为用户确认审计建立幂等唯一索引。升级由启动迁移器自动执行；回滚需先备份数据库并停止旧版本应用，再回滚代码、删除节流表和对应索引；不得手工删除历史工单/审计/时间线数据。
-- 兼容性：复用既有工单状态值和 Telegram Bot 配置，无新增环境变量；终态包括 `resolved/closed/rejected`。旧附件 API 与字段不变。
-- 验证：
-  - 新增数据库测试覆盖结单幂等、用户确认、用户重开、审计/时间线和 10 分钟限流。
-  - Go CI、Admin CI：等待 Actions。
-  - 真实 Telegram：结单通知、按钮确认/重开、后台结单通知、终态后发消息自动新建工单、10 分钟防刷、重复回调与拉黑 Bot 通知失败，待项目所有者验收。
-- 未覆盖：不自动重开 `closed/rejected` 工单；自动新建仅针对关联订单仍符合售后资格且不存在其他活动工单的情况；消息发送与数据库提交无法提供跨 Telegram API 的严格 exactly-once。
-- 发布镜像：尚未发布。CI 通过不等于真实环境验收通过。
+- 状态：PR #28 已合并至 main；Go CI、安全扫描、Docker 多架构镜像均成功；生产 Telegram 验收待项目所有者执行。
+- PR / Merge commit：[PR #28](https://github.com/seanldnet/TG-Card/pull/28)，`6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`。
+- Publish：[Run #44317232482](https://github.com/seanldnet/TG-Card/actions/runs/44317232482)，completed/success；GHCR latest 与 commit SHA 标签推送成功；manifest digest `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`；平台 linux/amd64、linux/arm64。
+- Go CI：[Run #44317232633](https://github.com/seanldnet/TG-Card/actions/runs/44317232633) 成功；Security：[Run #44317232660](https://github.com/seanldnet/TG-Card/actions/runs/44317232660) 成功。
+- Admin frontend CI 未运行的原因已确认：原 `.github/workflows/admin-ci.yml` 对 workflow 文件、`web/**`、`scripts/**`、README 使用 paths 过滤，PR #28 未触发这些路径。已在本次文档修正分支移除 paths 过滤，后续每个 main push/PR 均应执行 Admin CI；PR2 必须核对 Go、Admin、Security、Publish 四类结果。
+- 结单闭环范围：用户结单通知、问题已解决确认、仍有问题重开、终态消息守卫、自动新工单及用户维度 10 分钟限流；迁移 `0036_support_resolution_lifecycle.sql`。
+- 生产验收基准：`ghcr.io/seanldnet/tg-card@sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。PR #19、#26、#27、#28 对应真机验收统一使用该镜像；逐项清单见 `docs/PROJECT_STATUS.md` 第 19.3 节。
+- 文档：更新主状态文档、上游专项边界、售后验收追踪；整理 18 项统一生产验收记录。
+- 后续顺序：文档修正 → PR2 资金与库存安全 → Dujiao-Next PR C 采购转发 → PR D 资金安全 → PR E 真实联调 → PR3 异常中心 → PR4 购买体验 → PR5 数据看板 → PR6 群发精细化。
+- PR 描述要求：每个 PR 写明实现范围、复现条件、验证结果和文档更新；每批独立分支，CI 通过并合并后再启动下一批。
+
 
 ## 2026-11-18 — 售后工单改为 Bot 转发 Owner 与交互式回复（独立 PR #27）
 
-- 状态：已合并至 main（PR #27）；Go CI、Admin CI、安全扫描成功；Docker latest 已推送（Publish Run `44308515206`，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`）。真实 Telegram/SMTP 验收待项目所有者执行。
+- 状态：已合并至 main（PR #27）；Go CI、Admin CI、安全扫描成功；Docker latest 已推送（Publish Run `44308515206`，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`）。真实 Telegram/SMTP 验收待项目所有者执行；后续 PR #28 最新生产验收镜像 digest 见本文顶部记录。
 - 分支：`feat/support-owner-bot-workflow`；基线 `main@71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；合并提交 `abb6d62c8d215ff4bffd4151130adccf7d346b24`。
 - 影响模块：`internal/telegrambot/manager.go`、`internal/database/support.go`、`internal/database/support_owner.go`、`cmd/server/main.go`、售后后台页面、上游/支付页面布局、售后专项文档。
 - 变更内容：
@@ -36,10 +30,10 @@
 - 配置/部署影响：无新增环境变量；复用 Bot 现有 Owner ID、站点 SMTP 与 Telegram 通知设置；迁移由现有启动迁移器自动执行。
 - 兼容性与已知限制：旧附件下载 API 保留供历史兼容，但当前后台不再请求；Telegram 媒体转发依赖创建工单的 Bot 能访问原 file_id 且 Owner 已私聊启动该 Bot。消息发送成功与时间线写入之间仍存在网络/数据库故障窗口；不宣称跨 Telegram API 的严格 exactly-once。
 - 验证：
-  - 自动化测试：新增 Owner 会话持久化/超时、结单审计幂等、重复 Telegram update 与重复附件去重测试；完整 Go CI 尚待 Actions 验证。
-  - 前端构建：Admin CI 尚待 Actions 验证。
+  - 自动化测试：新增 Owner 会话持久化/超时、结单审计幂等、重复 Telegram update 与重复附件去重测试。
+  - Go CI、Admin CI、安全扫描均已在 PR #27 对应 Actions 运行中成功；Docker Publish Run `44308515206` 成功。
   - Telegram/SMTP/浏览器端到端：尚未执行；由项目所有者按专项验收清单执行。
-- 发布镜像：未发布；不得拉取本分支功能作为已发布版本。
+- 发布镜像：已发布，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`；后续被 PR #28 的 latest 更新。
 - 文档：同步更新 `docs/PROJECT_STATUS.md`、`docs/support-tickets.md` 与本日志；遵守第 12 节文档规则。
 
 ## 2026-11-18 — 修正 PR #26 stale 状态测试夹具
@@ -71,7 +65,7 @@
 
 ## 2026-11-18 — Dujiao-Next PR B：商品目录同步与来源管理
 
-- 状态：开发分支已实现，PR/CI/合并待完成；未执行真实商户账号同步验收。
+- 状态：PR #26 已合并至 main；Go CI、Admin CI、安全扫描及 Docker Publish 均成功；未执行真实商户账号同步验收。
 - 分支：`feat/dujiao-catalog-sync`；开发前 main 基线 `e625d57473acba618cb26923965566cd3fea12d1`。
 - 复现条件：PR A 已可保存 Dujiao-Next 凭证并测试连接，但没有商品/分类/SKU 同步；启用上游目录无法切换 Bot 商品来源。
 - 变更内容：
@@ -89,9 +83,9 @@
 - 验证：
   - 新增官方响应 JSON 结构、价格解析/汇率/加价、SKU 规格名称单元测试。
   - 新增 SQLite 源切换、事务回滚、缺失商品隐藏、图片失败保留、stale 标志和设置持久化测试。
-  - Go CI、Admin CI、安全扫描等待 PR workflow 结果；真实上游账号同步待项目所有者执行。
+  - PR #26 Go CI、Admin CI、安全扫描均成功；真实上游账号同步待项目所有者执行。
   - 官方协议依据：`docs/upstream-integration.md` 所列 Dujiao-Next Open API 文档。
-- 发布镜像：PR B 尚未合并，不更新 latest。
+- 发布镜像：PR #26 已发布；Publish Run #44299965343 成功，digest `sha256:c805ce4a8aa2ee6f2adcf01d16122d15117c9e813457a740c00f2d31e7ec66ae`；后续 latest 已由 PR #27/#28 更新。
 
 ## 2026-11-18 — Dujiao-Next PR A：上游基础设施（配置与连接测试）
 
@@ -114,7 +108,7 @@
   - Go CI：[Run #44291154727](https://github.com/seanldnet/TG-Card/actions/runs/44291154727) 成功；Admin CI：[Run #44291154731](https://github.com/seanldnet/TG-Card/actions/runs/44291154731) 成功；安全扫描：[Run #44291154797](https://github.com/seanldnet/TG-Card/actions/runs/44291154797) 成功。
   - 官方协议依据：[Dujiao-Next Open API](https://dujiao-next.com/api/integration-open-api) 与 [站点对接指南](https://dujiao-next.com/api/integration-guide)。
 - 发布镜像：[Publish Run #44291422271](https://github.com/seanldnet/TG-Card/actions/runs/44291422271) 成功；GHCR latest 与 commit 标签均已推送；digest `sha256:edcf23eefc6be73bd1433a94d74870cae18d2198cd75424e7918d2b6f3066479`；构建平台 linux/amd64、linux/arm64。
-- 后续：PR A CI 通过并合并后再开始 PR B；异次元与萌次元继续保持待上游确认。
+- 后续：PR B（PR #26）已合并；下一步按 PR C→D→E 推进。异次元与萌次元继续保持不开发适配器的限制。
 
 ## 2026-11-18 — PR #19 镜像发布核验与追踪状态修正
 
