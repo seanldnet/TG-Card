@@ -518,7 +518,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #17](https://github.com/seanldnet/TG-Card/pull/17) | 文档与代码一致性审计，包含上游能力审计表。 | 已合并；审计结论已写入 README、PROJECT_STATUS 与 CHANGELOG。 | 文档审计完成；上游业务功能仍未实现。 | 保持协议证据边界；仅对有官方可核实协议的 Dujiao-Next 开发。 |
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。Publish Run #327 成功，GHCR latest 与 commit SHA 标签均已推送。 | **代码完成待项目所有者验收**：Telegram 附件真机测试、跟踪防护下零外部 CDN 请求、PC 宽屏浏览器回归均未验收。 | 项目所有者按交接验收步骤执行并回填结果；不得以 CI/镜像发布替代真机验收。 |
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | 真实上游账号连接测试待项目所有者执行；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.2 节。 | 完成真实商户凭证连接验收后进入 PR B。 |
-| [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 功能已实现；最新 CI 中 Go vet 通过，Go test 曾发现分类图标保留逻辑的 SQL 参数顺序错误，已在 `c402bc8345fb6d2cfc33350457e8083e87fe0948` 修复并等待新一轮 CI。Admin CI 与安全扫描上一轮通过。 | 真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购在 PR C 前禁用。 | 修复后的 Go CI、Admin CI、安全扫描全部通过并合并后再开始 PR C。 |
+| [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 功能已实现；最新 CI 中 Go vet 通过，Go test 曾发现分类图标保留逻辑的 SQL 参数顺序错误，已在 `c402bc8345fb6d2cfc33350457e8083e87fe0948` 修复并等待新一轮 CI。Admin CI 与安全扫描上一轮通过。 | 真实上游商户同步和浏览器/Telegram 展示验收待执行；上游采购在 PR C 前禁用。 | 修复后的 Go CI、Admin CI、安全扫描全部通过并合并后再开始 PR C。最近一轮 Go test 暴露测试未模拟“配置变更后必须成功同步才能切换来源”的安全门；已修正测试覆盖，等待复验。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
 
 ### 19.1 PR #19 镜像发布证据
