@@ -249,13 +249,13 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return OrderDelivery{}, err }
 	defer tx.Rollback()
-	query := "SELECT status, expires_at, COALESCE(payment_reference,''), COALESCE(payment_method,''), quantity, COALESCE(delivery_type,'card') FROM orders WHERE id=" + placeholder(driver, 1)
+	query := "SELECT status, expires_at, COALESCE(payment_reference,''), COALESCE(payment_method,''), quantity, COALESCE(delivery_type,'card'), COALESCE(upstream_source_snapshot,''), order_no FROM orders WHERE id=" + placeholder(driver, 1)
 	if driver == "postgres" { query += " FOR UPDATE" }
-	var status, expiresAt, existingReference, existingMethod, deliveryType string
+	var status, expiresAt, existingReference, existingMethod, deliveryType, sourceType, orderNo string
 	var expectedQuantity int
-	if err := tx.QueryRowContext(ctx, query, orderID).Scan(&status, &expiresAt, &existingReference, &existingMethod, &expectedQuantity, &deliveryType); err != nil { return OrderDelivery{}, err }
+	if err := tx.QueryRowContext(ctx, query, orderID).Scan(&status, &expiresAt, &existingReference, &existingMethod, &expectedQuantity, &deliveryType, &sourceType, &orderNo); err != nil { return OrderDelivery{}, err }
 	now := time.Now().UTC()
-	alreadyPaid := status == "paid" || status == "delivering" || status == "delivery_failed" || status == "delivered"
+	alreadyPaid := status == "paid" || status == "delivering" || status == "delivery_failed" || status == "delivered" || status == "procurement_pending" || status == "procurement_failed"
 	if alreadyPaid {
 		if existingReference != paymentReference || existingMethod != paymentMethod { return OrderDelivery{}, fmt.Errorf("order already has a different payment") }
 	} else {
@@ -264,8 +264,10 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 		if parseErr != nil { return OrderDelivery{}, fmt.Errorf("invalid order expiry: %w", parseErr) }
 		if !now.Before(expires) { return OrderDelivery{}, fmt.Errorf("order has expired; payment requires manual reconciliation") }
 		stamp := now.Format(time.RFC3339Nano)
-		update := "UPDATE orders SET status='paid', payment_method=" + placeholder(driver, 1) + ", payment_reference=" + placeholder(driver, 2) + ", paid_at=" + placeholder(driver, 3) + ", updated_at=" + placeholder(driver, 4) + " WHERE id=" + placeholder(driver, 5) + " AND status='pending_payment'"
-		result, err := tx.ExecContext(ctx, update, paymentMethod, paymentReference, stamp, stamp, orderID)
+		paymentStatus := "paid"
+		if sourceType == "upstream" || deliveryType == "upstream" { paymentStatus = "procurement_pending" }
+		update := "UPDATE orders SET status=" + placeholder(driver, 1) + ", payment_method=" + placeholder(driver, 2) + ", payment_reference=" + placeholder(driver, 3) + ", paid_at=" + placeholder(driver, 4) + ", updated_at=" + placeholder(driver, 5) + " WHERE id=" + placeholder(driver, 6) + " AND status='pending_payment'"
+		result, err := tx.ExecContext(ctx, update, paymentStatus, paymentMethod, paymentReference, stamp, stamp, orderID)
 		if err != nil { return OrderDelivery{}, err }
 		affected, err := result.RowsAffected()
 		if err != nil { return OrderDelivery{}, err }
@@ -279,6 +281,12 @@ func ConfirmOrderPayment(ctx context.Context, db *sql.DB, driver, orderID, payme
 			if affected != int64(expectedQuantity) { return OrderDelivery{}, fmt.Errorf("reserved stock missing: expected %d keys, found %d; payment requires reconciliation", expectedQuantity, affected) }
 		}
 		if err := RedeemOrderPromotion(ctx, tx, driver, orderID, now); err != nil { return OrderDelivery{}, err }
+		if sourceType == "upstream" || deliveryType == "upstream" {
+			timeoutMinutes := 30
+			_ = tx.QueryRowContext(ctx, "SELECT procurement_timeout_minutes FROM upstream_settings WHERE id=1").Scan(&timeoutMinutes)
+			if timeoutMinutes < 1 || timeoutMinutes > 1440 { timeoutMinutes = 30 }
+			if err := enqueueUpstreamProcurementTx(ctx, tx, driver, orderID, orderNo, time.Duration(timeoutMinutes)*time.Minute, now); err != nil { return OrderDelivery{}, err }
+		}
 	}
 	var delivery OrderDelivery
 	delivery.AlreadyPaid = alreadyPaid
