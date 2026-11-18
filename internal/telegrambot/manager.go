@@ -1669,7 +1669,7 @@ func (m *Manager) notifyOwnerSupportTicket(ctx context.Context,cfg Config,ticket
  messages,err:=database.ListSupportTicketMessages(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner timeline load failed: ticket_id=%s error=%v",ticketID,err);return}
  owner,_:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  for _,item:=range messages { if item.SenderType!="user"||item.AttachmentFileID==""{continue};caption:=item.Message
-  if strings.Contains(strings.ToLower(item.AttachmentName),"图片"){if err:=m.sendPhotoByID(ctx,cfg.Token,owner,item.AttachmentFileID,caption);err!=nil{log.Printf("support owner photo forward failed: ticket_id=%s error=%v",ticketID,err)}}else if err:=m.sendDocument(ctx,cfg.Token,owner,item.AttachmentFileID,caption);err!=nil{log.Printf("support owner document forward failed: ticket_id=%s error=%v",ticketID,err)}
+  if err:=m.sendSupportMedia(ctx,cfg.Token,owner,item.AttachmentFileID,item.AttachmentName,caption);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err)}
  }
  keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"查看工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":"待处理列表","callback_data":"support:owner:list:0"}}}}
  body:="🧾 新售后工单："+ticket.TicketNo+"\n用户："+ticket.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+ticket.OrderNo+"\n问题："+truncateButtonText(ticket.Description,700)+"\n媒体凭证已在上方转发。"
@@ -1726,6 +1726,8 @@ func ownerSupportReplyKeyboard() map[string]any { return map[string]any{"keyboar
 func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config,msg Message) bool {
  if m.db==nil{return false};ownerID:=strconv.FormatInt(msg.From.ID,10)
  session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);if err!=nil{return false}
+ if strings.TrimSpace(msg.Text)=="🧾 待处理工单" { m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0); return true }
+ if strings.TrimSpace(msg.Text)=="返回" { m.sendOwnerOverview(ctx,cfg,msg.Chat.ID); return true }
  ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,session.TicketID)
  if err!=nil||ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"该工单已结单或不存在，请重新选择待处理工单。");return true}
  text:=strings.TrimSpace(msg.Text);if text==""{text=strings.TrimSpace(msg.Caption)}
@@ -1733,7 +1735,7 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  if text==""&&fileID==""{return true}
  userChat,err:=strconv.ParseInt(ticket.TelegramChatID,10,64);if err!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用户会话地址无效，工单保持处理中。");return true}
  outgoing:="客服回复：";if text!=""{outgoing+="\n"+text}
- if fileID!=""{if msg.Document!=nil{err=m.sendDocument(ctx,cfg.Token,userChat,fileID,outgoing)}else{err=m.sendPhotoByID(ctx,cfg.Token,userChat,fileID,outgoing)}}else{err=m.sendMessage(ctx,cfg.Token,userChat,outgoing)}
+ if fileID!=""{err=m.sendSupportMedia(ctx,cfg.Token,userChat,fileID,fileName,outgoing)}else{err=m.sendMessage(ctx,cfg.Token,userChat,outgoing)}
  if err!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"发送给用户失败："+err.Error()+"\n工单保持处理中，可稍后重试。");log.Printf("support owner reply failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err);return true}
  updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
  exists,lookupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,updateKey)
@@ -1744,6 +1746,16 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"是，结单","callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":"否，继续沟通","callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
  _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已发送给用户。是否结单？",keyboard)
  return true
+}
+
+func (m *Manager) sendSupportMedia(ctx context.Context,token string,chatID int64,fileID,fileName,caption string) error {
+ runes:=[]rune(caption);mediaCaption:=caption;remainder:=""
+ if len(runes)>900 {mediaCaption=string(runes[:900]);remainder=string(runes[900:])}
+ var err error
+ if strings.Contains(strings.ToLower(fileName),"图片") {err=m.sendPhotoByID(ctx,token,chatID,fileID,mediaCaption)} else {err=m.sendDocument(ctx,token,chatID,fileID,mediaCaption)}
+ if err!=nil{return err}
+ if strings.TrimSpace(remainder)!="" {return m.sendMessage(ctx,token,chatID,remainder)}
+ return nil
 }
 
 func (m *Manager) sendPhotoByID(ctx context.Context,token string,chatID int64,fileID,caption string) error {
