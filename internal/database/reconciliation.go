@@ -91,7 +91,7 @@ func ListDailyReconciliationReports(ctx context.Context,db *sql.DB,driver,month 
 	q:="SELECT report_date,revenue_atomic,order_count,delivered_count,delivery_failed_count,refund_atomic,recharge_atomic,unmatched_transaction_count,manual_review_transaction_count,generated_at,supplier_balance,supplier_currency,supplier_balance_checked_at FROM daily_reconciliation_reports WHERE report_date>="+placeholder(driver,1)+" AND report_date<"+placeholder(driver,2)+" ORDER BY report_date DESC"
 	rows,err:=db.QueryContext(ctx,q,start.Format("2006-01-02"),end.Format("2006-01-02"));if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]DailyReconciliationReport,0)
-	for rows.Next(){var v DailyReconciliationReport;if err:=rows.Scan(&v.ReportDate,&v.RevenueAtomic,&v.OrderCount,&v.DeliveredCount,&v.DeliveryFailedCount,&v.RefundAtomic,&v.RechargeAtomic,&v.UnmatchedTransactionCount,&v.ManualReviewTransactionCount,&v.GeneratedAt);err!=nil{return nil,err};items=append(items,v)}
+	for rows.Next(){var v DailyReconciliationReport;if err:=rows.Scan(&v.ReportDate,&v.RevenueAtomic,&v.OrderCount,&v.DeliveredCount,&v.DeliveryFailedCount,&v.RefundAtomic,&v.RechargeAtomic,&v.UnmatchedTransactionCount,&v.ManualReviewTransactionCount,&v.GeneratedAt,&v.SupplierBalance,&v.SupplierCurrency,&v.SupplierBalanceCheckedAt);err!=nil{return nil,err};items=append(items,v)}
 	return items,rows.Err()
 }
 
