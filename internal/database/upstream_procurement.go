@@ -128,6 +128,7 @@ func CompleteUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,e
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='paid',delivery_payload_json="+placeholder(driver,1)+",procurement_error='',updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3),payloadCiphertext,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'completed',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,"upstream order "+externalNo,now);err!=nil{return err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note='采购已交付',resolved_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE source_key IN ("+placeholder(driver,3)+","+placeholder(driver,4)+") AND status IN ('open','processing')",now,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return err}
 	return tx.Commit()
 }
 
@@ -178,6 +179,7 @@ func RetryUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,admi
 	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='queued',next_poll_at="+placeholder(driver,1)+",deadline_at="+placeholder(driver,2)+",lease_until=NULL,last_error='',updated_at="+placeholder(driver,3)+" WHERE local_order_id="+placeholder(driver,4),now,deadline,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'manual_retry',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,adminID,"manual retry authorized",now);err!=nil{return err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='processing',resolution_note='管理员已授权沿用原幂等键重试',resolved_by="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+",resolved_at='' WHERE source_key IN ("+placeholder(driver,3)+","+placeholder(driver,4)+") AND status IN ('open','processing')",adminID,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return err}
 	return tx.Commit()
 }
 
@@ -203,6 +205,7 @@ func RefundUpstreamProcurementToWallet(ctx context.Context,db *sql.DB,driver,ord
 	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='refunded',updated_at="+placeholder(driver,1)+" WHERE local_order_id="+placeholder(driver,2),now,orderID);err!=nil{return 0,err}
 	id,e:=randomID();if e!=nil{return 0,e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'refunded',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,reason,adminID,now);err!=nil{return 0,err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note='已按审批退回买家站内余额',resolved_by="+placeholder(driver,1)+",resolved_at="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE source_key IN ("+placeholder(driver,4)+","+placeholder(driver,5)+") AND status IN ('open','processing')",adminID,now,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return 0,err}
 	if err:=tx.Commit();err!=nil{return 0,err};return balance,nil
 }
 
