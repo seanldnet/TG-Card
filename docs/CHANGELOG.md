@@ -1,3 +1,27 @@
+## 2026-11-18 — Dujiao-Next PR B：商品目录同步与来源管理
+
+- 状态：开发分支已实现，PR/CI/合并待完成；未执行真实商户账号同步验收。
+- 分支：`feat/dujiao-catalog-sync`；开发前 main 基线 `e625d57473acba618cb26923965566cd3fea12d1`。
+- 复现条件：PR A 已可保存 Dujiao-Next 凭证并测试连接，但没有商品/分类/SKU 同步；启用上游目录无法切换 Bot 商品来源。
+- 变更内容：
+  - 数据库迁移 0030–0034：分类/商品 source_type、上游分类/商品/SKU ID、SKU 规格、履约类型/人工表单 schema、标签、库存、原币价格快照、图片本地路径、同步批次、加价/汇率策略及目录 stale 标志。
+  - 分类、商品、SKU 通过官方 API 分页同步；每个上游 SKU 映射为一条 TG-Card 商品，保留 product_id、sku_id、sku_code、spec_values、fulfillment_type 和 manual_form_schema。
+  - 上游图片/分类图标下载至 DATA_DIR/uploads/upstream，内容校验、大小限制、SHA-256 文件名；不保存远程图片 URL 作为展示资源。
+  - 价格保存原币快照；最终售价先按显式配置汇率换算为 USDT，再应用百分比加价与固定加价。上游币种为 USDT 时汇率固定 1；非 USDT 未配置汇率则拒绝同步，不猜测汇率。
+  - 手动同步 API 与按配置间隔运行的定时同步；目录 upsert 在单个数据库事务内完成，上游下架/缺失 SKU 在成功同步后隐藏；网络/数据/事务失败不覆盖上次成功目录。
+  - 配置、凭证或价格策略变更会标记目录 stale 并自动关闭上游展示；重新同步成功后才允许再次启用。
+  - Bot 启用上游后仅展示上游商品；关闭后恢复本地商品。PR C 采购转发完成前，上游商品不展示可购买/确认按钮，后端也拒绝伪造订单或扣款。
+  - 后台本地旧商品在上游启用时置灰保留；上游商品禁止本地编辑、删除和导入卡密。
+- 数据库迁移：新增 0030–0034；兼容 SQLite/PostgreSQL。
+- 配置/部署影响：无新增环境变量；汇率、加价和同步间隔在后台配置；图片使用现有 DATA_DIR 持久化卷。
+- 兼容性与已知限制：当前订单结算为 USDT；非 USDT 上游币种必须人工配置“1 单位上游币种 = ? USDT”的汇率。每个 SKU 单独映射为商品；最多下载每商品前 5 张图片。上游采购/付款转发尚未实现，必须等待 PR C。
+- 验证：
+  - 新增官方响应 JSON 结构、价格解析/汇率/加价、SKU 规格名称单元测试。
+  - 新增 SQLite 源切换、事务回滚、缺失商品隐藏、图片失败保留、stale 标志和设置持久化测试。
+  - Go CI、Admin CI、安全扫描等待 PR workflow 结果；真实上游账号同步待项目所有者执行。
+  - 官方协议依据：`docs/upstream-integration.md` 所列 Dujiao-Next Open API 文档。
+- 发布镜像：PR B 尚未合并，不更新 latest。
+
 ## 2026-11-18 — Dujiao-Next PR A：上游基础设施（配置与连接测试）
 
 - 状态：PR #21 已合并至 main；Go CI、Admin CI、安全扫描均通过；真实商户账号验收待执行。
@@ -28,6 +52,7 @@
 - Publish Actions：[Run #327](https://github.com/seanldnet/TG-Card/actions/runs/44288929603)，Run ID `44288929603`，事件 push，状态 `completed / success`；job `build-and-push` 成功。
 - 镜像标签：`ghcr.io/seanldnet/tg-card:latest`、`ghcr.io/seanldnet/tg-card:40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。
 - 镜像 digest：`sha256:05663ddbc49d9706a4fe3b4771cbc1dab427a29b15605a048d69723485fc60c6`；Buildx 日志明确记录 latest manifest 推送成功、commit SHA 标签推送成功及 containerimage.digest。
+- 后续 latest 关系：PR #21 的 `2044fa5234ebfd62d3e30357220b192e3a10814b` 相对 PR #19 的 `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb` 为后代（ahead_by=2、behind_by=0）；当前 latest digest `sha256:edcf23eefc6be73bd1433a94d74870cae18d2198cd75424e7918d2b6f3066479` 因此包含 PR #19 修复。
 - 构建平台：linux/amd64、linux/arm64。
 - 同一 commit 的 Go backend CI、Admin frontend CI、安全扫描均成功；见 [Go](https://github.com/seanldnet/TG-Card/actions/runs/44288929665)、[Admin](https://github.com/seanldnet/TG-Card/actions/runs/44288929601)、[Security](https://github.com/seanldnet/TG-Card/actions/runs/44288929734)。
 - 验收状态：Telegram 图片/文件附件及 Bot 停止后历史附件查看、跟踪防护下 Network 零外部 CDN 请求、PC 宽屏真实浏览器回归，均仍待项目所有者执行。CI 与镜像发布不等于端到端验收。
