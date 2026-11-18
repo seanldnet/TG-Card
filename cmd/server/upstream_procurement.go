@@ -45,14 +45,18 @@ func (a *application) getProcurementAPI(settings database.UpstreamSettings) (ups
 func (a *application) runUpstreamProcurementScheduler(ctx context.Context) {
 	ticker:=time.NewTicker(5*time.Second)
 	balanceTicker:=time.NewTicker(10*time.Minute)
+	financeTicker:=time.NewTicker(15*time.Minute)
 	defer ticker.Stop()
 	defer balanceTicker.Stop()
+	defer financeTicker.Stop()
 	a.checkSupplierBalance(ctx)
+	a.runSupplierFinanceIntegrityCheck(ctx)
 	for {
 		select {
 		case <-ctx.Done(): return
 		case <-ticker.C: a.processDueUpstreamProcurements(ctx)
 		case <-balanceTicker.C: a.checkSupplierBalance(ctx)
+		case <-financeTicker.C: a.runSupplierFinanceIntegrityCheck(ctx)
 		}
 	}
 }
@@ -114,8 +118,18 @@ func (a *application) processUpstreamProcurement(ctx context.Context,job databas
 			if err==nil{a.notifyProcurementOwner(ctx,job.LocalOrderNo,"上游 SKU 快照无效，采购未发起")}
 			return err
 		}
+		// Capture supplier balance immediately before the purchase. This is evidence only:
+		// a missing snapshot must never block or mutate the buyer's already-paid order.
+		beforeBalance,beforeErr:=client.GetBalance(ctx)
+		if beforeErr==nil {
+			_ = database.SaveUpstreamBalanceSnapshot(ctx,a.db,a.driver,beforeBalance.Balance,beforeBalance.Currency)
+			if saveErr:=database.SaveSupplierProcurementBalanceBefore(ctx,a.db,a.driver,job.LocalOrderID,beforeBalance.Balance,beforeBalance.Currency);saveErr!=nil{log.Printf("save supplier pre-purchase balance failed: order=%s error=%v",job.LocalOrderNo,saveErr)}
+		} else {
+			_ = database.CreateFinanceException(ctx,a.db,a.driver,"supplier-funds-before:"+job.LocalOrderID,"supplier_balance","warning","procurement",job.LocalOrderID,"采购前供应商余额快照不可用",beforeErr.Error())
+		}
 		request:=upstream.ProcurementRequest{SKUID:skuID,Quantity:job.Quantity,DownstreamOrderNo:job.LocalOrderNo,CallbackURL:settings.CallbackURL,TraceID:job.LocalOrderID}
 		result,requestErr:=client.CreateOrder(ctx,request)
+		a.recordSupplierProcurementBalanceAfter(ctx,client,job,result)
 		if requestErr!=nil {
 			var businessErr *upstream.ProcurementBusinessError
 			if errors.As(requestErr,&businessErr) {
@@ -163,6 +177,25 @@ func (a *application) processUpstreamProcurement(ctx context.Context,job databas
 		return err
 	}
 	return database.ScheduleUpstreamProcurementPoll(ctx,a.db,a.driver,job.LocalOrderID,pollInterval)
+}
+
+func (a *application) recordSupplierProcurementBalanceAfter(ctx context.Context,client upstream.ProcurementAPI,job database.UpstreamProcurementJob,result upstream.DujiaoProcurementResult) {
+ after,err:=client.GetBalance(ctx)
+ if err!=nil {
+  _ = database.CreateFinanceException(ctx,a.db,a.driver,"supplier-funds-after:"+job.LocalOrderID,"supplier_balance","warning","procurement",job.LocalOrderID,"采购后供应商余额快照不可用",err.Error())
+  return
+ }
+ _ = database.SaveUpstreamBalanceSnapshot(ctx,a.db,a.driver,after.Balance,after.Currency)
+ check,err:=database.CompleteSupplierProcurementBalanceCheck(ctx,a.db,a.driver,job.LocalOrderID,strconv.FormatInt(result.OrderID,10),result.Amount,after.Balance,after.Currency)
+ if err!=nil {log.Printf("supplier procurement balance reconciliation failed: order=%s error=%v",job.LocalOrderNo,err);return}
+ if check.Status=="mismatch"||check.Status=="unverifiable" {
+  day:=time.Now().UTC().Format("2006-01-02")
+  notify,claimErr:=database.ClaimFinanceExceptionAlert(ctx,a.db,a.driver,"supplier-fund:"+job.LocalOrderID,day)
+  if claimErr==nil&&notify{
+   settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+   a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("供应商采购资金核对异常\n本地订单：%s\n上游订单：%s\n币种：%s\n采购金额：%s\n余额变动：%s\n差额：%s\n原因：%s\n订单入口：%s\n异常处理入口：%s",check.LocalOrderNo,check.ExternalOrderID,check.Currency,check.ExpectedDebit,check.ObservedDebit,check.Difference,check.Detail,a.procurementOrderLink(settings,check.LocalOrderNo),a.procurementQueueLink(settings)),"")
+  }
+ }
 }
 
 func fulfillmentPayload(item *upstream.DujiaoFulfillment) (string,error) {
@@ -219,6 +252,20 @@ func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason 
 	a.notifySiteEvent(ctx,"risk_alert",details,"")
 }
 
+func (a *application) runSupplierFinanceIntegrityCheck(ctx context.Context) {
+ stale,staleErr:=database.MarkStaleSupplierFundChecks(ctx,a.db,a.driver,15*time.Minute)
+ if staleErr!=nil{log.Printf("mark stale supplier fund checks failed: %v",staleErr)}
+ count,err:=database.RunRefundLedgerIntegrityCheck(ctx,a.db,a.driver)
+ if err!=nil{log.Printf("refund ledger integrity check failed: %v",err);return}
+ if count>0||stale>0 {
+  day:=time.Now().UTC().Format("2006-01-02")
+  notify,claimErr:=database.ClaimFinanceExceptionAlert(ctx,a.db,a.driver,"periodic-finance-integrity",day)
+  if claimErr==nil&&notify{
+   settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+   a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("资金安全定期检查发现异常：退款账本 %d 条，供应商采购余额快照超时 %d 条。系统未修改任何余额或流水。请在资金异常中心核查。\n处理入口：%s",count,stale,a.procurementQueueLink(settings)),"")
+  }
+ }
+}
 func (a *application) checkSupplierBalance(ctx context.Context) {
 	settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver)
 	if err!=nil||!settings.Enabled{return}

@@ -1,3 +1,25 @@
+## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 Draft，分支 CI 通过）
+
+- PR：[PR #38](https://github.com/seanldnet/TG-Card/pull/38)，独立分支 feat/dujiao-fund-safety-pr-d，head 5dbd0269a719f91b74458f03bd67a25aeab0761b，基线 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f。
+- 状态：Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；PR #38 仍为 Draft、尚未合并；分支 CI 通过，Docker Publish/生产部署/验收待后续。
+- 实现：供应商采购前后余额快照和差异异常、15 分钟未完成快照巡检、退款账本完整性检查与重复退款保护、uncertain ageing/Owner 核实恢复、统一资金异常中心及处理状态。
+- 测试：go vet ./...、go test ./...、CGO_ENABLED=0 go build 全部成功；SQLite 测试覆盖供应商资金差异、退款关联异常不自动修正、重复退款仅一笔 credit、uncertain ageing 和 Owner 恢复。
+- 资金边界：不自动修改买家或供应商余额；采购失败/重试不改原始支付引用；退款单订单唯一；供应商差异只进入人工审查。PR E 真实供应商资金联调未完成。
+
+## 2026-11-19 — Dujiao-Next PR D 资金安全深化（独立分支开发中）
+
+- 状态：独立分支 feat/dujiao-fund-safety-pr-d 基于 main 0b0f0514a1c5850aafec0018c95570d0bce8a39f；正在实现，PR 尚未创建，CI/镜像/生产部署/验收均未完成。
+- 仓库审查：PR2 只读校验覆盖买家余额流水；PR C 退款有唯一退款行与唯一钱包流水关联，但缺少完整性巡检；供应商余额快照尚未按采购逐笔与扣款金额比对；uncertain 缺少 ageing/独立人工核实；无统一资金异常中心。
+- 当前代码变更：新增迁移 0039_finance_safety.sql、供应商采购前后余额对照、退款账本一致性检查、uncertain ageing 与 Owner 核实 API、统一资金异常 API/后台页面和定时巡检。检测只生成异常与通知，不自动调整余额。
+- 新增 SQLite 测试覆盖供应商余额差异、退款账本损坏检测、重复退款拒绝、uncertain ageing/Owner 恢复；需以 PR Actions 最终结果为准。
+- 资金红线：退款仅一条独立账本并关联唯一 wallet credit；采购重试沿用原本地订单幂等键；采购失败不改变原始支付记录；不自动修改买家或供应商余额。
+- PR E 真实供应商联调仍未完成；PR #27 C1–C4 继续待验收。
+
+## 2026-11-19 — PR B 上游商品同步验收通过
+
+- 项目所有者确认后台绑定商户、目录同步、加价展示和来源切换均正常；PR B（PR #26）D1–D5 验收状态更新为已验收，日期 2026-11-19。
+- 验收镜像仍为生产 PR2 digest sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e。PR #27 C1–C4 未测试，保持待验收。
+
 ## 2026-11-18 — Dujiao-Next PR C 采购转发（PR #32 已合并，CI/Mock 通过）
 
 - 状态：独立 PR #32 已合并，merge commit `4f712e6ecb2299abd1eb782a439dee56b760578c`；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 全部成功；十项 mock 测试通过。未执行真实上游联调。
@@ -9,9 +31,9 @@
 - Mock 测试：同步交付、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后同幂等键恢复、已退款订单跳过、HTTP 402/404 错误分类共 10 项通过。
 - PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。PR #32 merge Publish digest：`sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 重建 Publish Run #44338105044 成功，当前 latest digest：`sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍按 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录；PR D 与 PR E 仍未完成。
 
-## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 开发启动
+## 2026-11-19 — PR2 生产验收通过；Dujiao-Next PR C 已合并
 
-- 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-18。
+- 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-19。
 - PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)；GHCR multi-platform manifest digest：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。
 - Go CI [#44324284650](https://github.com/seanldnet/TG-Card/actions/runs/44324284650)、Admin CI [#44324284642](https://github.com/seanldnet/TG-Card/actions/runs/44324284642)、Security [#44324284777](https://github.com/seanldnet/TG-Card/actions/runs/44324284777) 均成功。
 - PR #19/#26/#28 与 PR2 的本次验收项均使用生产 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录为已验收。PR #27 Owner Bot C1–C4 未被本次明确列入验收范围，继续待验收。
@@ -19,7 +41,7 @@
 
 ## 2026-11-18 — PR2 资金与库存安全（已合并、发布并验收）
 
-- 状态：PR #30 已合并至 main，Go CI、Admin CI、安全扫描、Docker Publish 均成功；生产验收由项目所有者按默认通过确认，日期 2026-11-18。
+- 状态：PR #30 已合并至 main，Go CI、Admin CI、安全扫描、Docker Publish 均成功；生产验收由项目所有者按默认通过确认，日期 2026-11-19。
 - 实现范围：UTC 每日对账日报及历史快照；用户余额与钱包流水只读一致性检查；本地卡密商品库存归零自动下架、补货后按设置手动/自动上架。
 - 数据库：新增迁移 `0037_reconciliation_inventory.sql`，记录交付失败事件、日报快照、余额检查运行和异常明细。
 - API/后台：新增对账日报月度查询、余额检查历史/差异查询、手动只读检查接口；新增“对账与余额校验”页面；网站设置新增库存归零下架/补货自动上架开关。
@@ -27,7 +49,7 @@
 - 统计口径与资金边界：日报按 paid_at/created_at/delivered_at/失败事件/退款 credit/充值本金/链上时间统计。余额只读核验按 wallet_transactions credit - debit；售后退款在当前实现中是 credit，故计入正向流水。任何差异均只记录和告警，不自动修正余额。
 - 验证：新增日报指标、快照幂等、余额差异检测且不自动修正的 SQLite 测试；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 均成功。
 - 文档：同步更新 `docs/PROJECT_STATUS.md`、本日志与新增 `docs/reconciliation-inventory.md`。
-- 验收：项目所有者确认生产已更新至 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未收到异常反馈，按默认通过处理（2026-11-18）。
+- 验收：项目所有者确认生产已更新至 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未收到异常反馈，按默认通过处理（2026-11-19）。
 - 红线：本 PR 不包含 Dujiao-Next 采购转发、供应商扣款或退款逻辑；不自动改余额。
 
 ## 2026-11-18 — PR #29 交接文档校准与 Admin CI 触发修复

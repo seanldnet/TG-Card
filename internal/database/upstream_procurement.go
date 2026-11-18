@@ -98,6 +98,7 @@ func FailUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,reaso
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_failed',procurement_error="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status='procurement_pending'",reason,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'failed',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,reason,now);err!=nil{return err}
+	if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败",reason);err!=nil{return err}
 	return tx.Commit()
 }
 
@@ -109,6 +110,7 @@ func MarkUpstreamProcurementUncertain(ctx context.Context,db *sql.DB,driver,orde
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_failed',procurement_error="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND status='procurement_pending'",reason,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'uncertain',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,reason,now);err!=nil{return err}
+	if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-uncertain:"+orderID,"procurement_uncertain","critical","order",orderID,"上游采购受理状态不确定",reason);err!=nil{return err}
 	return tx.Commit()
 }
 
@@ -126,6 +128,7 @@ func CompleteUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,e
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='paid',delivery_payload_json="+placeholder(driver,1)+",procurement_error='',updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3),payloadCiphertext,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'completed',"+placeholder(driver,3)+",'system',"+placeholder(driver,4)+")",id,orderID,"upstream order "+externalNo,now);err!=nil{return err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note='采购已交付',resolved_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE source_key IN ("+placeholder(driver,3)+","+placeholder(driver,4)+") AND status IN ('open','processing')",now,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return err}
 	return tx.Commit()
 }
 
@@ -176,16 +179,19 @@ func RetryUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,admi
 	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='queued',next_poll_at="+placeholder(driver,1)+",deadline_at="+placeholder(driver,2)+",lease_until=NULL,last_error='',updated_at="+placeholder(driver,3)+" WHERE local_order_id="+placeholder(driver,4),now,deadline,now,orderID);err!=nil{return err}
 	id,e:=randomID();if e!=nil{return e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'manual_retry',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,adminID,"manual retry authorized",now);err!=nil{return err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='processing',resolution_note='管理员已授权沿用原幂等键重试',resolved_by="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+",resolved_at='' WHERE source_key IN ("+placeholder(driver,3)+","+placeholder(driver,4)+") AND status IN ('open','processing')",adminID,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return err}
 	return tx.Commit()
 }
 
-func RefundUpstreamProcurementToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,reason string)(int64,error){
+func RefundUpstreamProcurementToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,reason string,audit ...string)(int64,error){
 	reason=strings.TrimSpace(reason);if reason==""||len(reason)>500{return 0,fmt.Errorf("退款原因必须为 1-500 个字符")}
 	tx,err:=db.BeginTx(ctx,&sql.TxOptions{Isolation:sql.LevelSerializable});if err!=nil{return 0,err};defer tx.Rollback()
 	var status,userID,orderNo,currency,queueStatus string;var amountMinor int64
 	q:="SELECT o.status,o.telegram_user_id,o.order_no,o.currency,o.amount_minor,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE OF o,p"}
 	if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&status,&userID,&orderNo,&currency,&amountMinor,&queueStatus);err!=nil{return 0,err}
 	if status!="procurement_failed"||(queueStatus!="failed"&&queueStatus!="uncertain"){return 0,fmt.Errorf("仅确认采购失败且未退款的订单可退款")}
+	var existingRefund string
+	if err:=tx.QueryRowContext(ctx,"SELECT wallet_transaction_id FROM upstream_procurement_refunds WHERE order_id="+placeholder(driver,1),orderID).Scan(&existingRefund);err==nil{return 0,fmt.Errorf("该订单已存在退款账本，禁止重复退款")}else if err!=sql.ErrNoRows{return 0,err}
 	if !strings.EqualFold(currency,"USDT")||amountMinor<=0||amountMinor>922337203685477{return 0,fmt.Errorf("退款金额或币种无效")}
 	amountAtomic:=amountMinor*10000;now:=time.Now().UTC().Format(time.RFC3339Nano)
 	res,err:=tx.ExecContext(ctx,"UPDATE telegram_users SET balance_atomic=balance_atomic+"+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE telegram_user_id="+placeholder(driver,3),amountAtomic,now,userID);if err!=nil{return 0,err}
@@ -195,10 +201,15 @@ func RefundUpstreamProcurementToWallet(ctx context.Context,db *sql.DB,driver,ord
 	note:="上游采购失败退款："+orderNo+"；"+reason
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",'credit',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+")",ledgerID,userID,adminID,amountAtomic,balance,note,now);err!=nil{return 0,err}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_refunds(order_id,wallet_transaction_id,amount_atomic,admin_id,reason,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")",orderID,ledgerID,amountAtomic,adminID,reason,now);err!=nil{return 0,err}
-	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='refunded',refunded_at="+placeholder(driver,1)+",refund_note="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)+" AND status='procurement_failed'",now,reason,now,orderID);err!=nil{return 0,err}
-	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='refunded',updated_at="+placeholder(driver,1)+" WHERE local_order_id="+placeholder(driver,2),now,orderID);err!=nil{return 0,err}
+	res,err=tx.ExecContext(ctx,"UPDATE orders SET status='refunded',refunded_at="+placeholder(driver,1)+",refund_note="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)+" AND status='procurement_failed'",now,reason,now,orderID);if err!=nil{return 0,err};n,err=res.RowsAffected();if err!=nil{return 0,err};if n!=1{return 0,fmt.Errorf("订单状态已变化，退款未提交")}
+	res,err=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='refunded',updated_at="+placeholder(driver,1)+" WHERE local_order_id="+placeholder(driver,2)+" AND status IN ('failed','uncertain')",now,orderID);if err!=nil{return 0,err};n,err=res.RowsAffected();if err!=nil{return 0,err};if n!=1{return 0,fmt.Errorf("采购队列状态已变化，退款未提交")}
 	id,e:=randomID();if e!=nil{return 0,e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'refunded',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,reason,adminID,now);err!=nil{return 0,err}
+	if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note='已按审批退回买家站内余额',resolved_by="+placeholder(driver,1)+",resolved_at="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE source_key IN ("+placeholder(driver,4)+","+placeholder(driver,5)+") AND status IN ('open','processing')",adminID,now,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return 0,err}
+	ip,userAgent:="","";if len(audit)>0{ip=audit[0]};if len(audit)>1{userAgent=audit[1]}
+	auditID,e:=randomID();if e!=nil{return 0,e}
+	details:=fmt.Sprintf("order_no=%s; amount_atomic=%d; wallet_transaction_id=%s; reason=%s",orderNo,amountAtomic,ledgerID,reason)
+	if _,err:=tx.ExecContext(ctx,"INSERT INTO audit_logs(id,admin_id,action,resource,ip_address,user_agent,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")",auditID,adminID,"upstream.procurement.refund","order:"+orderID,ip,userAgent,details,now);err!=nil{return 0,err}
 	if err:=tx.Commit();err!=nil{return 0,err};return balance,nil
 }
 
