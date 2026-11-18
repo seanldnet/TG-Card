@@ -160,6 +160,11 @@ func ApplyUpstreamCallback(ctx context.Context,db *sql.DB,driver,payloadHash,loc
 	id,e:=randomID();if e!=nil{return "",false,false,e}
 	if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'callback',"+placeholder(driver,5)+")",id,orderID,status,externalNo,now);err!=nil{return "",false,false,err}
 	if _,err:=tx.ExecContext(ctx,"UPDATE upstream_callback_events SET result="+placeholder(driver,1)+" WHERE payload_hash="+placeholder(driver,2),status,payloadHash);err!=nil{return "",false,false,err}
+	if delivered {
+		if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note='上游回调确认已交付',resolved_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE source_key IN ("+placeholder(driver,3)+","+placeholder(driver,4)+") AND status IN ('open','processing')",now,now,"procurement-failed:"+orderID,"procurement-uncertain:"+orderID);err!=nil{return "",false,false,err}
+	} else if cancelled {
+		if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败","供应商回调确认采购单已取消");err!=nil{return "",false,false,err}
+	}
 	if err:=tx.Commit();err!=nil{return "",false,false,err}
 	return orderID,delivered,false,nil
 }
