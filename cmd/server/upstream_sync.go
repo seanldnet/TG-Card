@@ -66,7 +66,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		categoryRecords = append(categoryRecords, database.UpstreamCategoryRecord{
 			UpstreamID: strconv.FormatInt(category.ID, 10),
 			ParentID: strconv.FormatInt(category.ParentID, 10),
-			Name: name, SortOrder: category.SortOrder,
+			Name: name, SortOrder: -category.SortOrder,
 		})
 	}
 
