@@ -172,9 +172,9 @@ func ReopenSupportTicket(ctx context.Context, db *sql.DB, driver, ticketID, tele
 // AcquireSupportFollowupSlot limits automatic ticket recreation to one per Bot/user in ten minutes.
 func AcquireSupportFollowupSlot(ctx context.Context, db *sql.DB, driver, botID, telegramUserID string) (bool, error) {
 	now := time.Now().UTC()
-	nowText := now.Format(time.RFC3339Nano)
-	cutoff := now.Add(-10*time.Minute).Format(time.RFC3339Nano)
-	query := "INSERT INTO support_followup_throttles(bot_id,telegram_user_id,last_ticket_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(bot_id,telegram_user_id) DO UPDATE SET last_ticket_at=excluded.last_ticket_at WHERE support_followup_throttles.last_ticket_at <= "+placeholder(driver,4)
+	nowText := now.Format("2006-01-02T15:04:05.000000000Z")
+	cutoff := now.Add(-10*time.Minute).Format("2006-01-02T15:04:05.000000000Z")
+	query := "INSERT INTO support_followup_throttles(bot_id,telegram_user_id,last_ticket_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(telegram_user_id) DO UPDATE SET bot_id=excluded.bot_id,last_ticket_at=excluded.last_ticket_at WHERE support_followup_throttles.last_ticket_at <= "+placeholder(driver,4)
 	result, err := db.ExecContext(ctx, query, strings.TrimSpace(botID), strings.TrimSpace(telegramUserID), nowText, cutoff)
 	if err != nil { return false, err }
 	n, err := result.RowsAffected()
