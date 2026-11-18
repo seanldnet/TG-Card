@@ -55,9 +55,9 @@ func ClaimDueUpstreamProcurements(ctx context.Context, db *sql.DB, driver string
 	now := time.Now().UTC()
 	nowText := now.Format(time.RFC3339Nano)
 	leaseText := now.Add(lease).Format(time.RFC3339Nano)
-	due := "julianday(COALESCE(next_poll_at,created_at))<=julianday("+placeholder(driver,1)+") AND (lease_until IS NULL OR julianday(lease_until)<=julianday("+placeholder(driver,2)+"))"
+	due := "julianday(COALESCE(p.next_poll_at,p.created_at))<=julianday("+placeholder(driver,1)+") AND (p.lease_until IS NULL OR julianday(p.lease_until)<=julianday("+placeholder(driver,2)+"))"
 	if driver == "postgres" {
-		due = "CAST(COALESCE(next_poll_at,created_at) AS TIMESTAMPTZ)<=CAST("+placeholder(driver,1)+" AS TIMESTAMPTZ) AND (lease_until IS NULL OR CAST(lease_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ))"
+		due = "CAST(COALESCE(p.next_poll_at,p.created_at) AS TIMESTAMPTZ)<=CAST("+placeholder(driver,1)+" AS TIMESTAMPTZ) AND (p.lease_until IS NULL OR CAST(p.lease_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ))"
 	}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return nil,err};defer tx.Rollback()
 	q:="SELECT p.local_order_id,p.local_order_no,p.external_order_id,p.external_order_no,p.status,p.request_attempts,COALESCE(p.next_poll_at,''),p.deadline_at,p.last_error,p.created_at,p.updated_at,o.status,COALESCE(o.upstream_product_id_snapshot,''),COALESCE(o.upstream_sku_id_snapshot,''),o.quantity,COALESCE(o.upstream_fulfillment_type_snapshot,'') FROM upstream_procurements p JOIN orders o ON o.id=p.local_order_id WHERE p.status IN ('queued','polling') AND "+due+" ORDER BY p.created_at LIMIT "+fmt.Sprint(limit)
