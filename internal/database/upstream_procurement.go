@@ -9,24 +9,24 @@ import (
 )
 
 type UpstreamProcurement struct {
-	ID string
-	OrderID string
-	OrderNo string
-	ProductID string
-	UpstreamProductID string
-	UpstreamSKUID string
-	Quantity int
-	Status string
-	UpstreamOrderID string
-	UpstreamOrderNo string
-	AttemptCount int
-	PollCount int
-	NextAttemptAt string
-	DeadlineAt string
-	LastError string
-	FulfillmentCiphertext string
-	DeliveredAt string
-	UpdatedAt string
+	ID string `json:"id"`
+	OrderID string `json:"orderId"`
+	OrderNo string `json:"orderNo"`
+	ProductID string `json:"productId"`
+	UpstreamProductID string `json:"upstreamProductId"`
+	UpstreamSKUID string `json:"upstreamSkuId"`
+	Quantity int `json:"quantity"`
+	Status string `json:"status"`
+	UpstreamOrderID string `json:"upstreamOrderId"`
+	UpstreamOrderNo string `json:"upstreamOrderNo"`
+	AttemptCount int `json:"attemptCount"`
+	PollCount int `json:"pollCount"`
+	NextAttemptAt string `json:"nextAttemptAt"`
+	DeadlineAt string `json:"deadlineAt"`
+	LastError string `json:"lastError"`
+	FulfillmentCiphertext string `json:"-"`
+	DeliveredAt string `json:"deliveredAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 func EnqueuePaidUpstreamOrders(ctx context.Context, db *sql.DB, driver string, timeout time.Duration) (int, error) {
