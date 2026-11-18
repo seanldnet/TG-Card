@@ -135,7 +135,7 @@ onMounted(()=>{void load();});
      </div>
     </a-form-item>
     <a-form-item label="供应商余额低额预警阈值" extra="单位为供应商 ping 返回的币种；余额低于此值时每日对账日报会标记并通过风险通知提醒 Owner。默认 10。">
-     <a-input-number v-model:value="settings.supplierBalanceAlertThreshold" class="w-full" :min="0.000001" :max="1000000000" :step="1"/>
+     <a-input v-model:value="settings.supplierBalanceAlertThreshold" class="w-full" inputmode="decimal" placeholder="10"/>
     </a-form-item>
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
