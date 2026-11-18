@@ -56,10 +56,15 @@ func TestUpstreamCatalogSyncIsTransactionalAndSourceAware(t *testing.T) {
 	if len(visible)!=1||visible[0].ID!=localProduct.ID{t.Fatalf("disabled upstream should expose local catalog: %+v",visible)}
 	settings:=UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",Enabled:true}
 	if err:=SaveUpstreamSettings(ctx,db,cfg.DBDriver,settings);err!=nil{t.Fatal(err)}
+	// Enabling or changing upstream configuration marks the catalog stale.
+	// A successful sync is required before upstream products become visible.
 	visible,err=ListVisibleProducts(ctx,db);if err!=nil{t.Fatal(err)}
-	if len(visible)!=1||visible[0].SourceType!="upstream"{t.Fatalf("enabled upstream should expose upstream catalog only: %+v",visible)}
+	if len(visible)!=1||visible[0].SourceType!="local"{t.Fatalf("stale upstream catalog must keep local catalog visible: %+v",visible)}
+	if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"batch-3",[]UpstreamCategoryRecord{{UpstreamID:"12",Name:"Supplier category"}},[]UpstreamProductRecord{{ProductID:"34",SKUID:"56",Name:"Supplier item / 1 month",PriceMinor:1200,PriceSnapshotMinor:1000,Currency:"CNY",Active:true}});err!=nil{t.Fatal(err)}
+	visible,err=ListVisibleProducts(ctx,db);if err!=nil{t.Fatal(err)}
+	if len(visible)!=1||visible[0].SourceType!="upstream"{t.Fatalf("enabled and freshly synced upstream should expose upstream catalog only: %+v",visible)}
 
-	if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"batch-3",nil,nil);err!=nil{t.Fatal(err)}
+	if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"batch-4",nil,nil);err!=nil{t.Fatal(err)}
 	all,err=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
 	for _,p:=range all{
 		if p.SourceType=="local"&&p.ID==localProduct.ID&&p.Status!=1{t.Fatal("local product was changed by upstream sync")}
