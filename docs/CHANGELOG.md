@@ -1,3 +1,17 @@
+## 2026-11-19 — Dujiao-Next PR D 资金安全深化（独立分支开发中）
+
+- 状态：独立分支 feat/dujiao-fund-safety-pr-d 基于 main 0b0f0514a1c5850aafec0018c95570d0bce8a39f；正在实现，PR 尚未创建，CI/镜像/生产部署/验收均未完成。
+- 仓库审查：PR2 只读校验覆盖买家余额流水；PR C 退款有唯一退款行与唯一钱包流水关联，但缺少完整性巡检；供应商余额快照尚未按采购逐笔与扣款金额比对；uncertain 缺少 ageing/独立人工核实；无统一资金异常中心。
+- 当前代码变更：新增迁移 0039_finance_safety.sql、供应商采购前后余额对照、退款账本一致性检查、uncertain ageing 与 Owner 核实 API、统一资金异常 API/后台页面和定时巡检。检测只生成异常与通知，不自动调整余额。
+- 新增 SQLite 测试覆盖供应商余额差异、退款账本损坏检测、重复退款拒绝、uncertain ageing/Owner 恢复；需以 PR Actions 最终结果为准。
+- 资金红线：退款仅一条独立账本并关联唯一 wallet credit；采购重试沿用原本地订单幂等键；采购失败不改变原始支付记录；不自动修改买家或供应商余额。
+- PR E 真实供应商联调仍未完成；PR #27 C1–C4 继续待验收。
+
+## 2026-11-19 — PR B 上游商品同步验收通过
+
+- 项目所有者确认后台绑定商户、目录同步、加价展示和来源切换均正常；PR B（PR #26）D1–D5 验收状态更新为已验收，日期 2026-11-19。
+- 验收镜像仍为生产 PR2 digest sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e。PR #27 C1–C4 未测试，保持待验收。
+
 ## 2026-11-18 — Dujiao-Next PR C 采购转发（PR #32 已合并，CI/Mock 通过）
 
 - 状态：独立 PR #32 已合并，merge commit `4f712e6ecb2299abd1eb782a439dee56b760578c`；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 全部成功；十项 mock 测试通过。未执行真实上游联调。

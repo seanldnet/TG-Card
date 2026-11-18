@@ -1,6 +1,6 @@
 # 售后工单、Owner Bot 转发与交互流程
 
-> 当前状态（2026-11-18）：PR #27 Owner Bot 流程与 PR #28 结单生命周期均已合并；PR #28 latest 镜像 digest 为 `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。所有 Telegram/SMTP 真机验收仍由项目所有者按 `docs/PROJECT_STATUS.md` 第 19.3 节统一清单执行，未回填前保持待验收。
+> 当前状态（2026-11-19）：PR #27 Owner Bot 流程与 PR #28 结单生命周期均已合并。PR #28 首次发布镜像历史 digest 为 `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`；后续生产统一验收使用 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。PR #28 的 B1–B6 已按项目所有者确认记录已验收（2026-11-18）；PR #27 的 C1–C4 仍待验收。
 
 ## 产品规则
 
