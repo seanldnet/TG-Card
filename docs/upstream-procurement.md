@@ -1,6 +1,6 @@
 # Dujiao-Next 采购转发与订单履约（PR C）
 
-> 当前对应 PR #32：\`feat/dujiao-purchase-forwarding\`。本文记录 PR C 的代码实现范围与运行约束。PR C 尚未合并；PR D 资金安全和 PR E 真实商户联调仍未完成。不得将 mock 测试等同于真实上游联调。
+> 当前对应 PR #32：\`feat/dujiao-purchase-forwarding\`。本文记录 PR C 的代码实现范围与运行约束。PR C 已通过独立 PR #32 合并；PR D 资金安全和 PR E 真实商户联调仍未完成。不得将 mock 测试等同于真实上游联调。
 
 ## 1. 订单状态与触发时机
 
@@ -99,4 +99,4 @@
 9. 上游 HTTP 402 余额不足响应被解析为明确业务失败并保留上游订单 ID；
 10. 上游 HTTP 404 查单响应被解析为 `order_not_found`，不会当作网络超时盲目重试。
 
-各测试检查订单状态、原始支付引用、钱包流水未被采购失败/重试修改，以及采购/回调审计记录。PR CI 最终输出以 PR #32 的 Actions 为准。
+各测试检查订单状态、原始支付引用、钱包流水未被采购失败/重试修改，以及采购/回调审计记录。PR #32 的 PR head 与合并后 Actions 结果记录在 `docs/PROJECT_STATUS.md` 第 19.7 节。
