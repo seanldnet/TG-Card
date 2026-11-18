@@ -23,8 +23,8 @@ const isMobile=computed(()=>width.value<768);
 const pendingCount=computed(()=>orders.value.filter(x=>x.status==='pending_payment').length);
 const reservedCount=computed(()=>orders.value.filter(x=>x.stockReserved).length);
 const failedCount=computed(()=>orders.value.filter(x=>x.status==='delivery_failed').length);
-function statusLabel(status:string){const labels:Record<string,string>={pending_payment:'待付款',paid:'已付款',delivered:'已发货',delivering:'发货中',delivery_failed:'发货失败',expired:'已过期',cancelled:'已取消',failed:'异常'};return labels[status]??status}
-function statusColor(status:string){if(status==='delivered')return 'success';if(status==='paid'||status==='delivering')return 'processing';if(status==='delivery_failed')return 'error';if(status==='pending_payment')return 'warning';return 'default'}
+function statusLabel(status:string){const labels:Record<string,string>={pending_payment:'待付款',paid:'已付款',delivered:'已发货',delivering:'发货中',delivery_failed:'发货失败',procurement_pending:'采购处理中',procurement_failed:'采购失败',expired:'已过期',cancelled:'已取消',failed:'异常'};return labels[status]??status}
+function statusColor(status:string){if(status==='delivered')return 'success';if(status==='paid'||status==='delivering'||status==='procurement_pending')return 'processing';if(status==='delivery_failed'||status==='procurement_failed')return 'error';if(status==='pending_payment')return 'warning';return 'default'}
 function formatTime(value:string|number){if(!value)return '-';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString()}
 function copy(value:string){if(!value)return;navigator.clipboard?.writeText(value).then(()=>message.success('已复制')).catch(()=>message.error('复制失败'))}
 async function loadOrders(){loading.value=true;try{orders.value=await requestClient.get<Order[]>('/orders');mobilePage.value=1}catch{message.error('订单列表加载失败')}finally{loading.value=false}}
