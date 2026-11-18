@@ -96,6 +96,9 @@ func TestProcurementSynchronousFulfillment(t *testing.T){
 	job:=claimOne(t,f)
 	if err:=f.app.processUpstreamProcurement(context.Background(),job);err!=nil{t.Fatal(err)}
 	assertProcurementLedger(t,f,"paid",1)
+	ciphertext,err:=f.app.secrets.Encrypt("CARD-SYNC");if err!=nil{t.Fatal(err)}
+	if err:=database.CompleteUpstreamProcurement(context.Background(),f.db,"sqlite",f.orderID,"77","UP-77",ciphertext);err!=nil{t.Fatal(err)}
+	assertProcurementLedger(t,f,"paid",1)
 	var cipher string
 	if err:=f.db.QueryRow("SELECT delivery_payload_json FROM orders WHERE id=?",f.orderID).Scan(&cipher);err!=nil{t.Fatal(err)}
 	plain,err:=f.app.secrets.Decrypt(cipher);if err!=nil||plain!="CARD-SYNC"{t.Fatalf("encrypted fulfillment mismatch: %q %v",plain,err)}
