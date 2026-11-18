@@ -108,7 +108,7 @@ onMounted(()=>{void load();});
       <div><div class="mb-1 text-xs text-gray-500">百分比加价</div><a-input-number v-model:value="settings.markupPercent" class="w-full" :min="0" :max="1000" :step="1" addon-after="%"/></div>
       <div><div class="mb-1 text-xs text-gray-500">固定加价（USDT 分）</div><a-input-number v-model:value="settings.markupFixedMinor" class="w-full" :min="0" :max="9000000000000" :step="1"/></div>
      </div>
-     <div class="mt-2 text-xs text-gray-500">最终售价 = 上游 SKU 价 ×（1 + 百分比）+ 固定加价。固定加价以 0.01 USDT 为单位；价格按分四舍五入。</div>
+     <div class="mt-2 text-xs text-gray-500">最终售价 = 上游 SKU 原价 × 汇率转 USDT ×（1 + 百分比）+ 固定加价。固定加价以 0.01 USDT 为单位；价格按分四舍五入。</div>
     </a-form-item>
     <a-form-item label="上游币种兑 USDT 汇率" extra="填写 1 单位上游币种可兑换多少 USDT。例如上游为 CNY 时可填 7.20；上游币种为 USDT 时自动按 1 计算。非 USDT 币种未配置汇率将拒绝同步，避免错误定价。">
      <a-input-number v-model:value="settings.exchangeRateToUSDT" class="w-full" :min="0" :max="1000000" :step="0.01" placeholder="例如 CNY → USDT：7.20"/>
