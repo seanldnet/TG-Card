@@ -38,7 +38,7 @@ function open(path:string){void router.push(path)}
 onMounted(load);
 </script>
 <template>
- <div class="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-4 p-3 md:p-6">
+ <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div><h1 class="m-0 text-xl font-semibold">运营工作台</h1><p class="mb-0 mt-1 text-xs text-gray-500">集中查看需要处理的业务事项，点击卡片直接进入对应页面</p></div>
    <a-button size="small" :loading="loading" @click="load"><template #icon><IconifyIcon icon="mdi:refresh" /></template>刷新待办</a-button>
