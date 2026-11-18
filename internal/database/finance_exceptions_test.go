@@ -92,3 +92,11 @@ func TestUpstreamRefundCreatesExactlyOneWalletCredit(t *testing.T){
  if err:=db.QueryRowContext(ctx,"SELECT status,payment_method,payment_reference FROM orders WHERE id=?",order.ID).Scan(&status,&method,&reference);err!=nil{t.Fatal(err)}
  if status!="refunded"||method!="trc20"||reference!="immutable-payment-ref"{t.Fatalf("refund must preserve original payment reference: status=%s method=%s ref=%s",status,method,reference)}
 }
+
+func TestClaimFinanceExceptionAlertIsDailyIdempotent(t *testing.T){
+ ctx:=context.Background();db:=reconciliationTestDB(t)
+ first,err:=ClaimFinanceExceptionAlert(ctx,db,"sqlite","supplier-fund:order-1","2026-11-19");if err!=nil{t.Fatal(err)}
+ second,err:=ClaimFinanceExceptionAlert(ctx,db,"sqlite","supplier-fund:order-1","2026-11-19");if err!=nil{t.Fatal(err)}
+ nextDay,err:=ClaimFinanceExceptionAlert(ctx,db,"sqlite","supplier-fund:order-1","2026-11-20");if err!=nil{t.Fatal(err)}
+ if !first||second||!nextDay{t.Fatalf("daily alert dedupe mismatch: first=%v second=%v nextDay=%v",first,second,nextDay)}
+}

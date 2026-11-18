@@ -67,13 +67,6 @@ func ListFinanceExceptions(ctx context.Context,db *sql.DB,driver,status,category
  return out,rows.Err()
 }
 
-func ClaimFinanceExceptionAlert(ctx context.Context,db *sql.DB,driver,alertKey,day string)(bool,error){
- now:=time.Now().UTC().Format(time.RFC3339Nano)
- q:="INSERT INTO finance_exception_alerts(alert_key,alert_date,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(alert_key,alert_date) DO NOTHING"
- res,err:=db.ExecContext(ctx,q,alertKey,day,now);if err!=nil{return false,err}
- n,err:=res.RowsAffected();if err!=nil{return false,err};return n==1,nil
-}
-
 func CountOpenFinanceExceptions(ctx context.Context,db *sql.DB)(int64,error){
  var n int64;err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM finance_exceptions WHERE status IN ('open','processing')").Scan(&n);return n,err
 }
@@ -218,4 +211,14 @@ func RunRefundLedgerIntegrityCheck(ctx context.Context,db *sql.DB,driver string)
  if err!=nil{return 0,err};for orphan.Next(){var id string;if err:=orphan.Scan(&id);err!=nil{orphan.Close();return 0,err};bad=append(bad,anomaly{id,"存在上游采购退款 credit，但没有对应的退款账本记录"})};if err:=orphan.Err();err!=nil{orphan.Close();return 0,err};orphan.Close()
  for _,x:=range bad{if err:=CreateFinanceException(ctx,db,driver,"refund-ledger:"+x.id,"refund_ledger","critical","order",x.id,"退款账本完整性异常",x.detail);err!=nil{return len(bad),err}}
  return len(bad),nil
+}
+
+func ClaimFinanceExceptionAlert(ctx context.Context,db *sql.DB,driver,alertKey,alertDate string)(bool,error){
+ alertKey=strings.TrimSpace(alertKey);alertDate=strings.TrimSpace(alertDate)
+ if alertKey==""||alertDate==""{return false,fmt.Errorf("alert key and date are required")}
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ res,err:=db.ExecContext(ctx,"INSERT INTO finance_exception_alerts(alert_key,alert_date,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(alert_key,alert_date) DO NOTHING",alertKey,alertDate,now)
+ if err!=nil{return false,err}
+ n,err:=res.RowsAffected();if err!=nil{return false,err}
+ return n==1,nil
 }
