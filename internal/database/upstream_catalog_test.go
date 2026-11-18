@@ -32,7 +32,7 @@ func TestUpstreamCatalogSyncIsTransactionalAndSourceAware(t *testing.T) {
 	}
 	if upstreamProduct.ImagePathsJSON!="[\"/uploads/upstream/item.png\"]"{t.Fatalf("local image paths missing: %s",upstreamProduct.ImagePathsJSON)}
 	categories,err:=ListCategories(ctx,db);if err!=nil{t.Fatal(err)}
-	if len(categories)!=2||categories[0].SourceType==""{ /* ordering is unspecified; check below */ }
+	
 	var upstreamCategory *Category
 	for i:=range categories{if categories[i].SourceType=="upstream"{upstreamCategory=&categories[i]}}
 	if upstreamCategory==nil||upstreamCategory.UpstreamIcon!="/uploads/upstream/category.png"{t.Fatalf("category icon was not stored locally: %+v",upstreamCategory)}
