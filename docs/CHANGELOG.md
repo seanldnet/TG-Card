@@ -1,13 +1,13 @@
-## 2026-11-18 — Dujiao-Next PR C 采购转发（PR #32，CI/Mock 已通过，待合并）
+## 2026-11-18 — Dujiao-Next PR C 采购转发（PR #32 已合并，CI/Mock 通过）
 
-- 状态：独立 Draft PR；Go CI #44334042245、Admin CI #44334041865、Security #44334041884 均成功；十项 mock 测试通过；尚未合并，不代表真实上游联调或生产可用。
+- 状态：独立 PR #32 已合并，merge commit `4f712e6ecb2299abd1eb782a439dee56b760578c`；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 全部成功；十项 mock 测试通过。未执行真实上游联调。
 - 分支：`feat/dujiao-purchase-forwarding`，基线 `main@2e7f91cfe772c3a87b3c0c40d8542bff59b9c9be`。
 - 实现：支付确认事务登记采购任务；采购前复核订单/商品；本地订单号幂等创建、上游订单 ID/订单号映射；查单轮询、回调验签/幂等；加密交付；失败人工队列、手动恢复、站内余额退款独立账本与审计；供应商余额快照/阈值告警/日报。
 - 资金安全：采购失败和重试不修改原支付记录、不自动退款买家余额；管理员手动退款使用独立钱包 credit 流水和退款审计。
 - 协议限制：官方 API 未提供按 `downstream_order_no` 查单接口。首次 POST 网络异常且未获得上游订单 ID 时进入 `uncertain`，暂停自动重发；人工恢复仍使用原幂等键。已获得上游订单 ID 时才调用 `GET /orders/:id`。
 - 当前限制：后台必须配置公网 HTTPS 回调地址才允许上游自助下单；只开放 auto 自动交付 SKU，manual 表单 SKU 暂不开放。真实商户端到端联调留给 PR E。
 - Mock 测试：同步交付、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后同幂等键恢复、已退款订单跳过、HTTP 402/404 错误分类共 10 项通过。
-- PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。PR D 与 PR E 仍未完成。
+- PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。Merge Publish digest：`sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`。PR D 与 PR E 仍未完成。
 
 ## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 开发启动
 
