@@ -117,3 +117,16 @@ func TestSupportFollowupThrottleLimitsOneTicketPerTenMinutes(t *testing.T) {
  allowed,err=AcquireSupportFollowupSlot(ctx,db,"sqlite","bot-1","user-1")
  if err!=nil||!allowed{t.Fatalf("slot should be available after ten minutes: allowed=%v err=%v",allowed,err)}
 }
+
+
+func TestLatestSupportTicketCanBeRecoveredAfterResolution(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ ticket:=createOwnerWorkflowTicket(t,db)
+ if _,err:=ResolveSupportTicket(ctx,db,"sqlite",ticket.ID,"owner","12345");err!=nil{t.Fatal(err)}
+ latest,err:=GetLatestSupportTicketForUser(ctx,db,"sqlite",ticket.BotID,ticket.TelegramUserID)
+ if err!=nil||latest.ID!=ticket.ID||latest.Status!="resolved"{t.Fatalf("latest terminal ticket not recoverable: %#v err=%v",latest,err)}
+}
