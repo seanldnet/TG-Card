@@ -27,7 +27,7 @@ func TestDailyReconciliationReportSnapshotAndMetrics(t *testing.T){
 	created:="2026-11-17T01:00:00Z"
 	paid:="2026-11-17T02:00:00Z"
 	delivered:="2026-11-17T03:00:00Z"
-	if _,err:=db.ExecContext(ctx,`INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,paid_at,delivered_at) VALUES('o1','ORD-1','u1','u1','Test',1234,1,1234,'USDT','delivered','2026-11-18T00:00:00Z',?,?,?,?)`,created,delivered,paid,delivered);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,`INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,paid_at,delivered_at) VALUES('o1','ORD-1','u1','u1','Test',1234,1,1234,'USDT','refunded','2026-11-18T00:00:00Z',?,?,?,?)`,created,delivered,paid,delivered);err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,`INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at) VALUES('e1','o1','delivery_failed','temporary error',?)`,created);err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,`INSERT INTO wallet_transactions(id,telegram_user_id,admin_id,direction,amount_atomic,balance_after_atomic,note,created_at) VALUES('w1','u1','','credit',2000000,2000000,'售后退款：ORD-1',?)`,created);err!=nil{t.Fatal(err)}
 	if _,err:=db.ExecContext(ctx,`INSERT INTO wallet_recharges(id,recharge_no,bot_id,telegram_user_id,telegram_chat_id,amount_atomic,payment_amount_atomic,status,expires_at,created_at,paid_at) VALUES('r1','R-1','','u1','u1',3000000,3000001,'paid','2026-11-18T00:00:00Z',?,?)`,created,paid);err!=nil{t.Fatal(err)}
