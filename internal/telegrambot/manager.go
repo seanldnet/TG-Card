@@ -1748,13 +1748,22 @@ func (m *Manager) notifyOwnerSupportReopened(ctx context.Context,cfg Config,tick
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil { log.Printf("support reopen owner notification failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err) }
 }
 
+
+func placeholderForTelegram(driver string,index int) string { if driver=="postgres" { return "$"+strconv.Itoa(index) }; return "?" }
 func (m *Manager) NotifySupportResolved(ctx context.Context,ticket database.SupportTicket) error {
  m.mu.Lock()
  current,ok:=m.workers[ticket.BotID]
  var cfg Config
  if ok { cfg=current.config }
  m.mu.Unlock()
- if !ok { return fmt.Errorf("Telegram bot for this support ticket is not running") }
+ if !ok {
+  if m.db==nil || m.decrypt==nil { return fmt.Errorf("Telegram bot credentials are unavailable for this support ticket") }
+  var ciphertext string
+  query:="SELECT token_ciphertext FROM bots WHERE id="+placeholderForTelegram(m.driver,1)
+  if err:=m.db.QueryRowContext(ctx,query,ticket.BotID).Scan(&ciphertext);err!=nil{return fmt.Errorf("load support Bot credentials: %w",err)}
+  token,err:=m.decrypt(ciphertext);if err!=nil{return fmt.Errorf("decrypt support Bot credentials: %w",err)}
+  cfg.Token=token
+ }
  chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil { return fmt.Errorf("invalid support ticket chat ID: %w",err) }
  result:="工单已由客服处理并结单。"
