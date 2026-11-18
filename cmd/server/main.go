@@ -1061,11 +1061,29 @@ func (a *application) updateSupportTicket(w http.ResponseWriter, r *http.Request
 	before,err:=database.GetSupportTicket(r.Context(),a.db,a.driver,id)
 	if errors.Is(err,sql.ErrNoRows){writeError(w,http.StatusNotFound,"Support ticket not found");return}
 	if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to load support ticket");return}
-	item,err:=database.UpdateSupportTicket(r.Context(),a.db,a.driver,id,input.Status,input.AdminReply)
-	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	var item database.SupportTicket
 	notificationSent:=false
-	if item.AdminReply!="" && item.AdminReply!=before.AdminReply {
-		if err:=a.botManager.SendSupportReply(r.Context(),item);err!=nil{log.Printf("send support ticket reply failed: ticket_id=%s error=%v",id,err)}else{notificationSent=true}
+	if input.Status=="resolved" {
+		// Persist the admin's final handling result before the shared resolve transition.
+		if input.AdminReply!=before.AdminReply {
+			item,err=database.UpdateSupportTicket(r.Context(),a.db,a.driver,id,before.Status,input.AdminReply)
+			if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+		} else { item=before }
+		changed,resolveErr:=database.ResolveSupportTicket(r.Context(),a.db,a.driver,id,"admin",claims.AdminID)
+		if resolveErr!=nil{writeError(w,http.StatusBadRequest,resolveErr.Error());return}
+		item,err=database.GetSupportTicket(r.Context(),a.db,a.driver,id)
+		if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to reload support ticket");return}
+		if changed {
+			if sendErr:=a.botManager.NotifySupportResolved(r.Context(),item);sendErr!=nil {
+				log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",id,sendErr)
+			} else { notificationSent=true }
+		}
+	} else {
+		item,err=database.UpdateSupportTicket(r.Context(),a.db,a.driver,id,input.Status,input.AdminReply)
+		if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+		if item.AdminReply!="" && item.AdminReply!=before.AdminReply {
+			if sendErr:=a.botManager.SendSupportReply(r.Context(),item);sendErr!=nil{log.Printf("send support ticket reply failed: ticket_id=%s error=%v",id,sendErr)}else{notificationSent=true}
+		}
 	}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.ticket.update","support_ticket:"+id,clientIP(r),r.UserAgent(),"status="+item.Status)
 	writeSuccess(w,http.StatusOK,map[string]any{"ticket":item,"notificationSent":notificationSent})
