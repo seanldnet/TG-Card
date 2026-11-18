@@ -139,7 +139,13 @@ func ListBalanceReconciliationAnomalies(ctx context.Context,db *sql.DB,driver,ru
 
 func SetLocalProductAvailability(ctx context.Context,db *sql.DB,driver,productID string,enabled bool)error{
 	status:=0;if enabled{status=1}
-	q:="UPDATE products SET status="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND COALESCE(source_type,'local')='local'"
+	q:="UPDATE products SET status="+placeholder(driver,1)+",stock_auto_unlisted=0,updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND COALESCE(source_type,'local')='local'"
 	res,err:=db.ExecContext(ctx,q,status,time.Now().UTC().Format(time.RFC3339Nano),productID);if err!=nil{return err}
+	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
+}
+
+func MarkLocalProductAutoUnlisted(ctx context.Context,db *sql.DB,driver,productID string)error{
+	q:="UPDATE products SET status=0,stock_auto_unlisted=1,updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND COALESCE(source_type,'local')='local' AND status=1"
+	res,err:=db.ExecContext(ctx,q,time.Now().UTC().Format(time.RFC3339Nano),productID);if err!=nil{return err}
 	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
