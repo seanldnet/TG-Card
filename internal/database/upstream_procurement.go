@@ -85,7 +85,7 @@ func ListDueUpstreamProcurements(ctx context.Context, db *sql.DB, driver string,
 	return items,rows.Err()
 }
 
-func UpdateUpstreamProcurementSubmitted(ctx context.Context, db *sql.DB, driver, orderID, upstreamID, upstreamNo, status string, pollAfter time.Duration) error {
+func UpdateUpstreamProcurementSubmitted(ctx context.Context, db *sql.DB, driver, orderID, upstreamID, upstreamNo string, pollAfter time.Duration) error {
 	if upstreamID==""||upstreamNo==""{return fmt.Errorf("upstream order identity is required")}
 	if pollAfter<time.Second{pollAfter=15*time.Second}
 	now:=time.Now().UTC();stamp:=now.Format(time.RFC3339Nano);next:=now.Add(pollAfter).Format(time.RFC3339Nano)
@@ -178,6 +178,6 @@ func ListFailedUpstreamProcurements(ctx context.Context, db *sql.DB, driver stri
 	q:="SELECT id,order_id,order_no,product_id,upstream_product_id,upstream_sku_id,quantity,status,COALESCE(upstream_order_id,''),COALESCE(upstream_order_no,''),attempt_count,poll_count,next_attempt_at,deadline_at,last_error,fulfillment_ciphertext,delivered_at,updated_at FROM upstream_procurements WHERE status='failed' ORDER BY updated_at DESC LIMIT "+fmt.Sprint(limit)
 	rows,err:=db.QueryContext(ctx,q);if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]UpstreamProcurement,0)
-	for rows.Next(){var v UpstreamProcurement;if err:=rows.Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt);err!=nil{return nil,err};items=append(items,v)}
+	for rows.Next(){var v UpstreamProcurement;if err:=rows.Scan(&v.ID,&v.OrderID,&v.OrderNo,&v.ProductID,&v.UpstreamProductID,&v.UpstreamSKUID,&v.Quantity,&v.Status,&v.UpstreamOrderID,&v.UpstreamOrderNo,&v.AttemptCount,&v.PollCount,&v.NextAttemptAt,&v.DeadlineAt,&v.LastError,&v.FulfillmentCiphertext,&v.DeliveredAt,&v.UpdatedAt);err!=nil{return nil,err};items=append(items,v)}
 	return items,rows.Err()
 }
