@@ -557,7 +557,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			for _, product := range products {
 				if product.Status != 1 { continue }
 				if strings.Contains(strings.ToLower(product.Name+" "+product.Description), needle) {
-					stockLabel:="不限量";if product.DeliveryType==""||product.DeliveryType=="card"||product.DeliveryType=="file_card"{stockLabel="库存 "+strconv.Itoa(product.StockCount)}
+					stockLabel:="不限量";if product.SourceType=="upstream"{if product.UpstreamStockQuantity<0{stockLabel="上游不限量"}else{stockLabel="上游库存 "+strconv.FormatInt(product.UpstreamStockQuantity,10)}}else if product.DeliveryType==""||product.DeliveryType=="card"||product.DeliveryType=="file_card"{stockLabel="库存 "+strconv.Itoa(product.StockCount)}
 					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · " + stockLabel
 					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
 				}
@@ -1069,7 +1069,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "owner:products":
 			products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
 			var lines []string
-			for _,p:=range products{lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+strconv.Itoa(p.StockCount))}
+			for _,p:=range products{stock:=strconv.Itoa(p.StockCount);if p.SourceType=="upstream"{stock=strconv.FormatInt(p.UpstreamStockQuantity,10)};lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+stock)}
 			if len(lines)==0{lines=append(lines,"暂无商品")}
 				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboard())
 		}
