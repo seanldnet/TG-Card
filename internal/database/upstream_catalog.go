@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+func boolInt(value bool) int { if value { return 1 }; return 0 }
+
 func ensureLocalCategory(ctx context.Context, db *sql.DB, driver, categoryID string) error {
 	if categoryID == "" { return nil }
 	var source string
@@ -21,6 +23,7 @@ type UpstreamCategoryRecord struct {
 	ParentID string
 	Name string
 	Icon string
+	PreserveIcon bool
 	SortOrder int
 }
 
@@ -69,8 +72,8 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
 			if _, err = tx.ExecContext(ctx, query, localID, item.Name, item.SortOrder, item.UpstreamID, item.ParentID, item.Icon, batchID, now, now); err != nil { return fmt.Errorf("insert upstream category %s: %w", item.UpstreamID, err) }
 		} else if err != nil { return err } else {
-			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon="+placeholder(driver,4)+",upstream_sync_batch_id="+placeholder(driver,5)+",updated_at="+placeholder(driver,6)+" WHERE id="+placeholder(driver,7)+" AND source_type='upstream'"
-			if _, err := tx.ExecContext(ctx, query, item.Name, item.SortOrder, item.ParentID, item.Icon, batchID, now, localID); err != nil { return fmt.Errorf("update upstream category %s: %w", item.UpstreamID, err) }
+			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon=CASE WHEN "+placeholder(driver,5)+"=1 THEN upstream_icon ELSE "+placeholder(driver,4)+" END,upstream_sync_batch_id="+placeholder(driver,6)+",updated_at="+placeholder(driver,7)+" WHERE id="+placeholder(driver,8)+" AND source_type='upstream'"
+			if _, err := tx.ExecContext(ctx, query, item.Name, item.SortOrder, item.ParentID, item.Icon, boolInt(item.PreserveIcon), batchID, now, localID); err != nil { return fmt.Errorf("update upstream category %s: %w", item.UpstreamID, err) }
 		}
 		categoryIDs[item.UpstreamID] = localID
 	}
