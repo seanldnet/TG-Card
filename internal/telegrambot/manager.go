@@ -1713,7 +1713,7 @@ func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q Ca
   _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单："+ticket.TicketNo,ownerSupportReplyKeyboard())
  case "resolve":
   if len(parts)<4{return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return}
-  if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。"};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+  if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。")};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
  case "confirm":
   if len(parts)<5{return};ticketID,choice:=parts[3],parts[4]
   if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。")};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
