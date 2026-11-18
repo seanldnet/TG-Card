@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/upstream"
 )
 
 func (a *application) runReconciliationScheduler(ctx context.Context) {
@@ -31,6 +33,26 @@ func (a *application) runReconciliationScheduler(ctx context.Context) {
 	}
 }
 
+
+func (a *application) attachSupplierBalanceToReport(ctx context.Context, report *database.DailyReconciliationReport) {
+	settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+	if err!=nil || !settings.Enabled { return }
+	key,err:=a.secrets.Decrypt(settings.MerchantIDCiphertext);if err!=nil{log.Printf("supplier balance check: API key decrypt failed");return}
+	secretValue,err:=a.secrets.Decrypt(settings.SecretCiphertext);if err!=nil{log.Printf("supplier balance check: API secret decrypt failed");return}
+	checkCtx,cancel:=context.WithTimeout(ctx,15*time.Second);defer cancel()
+	ping,err:=upstream.DujiaoPing(checkCtx,settings.BaseURL,key,secretValue)
+	if err!=nil{log.Printf("supplier balance check failed: %v",redactUpstreamError(err.Error(),key,secretValue));return}
+	report.SupplierBalance=strings.TrimSpace(ping.Balance)
+	report.SupplierCurrency=strings.ToUpper(strings.TrimSpace(ping.Currency))
+	report.SupplierBalanceCheckedAt=time.Now().UTC().Format(time.RFC3339Nano)
+	balance,ok:=new(big.Rat).SetString(report.SupplierBalance);if !ok{log.Printf("supplier balance response is not numeric");return}
+	threshold,ok:=new(big.Rat).SetString(strings.TrimSpace(settings.SupplierBalanceAlertThreshold));if !ok{threshold=new(big.Rat).SetInt64(10)}
+	if balance.Cmp(threshold)<0 {
+		details:=fmt.Sprintf("Dujiao-Next 供应商余额低于预警阈值\\n当前余额：%s %s\\n预警阈值：%s %s\\n请及时为供应商账户充值。",report.SupplierBalance,report.SupplierCurrency,threshold.RatString(),report.SupplierCurrency)
+		a.notifySiteEvent(ctx,"risk_alert",details,"")
+	}
+}
+
 func formatSignedUSDTAtomic(value int64) string {
 	if value < 0 {
 		return "-" + formatUSDTAtomic(-value)
@@ -43,11 +65,13 @@ func (a *application) runScheduledDailyReport(ctx context.Context,now time.Time)
 	day:=now.UTC().AddDate(0,0,-1)
 	report,err:=database.BuildDailyReconciliationReport(ctx,a.db,a.driver,day)
 	if err!=nil{log.Printf("build daily reconciliation report failed: %v",err);return}
+	a.attachSupplierBalanceToReport(ctx,&report)
 	saved,created,err:=database.SaveDailyReconciliationReport(ctx,a.db,a.driver,report)
 	if err!=nil{log.Printf("save daily reconciliation report failed: date=%s error=%v",report.ReportDate,err);return}
 	if !created{return}
 	details:=fmt.Sprintf("对账日期（UTC）：%s\n当日营收：%s USDT\n订单数：%d\n已交付：%d\n交付失败：%d\n退款金额：%s USDT\n充值总额：%s USDT\n未匹配交易：%d\n需人工核对交易：%d",
 		saved.ReportDate,formatUSDTAtomic(saved.RevenueAtomic),saved.OrderCount,saved.DeliveredCount,saved.DeliveryFailedCount,formatUSDTAtomic(saved.RefundAtomic),formatUSDTAtomic(saved.RechargeAtomic),saved.UnmatchedTransactionCount,saved.ManualReviewTransactionCount)
+	if saved.SupplierBalance!="" { details += "\\n供应商余额："+saved.SupplierBalance+" "+saved.SupplierCurrency+"（检查时间："+saved.SupplierBalanceCheckedAt+"）" }
 	a.notifySiteEvent(ctx,"daily_report",details,"")
 	log.Printf("daily reconciliation report generated: date=%s",saved.ReportDate)
 }
