@@ -309,6 +309,7 @@ type Product struct {
 	DeliveryType string `json:"deliveryType"`
 	Status int `json:"status"`
 	StockCount int `json:"stockCount"`
+	StockAutoUnlisted bool `json:"stockAutoUnlisted"`
 	SourceType string `json:"sourceType"`
 	UpstreamProductID string `json:"upstreamProductId"`
 	UpstreamSKUID string `json:"upstreamSkuId"`
@@ -365,11 +366,11 @@ func DeleteCategory(ctx context.Context, db *sql.DB, driver, id string) error {
 
 func ListProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 	rows,err:=db.QueryContext(ctx,`SELECT p.id,COALESCE(p.category_id,''),COALESCE(c.name,''),p.name,p.description,p.price_minor,p.currency,p.delivery_type,p.status,COALESCE(p.bulk_discount_json,'[]'),COALESCE(p.delivery_config_json,'{}'),
-	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),COALESCE(p.source_type,'local'),COALESCE(p.upstream_product_id,''),COALESCE(p.upstream_sku_id,''),COALESCE(p.upstream_sku_code,''),COALESCE(p.upstream_spec_values_json,'{}'),COALESCE(p.upstream_fulfillment_type,''),COALESCE(p.upstream_manual_form_schema_json,'{}'),COALESCE(p.upstream_tags_json,'[]'),COALESCE(p.upstream_slug,''),COALESCE(p.upstream_price_snapshot_minor,0),COALESCE(p.upstream_currency,''),COALESCE(p.upstream_stock_quantity,0),COALESCE(p.upstream_stock_status,''),COALESCE(p.image_paths_json,'[]'),p.created_at,p.updated_at
+	(SELECT COUNT(1) FROM product_keys k WHERE k.product_id=p.id AND k.status=0),COALESCE(p.source_type,'local'),COALESCE(p.upstream_product_id,''),COALESCE(p.upstream_sku_id,''),COALESCE(p.upstream_sku_code,''),COALESCE(p.upstream_spec_values_json,'{}'),COALESCE(p.upstream_fulfillment_type,''),COALESCE(p.upstream_manual_form_schema_json,'{}'),COALESCE(p.upstream_tags_json,'[]'),COALESCE(p.upstream_slug,''),COALESCE(p.upstream_price_snapshot_minor,0),COALESCE(p.upstream_currency,''),COALESCE(p.upstream_stock_quantity,0),COALESCE(p.upstream_stock_status,''),COALESCE(p.image_paths_json,'[]'),p.created_at,p.updated_at,COALESCE(p.stock_auto_unlisted,0)
 	FROM products p LEFT JOIN product_categories c ON c.id=p.category_id ORDER BY p.created_at DESC`)
 	if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]Product,0)
-	for rows.Next(){var p Product;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.SourceType,&p.UpstreamProductID,&p.UpstreamSKUID,&p.UpstreamSKUCode,&p.UpstreamSpecValuesJSON,&p.UpstreamFulfillmentType,&p.UpstreamManualFormSchemaJSON,&p.UpstreamTagsJSON,&p.UpstreamSlug,&p.UpstreamPriceSnapshotMinor,&p.UpstreamCurrency,&p.UpstreamStockQuantity,&p.UpstreamStockStatus,&p.ImagePathsJSON,&p.CreatedAt,&p.UpdatedAt);err!=nil{return nil,err};items=append(items,p)}
+	for rows.Next(){var p Product;var autoUnlisted int;if err:=rows.Scan(&p.ID,&p.CategoryID,&p.CategoryName,&p.Name,&p.Description,&p.PriceMinor,&p.Currency,&p.DeliveryType,&p.Status,&p.BulkDiscountJSON,&p.DeliveryConfigJSON,&p.StockCount,&p.SourceType,&p.UpstreamProductID,&p.UpstreamSKUID,&p.UpstreamSKUCode,&p.UpstreamSpecValuesJSON,&p.UpstreamFulfillmentType,&p.UpstreamManualFormSchemaJSON,&p.UpstreamTagsJSON,&p.UpstreamSlug,&p.UpstreamPriceSnapshotMinor,&p.UpstreamCurrency,&p.UpstreamStockQuantity,&p.UpstreamStockStatus,&p.ImagePathsJSON,&p.CreatedAt,&p.UpdatedAt,&autoUnlisted);err!=nil{return nil,err};p.StockAutoUnlisted=autoUnlisted==1;items=append(items,p)}
 	return items,rows.Err()
 }
 
@@ -387,7 +388,7 @@ func CreateProduct(ctx context.Context, db *sql.DB, driver string, p Product) (P
 func UpdateProduct(ctx context.Context, db *sql.DB, driver string, p Product) error {
 	if err:=ensureLocalCategory(ctx,db,driver,p.CategoryID);err!=nil{return err}
 	now:=time.Now().UTC().Format(time.RFC3339Nano);var category any;if p.CategoryID!=""{category=p.CategoryID}
-	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)+" AND source_type='local'"
+	query:="UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",currency="+placeholder(driver,5)+",delivery_type="+placeholder(driver,6)+",status="+placeholder(driver,7)+",bulk_discount_json="+placeholder(driver,8)+",delivery_config_json="+placeholder(driver,9)+",stock_auto_unlisted=0,updated_at="+placeholder(driver,10)+" WHERE id="+placeholder(driver,11)+" AND source_type='local'"
 	if p.BulkDiscountJSON=="" { p.BulkDiscountJSON="[]" }; if p.DeliveryConfigJSON=="" { p.DeliveryConfigJSON="{}" }
 	result,err:=db.ExecContext(ctx,query,category,p.Name,p.Description,p.PriceMinor,p.Currency,p.DeliveryType,p.Status,p.BulkDiscountJSON,p.DeliveryConfigJSON,now,p.ID);if err!=nil{return err}
 	n,err:=result.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
