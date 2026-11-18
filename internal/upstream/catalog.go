@@ -157,6 +157,16 @@ func ParseMinorUnits(value string) (int64, error) {
 	return quotient.Int64(), nil
 }
 
+func ConvertMinorToUSDT(sourceMinor, ratePPM int64) (int64, error) {
+	if sourceMinor < 0 || ratePPM <= 0 { return 0, fmt.Errorf("a positive currency conversion rate is required") }
+	numerator := new(big.Int).Mul(big.NewInt(sourceMinor), big.NewInt(ratePPM))
+	quotient, remainder := new(big.Int), new(big.Int)
+	quotient.QuoRem(numerator, big.NewInt(1_000_000), remainder)
+	if new(big.Int).Lsh(remainder, 1).Cmp(big.NewInt(1_000_000)) >= 0 { quotient.Add(quotient, big.NewInt(1)) }
+	if !quotient.IsInt64() { return 0, fmt.Errorf("converted price exceeds supported range") }
+	return quotient.Int64(), nil
+}
+
 func ApplyMarkup(priceMinor, markupBPS, fixedMinor int64) (int64, error) {
 	if priceMinor < 0 || markupBPS < 0 || markupBPS > 100000 || fixedMinor < 0 { return 0, fmt.Errorf("invalid upstream markup configuration") }
 	numerator := new(big.Int).Mul(big.NewInt(priceMinor), big.NewInt(10000+markupBPS))
