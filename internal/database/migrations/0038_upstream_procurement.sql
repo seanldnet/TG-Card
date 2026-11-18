@@ -49,3 +49,4 @@ ALTER TABLE upstream_settings ADD COLUMN purchase_timeout_minutes INTEGER NOT NU
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_balance TEXT NOT NULL DEFAULT '';
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_currency TEXT NOT NULL DEFAULT '';
 ALTER TABLE daily_reconciliation_reports ADD COLUMN supplier_balance_checked_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE upstream_procurements ADD COLUMN delivery_lease_until TEXT NOT NULL DEFAULT '';
