@@ -237,21 +237,23 @@ func (a *application) checkSupplierBalance(ctx context.Context) {
 	a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("Dujiao-Next 供应商余额低于预警阈值\n当前余额：%s %s\n预警阈值：%s %s\nUTC 日期：%s\n供应商配置入口：%s",ping.Balance,ping.Currency,settings.SupplierLowBalanceThreshold,ping.Currency,day,a.procurementQueueLink(settings)),"")
 }
 
+func writeUpstreamCallbackError(w http.ResponseWriter,status int,message string){writeJSON(w,status,map[string]any{"ok":false,"message":message})}
+
 func (a *application) upstreamProcurementCallback(w http.ResponseWriter,r *http.Request) {
 	body,err:=io.ReadAll(http.MaxBytesReader(w,r.Body,1<<20))
-	if err!=nil{writeError(w,http.StatusRequestEntityTooLarge,"回调请求体过大");return}
+	if err!=nil{writeUpstreamCallbackError(w,http.StatusRequestEntityTooLarge,"回调请求体过大");return}
 	settings,err:=database.GetUpstreamSettings(r.Context(),a.db,a.driver)
-	if err!=nil{writeError(w,http.StatusServiceUnavailable,"上游回调配置不可用");return}
+	if err!=nil{writeUpstreamCallbackError(w,http.StatusServiceUnavailable,"上游回调配置不可用");return}
 	apiKey,err:=a.secrets.Decrypt(settings.MerchantIDCiphertext);if err!=nil{writeError(w,http.StatusServiceUnavailable,"上游回调密钥不可用");return}
 	apiSecret,err:=a.secrets.Decrypt(settings.SecretCiphertext);if err!=nil{writeError(w,http.StatusServiceUnavailable,"上游回调密钥不可用");return}
 	verifyErr:=upstream.VerifyDujiaoCallback(apiKey,apiSecret,r.Header.Get("Dujiao-Next-Api-Key"),r.Header.Get("Dujiao-Next-Timestamp"),r.Header.Get("Dujiao-Next-Signature"),r.URL.Path,body,time.Now())
 	if verifyErr!=nil{
 		a.notifySiteEvent(r.Context(),"risk_alert","Dujiao-Next 回调验签失败，已拒绝请求。来源 IP："+clientIP(r)+"；原因："+verifyErr.Error()+"\n供应商采购处理入口："+a.procurementQueueLink(settings),"")
-		writeError(w,http.StatusUnauthorized,"上游回调签名校验失败");return
+		writeUpstreamCallbackError(w,http.StatusUnauthorized,"上游回调签名校验失败");return
 	}
 	var callback upstreamCallbackRequest
 	if err:=json.Unmarshal(body,&callback);err!=nil||callback.OrderID<=0||strings.TrimSpace(callback.DownstreamOrderNo)==""||strings.TrimSpace(callback.Status)==""{
-		writeError(w,http.StatusBadRequest,"上游回调字段无效");return
+		writeUpstreamCallbackError(w,http.StatusBadRequest,"上游回调字段无效");return
 	}
 	semantic,_:=json.Marshal(struct{Event string;OrderID int64;OrderNo string;DownstreamOrderNo string;Status string;Fulfillment *upstream.DujiaoFulfillment}{callback.Event,callback.OrderID,callback.OrderNo,callback.DownstreamOrderNo,callback.Status,callback.Fulfillment})
 	hash:=sha256.Sum256(semantic)
@@ -262,14 +264,14 @@ func (a *application) upstreamProcurementCallback(w http.ResponseWriter,r *http.
 		if err!=nil{a.notifyProcurementOwner(r.Context(),callback.DownstreamOrderNo,"回调显示已交付但交付内容缺失："+err.Error());writeError(w,http.StatusBadRequest,"上游回调缺少交付内容");return}
 	}
 	ciphertext:=""
-	if payload!=""{ciphertext,err=a.secrets.Encrypt(payload);if err!=nil{writeError(w,http.StatusInternalServerError,"无法安全保存上游交付内容");return}}
+	if payload!=""{ciphertext,err=a.secrets.Encrypt(payload);if err!=nil{writeUpstreamCallbackError(w,http.StatusInternalServerError,"无法安全保存上游交付内容");return}}
 	orderID,shouldDeliver,duplicate,err:=database.ApplyUpstreamCallback(r.Context(),a.db,a.driver,hex.EncodeToString(hash[:]),callback.DownstreamOrderNo,strconv.FormatInt(callback.OrderID,10),callback.OrderNo,callback.Status,ciphertext)
-	if err!=nil{log.Printf("apply Dujiao callback failed: local_order=%s error=%v",callback.DownstreamOrderNo,err);writeError(w,http.StatusConflict,"回调订单无法匹配或处理");return}
+	if err!=nil{log.Printf("apply Dujiao callback failed: local_order=%s error=%v",callback.DownstreamOrderNo,err);writeUpstreamCallbackError(w,http.StatusConflict,"回调订单无法匹配或处理");return}
 	if callback.Status=="canceled"||callback.Status=="cancelled"{a.notifyProcurementOwner(r.Context(),callback.DownstreamOrderNo,"上游回调通知采购单已取消")}
 	if shouldDeliver{
 		if err:=a.dispatchUpstreamOrder(r.Context(),orderID);err!=nil{log.Printf("dispatch callback fulfillment failed: order=%s error=%v",callback.DownstreamOrderNo,err)}
 	}
-	writeSuccess(w,http.StatusOK,map[string]any{"received":true,"duplicate":duplicate,"deliveryQueued":shouldDeliver})
+	writeJSON(w,http.StatusOK,map[string]any{"ok":true,"message":"received","duplicate":duplicate,"delivery_queued":shouldDeliver})
 }
 
 func (a *application) listUpstreamProcurements(w http.ResponseWriter,r *http.Request) {
