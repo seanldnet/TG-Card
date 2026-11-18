@@ -83,7 +83,7 @@ The independent Dujiao-Next procurement implementation was merged in PR #32. Pai
 
 If the initial supplier POST times out before returning an upstream order ID, the order is parked as `uncertain` for Owner verification; it is not automatically resubmitted. The documented supplier API supports idempotency by API Key + `downstream_order_no`, but does not document a GET lookup by that local key. Manual recovery reuses the original key. Known supplier order IDs are queried using `GET /orders/:id`.
 
-Supplier failures/timeouts do not alter the original buyer payment record or automatically debit/refund the buyer wallet. Owner-confirmed refunds are a separate wallet credit with procurement and admin audit. Mock/CI success is not live supplier integration; PR E remains the only real supplier end-to-end phase.
+Supplier failures/timeouts do not alter the original buyer payment record or automatically debit/refund the buyer wallet. Owner-confirmed refunds atomically commit the separate wallet credit, refund ledger, order state, procurement event, and admin audit in one database transaction. Mock/CI success is not live supplier integration; PR E remains the only real supplier end-to-end phase.
 
 ## PR D — Supplier funds and refund safety (in development)
 
@@ -92,5 +92,5 @@ Supplier failures/timeouts do not alter the original buyer payment record or aut
 - The first pre-purchase baseline is retained across idempotent retries. Supplier-side concurrent transactions may affect the observed balance delta, so the result is an audit signal, not an automatic accounting adjustment.
 - A periodic sweep marks unresolved post-purchase snapshots as unverifiable after 15 minutes.
 - Refund integrity checks validate the refunded order, independent refund row, admin/reason, buyer, amount, and the unique wallet credit transaction. Missing/orphan links create exceptions; the checker does not repair ledger entries.
-- Uncertain orders have an ageing view and an Owner resolution workflow. Confirmed accepted orders require the supplier order ID and resume polling; confirmed not-accepted orders are moved to failed state for explicit retry using the original idempotency key.
+- Uncertain orders have an ageing view and an Owner resolution workflow. Confirmed accepted orders require a positive supplier order ID, extend the polling deadline, and resume GET-only polling; confirmed not-accepted orders are moved to failed state for explicit retry using the original idempotency key.
 - A unified finance exception center covers procurement failures, uncertain orders, supplier balance differences, and refund ledger anomalies. PR E remains the only live supplier-money integration phase.

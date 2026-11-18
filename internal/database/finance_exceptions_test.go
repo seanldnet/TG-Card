@@ -17,7 +17,7 @@ func TestSupplierProcurementBalanceCheckAndException(t *testing.T){
  if err:=SaveSupplierProcurementBalanceBefore(ctx,db,"sqlite",order.ID,"100.00","USDT");err!=nil{t.Fatal(err)}
  matched,err:=CompleteSupplierProcurementBalanceCheck(ctx,db,"sqlite",order.ID,"up-1","10.00","90.00","USDT")
  if err!=nil||matched.Status!="matched"||matched.ObservedDebit!="10.00"||matched.Difference!="0.00"{t.Fatalf("expected matched supplier debit: %+v err=%v",matched,err)}
- if err:=SaveSupplierProcurementBalanceBefore(ctx,db,"sqlite",order.ID,"100.00","USDT");err!=nil{t.Fatal(err)}
+ if err:=SaveSupplierProcurementBalanceBefore(ctx,db,"sqlite",order.ID,"90.00","USDT");err!=nil{t.Fatal(err)}
  mismatch,err:=CompleteSupplierProcurementBalanceCheck(ctx,db,"sqlite",order.ID,"up-1","10.00","80.00","USDT")
  if err!=nil||mismatch.Status!="mismatch"||mismatch.Difference!="10.00"{t.Fatalf("expected mismatch: %+v err=%v",mismatch,err)}
  count,err:=CountOpenFinanceExceptions(ctx,db)
@@ -59,13 +59,14 @@ func TestUncertainProcurementAgeingAndOwnerResolution(t *testing.T){
  if err!=nil{t.Fatal(err)}
  now:=time.Now().UTC()
  if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='procurement_failed' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
- if _,err:=db.ExecContext(ctx,`INSERT INTO upstream_procurements(local_order_id,local_order_no,status,deadline_at,created_at,updated_at,last_error) VALUES(?,?,'uncertain',?,?,?,'response lost')`,order.ID,order.OrderNo,now.Add(time.Hour).Format(time.RFC3339Nano),now.Add(-2*time.Hour).Format(time.RFC3339Nano),now.Format(time.RFC3339Nano));err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,`INSERT INTO upstream_procurements(local_order_id,local_order_no,status,deadline_at,created_at,updated_at,last_error) VALUES(?,?,'uncertain',?,?,?,'response lost')`,order.ID,order.OrderNo,now.Add(-time.Hour).Format(time.RFC3339Nano),now.Add(-2*time.Hour).Format(time.RFC3339Nano),now.Format(time.RFC3339Nano));err!=nil{t.Fatal(err)}
  items,err:=ListUncertainProcurements(ctx,db,"sqlite",20)
  if err!=nil||len(items)!=1||items[0].AgeingSeconds<7000{t.Fatalf("expected ageing uncertain order: %+v err=%v",items,err)}
  if err:=ResolveUncertainProcurement(ctx,db,"sqlite",order.ID,"admin-1","accepted","9988","UP-9988","supplier portal confirms order accepted");err!=nil{t.Fatal(err)}
- var orderStatus,queueStatus,externalID string
- if err:=db.QueryRowContext(ctx,`SELECT o.status,p.status,p.external_order_id FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id=?`,order.ID).Scan(&orderStatus,&queueStatus,&externalID);err!=nil{t.Fatal(err)}
- if orderStatus!="procurement_pending"||queueStatus!="polling"||externalID!="9988"{t.Fatalf("accepted supplier order was not restored for polling: order=%s queue=%s external=%s",orderStatus,queueStatus,externalID)}
+ var orderStatus,queueStatus,externalID,deadline string
+ if err:=db.QueryRowContext(ctx,`SELECT o.status,p.status,p.external_order_id,p.deadline_at FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id=?`,order.ID).Scan(&orderStatus,&queueStatus,&externalID,&deadline);err!=nil{t.Fatal(err)}
+ deadlineAt,parseErr:=time.Parse(time.RFC3339Nano,deadline)
+ if orderStatus!="procurement_pending"||queueStatus!="polling"||externalID!="9988"||parseErr!=nil||!deadlineAt.After(time.Now().UTC()){t.Fatalf("accepted supplier order was not restored with a fresh deadline: order=%s queue=%s external=%s deadline=%s err=%v",orderStatus,queueStatus,externalID,deadline,parseErr)}
 }
 
 func TestUpstreamRefundCreatesExactlyOneWalletCredit(t *testing.T){
@@ -84,6 +85,9 @@ func TestUpstreamRefundCreatesExactlyOneWalletCredit(t *testing.T){
  if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM upstream_procurement_refunds WHERE order_id=?",order.ID).Scan(&refunds);err!=nil{t.Fatal(err)}
  if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE note LIKE ?", "上游采购失败退款："+order.OrderNo+"%").Scan(&credits);err!=nil{t.Fatal(err)}
  if refunds!=1||credits!=1{t.Fatalf("expected exactly one refund row and wallet credit, got refunds=%d credits=%d",refunds,credits)}
+ var audits int
+ if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM audit_logs WHERE action='upstream.procurement.refund' AND resource=?", "order:"+order.ID).Scan(&audits);err!=nil{t.Fatal(err)}
+ if audits!=1{t.Fatalf("refund must have exactly one atomic admin audit row, got %d",audits)}
  var method,reference,status string
  if err:=db.QueryRowContext(ctx,"SELECT status,payment_method,payment_reference FROM orders WHERE id=?",order.ID).Scan(&status,&method,&reference);err!=nil{t.Fatal(err)}
  if status!="refunded"||method!="trc20"||reference!="immutable-payment-ref"{t.Fatalf("refund must preserve original payment reference: status=%s method=%s ref=%s",status,method,reference)}

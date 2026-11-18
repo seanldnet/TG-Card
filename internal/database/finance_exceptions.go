@@ -67,13 +67,6 @@ func ListFinanceExceptions(ctx context.Context,db *sql.DB,driver,status,category
  return out,rows.Err()
 }
 
-func ClaimFinanceExceptionAlert(ctx context.Context,db *sql.DB,driver,alertKey,day string)(bool,error){
- now:=time.Now().UTC().Format(time.RFC3339Nano)
- q:="INSERT INTO finance_exception_alerts(alert_key,alert_date,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+") ON CONFLICT(alert_key,alert_date) DO NOTHING"
- res,err:=db.ExecContext(ctx,q,alertKey,day,now);if err!=nil{return false,err}
- n,err:=res.RowsAffected();if err!=nil{return false,err};return n==1,nil
-}
-
 func CountOpenFinanceExceptions(ctx context.Context,db *sql.DB)(int64,error){
  var n int64;err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM finance_exceptions WHERE status IN ('open','processing')").Scan(&n);return n,err
 }
@@ -173,26 +166,29 @@ func ListUncertainProcurements(ctx context.Context,db *sql.DB,driver string,limi
 }
 
 func ResolveUncertainProcurement(ctx context.Context,db *sql.DB,driver,orderID,adminID,resolution,externalID,externalNo,note string)error{
- resolution=strings.TrimSpace(resolution);note=strings.TrimSpace(note)
+ resolution=strings.TrimSpace(resolution);note=strings.TrimSpace(note);externalID=strings.TrimSpace(externalID);externalNo=strings.TrimSpace(externalNo)
  if note==""||len(note)>500{return fmt.Errorf("必须填写 1-500 字符的核实说明")}
  if resolution!="accepted"&&resolution!="not_accepted"{return fmt.Errorf("resolution must be accepted or not_accepted")}
- if resolution=="accepted"&&strings.TrimSpace(externalID)==""{return fmt.Errorf("确认上游已受理时必须填写上游订单 ID")}
+ if resolution=="accepted"&&externalID==""{return fmt.Errorf("确认上游已受理时必须填写上游订单 ID")}
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
- now:=time.Now().UTC().Format(time.RFC3339Nano)
- var status string
- q:="SELECT status FROM upstream_procurements WHERE local_order_id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE"}
- if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&status);err!=nil{return err};if status!="uncertain"{return fmt.Errorf("订单不处于 uncertain 状态")}
+ nowTime:=time.Now().UTC();now:=nowTime.Format(time.RFC3339Nano)
+ var timeoutMinutes int
+ timeoutMinutes=30;_ = tx.QueryRowContext(ctx,"SELECT procurement_timeout_minutes FROM upstream_settings WHERE id=1").Scan(&timeoutMinutes)
+ if timeoutMinutes<1||timeoutMinutes>1440{timeoutMinutes=30}
+ deadline:=nowTime.Add(time.Duration(timeoutMinutes)*time.Minute).Format(time.RFC3339Nano)
+ var status,orderStatus string
+ q:="SELECT p.status,o.status FROM upstream_procurements p JOIN orders o ON o.id=p.local_order_id WHERE p.local_order_id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE OF p,o"}
+ if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&status,&orderStatus);err!=nil{return err}
+ if status!="uncertain"||orderStatus!="procurement_failed"{return fmt.Errorf("订单不处于可人工恢复的 uncertain 状态")}
  if resolution=="accepted"{
-  if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET external_order_id="+placeholder(driver,1)+",external_order_no="+placeholder(driver,2)+",status='polling',next_poll_at="+placeholder(driver,3)+",last_error='',lease_until=NULL,updated_at="+placeholder(driver,4)+" WHERE local_order_id="+placeholder(driver,5),externalID,externalNo,now,now,orderID);err!=nil{return err}
-  if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_pending',procurement_error='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND status='procurement_failed'",now,orderID);err!=nil{return err}
+  res,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET external_order_id="+placeholder(driver,1)+",external_order_no="+placeholder(driver,2)+",status='polling',next_poll_at="+placeholder(driver,3)+",deadline_at="+placeholder(driver,4)+",last_error='',lease_until=NULL,updated_at="+placeholder(driver,5)+" WHERE local_order_id="+placeholder(driver,6)+" AND status='uncertain'",externalID,externalNo,now,deadline,now,orderID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("采购队列状态已变化")}
+  res,err=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_pending',procurement_error='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND status='procurement_failed'",now,orderID);if err!=nil{return err};n,err=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("本地订单状态已变化，不能恢复采购查单")}
  }else{
-  if _,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='failed',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3),note,now,orderID);err!=nil{return err}
+  res,err:=tx.ExecContext(ctx,"UPDATE upstream_procurements SET status='failed',last_error="+placeholder(driver,1)+",next_poll_at=NULL,lease_until=NULL,updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND status='uncertain'",note,now,orderID);if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("采购队列状态已变化")}
  }
  id,e:=randomID();if e!=nil{return e}
  if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'owner_resolution',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,resolution+": "+note,adminID,now);err!=nil{return err}
- if resolution=="not_accepted"{
-  if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败",note);err!=nil{return err}
- }
+ if resolution=="not_accepted"{if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败",note);err!=nil{return err}}
  if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note="+placeholder(driver,1)+",resolved_by="+placeholder(driver,2)+",resolved_at="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+" WHERE source_key="+placeholder(driver,5),note,adminID,now,now,"procurement-uncertain:"+orderID);err!=nil{return err}
  return tx.Commit()
 }

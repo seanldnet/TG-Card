@@ -193,7 +193,7 @@ func (a *application) recordSupplierProcurementBalanceAfter(ctx context.Context,
   notify,claimErr:=database.ClaimFinanceExceptionAlert(ctx,a.db,a.driver,"supplier-fund:"+job.LocalOrderID,day)
   if claimErr==nil&&notify{
    settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
-   a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("供应商采购资金核对异常\n本地订单：%s\n上游订单：%s\n币种：%s\n采购金额：%s\n余额变动：%s\n差额：%s\n原因：%s\n处理入口：%s",check.LocalOrderNo,check.ExternalOrderID,check.Currency,check.ExpectedDebit,check.ObservedDebit,check.Difference,check.Detail,a.procurementQueueLink(settings)),"")
+   a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("供应商采购资金核对异常\n本地订单：%s\n上游订单：%s\n币种：%s\n采购金额：%s\n余额变动：%s\n差额：%s\n原因：%s\n订单入口：%s\n异常处理入口：%s",check.LocalOrderNo,check.ExternalOrderID,check.Currency,check.ExpectedDebit,check.ObservedDebit,check.Difference,check.Detail,a.procurementOrderLink(settings,check.LocalOrderNo),a.procurementQueueLink(settings)),"")
   }
  }
 }

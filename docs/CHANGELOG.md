@@ -23,9 +23,9 @@
 - Mock 测试：同步交付、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后同幂等键恢复、已退款订单跳过、HTTP 402/404 错误分类共 10 项通过。
 - PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。PR #32 merge Publish digest：`sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 重建 Publish Run #44338105044 成功，当前 latest digest：`sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍按 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录；PR D 与 PR E 仍未完成。
 
-## 2026-11-18 — PR2 生产验收通过；Dujiao-Next PR C 开发启动
+## 2026-11-19 — PR2 生产验收通过；Dujiao-Next PR C 已合并
 
-- 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-18。
+- 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-19。
 - PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)；GHCR multi-platform manifest digest：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。
 - Go CI [#44324284650](https://github.com/seanldnet/TG-Card/actions/runs/44324284650)、Admin CI [#44324284642](https://github.com/seanldnet/TG-Card/actions/runs/44324284642)、Security [#44324284777](https://github.com/seanldnet/TG-Card/actions/runs/44324284777) 均成功。
 - PR #19/#26/#28 与 PR2 的本次验收项均使用生产 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录为已验收。PR #27 Owner Bot C1–C4 未被本次明确列入验收范围，继续待验收。
@@ -33,7 +33,7 @@
 
 ## 2026-11-18 — PR2 资金与库存安全（已合并、发布并验收）
 
-- 状态：PR #30 已合并至 main，Go CI、Admin CI、安全扫描、Docker Publish 均成功；生产验收由项目所有者按默认通过确认，日期 2026-11-18。
+- 状态：PR #30 已合并至 main，Go CI、Admin CI、安全扫描、Docker Publish 均成功；生产验收由项目所有者按默认通过确认，日期 2026-11-19。
 - 实现范围：UTC 每日对账日报及历史快照；用户余额与钱包流水只读一致性检查；本地卡密商品库存归零自动下架、补货后按设置手动/自动上架。
 - 数据库：新增迁移 `0037_reconciliation_inventory.sql`，记录交付失败事件、日报快照、余额检查运行和异常明细。
 - API/后台：新增对账日报月度查询、余额检查历史/差异查询、手动只读检查接口；新增“对账与余额校验”页面；网站设置新增库存归零下架/补货自动上架开关。
@@ -41,7 +41,7 @@
 - 统计口径与资金边界：日报按 paid_at/created_at/delivered_at/失败事件/退款 credit/充值本金/链上时间统计。余额只读核验按 wallet_transactions credit - debit；售后退款在当前实现中是 credit，故计入正向流水。任何差异均只记录和告警，不自动修正余额。
 - 验证：新增日报指标、快照幂等、余额差异检测且不自动修正的 SQLite 测试；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 均成功。
 - 文档：同步更新 `docs/PROJECT_STATUS.md`、本日志与新增 `docs/reconciliation-inventory.md`。
-- 验收：项目所有者确认生产已更新至 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未收到异常反馈，按默认通过处理（2026-11-18）。
+- 验收：项目所有者确认生产已更新至 `ghcr.io/seanldnet/tg-card@sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`，未收到异常反馈，按默认通过处理（2026-11-19）。
 - 红线：本 PR 不包含 Dujiao-Next 采购转发、供应商扣款或退款逻辑；不自动改余额。
 
 ## 2026-11-18 — PR #29 交接文档校准与 Admin CI 触发修复
