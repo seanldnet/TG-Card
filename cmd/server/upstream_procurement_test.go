@@ -162,9 +162,9 @@ func TestUncertainProcurementManualRetryReusesIdempotencyKey(t *testing.T){
 	api:=&fakeProcurementAPI{createFn:func(_ context.Context,r upstream.ProcurementRequest)(upstream.DujiaoProcurementResult,error){
 		mu.Lock();defer mu.Unlock();callCount++
 		if existing,ok:=created[r.DownstreamOrderNo];ok{return existing,nil}
-		if callCount==1{return upstream.DujiaoProcurementResult{},errors.New("network timeout after request write")}
 		result:=upstream.DujiaoProcurementResult{OK:true,OrderID:202,OrderNo:"UP-202",Status:"paid"}
 		created[r.DownstreamOrderNo]=result
+		if callCount==1{return upstream.DujiaoProcurementResult{},errors.New("network timeout after request write")}
 		return result,nil
 	}}
 	f:=newProcurementFixture(t,api)
