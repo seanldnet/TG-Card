@@ -5,8 +5,8 @@
 > **文档元信息**
 > - 最后更新时间：2026-11-18
 > - 文档版本：1.2.0
-> - 源码核对基线：`main` 分支，commit `41ef99ac935407dfd896b74840e220b3ba766400`
-> - 本次文档更新：上游能力与文档一致性审计；基线为 `main@41ef99ac935407dfd896b74840e220b3ba766400`
+> - 源码核对基线：`main` 分支，commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`
+> - 本次文档更新：核实 PR #19 发布镜像并修正 PR 追踪记录；源码基线为 `main@40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -508,13 +508,32 @@ curl -fsS http://127.0.0.1:38647/api/health
 | 前端 404/空白 | 检查 WEB_DIST_DIR、镜像静态产物、app 日志和浏览器网络请求。 |
 | 迁移失败 | 查看 migration version 和数据库错误，保留现场并恢复升级前备份；不要删除 schema_migrations 记录。 |
 
-## 19. 进行中 PR 与已知问题追踪表
+## 19. PR、镜像发布与待验收事项追踪表
 
-| PR/Issue | 问题摘要 | 状态 | 影响模块 | 合并后动作 |
+| PR/Issue | 问题摘要 | 代码/发布状态 | 验收状态 | 后续动作 |
 |---|---|---|---|---|
-| [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 镜像已发布；digest sha256:ec1c5c8b468e2ef7d03c84da750015465c66fb20cd3dc4cbfaee92b97533f54d。Telegram 真机验收待记录。 | Telegram Bot 首页菜单、用户交互 | 部署该镜像后重新发送 /start，验证两种键盘同时显示，并测试普通用户/Owner 菜单隔离。 |
-| [PR #15](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载。 | 已合并并进入后续发布线；真实 Telegram 图片/文件验收仍待项目所有者执行。 | 售后 Bot、数据库、HTTP API、后台工单时间线 | 使用当前发布镜像执行图片/文件预览下载、Bot 停止后历史附件查看及跨工单访问保护验收。 |
-| 本次综合修复 | 上游发卡文档与代码一致性审计。 | 审计 PR 中；仅接口契约存在，上游集成未实现。 | 文档、`internal/upstream/` | 后续阶段分别实施附件/CDN/布局修复与有官方证据的 provider adapter。 |
+| [PR #12](https://github.com/seanldnet/TG-Card/pull/12) | 修复 /start 与“🏠 主菜单”欢迎卡片下方 Inline Keyboard 丢失，同时保留输入框下方 Reply Keyboard。 | 已合并；对应镜像曾记录 digest sha256:ec1c5c8b468e2ef7d03c84da750015465c66fb20cd3dc4cbfaee92b97533f54d。 | Telegram 真机验收结果未在本记录中确认。 | 验证两种键盘同时显示，并检查普通用户/Owner 菜单隔离。 |
+| [PR #15](https://github.com/seanldnet/TG-Card/pull/15) | 售后工单附件后台预览/下载基础实现。 | 已合并；后续附件可靠性修复见 PR #19。 | 不把 PR #15 的历史实现视为当前附件修复已验收。 | 以 PR #19 镜像执行图片/文件、Bot 停止后查看及跨工单访问保护测试。 |
+| [PR #17](https://github.com/seanldnet/TG-Card/pull/17) | 文档与代码一致性审计，包含上游能力审计表。 | 已合并；审计结论已写入 README、PROJECT_STATUS 与 CHANGELOG。 | 文档审计完成；上游业务功能仍未实现。 | 保持协议证据边界；仅对有官方可核实协议的 Dujiao-Next 开发。 |
+| [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`。Publish Run #327 成功，GHCR latest 与 commit SHA 标签均已推送。 | **代码完成待项目所有者验收**：Telegram 附件真机测试、跟踪防护下零外部 CDN 请求、PC 宽屏浏览器回归均未验收。 | 项目所有者按交接验收步骤执行并回填结果；不得以 CI/镜像发布替代真机验收。 |
+| Dujiao-Next 上游基础设施 | 商户配置、加密密钥、连接测试、动态菜单与配置 API。 | 待开发；当前仅有通用 Adapter 契约及官方协议调研。 | 未验收。 | 独立 PR A；CI 通过并合并后再开始 PR B。 |
+| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | 未实现。 | 未验收。 | 按 PR B、C、D、E 分阶段实施；真实商户端到端联调后才可标记验收。 |
+
+### 19.1 PR #19 镜像发布证据
+
+- Publish workflow：`.github/workflows/publish.yml`
+- Actions Run：[Build and publish TG-Card #327](https://github.com/seanldnet/TG-Card/actions/runs/44288929603)
+- Run ID：`44288929603`
+- 源码 commit：`40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`
+- 触发事件：push to main；最终状态：`completed / success`
+- 构建任务：`build-and-push`，状态 `completed / success`
+- 推送标签：`ghcr.io/seanldnet/tg-card:latest` 与 `ghcr.io/seanldnet/tg-card:40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`
+- Buildx 输出的镜像清单 digest：`sha256:05663ddbc49d9706a4fe3b4771cbc1dab427a29b15605a048d69723485fc60c6`
+- 构建平台：`linux/amd64`、`linux/arm64`
+- 镜像引用：`ghcr.io/seanldnet/tg-card@sha256:05663ddbc49d9706a4fe3b4771cbc1dab427a29b15605a048d69723485fc60c6`
+- 同一 commit 的 Go CI、Admin frontend CI、安全扫描均成功；这些自动化结果不代表真实 Telegram/浏览器验收。
+- 证据来源：Actions job `build-and-push` 日志中的 `pushing manifest for ...:latest`、commit SHA 标签推送及 `containerimage.digest` 输出。
+- 发布结论：PR #19 的 commit 已成功构建并推送 GHCR latest；生产部署与三类真实环境验收仍待项目所有者执行。
 
 ## 20. 安全基线
 
