@@ -160,6 +160,8 @@ func (a *application) handleDujiaoCallback(w http.ResponseWriter,r *http.Request
 	apiSecret,err:=a.secrets.Decrypt(settings.SecretCiphertext);if err!=nil{writeJSON(w,http.StatusServiceUnavailable,map[string]any{"ok":false,"message":"callback credentials unavailable"});return}
 	if err:=upstream.VerifyDujiaoCallback(apiKey,apiSecret,r.Header,body,time.Now().UTC());err!=nil{
 		log.Printf("Dujiao callback signature rejected: %v",err)
+		bodyHash:=sha256.Sum256(body)
+		_ = database.RecordUpstreamCallbackSecurityEvent(r.Context(),a.db,a.driver,hex.EncodeToString(bodyHash[:]),clientIP(r),err.Error())
 		a.notifySiteEvent(r.Context(),"risk_alert","Dujiao-Next 回调验签失败\n来源 IP："+clientIP(r),"")
 		writeJSON(w,http.StatusUnauthorized,map[string]any{"ok":false,"message":"callback signature verification failed"});return
 	}
