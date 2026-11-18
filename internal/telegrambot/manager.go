@@ -393,10 +393,11 @@ func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chat
 	if err != nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"商品暂时无法加载，请稍后再试。"); return }
 	for _,p:=range products {
 		if p.ID!=productID||p.Status!=1 { continue }
-		if p.SourceType=="upstream" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品的采购履约将在下一阶段开放，目前暂不可购买。"); return }
 		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
 		if keyBacked&&p.StockCount<1 { _ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。"); return }
-		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}
+		if p.SourceType=="upstream" && p.UpstreamStockStatus=="out_of_stock" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游商品库存不足，请返回商城选择其他商品。"); return }
+		if p.SourceType=="upstream" && p.UpstreamFulfillmentType=="manual" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品需要人工交付表单信息，目前请联系客服处理，暂不支持自助下单。"); return }
+		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}else if p.SourceType=="upstream"{stockText="上游库存："+p.UpstreamStockStatus}
 		text:="请确认订单信息：\n商品："+p.Name+"\n商品金额："+formatPrice(p.PriceMinor,p.Currency)+"\n数量：1\n"+stockText+"\n\n确认后将创建订单，需在 20 分钟内完成付款。"
 		paymentAddress,paymentEnabled:=m.paymentConfig()
 		if paymentEnabled&&paymentAddress!=""{text+="\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"}else{text+="\n支付尚未启用，请勿转账。"}
