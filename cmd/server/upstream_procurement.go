@@ -207,10 +207,7 @@ func (a *application) procurementQueueLink(settings database.UpstreamSettings) s
 func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason string) {
 	if a.procurementNotify != nil { a.procurementNotify(ctx,orderNo,reason); return }
 	settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
-	details:="Dujiao-Next 采购异常
-订单号："+orderNo+"
-原因："+reason+"
-订单入口："+a.procurementOrderLink(settings,orderNo)
+\tdetails:="Dujiao-Next 采购异常\n订单号："+orderNo+"\n原因："+reason+"\n订单入口："+a.procurementOrderLink(settings)
 	a.notifySiteEvent(ctx,"risk_alert",details,"")
 }
 
@@ -234,10 +231,7 @@ func (a *application) checkSupplierBalance(ctx context.Context) {
 	day:=time.Now().UTC().Format("2006-01-02")
 	created,err:=database.ClaimUpstreamBalanceAlert(ctx,a.db,a.driver,day,ping.Balance,settings.SupplierLowBalanceThreshold,ping.Currency)
 	if err!=nil||!created{return}
-	a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("Dujiao-Next 供应商余额低于预警阈值
-当前余额：%s %s
-预警阈值：%s %s
-UTC 日期：%s\n供应商配置入口：%s",ping.Balance,ping.Currency,settings.SupplierLowBalanceThreshold,ping.Currency,day,a.procurementQueueLink(settings)),"")
+\ta.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("Dujiao-Next 供应商余额低于预警阈值\n当前余额：%s %s\n预警阈值：%s %s\nUTC 日期：%s\n供应商配置入口：%s",ping.Balance,ping.Currency,settings.SupplierLowBalanceThreshold,ping.Currency,day,a.procurementQueueLink(settings)),"")
 }
 
 func (a *application) upstreamProcurementCallback(w http.ResponseWriter,r *http.Request) {
