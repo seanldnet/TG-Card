@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS order_delivery_events (
 );
 CREATE INDEX IF NOT EXISTS idx_order_delivery_events_type_time ON order_delivery_events(event_type, created_at DESC);
 
+-- Preserve the last known failure timestamp for orders already failed before this migration.
+INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at)
+SELECT 'legacy-' || id,id,'delivery_failed',COALESCE(delivery_error,''),updated_at FROM orders WHERE status='delivery_failed'
+ON CONFLICT(id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS daily_reconciliation_reports (
   report_date TEXT PRIMARY KEY,
   revenue_atomic BIGINT NOT NULL DEFAULT 0,
