@@ -196,6 +196,14 @@ func (a *application) procurementOrderLink(settings database.UpstreamSettings,or
 	return u.String()
 }
 
+func (a *application) procurementQueueLink(settings database.UpstreamSettings) string {
+	if settings.CallbackURL=="" { return "/upstream" }
+	u,err:=url.Parse(settings.CallbackURL);if err!=nil{return "/upstream"}
+	u.Path=strings.TrimSuffix(u.Path,"/api/v1/upstream/callback")+"/upstream"
+	u.RawQuery=""
+	return u.String()
+}
+
 func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason string) {
 	if a.procurementNotify != nil { a.procurementNotify(ctx,orderNo,reason); return }
 	settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
@@ -229,7 +237,7 @@ func (a *application) checkSupplierBalance(ctx context.Context) {
 	a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("Dujiao-Next 供应商余额低于预警阈值
 当前余额：%s %s
 预警阈值：%s %s
-UTC 日期：%s",ping.Balance,ping.Currency,settings.SupplierLowBalanceThreshold,ping.Currency,day),"")
+UTC 日期：%s\n供应商配置入口：%s",ping.Balance,ping.Currency,settings.SupplierLowBalanceThreshold,ping.Currency,day,a.procurementQueueLink(settings)),"")
 }
 
 func (a *application) upstreamProcurementCallback(w http.ResponseWriter,r *http.Request) {
@@ -241,7 +249,7 @@ func (a *application) upstreamProcurementCallback(w http.ResponseWriter,r *http.
 	apiSecret,err:=a.secrets.Decrypt(settings.SecretCiphertext);if err!=nil{writeError(w,http.StatusServiceUnavailable,"上游回调密钥不可用");return}
 	verifyErr:=upstream.VerifyDujiaoCallback(apiKey,apiSecret,r.Header.Get("Dujiao-Next-Api-Key"),r.Header.Get("Dujiao-Next-Timestamp"),r.Header.Get("Dujiao-Next-Signature"),r.URL.Path,body,time.Now())
 	if verifyErr!=nil{
-		a.notifySiteEvent(r.Context(),"risk_alert","Dujiao-Next 回调验签失败，已拒绝请求。来源 IP："+clientIP(r)+"；原因："+verifyErr.Error(),"")
+		a.notifySiteEvent(r.Context(),"risk_alert","Dujiao-Next 回调验签失败，已拒绝请求。来源 IP："+clientIP(r)+"；原因："+verifyErr.Error()+"\n供应商采购处理入口："+a.procurementQueueLink(settings),"")
 		writeError(w,http.StatusUnauthorized,"上游回调签名校验失败");return
 	}
 	var callback upstreamCallbackRequest
