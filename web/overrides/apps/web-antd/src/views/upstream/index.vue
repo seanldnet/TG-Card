@@ -16,6 +16,9 @@ interface UpstreamSettings {
   markupFixedMinor: number;
   syncIntervalMinutes: number;
   exchangeRateToUSDT: number;
+  callbackUrl: string;
+  purchasePollIntervalSeconds: number;
+  purchaseTimeoutMinutes: number;
   lastTestStatus: string;
   lastTestAt: string;
   lastError: string;
@@ -29,7 +32,7 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
+ merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,exchangeRateToUSDT:0,callbackUrl:'',purchasePollIntervalSeconds:15,purchaseTimeoutMinutes:30,lastTestStatus:'not_tested',lastTestAt:'',
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
@@ -49,7 +52,7 @@ async function save():Promise<boolean>{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
-   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,
+   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,exchangeRateToUSDT:settings.exchangeRateToUSDT,callbackUrl:settings.callbackUrl,purchasePollIntervalSeconds:settings.purchasePollIntervalSeconds,purchaseTimeoutMinutes:settings.purchaseTimeoutMinutes,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
@@ -120,13 +123,23 @@ onMounted(()=>{void load();});
       <a-select-option :value="5">每 5 分钟</a-select-option><a-select-option :value="15">每 15 分钟</a-select-option><a-select-option :value="30">每 30 分钟</a-select-option><a-select-option :value="60">每小时</a-select-option><a-select-option :value="360">每 6 小时</a-select-option><a-select-option :value="1440">每天</a-select-option>
      </a-select>
     </a-form-item>
+    <a-divider/>
+    <a-form-item label="采购回调地址" extra="填写 TG-Card 对外可访问的 HTTPS 地址，路径必须为 /api/v1/upstream/callback。留空时系统仍会使用主动查单轮询。">
+     <a-input v-model:value="settings.callbackUrl" placeholder="https://your-card-domain.example/api/v1/upstream/callback" autocomplete="url"/>
+    </a-form-item>
+    <a-form-item label="采购查单轮询间隔与超时">
+     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div><div class="mb-1 text-xs text-gray-500">轮询间隔（秒）</div><a-input-number v-model:value="settings.purchasePollIntervalSeconds" class="w-full" :min="5" :max="300" :step="5"/></div>
+      <div><div class="mb-1 text-xs text-gray-500">采购总超时（分钟）</div><a-input-number v-model:value="settings.purchaseTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></div>
+     </div>
+    </a-form-item>
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
       <a-switch v-model:checked="settings.enabled" :disabled="settings.catalogStale||settings.syncStatus!=='success'&&!settings.enabled"/>
       <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
      </div>
     </a-form-item>
-    <a-alert class="mb-4" type="warning" show-icon message="上游商品同步和目录切换已开放；买家采购/付款转发将在 PR C 完成前保持禁用，不会创建本地假订单或扣款。" />
+    <a-alert class="mb-4" type="info" show-icon message="上游采购在支付确认后异步执行；建议配置公网 HTTPS 回调地址，系统同时保留主动查单轮询。采购失败不会自动退款或扣减买家余额，将进入人工处理。" />
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
