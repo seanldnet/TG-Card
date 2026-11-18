@@ -63,12 +63,12 @@ func (c DujiaoProcurementClient) CreateOrder(ctx context.Context, request Procur
 	}
 	body, err := json.Marshal(request)
 	if err != nil { return result, err }
-	payload, err := DujiaoRequest(ctx, c.BaseURL, http.MethodPost, dujiaoAPIPrefix+"/orders", nil, body, c.APIKey, c.APISecret)
+	payload, status, err := DujiaoRequestWithStatus(ctx, c.BaseURL, http.MethodPost, dujiaoAPIPrefix+"/orders", nil, body, c.APIKey, c.APISecret)
 	if err != nil { return result, err }
-	if err := json.Unmarshal(payload, &result); err != nil { return result, fmt.Errorf("Dujiao-Next returned an unrecognized procurement response") }
-	if !result.OK {
+	if err := json.Unmarshal(payload, &result); err != nil { return result, fmt.Errorf("Dujiao-Next returned an unrecognized procurement response (HTTP %d)",status) }
+	if !result.OK || status < 200 || status >= 300 {
 		message := strings.TrimSpace(result.ErrorMessage)
-		if message == "" { message = "upstream rejected the procurement request" }
+		if message == "" { message = fmt.Sprintf("upstream rejected the procurement request (HTTP %d)",status) }
 		if len(message) > 400 { message = message[:400] }
 		return result, &ProcurementBusinessError{Code: result.ErrorCode, Message: message}
 	}
@@ -83,12 +83,12 @@ func (c DujiaoProcurementClient) GetOrder(ctx context.Context, externalOrderID s
 	id, err := strconv.ParseInt(strings.TrimSpace(externalOrderID), 10, 64)
 	if err != nil || id <= 0 { return result, fmt.Errorf("invalid Dujiao upstream order ID") }
 	path := dujiaoAPIPrefix + "/orders/" + strconv.FormatInt(id, 10)
-	payload, err := DujiaoRequest(ctx, c.BaseURL, http.MethodGet, path, url.Values{}, nil, c.APIKey, c.APISecret)
+	payload, status, err := DujiaoRequestWithStatus(ctx, c.BaseURL, http.MethodGet, path, url.Values{}, nil, c.APIKey, c.APISecret)
 	if err != nil { return result, err }
-	if err := json.Unmarshal(payload, &result); err != nil { return result, fmt.Errorf("Dujiao-Next returned an unrecognized order response") }
-	if !result.OK {
+	if err := json.Unmarshal(payload, &result); err != nil { return result, fmt.Errorf("Dujiao-Next returned an unrecognized order response (HTTP %d)",status) }
+	if !result.OK || status < 200 || status >= 300 {
 		message := strings.TrimSpace(result.ErrorMessage)
-		if message == "" { message = "Dujiao-Next order lookup failed" }
+		if message == "" { message = fmt.Sprintf("Dujiao-Next order lookup failed (HTTP %d)",status) }
 		if len(message) > 400 { message = message[:400] }
 		return result, &ProcurementBusinessError{Code: result.ErrorCode, Message: message}
 	}
