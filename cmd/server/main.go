@@ -1292,6 +1292,7 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if _,ok:=savedFields["telegramNotifyStockLow"];!ok{settings.TelegramNotifyStockLow=true}
  if _,ok:=savedFields["telegramNotifyDailyReport"];!ok{settings.TelegramNotifyDailyReport=true}
  if _,ok:=savedFields["telegramNotifyRiskAlert"];!ok{settings.TelegramNotifyRiskAlert=true}
+ if _,ok:=savedFields["stockAutoUnlistOnZero"];!ok{settings.StockAutoUnlistOnZero=true}
  if settings.SiteName == "" { settings.SiteName = "TG-Card" }
  if settings.SMTPPort == 0 { settings.SMTPPort = 587 }
  if settings.SMTPFromName == "" { settings.SMTPFromName = settings.SiteName }
