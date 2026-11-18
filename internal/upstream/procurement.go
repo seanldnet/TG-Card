@@ -54,6 +54,12 @@ type DujiaoProcurementClient struct {
 	BaseURL string
 	APIKey string
 	APISecret string
+	request func(context.Context,string,string,string,url.Values,[]byte,string,string)([]byte,int,error)
+}
+
+func (c DujiaoProcurementClient) doRequest(ctx context.Context,method,path string,query url.Values,body []byte)([]byte,int,error){
+	if c.request!=nil{return c.request(ctx,c.BaseURL,method,path,query,body,c.APIKey,c.APISecret)}
+	return DujiaoRequestWithStatus(ctx,c.BaseURL,method,path,query,body,c.APIKey,c.APISecret)
 }
 
 func (c DujiaoProcurementClient) CreateOrder(ctx context.Context, request ProcurementRequest) (DujiaoProcurementResult, error) {
@@ -63,7 +69,7 @@ func (c DujiaoProcurementClient) CreateOrder(ctx context.Context, request Procur
 	}
 	body, err := json.Marshal(request)
 	if err != nil { return result, err }
-	payload, status, err := DujiaoRequestWithStatus(ctx, c.BaseURL, http.MethodPost, dujiaoAPIPrefix+"/orders", nil, body, c.APIKey, c.APISecret)
+	payload, status, err := c.doRequest(ctx, http.MethodPost, dujiaoAPIPrefix+"/orders", nil, body)
 	if err != nil { return result, err }
 	if err := json.Unmarshal(payload, &result); err != nil { return result, fmt.Errorf("Dujiao-Next returned an unrecognized procurement response (HTTP %d)",status) }
 	if !result.OK || status < 200 || status >= 300 {
@@ -83,7 +89,7 @@ func (c DujiaoProcurementClient) GetOrder(ctx context.Context, externalOrderID s
 	id, err := strconv.ParseInt(strings.TrimSpace(externalOrderID), 10, 64)
 	if err != nil || id <= 0 { return result, fmt.Errorf("invalid Dujiao upstream order ID") }
 	path := dujiaoAPIPrefix + "/orders/" + strconv.FormatInt(id, 10)
-	payload, status, err := DujiaoRequestWithStatus(ctx, c.BaseURL, http.MethodGet, path, url.Values{}, nil, c.APIKey, c.APISecret)
+	payload, status, err := c.doRequest(ctx, http.MethodGet, path, url.Values{}, nil)
 	if err != nil { return result, err }
 	if err := json.Unmarshal(payload, &result); err != nil { return result, fmt.Errorf("Dujiao-Next returned an unrecognized order response (HTTP %d)",status) }
 	if !result.OK || status < 200 || status >= 300 {
