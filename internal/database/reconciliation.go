@@ -144,6 +144,12 @@ func SetLocalProductAvailability(ctx context.Context,db *sql.DB,driver,productID
 	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
 
+func RelistAutoUnlistedProduct(ctx context.Context,db *sql.DB,driver,productID string)(bool,error){
+	q:="UPDATE products SET status=1,stock_auto_unlisted=0,updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND COALESCE(source_type,'local')='local' AND status=0 AND stock_auto_unlisted=1"
+	res,err:=db.ExecContext(ctx,q,time.Now().UTC().Format(time.RFC3339Nano),productID);if err!=nil{return false,err}
+	n,err:=res.RowsAffected();if err!=nil{return false,err};return n==1,nil
+}
+
 func MarkLocalProductAutoUnlisted(ctx context.Context,db *sql.DB,driver,productID string)error{
 	q:="UPDATE products SET status=0,stock_auto_unlisted=1,updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND COALESCE(source_type,'local')='local' AND status=1"
 	res,err:=db.ExecContext(ctx,q,time.Now().UTC().Format(time.RFC3339Nano),productID);if err!=nil{return err}
