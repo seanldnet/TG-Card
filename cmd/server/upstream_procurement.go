@@ -45,14 +45,18 @@ func (a *application) getProcurementAPI(settings database.UpstreamSettings) (ups
 func (a *application) runUpstreamProcurementScheduler(ctx context.Context) {
 	ticker:=time.NewTicker(5*time.Second)
 	balanceTicker:=time.NewTicker(10*time.Minute)
+	financeTicker:=time.NewTicker(15*time.Minute)
 	defer ticker.Stop()
 	defer balanceTicker.Stop()
+	defer financeTicker.Stop()
 	a.checkSupplierBalance(ctx)
+	a.runSupplierFinanceIntegrityCheck(ctx)
 	for {
 		select {
 		case <-ctx.Done(): return
 		case <-ticker.C: a.processDueUpstreamProcurements(ctx)
 		case <-balanceTicker.C: a.checkSupplierBalance(ctx)
+		case <-financeTicker.C: a.runSupplierFinanceIntegrityCheck(ctx)
 		}
 	}
 }
@@ -244,6 +248,14 @@ func (a *application) notifyProcurementOwner(ctx context.Context,orderNo,reason 
 	a.notifySiteEvent(ctx,"risk_alert",details,"")
 }
 
+func (a *application) runSupplierFinanceIntegrityCheck(ctx context.Context) {
+ count,err:=database.RunRefundLedgerIntegrityCheck(ctx,a.db,a.driver)
+ if err!=nil{log.Printf("refund ledger integrity check failed: %v",err);return}
+ if count>0 {
+  settings,_:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+  a.notifySiteEvent(ctx,"risk_alert",fmt.Sprintf("退款账本一致性检查发现 %d 条异常；系统未修改任何余额或流水。请在资金异常中心核查。\n处理入口：%s",count,a.procurementQueueLink(settings)),"")
+ }
+}
 func (a *application) checkSupplierBalance(ctx context.Context) {
 	settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver)
 	if err!=nil||!settings.Enabled{return}

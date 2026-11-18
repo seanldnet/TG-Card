@@ -245,6 +245,13 @@ func main() {
 	api.HandleFunc("GET /api/upstream/procurements", app.listUpstreamProcurements)
 	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.retryUpstreamProcurement)
 	api.HandleFunc("POST /api/upstream/procurements/{id}/refund", app.refundUpstreamProcurement)
+	api.HandleFunc("GET /api/upstream/procurements/uncertain", app.listUncertainProcurements)
+	api.HandleFunc("POST /api/upstream/procurements/{id}/resolve", app.resolveUncertainProcurement)
+	api.HandleFunc("GET /api/upstream/fund-checks", app.listSupplierFundChecks)
+	api.HandleFunc("GET /api/finance/exceptions", app.listFinanceExceptions)
+	api.HandleFunc("GET /api/finance/exceptions/count", app.countFinanceExceptions)
+	api.HandleFunc("PUT /api/finance/exceptions/{id}", app.updateFinanceException)
+	api.HandleFunc("POST /api/finance/refund-ledger/check", app.runFinanceIntegrityCheck)
 	api.HandleFunc("GET /api/settings/recharge-bonus", app.getRechargeBonusSettings)
 	api.HandleFunc("PUT /api/settings/recharge-bonus", app.updateRechargeBonusSettings)
 	api.HandleFunc("GET /api/support/tickets", app.listSupportTickets)
@@ -598,6 +605,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		{
 			"name": "Reconciliation", "path": "/reconciliation", "component": "/reconciliation/index",
 			"meta": map[string]any{"icon": "lucide:calendar-check", "order": 4, "title": "对账与余额校验"},
+		},
+		{
+			"name": "FinanceExceptions", "path": "/finance-exceptions", "component": "/finance-exceptions/index",
+			"meta": map[string]any{"icon": "lucide:shield-alert", "order": 5, "title": "资金异常中心"},
 		},
 		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
