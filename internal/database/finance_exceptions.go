@@ -165,9 +165,12 @@ func ResolveUncertainProcurement(ctx context.Context,db *sql.DB,driver,orderID,a
  }
  id,e:=randomID();if e!=nil{return e}
  if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'owner_resolution',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,resolution+": "+note,adminID,now);err!=nil{return err}
- if err:=tx.Commit();err!=nil{return err}
- if resolution=="not_accepted"{return FailUpstreamProcurement(ctx,db,driver,orderID,note)}
- return nil
+ if resolution=="not_accepted"{
+  if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败",note);err!=nil{return err}
+ }else{
+  if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note="+placeholder(driver,1)+",resolved_by="+placeholder(driver,2)+",resolved_at="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+" WHERE source_key="+placeholder(driver,5),note,adminID,now,now,"procurement-uncertain:"+orderID);err!=nil{return err}
+ }
+ return tx.Commit()
 }
 
 // RunRefundLedgerIntegrityCheck is read-only: it reports broken links and never adjusts wallet balances.
