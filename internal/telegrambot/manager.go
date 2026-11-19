@@ -638,7 +638,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
-	if first == "/cart" {
+	if first == "/cart" || text == "🛒 我的购物车" {
 		m.showCart(ctx,cfg,msg.Chat.ID,msg.From.ID)
 		return
 	}
