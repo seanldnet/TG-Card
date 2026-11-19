@@ -97,9 +97,9 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 }
 
 func ListCartCheckoutItems(ctx context.Context,db *sql.DB,driver,orderID string)([]CartCheckoutItem,error){
-	q:="SELECT product_id,product_name,quantity,unit_price_minor,line_total_minor,currency FROM cart_checkout_items WHERE order_id="+placeholder(driver,1)+" ORDER BY created_at,id"
+	q:="SELECT line_number,product_id,product_name,quantity,unit_price_minor,line_total_minor,currency FROM cart_checkout_items WHERE order_id="+placeholder(driver,1)+" ORDER BY line_number,created_at,id"
 	rows,err:=db.QueryContext(ctx,q,orderID);if err!=nil{return nil,err};defer rows.Close()
-	items:=make([]CartCheckoutItem,0);for rows.Next(){var x CartCheckoutItem;if err:=rows.Scan(&x.ProductID,&x.ProductName,&x.Quantity,&x.UnitPriceMinor,&x.LineTotalMinor,&x.Currency);err!=nil{return nil,err};items=append(items,x)}
+	items:=make([]CartCheckoutItem,0);for rows.Next(){var x CartCheckoutItem;if err:=rows.Scan(&x.LineNumber,&x.ProductID,&x.ProductName,&x.Quantity,&x.UnitPriceMinor,&x.LineTotalMinor,&x.Currency);err!=nil{return nil,err};items=append(items,x)}
 	return items,rows.Err()
 }
 
