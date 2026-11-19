@@ -43,16 +43,16 @@ func TestDeliverSupportAdminReplyDoesNotPersistWhenTelegramSendFails(t *testing.
 	adminMessages, systemMessages := 0, 0
 	for _, item := range messages { if item.SenderType == "admin" { adminMessages++ }; if item.SenderType == "system" { systemMessages++ } }
 	if adminMessages != 0 || systemMessages != 1 { t.Fatalf("timeline admin=%d system=%d, want 0/1: %#v", adminMessages, systemMessages, messages) }
-	current, err := database.GetSupportTicket(ctx, h.DB, "sqlite", ticket.ID)
+	current, err := database.GetSupportTicket(ctx, db, "sqlite", ticket.ID)
 	if err != nil { t.Fatal(err) }
 	if current.AdminReply != "" || current.Status != "open" { t.Fatalf("failed delivery changed ticket state: status=%q adminReply=%q", current.Status, current.AdminReply) }
 }
 
 func TestDeliverSupportAdminReplyPersistsAfterTelegramSuccess(t *testing.T) {
 	ctx := context.Background()
-	h, ticket := newSupportReplyTestTicket(t)
-	defer h.DB.Close()
-	app := &application{db: h.DB, driver: "sqlite"}
+	db, ticket := newSupportReplyTestTicket(t)
+	defer db.Close()
+	app := &application{db: db, driver: "sqlite"}
 	sent := false
 	item, sendFailed, err := app.deliverSupportAdminReply(ctx, ticket, "admin-1", "Your issue is resolved", func(_ context.Context, outgoing database.SupportTicket) error {
 		sent = true
@@ -62,10 +62,10 @@ func TestDeliverSupportAdminReplyPersistsAfterTelegramSuccess(t *testing.T) {
 	if err != nil || sendFailed { t.Fatalf("sendFailed=%v err=%v", sendFailed, err) }
 	if !sent { t.Fatal("Telegram sender was not called") }
 	if item.SenderType != "admin" || item.Message != "Your issue is resolved" { t.Fatalf("unexpected persisted message: %#v", item) }
-	current, err := database.GetSupportTicket(ctx, h.DB, "sqlite", ticket.ID)
+	current, err := database.GetSupportTicket(ctx, db, "sqlite", ticket.ID)
 	if err != nil { t.Fatal(err) }
 	if current.AdminReply != "Your issue is resolved" { t.Fatalf("admin reply not persisted: %q", current.AdminReply) }
-	messages, err := database.ListSupportTicketMessages(ctx, h.DB, "sqlite", ticket.ID)
+	messages, err := database.ListSupportTicketMessages(ctx, db, "sqlite", ticket.ID)
 	if err != nil { t.Fatal(err) }
 	adminMessages := 0
 	for _, entry := range messages { if entry.SenderType == "admin" { adminMessages++ } }
