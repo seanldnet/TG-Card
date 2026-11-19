@@ -185,6 +185,10 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 		previous.MarkupBPS != markupBPS ||
 		previous.MarkupMinor != input.MarkupFixedMinor ||
 		previous.ExchangeRatePPM != exchangeRatePPM
+	if hasCurrent && previous.Enabled && catalogChanged {
+		writeError(w,http.StatusConflict,"上游售卖启用期间不能直接更改站点、凭证或定价；请先停用并清除上游目录，再修改配置并重新同步")
+		return
+	}
 	if input.Enabled && !catalogChanged && (current.CatalogStale || current.SyncStatus != "success") {
 		writeError(w, http.StatusConflict, "请先完成一次成功的商品同步，再启用上游商品来源")
 		return
