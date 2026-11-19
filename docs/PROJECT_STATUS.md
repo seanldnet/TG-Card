@@ -754,22 +754,22 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 
 - 管理员密码使用 bcrypt；新密码长度要求 12–256 字符。
 - 管理员 Bearer Token 使用 HS256，签发有效期 24 小时；认证检查签名、过期时间、管理员状态和 Token Version。
-- 登录按客户端 IP 限制尝试频率；达到限制时返回 429，提示 15 分钟后再试。
+- 登录按经过可信代理校验的客户端 IP 限制尝试频率；敏感写接口另有按 IP + 路由独立滑动窗口限流，超限返回 429。
 - 修改管理员密码会递增 Token Version，使已有会话失效。
 - Bot Token、支付 API Key、SMTP 密码通过持久化 AES-256-GCM 密钥加密保存；密钥文件创建权限为 0600。
 - JWT Secret 未显式设置时保存在 DATA_DIR/jwt-secret；Bot/支付/SMTP 加密密钥位于 DATA_DIR/bot-token.key，均依赖持久化数据卷。
 - Docker 镜像以非 root 的 tgcard 用户运行；应用数据目录由镜像构建步骤设置权限。
 - HTTP 响应设置 X-Content-Type-Options、Referrer-Policy 和 X-Frame-Options 安全头。
-- HTTP Server 设置 ReadHeaderTimeout=5s、IdleTimeout=60s；应用自身未配置 TLS listener。
+- HTTP Server 设置 ReadHeaderTimeout=5s、IdleTimeout=60s；应用自身未配置 TLS listener。新增需管理员认证的 GET /api/health/detailed，返回数据库、Bot 运行状态、支付监听器、上游同步与迁移版本，不返回凭证、Token 或 DSN。Bot 缺失/断开、Polling 冲突或连续 3 次轮询错误会通知 Owner。
 
 ### 20.2 部署建议与待确认项
 
 - Compose 端口映射当前为 38647:38647，默认在宿主机所有接口发布。生产建议防火墙限制来源，并绑定回环地址（例如 127.0.0.1:38647:38647），由 Nginx/Caddy/云负载均衡等反向代理提供 HTTPS。
-- TLS 终止、证书续期、HSTS、可信代理头及真实客户端 IP 处理不由当前 Compose 自动配置，需由部署环境完成并验收。
+- TLS 终止、证书续期与 HSTS 仍由部署环境负责。真实客户端 IP 仅在 TRUSTED_PROXY_CIDRS 明确配置可信代理 CIDR 后采信转发头；默认不信任任何代理头。
 - 不要将 JWT_SECRET、POSTGRES_PASSWORD、TronGrid API Key、Bot Token、SMTP 密码提交到 Git、前端代码或公开日志。
 - 限制应用数据目录、备份文件和日志的访问；备份应加密并限制权限。
-- 当前普通管理员 API 主要采用统一 Bearer 认证；支付人工补单额外要求 super。细粒度 RBAC、除登录外的 API 速率限制、CSRF/CORS 专项策略及可信代理 IP 白名单：待补充/待安全评估。
-- logout handler 当前仅返回成功，不在服务端撤销 Token；Token 在 24 小时过期或管理员 Token Version 改变前仍可能有效。客户端应清除本地 Token；服务端主动会话撤销能力：待补充。
+- 当前普通管理员 API 主要采用统一 Bearer 认证；支付人工补单额外要求 super。敏感写接口限流覆盖管理员密码修改、支付人工核对、支付设置、余额调整、群发创建、上游采购重试/退款/核实。可信代理仅通过 TRUSTED_PROXY_CIDRS 显式 CIDR 白名单启用；未列入白名单的来源一律忽略 XFF/X-Real-IP。细粒度 RBAC、CSRF/CORS 专项策略仍待单独评估。
+- PR #53 已实现服务端会话撤销：数据库仅保存 Token SHA-256 摘要，每个 JWT 有独立 JTI；登出撤销当前设备 Token，密码修改通过 TokenVersion 撤销全部旧会话。旧未登记 Token 在迁移后失效，管理员需重新登录。
 
 ## 21. 本次核对的代码位置
 
@@ -781,6 +781,9 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 本地构建/CI：scripts/build-admin.sh、.github/workflows/go-ci.yml、.github/workflows/admin-ci.yml。
 - Docker 运行用户、端口和数据目录：Dockerfile、docker-compose.yml。
 - 支付人工核对：cmd/server/main.go、internal/payment/manager.go、docs/payment-delivery.md。
+- 安全限流与可信代理：cmd/server/security.go、internal/config/config.go、docker-compose.yml（TRUSTED_PROXY_CIDRS）。
+- 详细健康与 Bot 告警：cmd/server/health.go、internal/payment/manager.go、internal/telegrambot/manager.go。
+- Compose 备份/恢复：scripts/backup.sh、scripts/restore.sh、docs/operations-backup-restore.md。
 - Dujiao-Next 上游配置：internal/upstream/dujiao.go、internal/database/upstream.go、internal/database/migrations/0029_upstream_settings.sql、cmd/server/upstream.go、web/overrides/apps/web-antd/src/views/upstream/index.vue。
 - Dujiao-Next 目录同步：internal/upstream/catalog.go、internal/database/upstream_catalog.go、internal/database/migrations/0030–0034、cmd/server/upstream_sync.go、internal/telegrambot/manager.go、web/overrides/apps/web-antd/src/views/catalog/index.vue。
 
