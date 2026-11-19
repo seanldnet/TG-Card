@@ -24,7 +24,7 @@
 - 数据库测试：登记、查询有效会话、撤销当前 token、保留另一设备 token、过期拒绝。
 - Token 单元测试：验证每次签发生成不同 JTI，避免同秒登录生成相同 bearer token。
 - HTTP 集成测试：登录两次、登出其中一个 token、确认该 token 被拒绝而另一个仍有效。
-- PR #53 已合并至 main，merge commit `8260a9c4775726587c33100c939eb78018de8cb3`；PR head Go/Admin/Security 全部成功。main Go/Admin/Security/Docker Publish 正在运行，发布 digest 待核实。
+- PR #53 已合并至 main，merge commit `8260a9c4775726587c33100c939eb78018de8cb3`；PR head 与 main Go/Admin/Security/Docker Publish 全部成功。GHCR 多架构 latest manifest digest `sha256:7c14fabea0d23e7903785237052fa69fc1144a8d7be263c420373555131c5e37`。
 - 生产部署和真实登录/登出验收未完成前，不标记生产安全验收通过。
 
 ### 后续安全事项
