@@ -164,3 +164,28 @@ func TestCartCheckoutRejectsNonUSDTInvoiceCurrency(t *testing.T) {
 	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
 	if len(items)!=1{t.Fatalf("rejected checkout must retain cart, got %+v",items)}
 }
+
+
+func TestCartCheckoutWalletPaymentDebitsOnceAndSellsAllKeys(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"user-1","buyer","","","bot-1");err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"UPDATE telegram_users SET balance_atomic=10000000 WHERE telegram_user_id='user-1'");err!=nil{t.Fatal(err)}
+	a,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Wallet A",PriceMinor:250,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	b,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Wallet B",PriceMinor:400,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,a.ID,[]StockSecret{{Ciphertext:"a",Fingerprint:"a"}});err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,b.ID,[]StockSecret{{Ciphertext:"b",Fingerprint:"b"}});err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot-1","user-1",a.ID,1);err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot-1","user-1",b.ID,1);err!=nil{t.Fatal(err)}
+	order,_,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot-1","user-1","chat-1",20*time.Minute);if err!=nil{t.Fatal(err)}
+	delivery,balance,err:=PayOrderWithWallet(ctx,db,cfg.DBDriver,order.ID);if err!=nil{t.Fatal(err)}
+	if balance!=3500000||delivery.Order.Status!="paid"||len(strings.Split(delivery.SecretCiphertext,"\n"))!=2{t.Fatalf("unexpected wallet checkout result: balance=%d order=%+v delivery=%q",balance,delivery.Order,delivery.SecretCiphertext)}
+	var debits int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE direction='debit' AND note LIKE ?", "商城订单 "+order.OrderNo).Scan(&debits);err!=nil{t.Fatal(err)}
+	if debits!=1{t.Fatalf("expected exactly one wallet debit, got %d",debits)}
+	var sold int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE order_id=? AND status=2",order.ID).Scan(&sold);err!=nil{t.Fatal(err)}
+	if sold!=2{t.Fatalf("expected both cart keys sold after one wallet payment, got %d",sold)}
+}
