@@ -103,7 +103,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
    for _,product:=range products {
     fingerprint,fingerprintErr:=upstream.DujiaoProductFingerprint(product)
     if fingerprintErr!=nil{return summary,fingerprintErr}
-    unchanged,seenErr:=database.MarkUpstreamProductSeenIfUnchanged(ctx,a.db,a.driver,strconv.FormatInt(product.ID,10),fingerprint,batchID)
+    unchanged,seenErr:=database.MarkUpstreamProductSeenIfUnchanged(ctx,a.db,a.driver,strconv.FormatInt(product.ID,10),fingerprint,batchID,len(product.SKUs))
     if seenErr!=nil{return summary,seenErr}
     if !unchanged {changedProducts=append(changedProducts,product)}
    }
