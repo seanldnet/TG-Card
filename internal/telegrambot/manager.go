@@ -962,30 +962,49 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 	}
 }
 func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
- cats,err:=database.ListVisibleCategories(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
- products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商城暂时无法加载。",shopBackKeyboard());return}
- active:=0;for _,p:=range products{if p.Status==1{active++}};if active==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",shopBackKeyboard());return}
- rows:=make([][]map[string]string,0)
- for _,c:=range cats{if c.Status!=1{continue};n:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==c.ID{n++}};if n>0{rows=append(rows,[]map[string]string{{"text":c.Name+"（"+strconv.Itoa(n)+"）","callback_data":"shop:category:"+c.ID}})}}
- other:=0;for _,p:=range products{if p.Status==1&&p.CategoryID==""{other++}};if other>0{rows=append(rows,[]map[string]string{{"text":"其他商品（"+strconv.Itoa(other)+"）","callback_data":"shop:category:__uncategorized__"}})}
- if len(rows)==0{rows=append(rows,[]map[string]string{{"text":"全部商品（"+strconv.Itoa(active)+"）","callback_data":"shop:category:all"}})}
+ m.showShopPage(ctx,cfg,chatID,0)
+}
+func (m *Manager) showShopPage(ctx context.Context,cfg Config,chatID int64,page int) {
+ if page<0 {page=0}
+ cats,err:=database.ListVisibleCategoriesPage(ctx,m.db,m.driver,7,page*6)
+ if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
+ rows:=make([][]map[string]string,0,8)
+ count:=len(cats);hasNext:=count>6;if hasNext{cats=cats[:6]}
+ for _,category:=range cats {rows=append(rows,[]map[string]string{{"text":truncateButtonText(category.Name,28),"callback_data":"shop:category:"+category.ID}})}
+ if page>0 {rows=append(rows,[]map[string]string{{"text":"⬅️ 上一页","callback_data":"shop:catpage:"+strconv.Itoa(page-1)}})}
+ if hasNext {rows=append(rows,[]map[string]string{{"text":"下一页 ➡️","callback_data":"shop:catpage:"+strconv.Itoa(page+1)}})}
+ if len(rows)==0 {items,_:=database.ListVisibleProductsPage(ctx,m.db,m.driver,1,0,"","");if len(items)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",shopBackKeyboard());return};rows=append(rows,[]map[string]string{{"text":"全部商品","callback_data":"shop:category:all"}})}
  rows=append(rows,[]map[string]string{{"text":"📦 我的订单","callback_data":"shop:orders"}})
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛍️ 商品中心\n请选择商品分类：",map[string]any{"inline_keyboard":rows})
 }
 func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
- products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",shopBackKeyboard());return}
- rows:=make([][]map[string]string,0)
- for _,p:=range products{if p.Status!=1{continue};if categoryID=="__uncategorized__"&&p.CategoryID!=""{continue};if categoryID!="all"&&categoryID!="__uncategorized__"&&p.CategoryID!=categoryID{continue};stock:="不限量";if p.SourceType=="upstream"{if p.UpstreamStockQuantity<0{stock="上游不限量"}else{stock="上游库存 "+strconv.FormatInt(p.UpstreamStockQuantity,10)}}else if p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"{stock="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)}};label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock;rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})}
- if len(rows)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回分类","callback_data":"shop:home"}}}});return}
+ m.showCategoryPage(ctx,cfg,chatID,categoryID,0)
+}
+func (m *Manager) showCategoryPage(ctx context.Context,cfg Config,chatID int64,categoryID string,page int) {
+ if page<0 {page=0}
+ filter:=categoryID
+ if categoryID=="__uncategorized__" {filter="__uncategorized__"}
+ products,err:=database.ListVisibleProductsPage(ctx,m.db,m.driver,6,page*5,filter,"")
+ if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品暂时无法加载。",shopBackKeyboard());return}
+ rows:=make([][]map[string]string,0,8)
+ hasNext:=len(products)>5;if hasNext{products=products[:5]}
+ for _,p:=range products {
+  stock:="不限量"
+  if p.SourceType=="upstream" {if p.UpstreamStockQuantity<0{stock="上游不限量"}else{stock="上游库存 "+strconv.FormatInt(p.UpstreamStockQuantity,10)}} else if p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card" {stock="缺货";if p.StockCount>0{stock="库存 "+strconv.Itoa(p.StockCount)}}
+  label:=truncateButtonText(p.Name,14)+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+stock
+  rows=append(rows,[]map[string]string{{"text":label,"callback_data":"shop:product:"+p.ID}})
+ }
+ if page>0 {rows=append(rows,[]map[string]string{{"text":"⬅️ 上一页","callback_data":"shop:prodpage:"+categoryID+":"+strconv.Itoa(page-1)}})}
+ if hasNext {rows=append(rows,[]map[string]string{{"text":"下一页 ➡️","callback_data":"shop:prodpage:"+categoryID+":"+strconv.Itoa(page+1)}})}
  rows=append(rows,[]map[string]string{{"text":"⬅️ 返回分类","callback_data":"shop:home"}})
- _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（无库存商品也可以查看详情）：",map[string]any{"inline_keyboard":rows})
+ if len(products)==0 {_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"该分类暂时没有上架商品。",map[string]any{"inline_keyboard":rows});return}
+ _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（显示价格与库存）：",map[string]any{"inline_keyboard":rows})
 }
 
 func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, productID string) {
-	products, err := database.ListVisibleProducts(ctx, m.db)
-	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品暂时无法加载，请稍后再试。"); return }
-	for _, p := range products {
-		if p.ID != productID || p.Status != 1 { continue }
+	p, err := database.GetVisibleProductByID(ctx, m.db, m.driver, productID)
+	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在、已下架或暂不可购买。"); return }
+	{
 		keyBacked := p.DeliveryType == "" || p.DeliveryType == "card" || p.DeliveryType == "file_card"
 		stockLabel := "库存：不限量交付"
 		if keyBacked { stockLabel = "库存：" + strconv.Itoa(p.StockCount) }
@@ -1157,6 +1176,10 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
 	case query.Data == "shop:home":
 		m.showShop(ctx,cfg,chatID)
+	case strings.HasPrefix(query.Data,"shop:catpage:"):
+		page,_:=strconv.Atoi(strings.TrimPrefix(query.Data,"shop:catpage:"));m.showShopPage(ctx,cfg,chatID,page)
+	case strings.HasPrefix(query.Data,"shop:prodpage:"):
+		parts:=strings.Split(strings.TrimPrefix(query.Data,"shop:prodpage:"),":");if len(parts)==2{page,_:=strconv.Atoi(parts[1]);m.showCategoryPage(ctx,cfg,chatID,parts[0],page)}
 	case strings.HasPrefix(query.Data,"shop:category:"):
 		m.showCategory(ctx,cfg,chatID,strings.TrimPrefix(query.Data,"shop:category:"))
 	case strings.HasPrefix(query.Data,"menu:"):
