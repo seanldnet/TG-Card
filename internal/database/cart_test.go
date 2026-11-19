@@ -33,7 +33,7 @@ func TestShoppingCartIsScopedAndQuantityBounded(t *testing.T) {
 }
 
 
-func TestShoppingCartDoesNotStackNonKeyEntitlements(t *testing.T) {
+func TestShoppingCartRejectsNonKeyEntitlements(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
 	db, err := Open(ctx, cfg)
@@ -42,17 +42,13 @@ func TestShoppingCartDoesNotStackNonKeyEntitlements(t *testing.T) {
 	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
 	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Fixed text", PriceMinor: 500, Currency: "USDT", DeliveryType: "fixed_text", Status: 1})
 	if err != nil { t.Fatal(err) }
-	if err := AddCartItem(ctx, db, cfg.DBDriver, "bot-a", "user-a", product.ID, 1); err != nil { t.Fatal(err) }
 	if err := AddCartItem(ctx, db, cfg.DBDriver, "bot-a", "user-a", product.ID, 1); err == nil {
-		t.Fatal("non-key entitlement must not be stacked in the cart")
+		t.Fatal("non-key delivery must be rejected from the cart")
 	}
 	items, err := ListCartItems(ctx, db, cfg.DBDriver, "bot-a", "user-a")
 	if err != nil { t.Fatal(err) }
-	if len(items) != 1 || items[0].Quantity != 1 || items[0].LineTotalMinor != 500 {
-		t.Fatalf("unexpected non-key cart item: %+v", items)
-	}
+	if len(items) != 0 { t.Fatalf("non-key product unexpectedly entered cart: %+v", items) }
 }
-
 
 func TestCartCheckoutCreatesOneOrderAndConsumesCart(t *testing.T) {
 	ctx := context.Background()
