@@ -74,6 +74,8 @@ func TestCartCheckoutCreatesOneOrderAndConsumesCart(t *testing.T) {
 	paid,err:=ConfirmOrderPayment(ctx,db,cfg.DBDriver,order.ID,"tron","cart-checkout-tx")
 	if err!=nil{t.Fatal(err)}
 	if paid.Order.Status!="paid"||len(strings.Split(paid.SecretCiphertext,"\n"))!=2{t.Fatalf("unified payment did not include both product keys: %+v",paid)}
+	groups,err:=ListCartCheckoutDeliveryGroups(ctx,db,cfg.DBDriver,order.ID);if err!=nil{t.Fatal(err)}
+	if len(groups)!=2||groups[0].ProductName==""||len(groups[0].SecretCiphertexts)!=1||len(groups[1].SecretCiphertexts)!=1{t.Fatalf("product-to-key delivery grouping was not preserved: %+v",groups)}
 	var sold int
 	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE order_id=? AND status=2",order.ID).Scan(&sold);err!=nil{t.Fatal(err)}
 	if sold!=2{t.Fatalf("expected both keys marked sold after one payment, got %d",sold)}
