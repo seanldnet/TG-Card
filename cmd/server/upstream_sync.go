@@ -333,7 +333,7 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
    imagesRemoved,cleanupErr=a.removeUnreferencedUpstreamImages(context.Background())
   }
   if cleanupErr!=nil {
-   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,counts.Categories+counts.Products+counts.SKUs,0,0,1,1,cleanupErr.Error())
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress+imagesRemoved,baseProgress+imagesRemoved,2,1,1,cleanupErr.Error())
    _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"failed")
    log.Printf("upstream catalog cleanup failed; source remains stale and cleanup can be retried: job_id=%s error=%v",jobID,cleanupErr)
    a.upstreamJobMu.Lock();if a.upstreamJobID==jobID{a.upstreamJobID="";a.upstreamJobCancel=nil};a.upstreamJobMu.Unlock()
@@ -345,7 +345,7 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
    _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"failed")
    log.Printf("upstream cleanup data cleared but source setting finalization failed: job_id=%s error=%v",jobID,settingsErr)
   } else {
-   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress+imagesRemoved,baseProgress+imagesRemoved,2,0,0,""
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress+imagesRemoved,baseProgress+imagesRemoved,2,0,0,"")
    _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"success")
    database.RecordAdminAudit(context.Background(),a.db,a.driver,adminID,"upstream.catalog.disable","upstream:dujiao_next","", "",fmt.Sprintf("trigger=%s categories=%d products=%d skus=%d images=%d",trigger,counts.Categories,counts.Products,counts.SKUs,imagesRemoved))
    go a.notifySiteEvent(context.Background(),"upstream_catalog_cleared","上游数据已清空，已恢复本地商品售卖。", "")
