@@ -22,6 +22,7 @@ type UpstreamCategoryRecord struct {
 	Name string
 	Icon string
 	PreserveIcon bool
+	Fingerprint string
 	SortOrder int
 }
 
@@ -72,12 +73,12 @@ func SyncUpstreamCatalogBatch(ctx context.Context, db *sql.DB, driver, batchID s
 		if err == sql.ErrNoRows {
 			localID, err = randomID()
 			if err != nil { return err }
-			query := "INSERT INTO product_categories(id,name,sort_order,status,source_type,upstream_category_id,upstream_parent_id,upstream_icon,upstream_sync_batch_id,created_at,updated_at) VALUES("+
-				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
-			if _, err = tx.ExecContext(ctx, query, localID, item.Name, item.SortOrder, item.UpstreamID, item.ParentID, item.Icon, batchID, now, now); err != nil { return fmt.Errorf("insert upstream category %s: %w", item.UpstreamID, err) }
+			query := "INSERT INTO product_categories(id,name,sort_order,status,source_type,upstream_category_id,upstream_parent_id,upstream_icon,upstream_fingerprint,upstream_sync_batch_id,created_at,updated_at) VALUES("+
+				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")"
+			if _, err = tx.ExecContext(ctx, query, localID, item.Name, item.SortOrder, item.UpstreamID, item.ParentID, item.Icon, item.Fingerprint, batchID, now, now); err != nil { return fmt.Errorf("insert upstream category %s: %w", item.UpstreamID, err) }
 		} else if err != nil { return err } else {
-			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon=CASE WHEN "+placeholder(driver,5)+"=1 THEN upstream_icon ELSE "+placeholder(driver,4)+" END,upstream_sync_batch_id="+placeholder(driver,6)+",updated_at="+placeholder(driver,7)+" WHERE id="+placeholder(driver,8)+" AND source_type='upstream'"
-			if _, err := tx.ExecContext(ctx, query, item.Name, item.SortOrder, item.ParentID, boolInt(item.PreserveIcon), item.Icon, batchID, now, localID); err != nil { return fmt.Errorf("update upstream category %s: %w", item.UpstreamID, err) }
+			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon=CASE WHEN "+placeholder(driver,5)+"=1 THEN upstream_icon ELSE "+placeholder(driver,4)+" END,upstream_fingerprint="+placeholder(driver,6)+",upstream_sync_batch_id="+placeholder(driver,7)+",updated_at="+placeholder(driver,8)+" WHERE id="+placeholder(driver,9)+" AND source_type='upstream'"
+			if _, err := tx.ExecContext(ctx, query, item.Name, item.SortOrder, item.ParentID, boolInt(item.PreserveIcon), item.Icon, item.Fingerprint, batchID, now, localID); err != nil { return fmt.Errorf("update upstream category %s: %w", item.UpstreamID, err) }
 		}
 		categoryIDs[item.UpstreamID] = localID
 	}
@@ -163,5 +164,19 @@ func MarkUpstreamProductSeenIfUnchanged(ctx context.Context, db *sql.DB, driver,
  if count==0||count!=expectedSKUs||!saved.Valid||saved.String==""||saved.String!=fingerprint{return false,nil}
  update:="UPDATE products SET upstream_sync_batch_id="+placeholder(driver,1)+" WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,2)
  if _,err:=db.ExecContext(ctx,update,batchID,productID);err!=nil{return false,err}
+ return true,nil
+}
+
+
+// MarkUpstreamCategorySeenIfUnchanged records an unchanged category in the
+// current sync batch so finalization does not hide it or redownload its icon.
+func MarkUpstreamCategorySeenIfUnchanged(ctx context.Context,db *sql.DB,driver,upstreamID,fingerprint,batchID string)(bool,error){
+ var localID,saved string
+ q:="SELECT id,COALESCE(upstream_fingerprint,'') FROM product_categories WHERE source_type='upstream' AND upstream_category_id="+placeholder(driver,1)
+ err:=db.QueryRowContext(ctx,q,upstreamID).Scan(&localID,&saved)
+ if err==sql.ErrNoRows{return false,nil};if err!=nil{return false,err}
+ if saved==""||saved!=fingerprint{return false,nil}
+ update:="UPDATE product_categories SET upstream_sync_batch_id="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)
+ if _,err:=db.ExecContext(ctx,update,batchID,localID);err!=nil{return false,err}
  return true,nil
 }
