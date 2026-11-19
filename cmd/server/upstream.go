@@ -26,6 +26,10 @@ type upstreamSettingsRequest struct {
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
+	SyncBatchSize int `json:"syncBatchSize"`
+	SyncBatchDelayMS int `json:"syncBatchDelayMs"`
+	SyncBatchSize int `json:"syncBatchSize"`
+	SyncBatchDelayMS int `json:"syncBatchDelayMs"`
 	ProcurementPollIntervalSeconds int `json:"procurementPollIntervalSeconds"`
 	ProcurementTimeoutMinutes int `json:"procurementTimeoutMinutes"`
 	SupplierLowBalanceThreshold string `json:"supplierLowBalanceThreshold"`
@@ -44,6 +48,8 @@ type upstreamSettingsView struct {
 	MarkupPercent float64 `json:"markupPercent"`
 	MarkupFixedMinor int64 `json:"markupFixedMinor"`
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
+	SyncBatchSize int `json:"syncBatchSize"`
+	SyncBatchDelayMS int `json:"syncBatchDelayMs"`
 	ProcurementPollIntervalSeconds int `json:"procurementPollIntervalSeconds"`
 	ProcurementTimeoutMinutes int `json:"procurementTimeoutMinutes"`
 	SupplierLowBalanceThreshold string `json:"supplierLowBalanceThreshold"`
@@ -73,7 +79,7 @@ func (a *application) upstreamSettingsResponse(item database.UpstreamSettings) u
 	return upstreamSettingsView{
 		Provider:item.Provider, BaseURL:item.BaseURL, MerchantIDMasked:maskCredential(merchantID),
 		MerchantIDConfigured:item.MerchantIDCiphertext!="", MerchantSecretConfigured:item.SecretCiphertext!="",
-		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, ProcurementPollIntervalSeconds:item.ProcurementPollIntervalSeconds, ProcurementTimeoutMinutes:item.ProcurementTimeoutMinutes, SupplierLowBalanceThreshold:item.SupplierLowBalanceThreshold, CallbackURL:item.CallbackURL, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
+		Enabled:item.Enabled, CatalogStale:item.CatalogStale, MarkupPercent:float64(item.MarkupBPS)/100, MarkupFixedMinor:item.MarkupMinor, SyncIntervalMinutes:item.SyncIntervalMinutes, SyncBatchSize:item.SyncBatchSize, SyncBatchDelayMS:item.SyncBatchDelayMS, ProcurementPollIntervalSeconds:item.ProcurementPollIntervalSeconds, ProcurementTimeoutMinutes:item.ProcurementTimeoutMinutes, SupplierLowBalanceThreshold:item.SupplierLowBalanceThreshold, CallbackURL:item.CallbackURL, ExchangeRateToUSDT:float64(item.ExchangeRatePPM)/1_000_000, LastTestStatus:item.LastTestStatus, LastTestAt:item.LastTestAt,
 		LastError:item.LastError, SyncStatus:item.SyncStatus, SyncAt:item.SyncAt, SyncAttemptAt:item.SyncAttemptAt,
 		SyncError:item.SyncError, UpdatedAt:item.UpdatedAt,
 	}
@@ -125,6 +131,10 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "自动同步间隔必须为 5–1440 分钟")
 		return
 	}
+	if input.SyncBatchSize == 0 { input.SyncBatchSize = 25 }
+	if input.SyncBatchSize < 20 || input.SyncBatchSize > 50 { writeError(w,http.StatusBadRequest,"同步批次大小必须为 20–50 条");return }
+	if input.SyncBatchDelayMS == 0 { input.SyncBatchDelayMS = 1000 }
+	if input.SyncBatchDelayMS < 250 || input.SyncBatchDelayMS > 10000 { writeError(w,http.StatusBadRequest,"批次间隔必须为 250–10000 毫秒");return }
 	if input.ProcurementPollIntervalSeconds == 0 { input.ProcurementPollIntervalSeconds = 30 }
 	if input.ProcurementPollIntervalSeconds < 5 || input.ProcurementPollIntervalSeconds > 3600 {
 		writeError(w,http.StatusBadRequest,"采购查单间隔必须为 5–3600 秒");return
@@ -193,6 +203,8 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 	current.MarkupMinor = input.MarkupFixedMinor
 	current.ExchangeRatePPM = exchangeRatePPM
 	current.SyncIntervalMinutes = input.SyncIntervalMinutes
+	current.SyncBatchSize = input.SyncBatchSize
+	current.SyncBatchDelayMS = input.SyncBatchDelayMS
 	current.ProcurementPollIntervalSeconds = input.ProcurementPollIntervalSeconds
 	current.ProcurementTimeoutMinutes = input.ProcurementTimeoutMinutes
 	current.SupplierLowBalanceThreshold = input.SupplierLowBalanceThreshold
