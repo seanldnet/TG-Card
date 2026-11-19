@@ -364,7 +364,7 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
    _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress,0,0,1,1,cleanupErr.Error())
   }
   if cleanupErr!=nil {
-   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress+imagesRemoved,baseProgress+imagesRemoved,2,1,1,cleanupErr.Error())
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress+imagesRemoved+1,baseProgress+imagesRemoved,2,1,1,cleanupErr.Error())
    _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"failed")
    log.Printf("upstream catalog cleanup failed; source remains stale and cleanup can be retried: job_id=%s error=%v",jobID,cleanupErr)
    a.upstreamJobMu.Lock();if a.upstreamJobID==jobID{a.upstreamJobID="";a.upstreamJobCancel=nil};a.upstreamJobMu.Unlock()
