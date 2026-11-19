@@ -1,38 +1,30 @@
-## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 开发中）
+## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 开发中）
 
-- 代码审查发现：Owner 回复流程先写入客服消息时间线，再调用 Telegram 发送；当 Telegram 返回失败时，时间线可能留下未送达的客服回复，且同一 Telegram 消息会被幂等检查拦截，无法直接重试。
-- 修复方案：先发送给用户；Telegram 明确返回成功后才将客服回复写入工单时间线并切换到待结单确认阶段。发送失败仅写入系统失败记录，保留当前回复会话，允许 Owner 重新发送新的回复消息。
-- 边界：Telegram 不提供业务消息幂等键；网络超时/响应丢失时仍可能无法判断远端是否已送达。若 Telegram 已确认送达但本地时间线写入失败，会向 Owner 明确提示并记录日志，不伪装为持久化成功。
-- 回归测试：新增 Telegram 成功/失败响应测试，验证成功后才出现客服消息与 confirm 阶段，失败时无客服已送达记录且会话仍为 reply。
-- 状态：独立 PR #41；CI、合并、镜像发布及 Telegram 真机验收待完成。
+- 代码审查发现：网页后台客服回复接口与此前 Owner Bot 修复前相同，先写客服消息时间线，再发送 Telegram；发送失败会产生未送达却看似成功的回复记录。
+- 本次修复：网页后台文本回复改为先发送 Telegram；明确发送失败时仅记录系统失败事件，不写入客服回复时间线、不更新工单回复字段，并返回网关错误让前端保留处理窗口供重试。Telegram 明确成功后才写入客服时间线并更新工单回复字段。
+- 自动化测试：新增成功/失败两条回归测试；验证失败时没有 admin 时间线记录、工单状态和回复字段不变，成功时才持久化回复。
+- 边界：Telegram 无业务消息幂等键；网络超时/响应丢失仍无法保证 exactly-once。Telegram 已确认送达但本地持久化失败时，接口明确报告“已发送但保存失败”，不能声称未送达。
+- 状态：独立分支 `fix/admin-support-reply-delivery-state-20261120`；PR、CI、合并、镜像发布和生产验收待完成。
 
-- 代码审查发现：Owner Bot 的待处理工单列表查询此前只按工单状态筛选，没有按当前 Bot ID 限定；多 Bot 环境下可能跨 Bot 暴露工单，并导致错误 Bot 上下文处理。
-- 修复方案：数据库查询强制要求非空 bot_id，并在 SQL 中同时约束 bot_id 与未结单状态；Telegram Owner 列表传入当前 worker 的 cfg.ID；查看、回复、结单、确认结单等回调也再次校验工单归属当前 Bot。
-- 回归测试：新增两个 Bot 各自创建工单的隔离测试、空 Bot ID 失败关闭测试，以及回调层跨 Bot 工单访问拒绝测试。该修复不改变附件转发逻辑。
-- 状态：独立 PR #40；CI/合并/镜像/生产部署/真机验收均待完成。阶段一其他 P0 仍待验收。
+## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 已合并）
+
+- 修复已合并至 main，merge commit `af53dad378bb8d1d89385246bd7d11a308e8b7e0`。
+- Owner 回复先发送 Telegram，确认成功后才写入客服时间线并切换至待结单确认阶段；发送失败只写系统失败事件并保留回复会话。
+- PR head Go/Admin/Security 与 main Go/Admin/Security/Docker Publish 均成功；Docker Publish Run [#44567512730](https://github.com/seanldnet/TG-Card/actions/runs/44567512730) 成功。该轮 GHCR digest 尚未独立核实，生产部署与 Telegram 真机验收未确认。
+- Telegram 无业务消息幂等键；超时/响应丢失的远端送达状态仍不确定，不能宣称 exactly-once。
 
 ## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40 已合并）
 
 - 修复已合并至 main，merge commit `69218784601f7d75b668b8047379d931c9a87564`。
-- PR head Go CI、Admin CI、安全扫描全部成功；main 合并后 Go CI、Admin CI、安全扫描及 Docker Publish 全部成功。
+- PR head Go/Admin/Security 与 main Go/Admin/Security/Docker Publish 全部成功。
 - GHCR `latest` 镜像 digest：`sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`；Publish Run [#44565112822](https://github.com/seanldnet/TG-Card/actions/runs/44565112822)。生产部署与现场验收仍未确认。
 
 ## 2026-11-20 — 阶段一售后媒体转发子项按项目所有者实测确认
 
-- 项目所有者明确确认：售后附件转发相关测试已亲自完成且无异常。本次将“用户提交的图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体内容”这一子项记录为**所有者实测通过**。
-- 验收边界：该确认仅覆盖附件/媒体转发本身；未提供本次测试所用生产镜像 digest、测试设备、订单/工单号或截图，因此不将其归因于 PR #38 的新镜像，也不补造这些证据。
-- 仍待验收：PR #27 C1–C4（Owner 开始回复、连续沟通、结单幂等、30 分钟超时/重启恢复/多工单隔离）；完整 Telegram 菜单与按钮；补发/退款各状态分支；跟踪防护下静态资源零外部 CDN Network 检查。
-- PR #38（PR D）已合并并成功发布 GHCR；镜像 digest 为 `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。生产部署与该 digest 的生产验收仍未得到项目所有者确认；PR E 真实商户联调未开始。
-- 本次仅更新验收事实与文档状态，不将阶段一标记为完成；不推进依赖阶段一清零的后续阶段。
-
-## 2026-11-19 — PR2 与 Dujiao-Next PR B 生产验收更新；PR C 已合并（历史记录）
-
-- 状态：PR #30（PR2）已合并，Go CI、Admin CI、安全扫描和 Docker Publish 全部成功；项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收均按项目所有者本次指示于 2026-11-19 默认通过记录。Dujiao-Next PR C 已通过独立 PR #32 合并；merge commit 镜像 digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 当前重建发布 Run #44338105044 对应 latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍以项目所有者确认的 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 为准；PR D 后续已通过 PR #38 合并并发布（当前状态见 2026-11-20 更新）；PR E 尚未开始。
-- PR #28 merge commit：`6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`。
-- PR2 当前生产验收镜像 digest（覆盖 PR #19/#26/#28 与 PR2 本次验收）：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)。
-- Go CI [#44317232633](https://github.com/seanldnet/TG-Card/actions/runs/44317232633) 与 Security [#44317232660](https://github.com/seanldnet/TG-Card/actions/runs/44317232660) 均成功。
-- Admin frontend CI 未对 PR #28 运行：原 workflow 对 `web/**`、`scripts/**`、README 和 workflow 文件使用 paths 过滤；PR #28 未改动这些路径。已在本次文档修正分支移除路径过滤，后续 main push / PR 均执行 Admin CI。
-- 验收日期：2026-11-19。PR #19/#26/#28 与 PR2 本次验收均按项目所有者确认的生产版本 PR2 镜像 `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录。验收结论依据项目所有者确认生产已更新且未收到异常反馈。
+- 项目所有者明确确认：用户提交的图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体，媒体转发子项实测通过。
+- 验收边界：未提供本次测试使用的镜像 digest、测试设备、订单/工单号或截图；不将此结果绑定到 PR #38 镜像，也不补造证据。
+- 仍待验收：Owner C1–C4 真实 Telegram 流程、完整菜单/按钮、补发/退款各状态分支，以及跟踪防护下静态资源零外部 CDN Network 检查。自动化测试通过不能替代这些真机/浏览器验收。
+- PR #38（PR D）已合并并成功发布 GHCR，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署与该 digest 的生产验收未确认。PR E 真实商户联调未开始。
 
 # TG-Card 项目现状与功能总览
 
@@ -40,9 +32,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.2
-> - 源码核对基线：`main` 分支，commit `69218784601f7d75b668b8047379d931c9a87564`（PR #40 已合并）
-> - 本次文档更新：记录 PR #40 合并与镜像发布、PR #41 Owner 回复送达状态修复开发中；售后 C1–C4、PR #38 生产验收及其他 P0 仍待完成
+> - 文档版本：2.2.3
+> - 源码核对基线：`main` 分支，commit `af53dad378bb8d1d89385246bd7d11a308e8b7e0`（PR #41 已合并）
+> - 本次文档更新：校准 PR #41 合并/发布状态，记录 PR #42 网页后台回复送达修复开发中；PR #38 生产验收、售后 C1–C4 与其他 P0 仍待完成
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
