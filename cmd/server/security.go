@@ -3,6 +3,7 @@ package main
 import (
  "net"
  "net/http"
+ "strconv"
  "strings"
  "sync"
  "time"
@@ -80,7 +81,7 @@ func (a *application) sensitiveRateLimit(name string,limit int,window time.Durat
  return func(w http.ResponseWriter,r *http.Request) {
   key:=a.clientIP(r)+"|"+name
   if !a.allowSensitiveRequest(key,limit,window) {
-   w.Header().Set("Retry-After",strings.TrimSpace((time.Until(time.Now().Add(window))).Round(time.Second).String()))
+   w.Header().Set("Retry-After",strconv.Itoa(int(window.Seconds())))
    writeError(w,http.StatusTooManyRequests,"操作过于频繁，请稍后重试")
    return
   }
@@ -88,4 +89,3 @@ func (a *application) sensitiveRateLimit(name string,limit int,window time.Durat
  }
 }
 
-var _ sync.Locker
