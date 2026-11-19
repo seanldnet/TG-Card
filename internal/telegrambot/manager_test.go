@@ -3,6 +3,7 @@ package telegrambot
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/config"
