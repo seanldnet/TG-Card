@@ -276,7 +276,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 
 - Go CI：格式检查、静态检查、测试、编译。
 - Admin CI：前端依赖安装、构建检查。
-- Security：依赖/代码安全扫描。
+- Security：Go 依赖与可达代码漏洞扫描；PR 路径覆盖 `cmd/**` 与 `internal/**`，避免后端 HTTP handler 变更被路径过滤跳过。
 - Publish：Docker 多架构构建并推送 GHCR。
 
 CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot、支付到账、浏览器移动端和生产部署验收。
