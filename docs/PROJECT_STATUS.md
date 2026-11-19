@@ -1,6 +1,6 @@
 ## 2026-11-20 — Telegram 购物车与统一结算（独立开发分支）
 
-- 分支：`feat/cart-unified-checkout-mainline`；开发基线 `main@420427cba287ec297998f8ab02c85fb65c3b9bd7`；当前处于 PR/CI 前开发状态，未合并、未发布、未生产验收。
+- 分支：`feat/cart-unified-checkout-mainline`；PR #59 已创建（https://github.com/seanldnet/TG-Card/pull/59）；开发基线 `main@420427cba287ec297998f8ab02c85fb65c3b9bd7`；CI 运行中，尚未合并、未发布、未生产验收。
 - 将历史未合并购物车分支的功能重新移植到当前 main，不直接合并落后 120 个提交的旧 PR #7；数据库迁移重新编号为 `0049_shopping_cart.sql`、`0050_cart_checkout.sql`，避免与 main 已有迁移编号冲突。
 - 购物车按 Bot ID + Telegram 用户 ID 隔离，支持加入、数量原子增减、删除、清空和查看；结算时在同一数据库事务中重验商品状态/价格/币种/库存、锁定所有商品行与卡密、创建单笔订单和商品明细快照，并消费购物车。
 - 安全边界：本阶段仅允许本地 `card` / `file_card` 商品进入购物车；上游商品、非卡密交付、多币种混合及交付配置不一致的购物车拒绝统一结算，失败时保留购物车且回滚全部库存预留。支付继续复用既有单订单余额/链上支付和交付管线，不修改钱包余额或历史订单。
