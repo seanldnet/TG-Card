@@ -1,11 +1,11 @@
-## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 开发中）
+## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 已合并）
 
 - 审查发现 `POST /api/auth/logout` 原先只返回成功，不撤销服务端 JWT；复制出的旧 Bearer token 在 24 小时有效期内仍可继续调用 API。
 - PR #53 新增管理员 Token 会话表，数据库仅保存 Bearer token 的 SHA-256 摘要及管理员 ID/过期时间，不保存原始 token。
 - 每次签发生成独立随机 JTI，避免同一秒内重复登录产生相同 token；登录成功后登记当前 token；所有鉴权请求同时检查签名、管理员状态/TokenVersion 与服务端会话记录；登出只撤销当前设备 token，不影响同一管理员的其他有效登录。
 - 新增 SQLite/PostgreSQL 兼容迁移 `0041_admin_token_sessions.sql`、会话生命周期测试及登录→登出→旧 token 拒绝/另一设备 token 保持有效的集成测试。
 - 迁移上线后，部署前签发的旧 token 不在新会话表中，将要求管理员重新登录；密码修改仍通过 TokenVersion 撤销全部旧会话。
-- CI、合并、镜像发布与生产验收待完成。
+- PR #53 已合并至 main，merge commit `8260a9c4775726587c33100c939eb78018de8cb3`；PR head Go/Admin/Security 全部成功。main Go/Admin/Security/Docker Publish 正在运行，digest 待核实。
 
 ## 2026-11-20 — Owner Bot 重启恢复、超时与工单切换回归（PR #50 已合并）
 
@@ -65,9 +65,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.14
+> - 文档版本：2.2.15
 > - 源码核对基线：`main` 分支，commit `eee2b3ae5505d3d97e8a45b07672f53530b78ba9`（PR #50 Owner C3/C4 测试补强已合并）
-> - 本次文档更新：记录 PR #53 管理员登出服务端 token 撤销开发中；PR #50 发布 digest 已记录，生产部署与售后 C1–C4 真机验收仍待确认
+> - 本次文档更新：记录 PR #53 合并及 main CI/镜像发布待核验状态；PR #50 发布 digest 已记录，生产部署与售后 C1–C4 真机验收仍待确认
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
