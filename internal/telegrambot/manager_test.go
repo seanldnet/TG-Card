@@ -2,6 +2,9 @@ package telegrambot
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,5 +109,59 @@ func TestOwnerTicketLookupRejectsDifferentBot(t *testing.T) {
  }
  if _,err:=manager.getOwnerSupportTicketForBot(ctx,Config{ID:"bot-b"},ticket.ID);err==nil {
   t.Fatal("different Bot must not view, reply to, confirm, or resolve this ticket")
+ }
+}
+
+
+type telegramTestTransport func(*http.Request) (*http.Response, error)
+
+func (f telegramTestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+ return f(req)
+}
+
+func TestOwnerReplyTimelineReflectsTelegramDelivery(t *testing.T) {
+ for _, tc := range []struct {
+  name string
+  telegramOK bool
+  wantAdminMessages int
+  wantPhase string
+ }{
+  {name:"send failure is not recorded as delivered", telegramOK:false, wantAdminMessages:0, wantPhase:"reply"},
+  {name:"successful send is recorded after delivery", telegramOK:true, wantAdminMessages:1, wantPhase:"confirm"},
+ } {
+  t.Run(tc.name, func(t *testing.T) {
+   ctx:=context.Background()
+   db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+   if err!=nil { t.Fatal(err) }
+   defer db.Close()
+   if err:=database.Migrate(ctx,db,"sqlite");err!=nil { t.Fatal(err) }
+   product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner reply delivery",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+   if err!=nil { t.Fatal(err) }
+   order,err:=database.CreateOrder(ctx,db,"sqlite","bot-reply","user-reply","987654",product.ID,time.Minute)
+   if err!=nil { t.Fatal(err) }
+   if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil { t.Fatal(err) }
+   ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-reply","user-reply","987654",order.OrderNo,"other","delivery status test")
+   if err!=nil { t.Fatal(err) }
+   if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345",ticket.ID,"reply",30*time.Minute);err!=nil { t.Fatal(err) }
+
+   response:=`{"ok":true,"result":{}}`
+   if !tc.telegramOK { response=`{"ok":false,"description":"bot was blocked by the user"}` }
+   manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
+    return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(response)),Request:req},nil
+   })}}
+   handled:=manager.handleActiveOwnerSupportMessage(ctx,Config{ID:"bot-reply",Token:"test-token"},Message{
+    MessageID:77,Text:"The reply",Chat:Chat{ID:12345},From:&TelegramUser{ID:12345},
+   })
+   if !handled { t.Fatal("Owner reply message should be handled") }
+
+   messages,err:=database.ListSupportTicketMessages(ctx,db,"sqlite",ticket.ID)
+   if err!=nil { t.Fatal(err) }
+   adminMessages:=0
+   for _,message:=range messages { if message.SenderType=="admin" { adminMessages++ } }
+   if adminMessages!=tc.wantAdminMessages { t.Fatalf("admin timeline messages=%d, want %d (all messages=%#v)",adminMessages,tc.wantAdminMessages,messages) }
+   session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345")
+   if err!=nil { t.Fatal(err) }
+   if session.Phase!=tc.wantPhase { t.Fatalf("session phase=%q, want %q",session.Phase,tc.wantPhase) }
+  })
  }
 }
