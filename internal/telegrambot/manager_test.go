@@ -203,7 +203,7 @@ func TestOwnerConfirmCallbackCannotActOnSwitchedTicket(t *testing.T) {
  secondAfter,err:=database.GetSupportTicket(ctx,db,"sqlite",second.ID)
  if err!=nil{t.Fatal(err)}
  if secondAfter.Status!="resolved"{t.Fatalf("current ticket B should resolve, got %q",secondAfter.Status)}
- if _,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345");err==nil{t.Fatal("successful confirmation must clear active session")}
+ if _,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345","12345");err==nil{t.Fatal("successful confirmation must clear active session")}
  callback(second.ID,"yes")
  secondAfter,err=database.GetSupportTicket(ctx,db,"sqlite",second.ID)
  if err!=nil{t.Fatal(err)}
