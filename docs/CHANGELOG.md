@@ -1,9 +1,16 @@
-## 2026-11-20 — 安全与运维补欠（PR S，独立分支开发中）
+## 2026-11-20 — PR E Dujiao-Next 真实商户联调操作手册
+
+- 独立分支：docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。
+- 新增 docs/dujiao-live-integration-runbook.md：HTTPS 回调与反向代理要求、公网路由验证、回调 HMAC 验签边界、目录同步和来源切换、最低金额真实采购、供应商明确失败 SKU、人工退款/审计、uncertain 人工核实、资金红线及验收记录模板。
+- 真实商户连接、真实扣款、回调投递、采购交付和失败退款尚未执行；必须由项目所有者在 PR S 镜像发布并部署后完成。不得以 mock/CI/镜像发布代替真实验收。
+- PR E 当前只准备操作手册，不声称真实商户联调通过，不预填验收日期。
+
+## 2026-11-20 — 安全与运维补欠（PR S #57 已合并）
 
 - 基线：PR U 合并后 main commit `b5ada0116fe4c33e0a4207ebb754715834e909d8`；分支 `feat/security-ops-hardening-pr-s`。
 - 已开始：核实 PR #53 登出撤销与 TokenVersion 既有实现；增加敏感写 API 限流、可信代理 IP 白名单、详细健康端点、Bot 连续轮询错误告警、Compose 数据库/数据卷备份恢复脚本。
-- PR #57 已标记 Ready for review；Go Backend CI [#44603145324](https://github.com/seanldnet/TG-Card/actions/runs/44603145324)、Admin CI [#44603145200](https://github.com/seanldnet/TG-Card/actions/runs/44603145200)、Security [#44603145214](https://github.com/seanldnet/TG-Card/actions/runs/44603145214) 全部成功。Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
-- 后续：补齐测试、验证迁移版本与 health 字段、核对 Docker Compose 实际卷挂载与脚本恢复流程；修正文档并单独创建 PR。
+- PR #57 已 Squash Merge 至 main，merge commit 41389825d6edef83330c4e28c7b5662e23f932a7；main Go CI [#44603593840](https://github.com/seanldnet/TG-Card/actions/runs/44603593840)、Admin CI [#44603593868](https://github.com/seanldnet/TG-Card/actions/runs/44603593868)、Security [#44603593955](https://github.com/seanldnet/TG-Card/actions/runs/44603593955) 全部成功；Docker Publish [#44603594008](https://github.com/seanldnet/TG-Card/actions/runs/44603594008) 正在运行。PR Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
+- 边界：Shell 脚本语法已通过 CI；实际 Docker Compose 备份/恢复演练尚未在隔离环境执行。生产部署与验收另行记录。
 
 ## 2026-11-20 — 上游目录分页同步、增量处理与安全来源切换（PR U #56 已合并）
 
