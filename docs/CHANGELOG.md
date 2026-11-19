@@ -1,3 +1,12 @@
+## 2026-11-20 — PostgreSQL 购物车并发集成测试（PR #62 开发中）
+
+- PR #61 已合并：购物车实现与迁移 0049/0050 进入 main，merge commit 59337349d36937a467e673e427f571ec276c17ce。
+- 本次补强：Go CI 增加 PostgreSQL 16 临时服务；新增 PostgreSQL 集成测试，两个独立 Bot/Telegram 用户同时竞争同一件库存时，验证事务行锁与 SKIP LOCKED 仅允许一个订单成功、失败方购物车保留且库存不会重复预留。
+- 现有 SQLite 测试继续覆盖常规业务逻辑；新增 PostgreSQL 测试仅在 TEST_POSTGRES_DSN 配置时运行，CI job 使用临时容器，不影响生产数据库。
+- 数据库迁移、运行时代码、生产配置均无变化；不新增生产环境变量，不要求手工 SQL。
+- 验证：PR #61 head Go/Admin/Security 已通过；main Go/Admin/Security/Docker Publish 已触发，镜像发布结果与 digest 待核验。PR #62 新增 PostgreSQL 服务和并发测试，需由新 PR CI 验证。
+- Telegram 真机验收仍待项目所有者执行；自动化并发测试不替代链上付款、Bot 交付的真实验收。
+
 ## 2026-11-20 — 购物车基线重整与私聊访问隔离补强（开发中）
 
 - 基线：从最新 main 69ccab358c1bfefcf5ba79fcb04df5d9b17f48c1 建立独立开发分支，移植原 PR #59 的购物车代码、测试及迁移，避免旧 PR 与文档基线更新发生冲突。

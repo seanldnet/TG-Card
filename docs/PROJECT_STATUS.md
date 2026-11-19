@@ -1,3 +1,9 @@
+## 2026-11-20 — PostgreSQL 购物车并发验收补强（开发中）
+
+- PR #61 已合并至 main，merge commit 59337349d36937a467e673e427f571ec276c17ce；购物车功能已进入 main，包含 0049/0050 迁移、单笔多商品结算、库存预留和私聊入口限制。
+- PR #61 head Go/Admin/Security 均成功；main Go CI、Admin CI、Security 与 Docker Publish 已触发，镜像 digest 尚待成功发布后核实。
+- 购物车关键锁逻辑依赖 PostgreSQL 的 FOR UPDATE / SKIP LOCKED，而此前购物车测试仅使用 SQLite。新增 PostgreSQL 16 CI 服务与并发库存争抢集成测试，验证同一件库存面对两个 Bot/用户同时结算时只允许一个成功，失败方购物车保留且不会重复预留。
+- 本次只增加测试与 CI PostgreSQL 服务，不修改运行时业务逻辑、数据库迁移或生产环境变量；测试数据库为 GitHub Actions 临时服务。
 ## 2026-11-20 — 购物车 PR 基线重整与私聊隔离补强（开发中）
 
 - 购物车实现从旧基线重新移植到最新 main，保留原 PR #59 的数据库事务、逐商品订单快照、库存预留、余额/链上单笔付款和分组卡密交付实现；新分支基于当前 main，避免旧 PR 的文档冲突。
@@ -13,7 +19,7 @@
 - PR 状态：PR #57 已合并，merge commit `41389825d6edef83330c4e28c7b5662e23f932a7`；PR #58 已合并，merge commit `9a4faafd11eaaee0a3d82feb9161ee63d424ad25`。PR #58 仅新增真实商户联调操作手册，不代表已完成真实商户连接、扣款、回调、采购交付或失败退款验收。
 - 当前 main 工作流：Admin frontend CI Run [#44604751902](https://github.com/seanldnet/TG-Card/actions/runs/44604751902) 对应 HEAD `420427c` 并成功。该 HEAD 是文档提交，不据此声称产生新业务镜像。
 - 当前可确认的最近业务镜像：PR #57 merge commit `41389825d6edef83330c4e28c7b5662e23f932a7` 的 Go CI [#44603593840](https://github.com/seanldnet/TG-Card/actions/runs/44603593840)、Admin CI [#44603593868](https://github.com/seanldnet/TG-Card/actions/runs/44603593868)、Security [#44603593955](https://github.com/seanldnet/TG-Card/actions/runs/44603593955)、Docker Publish [#44603594008](https://github.com/seanldnet/TG-Card/actions/runs/44603594008) 均成功；GHCR 多架构 latest digest 为 `sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署未由仓库 CI 证明。
-- PR #59 购物车：仍为 Open，分支 `feat/cart-unified-checkout-mainline`，head `5e0681b54fa2080b9e2ff65142edb6a61b9ebc87`，base 为本次核对的 main HEAD。Go test [#44634526556](https://github.com/seanldnet/TG-Card/actions/runs/44634526556)、Admin build [#44634526262](https://github.com/seanldnet/TG-Card/actions/runs/44634526262)、Security [#44634526351](https://github.com/seanldnet/TG-Card/actions/runs/44634526351) 均成功；仍未合并、未发布、未完成 Telegram 真机验收。购物车相关迁移 0049/0050 及代码只存在于 PR 分支，不计入 main 当前功能。
+- PR #59 旧购物车分支已关闭并由 PR #61 替代；PR #61 已合并至 main，merge commit `59337349d36937a467e673e427f571ec276c17ce`。购物车迁移 0049/0050 与实现现已进入 main；Telegram 真机验收仍待项目所有者执行。
 - 专项文档复核：`docs/upstream-integration.md`、`docs/upstream-procurement.md`、`docs/payment-delivery.md`、`docs/support-tickets.md` 已检查。当前 PR E 真实验收边界、PR S 镜像 digest、采购 uncertain/退款红线及 Owner C1–C4 待验收状态与现有证据一致；本次没有机制或代码变化，不改写这些专项规则。
 - 数据库迁移/配置/部署影响：无。本次不新增迁移、不新增环境变量、不要求手工 SQL。
 - 兼容性与风险：仅修正文档事实基线；PR #59 未合并前，main 不具备其购物车功能。镜像发布、生产部署、真实商户联调和 Telegram 真机验收分别记录，不相互替代。
