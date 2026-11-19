@@ -107,7 +107,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
    _=a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
    if consecutiveFailures>=3 {
     _=database.SaveUpstreamSyncResult(context.Background(),a.db,a.driver,"failed","连续多个商品分页失败，同步已暂停："+redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
-    return summary,fmt.Errorf("连续 3 个商品分页失败，同步已暂停：%w",pageErr)
+    return summary,fmt.Errorf("连续 3 个商品分页失败，同步已暂停：%s",redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
    }
   } else {
    unchangedProducts:=0
