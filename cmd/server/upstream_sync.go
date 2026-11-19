@@ -356,10 +356,12 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
   defer a.upstreamSyncMu.Unlock()
   counts,cleanupErr:=database.ClearUpstreamCatalogRows(context.Background(),a.db,a.driver)
   baseProgress:=counts.Categories+counts.Products
-  _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress,baseProgress,1,0,0,"")
   imagesRemoved:=0
   if cleanupErr==nil {
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress,baseProgress,1,0,0,"")
    imagesRemoved,cleanupErr=a.removeUnreferencedUpstreamImages(context.Background())
+  } else {
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress,0,0,1,1,cleanupErr.Error())
   }
   if cleanupErr!=nil {
    _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress+imagesRemoved,baseProgress+imagesRemoved,2,1,1,cleanupErr.Error())
