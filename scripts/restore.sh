@@ -35,7 +35,7 @@ echo "[2/5] Restoring PostgreSQL database..."
 docker compose exec -T db pg_restore -U tgcard -d tgcard --clean --if-exists --no-owner < "$BACKUP_DIR/postgres.dump"
 
 echo "[3/5] Replacing /app/data volume contents..."
-docker compose run --rm --no-deps -T --entrypoint sh app -c 'for item in /app/data/* /app/data/.[!.]* /app/data/..?*; do [ -e "$item" ] || continue; rm -rf "$item"; done; tar -xzf - -C /app/data' < "$BACKUP_DIR/tg_card_data.tar.gz"
+docker compose run --rm --no-deps -T --name "tg-card-restore-$(date -u +%Y%m%dT%H%M%SZ)" --entrypoint sh app -c 'for item in /app/data/* /app/data/.[!.]* /app/data/..?*; do [ -e "$item" ] || continue; rm -rf "$item"; done; tar -xzf - -C /app/data' < "$BACKUP_DIR/tg_card_data.tar.gz"
 
 echo "[4/5] Starting the application..."
 docker compose up -d app
