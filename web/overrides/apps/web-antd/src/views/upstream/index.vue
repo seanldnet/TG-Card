@@ -108,6 +108,26 @@ async function syncNow(){
  }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游商品同步启动或查询失败');}
  finally{syncing.value=false;syncJobId.value='';}
 }
+async function disableUpstream(){
+ syncing.value=true;syncProgress.status='cleaning';syncResult.value=null;
+ try{
+  const started=await requestClient.post<any>('/upstream/disable',{});
+  syncJobId.value=started.jobId;
+  if(!syncJobId.value)throw new Error('清理任务未返回任务 ID');
+  while(syncing.value){
+   const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
+   Object.assign(syncProgress,state);
+   if(['success','failed','paused'].includes(state.status)){
+    await load();
+    if(state.status==='success')message.success('上游数据已清空，已恢复本地商品售卖');
+    else message.error(state.lastError||'上游数据清理失败；可再次点击清理按钮重试');
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+ }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游清理任务启动或查询失败');}
+ finally{syncing.value=false;syncJobId.value='';}
+}
 async function cancelSync(){
  if(!syncJobId.value)return;
  try{await requestClient.post('/upstream/sync/'+syncJobId.value+'/cancel',{});message.info('已提交取消请求，正在等待当前批次安全结束');}
@@ -189,6 +209,7 @@ onMounted(()=>{void load();});
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
      <a-button :loading="syncing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="syncNow">立即同步商品</a-button>
      <a-button v-if="syncing" danger :disabled="!syncJobId" @click="cancelSync">取消同步</a-button>
+     <a-popconfirm title="停用后将删除全部上游分类、商品、SKU 和不再被本地商品引用的上游图片；历史订单及资金流水保留。此操作不可恢复，是否继续？" ok-text="确认清除" cancel-text="取消" @confirm="disableUpstream"><a-button danger :disabled="!settings.enabled||syncing">停用并清除上游数据</a-button></a-popconfirm>
      <a-button :disabled="saving||testing||syncing" @click="load">重新加载</a-button>
     </div>
    </a-form>
