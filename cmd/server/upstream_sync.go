@@ -405,6 +405,19 @@ func (a *application) syncUpstreamNow(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusAccepted, map[string]any{"jobId":jobID,"status":"queued"})
 }
 
+func (a *application) getActiveUpstreamSyncJob(w http.ResponseWriter,r *http.Request) {
+ if _,ok:=a.authenticate(w,r);!ok{return}
+ job,err:=database.GetActiveUpstreamSyncJob(r.Context(),a.db,a.driver)
+ if err==sql.ErrNoRows {writeSuccess(w,http.StatusOK,map[string]any{});return}
+ if err!=nil {writeError(w,http.StatusInternalServerError,"读取同步任务状态失败");return}
+ writeSuccess(w,http.StatusOK,map[string]any{
+  "id":job.ID,"status":job.Status,"totalItems":job.TotalItems,"processedItems":job.ProcessedItems,
+  "currentPage":job.CurrentPage,"errorCount":job.ErrorCount,"consecutiveFailures":job.ConsecutiveFailures,
+  "cancelRequested":job.CancelRequested,"lastError":job.LastError,"triggerType":job.TriggerType,
+  "createdAt":job.CreatedAt,"updatedAt":job.UpdatedAt,"finishedAt":job.FinishedAt,
+ })
+}
+
 func (a *application) getUpstreamSyncJob(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w,r); !ok { return }
 	job, err := database.GetUpstreamSyncJob(r.Context(),a.db,a.driver,r.PathValue("id"))
