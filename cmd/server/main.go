@@ -45,6 +45,9 @@ type application struct {
 	dataDir string
 	loginMu sync.Mutex
 	upstreamSyncMu sync.Mutex
+	upstreamJobMu sync.Mutex
+	upstreamJobCancel context.CancelFunc
+	upstreamJobID string
 	procurementAPI upstream.ProcurementAPI
 	procurementNotify func(context.Context,string,string)
 	dispatchProcurement func(context.Context,string) error
@@ -133,6 +136,7 @@ func main() {
 	defer db.Close()
 
 	if err := database.Migrate(ctx, db, cfg.DBDriver); err != nil { log.Fatal(err) }
+	if err := database.RecoverInterruptedUpstreamSyncJobs(ctx, db, cfg.DBDriver); err != nil { log.Printf("recover interrupted upstream sync jobs: %v", err) }
 
 	bootstrap, err := database.EnsureAdmin(ctx, db, cfg.DBDriver, cfg.AdminUsername, cfg.AdminPassword)
 	if err != nil { log.Fatal(err) }
@@ -241,6 +245,10 @@ func main() {
 	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
 	api.HandleFunc("POST /api/upstream/sync", app.syncUpstreamNow)
+	api.HandleFunc("POST /api/upstream/disable", app.disableUpstreamCatalog)
+	api.HandleFunc("GET /api/upstream/sync/active", app.getActiveUpstreamSyncJob)
+	api.HandleFunc("GET /api/upstream/sync/{id}", app.getUpstreamSyncJob)
+	api.HandleFunc("POST /api/upstream/sync/{id}/cancel", app.cancelUpstreamSyncJob)
 	api.HandleFunc("POST /api/v1/upstream/callback", app.upstreamProcurementCallback)
 	api.HandleFunc("GET /api/upstream/procurements", app.listUpstreamProcurements)
 	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.retryUpstreamProcurement)
@@ -1419,6 +1427,8 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  case "stock_relisted": telegramEnabled=s.TelegramNotifyStockLow; title="补货自动上架提醒"
  case "daily_report": emailEnabled=true; telegramEnabled=s.TelegramNotifyDailyReport; title="每日对账日报"
  case "risk_alert": telegramEnabled=s.TelegramNotifyRiskAlert; title="支付风险提醒"
+ case "upstream_sync_paused": telegramEnabled=true; title="上游商品同步自动暂停"
+ case "upstream_catalog_cleared": telegramEnabled=true; title="上游商品目录已清空"
  default: return
  }
  body:=s.SiteName+"\n"+title+"\n"+details
@@ -1437,7 +1447,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  }
  if telegramEnabled {
   targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
-  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="support_created"{targets=append(targets,s.TelegramOwnerID)}
+  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="support_created"||event=="upstream_sync_paused"||event=="upstream_catalog_cleared"{targets=append(targets,s.TelegramOwnerID)}
   sent:=map[string]bool{}
   bots,err:=database.ListBots(ctx,a.db)
   if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }

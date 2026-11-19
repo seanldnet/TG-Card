@@ -15,6 +15,8 @@ interface UpstreamSettings {
   markupPercent: number;
   markupFixedMinor: number;
   syncIntervalMinutes: number;
+  syncBatchSize: number;
+  syncBatchDelayMs: number;
   procurementPollIntervalSeconds: number;
   procurementTimeoutMinutes: number;
   supplierLowBalanceThreshold: string;
@@ -33,7 +35,7 @@ const loading=ref(false),saving=ref(false),testing=ref(false),syncing=ref(false)
 const merchantId=ref(''),merchantSecret=ref(''),clearCredentials=ref(false);
 const settings=reactive<UpstreamSettings>({
  provider:'dujiao_next',baseUrl:'',merchantIdMasked:'',merchantIdConfigured:false,
- merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,procurementPollIntervalSeconds:30,procurementTimeoutMinutes:30,supplierLowBalanceThreshold:'0',callbackUrl:'',exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
+ merchantSecretConfigured:false,enabled:false,catalogStale:true,markupPercent:0,markupFixedMinor:0,syncIntervalMinutes:15,syncBatchSize:25,syncBatchDelayMs:1000,procurementPollIntervalSeconds:30,procurementTimeoutMinutes:30,supplierLowBalanceThreshold:'0',callbackUrl:'',exchangeRateToUSDT:0,lastTestStatus:'not_tested',lastTestAt:'',
  lastError:'',syncStatus:'not_started',syncAt:'',syncAttemptAt:'',syncError:'',updatedAt:'',
 });
 const testResult=ref<{siteName:string;protocolVersion:string;balance:string;currency:string}|null>(null);
@@ -63,7 +65,7 @@ async function submitRefund(){
 }
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
 const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
-const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'};return labels[settings.syncStatus]||settings.syncStatus;});
+const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',cleaning:'正在清理上游数据',success:'同步成功',failed:'同步失败',cancelled:'已取消',paused:'已暂停'};return labels[settings.syncStatus]||settings.syncStatus;});
 async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
@@ -77,7 +79,7 @@ async function save():Promise<boolean>{
   const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
-   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,procurementPollIntervalSeconds:settings.procurementPollIntervalSeconds,procurementTimeoutMinutes:settings.procurementTimeoutMinutes,supplierLowBalanceThreshold:settings.supplierLowBalanceThreshold,callbackUrl:settings.callbackUrl,exchangeRateToUSDT:settings.exchangeRateToUSDT,
+   markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,syncBatchSize:settings.syncBatchSize,syncBatchDelayMs:settings.syncBatchDelayMs,procurementPollIntervalSeconds:settings.procurementPollIntervalSeconds,procurementTimeoutMinutes:settings.procurementTimeoutMinutes,supplierLowBalanceThreshold:settings.supplierLowBalanceThreshold,callbackUrl:settings.callbackUrl,exchangeRateToUSDT:settings.exchangeRateToUSDT,
   });
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
@@ -87,13 +89,49 @@ async function save():Promise<boolean>{
 async function syncNow(){
  if(clearCredentials.value){message.warning('请先保存配置后再同步');return;}
  if(merchantId.value||merchantSecret.value||!settings.merchantIdConfigured||!settings.merchantSecretConfigured){const saved=await save();if(!saved)return;}
- syncing.value=true;syncResult.value=null;
+ syncing.value=true;syncResult.value=null;syncProgress.status='queued';
  try{
-  const data=await requestClient.post<any>('/upstream/sync',{});
-  syncResult.value={categories:data.categories||0,products:data.products||0,imagesFailed:data.imagesFailed||0,warning:data.warning||''};
-  await load();message.success('上游商品同步完成');
- }catch(error:any){await load();message.error(error?.response?.data?.message||'上游商品同步失败，旧目录数据已保留');}
- finally{syncing.value=false;}
+  const started=await requestClient.post<any>('/upstream/sync',{});
+  syncJobId.value=started.jobId;
+  if(!syncJobId.value)throw new Error('同步任务未返回任务 ID');
+  while(syncing.value){
+   const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
+   Object.assign(syncProgress,state);
+   if(['success','failed','cancelled','paused'].includes(state.status)){
+    if(state.status==='success'){await load();message.success('上游商品同步完成');}
+    else if(state.status==='cancelled'){await load();message.info('同步已取消，已完成的数据批次予以保留');}
+    else{await load();message.error(state.lastError||'上游商品同步失败');}
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+ }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游商品同步启动或查询失败');}
+ finally{syncing.value=false;syncJobId.value='';}
+}
+async function disableUpstream(){
+ syncing.value=true;syncProgress.status='cleaning';syncResult.value=null;
+ try{
+  const started=await requestClient.post<any>('/upstream/disable',{});
+  syncJobId.value=started.jobId;
+  if(!syncJobId.value)throw new Error('清理任务未返回任务 ID');
+  while(syncing.value){
+   const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
+   Object.assign(syncProgress,state);
+   if(['success','failed','paused'].includes(state.status)){
+    await load();
+    if(state.status==='success')message.success('上游数据已清空，已恢复本地商品售卖');
+    else message.error(state.lastError||'上游数据清理失败；可再次点击清理按钮重试');
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+ }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游清理任务启动或查询失败');}
+ finally{syncing.value=false;syncJobId.value='';}
+}
+async function cancelSync(){
+ if(!syncJobId.value)return;
+ try{await requestClient.post('/upstream/sync/'+syncJobId.value+'/cancel',{});message.info('已提交取消请求，正在等待当前批次安全结束');}
+ catch(error:any){message.error(error?.response?.data?.message||'取消同步失败');}
 }
 async function testConnection(){
  if(clearCredentials.value){message.warning('请先保存配置后再测试连接，不能在清除凭证后测试');return;}
@@ -106,13 +144,36 @@ async function testConnection(){
  }catch(error:any){await load();message.error(error?.response?.data?.message||'上游连接测试失败');}
  finally{testing.value=false;}
 }
-onMounted(()=>{void load();});
+async function resumeActiveSyncJob(){
+ try{
+  const active=await requestClient.get<any>('/upstream/sync/active');
+  if(!active?.id)return;
+  syncJobId.value=active.id;Object.assign(syncProgress,active);syncing.value=true;
+  while(syncing.value){
+   const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
+   Object.assign(syncProgress,state);
+   if(['success','failed','cancelled','paused'].includes(state.status)){
+    await load();
+    if(state.status==='success'){
+     if(state.triggerType==='manual_disable')message.success('上游数据已清空，已恢复本地商品售卖');
+     else message.success('上游商品同步完成');
+    }else if(state.status==='cancelled')message.info('同步已取消，已完成批次予以保留');
+    else message.error(state.lastError||'上游任务执行失败');
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+ }catch(error:any){message.warning(error?.response?.data?.message||'读取进行中的上游任务失败');}
+ finally{syncing.value=false;syncJobId.value='';}
+}
+
+onMounted(()=>{void load();void resumeActiveSyncJob();});
 </script>
 
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <a-card :bordered="false" :loading="loading" title="上游对接">
-   <template #extra><a-tag :color="settings.enabled?'success':'default'">{{settings.enabled?'上游已启用':'上游未启用'}}</a-tag></template>
+   <template #extra><a-tag :color="settings.enabled&&!settings.catalogStale?'success':'default'">{{settings.enabled&&!settings.catalogStale?'上游售卖中':'本地商品售卖'}}</a-tag></template>
    <a-alert class="mb-5" type="info" show-icon message="当前仅开放 Dujiao-Next 官方 Open API。异次元和萌次元尚无已核实的第三方商户采购协议，因此不提供可调用配置。" />
    <a-form layout="vertical">
     <a-form-item label="上游类型">
@@ -148,10 +209,14 @@ onMounted(()=>{void load();});
       <a-select-option :value="5">每 5 分钟</a-select-option><a-select-option :value="15">每 15 分钟</a-select-option><a-select-option :value="30">每 30 分钟</a-select-option><a-select-option :value="60">每小时</a-select-option><a-select-option :value="360">每 6 小时</a-select-option><a-select-option :value="1440">每天</a-select-option>
      </a-select>
     </a-form-item>
-    <a-form-item label="启用上游商品来源">
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+     <a-form-item label="同步批次大小（条）" extra="每页处理 20–50 个上游商品；默认 25。"><a-input-number v-model:value="settings.syncBatchSize" class="w-full" :min="20" :max="50" :step="5"/></a-form-item>
+     <a-form-item label="批次间隔（毫秒）" extra="每批提交后暂停 250–10000 毫秒；默认 1000。"><a-input-number v-model:value="settings.syncBatchDelayMs" class="w-full" :min="250" :max="10000" :step="250"/></a-form-item>
+    </div>
+    <a-form-item label="启用上游售卖">
      <div class="flex flex-wrap items-center gap-3">
-      <a-switch v-model:checked="settings.enabled" :disabled="settings.catalogStale||settings.syncStatus!=='success'&&!settings.enabled"/>
-      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
+      <a-switch v-model:checked="settings.enabled"  :disabled="settings.enabled||settings.catalogStale||settings.syncStatus!=='success'"/>
+      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；上游售卖启用期间不能直接修改站点、凭证或价格策略；请先停用并清除上游目录，再修改配置、重新同步后启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
      </div>
     </a-form-item>
     <a-divider />
@@ -166,6 +231,8 @@ onMounted(()=>{void load();});
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
      <a-button :loading="syncing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="syncNow">立即同步商品</a-button>
+     <a-button v-if="syncing&&syncProgress.status!=='cleaning'" danger :disabled="!syncJobId" @click="cancelSync">取消同步</a-button>
+     <a-popconfirm title="停用后将删除全部上游分类、商品、SKU 和不再被本地商品引用的上游图片；历史订单及资金流水保留。此操作不可恢复，是否继续？" ok-text="确认清除" cancel-text="取消" @confirm="disableUpstream"><a-button danger :disabled="!settings.enabled||syncing">停用并清除上游数据</a-button></a-popconfirm>
      <a-button :disabled="saving||testing||syncing" @click="load">重新加载</a-button>
     </div>
    </a-form>
@@ -205,6 +272,8 @@ onMounted(()=>{void load();});
      <a-tag color="default">{{syncLabel}}</a-tag>
      <div v-if="settings.syncAt" class="mt-2 text-xs text-gray-500">最近成功同步：{{settings.syncAt}}</div>
      <div v-if="settings.syncAttemptAt" class="mt-1 text-xs text-gray-500">最近尝试：{{settings.syncAttemptAt}}</div>
+     <div v-if="syncing" class="mt-2 text-xs text-gray-600">任务状态：{{syncProgress.status}} · 已处理 {{syncProgress.processedItems}} / {{syncProgress.totalItems}} · 当前页 {{syncProgress.currentPage}} · 错误 {{syncProgress.errorCount}}</div>
+     <a-alert v-if="syncProgress.lastError" class="mt-2" type="warning" show-icon :message="syncProgress.lastError"/>
      <a-alert v-if="settings.syncError" class="mt-3" type="warning" show-icon :message="settings.syncError"/>
      <div v-else class="mt-2 text-xs text-gray-500">自动同步按上方间隔运行；同步失败会保留上一次成功的数据。</div>
      <div v-if="syncResult" class="mt-3 text-sm">本次同步：{{syncResult.categories}} 个分类 · {{syncResult.products}} 个 SKU 商品 · 图片失败 {{syncResult.imagesFailed}} 张</div>

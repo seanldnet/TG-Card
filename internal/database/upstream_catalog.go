@@ -22,6 +22,7 @@ type UpstreamCategoryRecord struct {
 	Name string
 	Icon string
 	PreserveIcon bool
+	Fingerprint string
 	SortOrder int
 }
 
@@ -29,6 +30,8 @@ type UpstreamProductRecord struct {
 	ProductID string
 	SKUID string
 	Slug string
+	UpstreamUpdatedAt string
+	UpstreamFingerprint string
 	SKUCode string
 	SpecValuesJSON string
 	FulfillmentType string
@@ -46,7 +49,16 @@ type UpstreamProductRecord struct {
 	Active bool
 }
 
+// SyncUpstreamCatalog keeps the legacy all-at-once contract for callers that
+// have already collected a complete catalogue.
 func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string, categories []UpstreamCategoryRecord, products []UpstreamProductRecord) error {
+	return SyncUpstreamCatalogBatch(ctx, db, driver, batchID, categories, products, true)
+}
+
+// SyncUpstreamCatalogBatch commits one bounded batch. finalize must be true only
+// after every upstream page has been processed successfully; otherwise unseen
+// products/categories remain visible in the upstream catalogue.
+func SyncUpstreamCatalogBatch(ctx context.Context, db *sql.DB, driver, batchID string, categories []UpstreamCategoryRecord, products []UpstreamProductRecord, finalize bool) error {
 	if batchID == "" { return fmt.Errorf("upstream sync batch ID is required") }
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return err }
@@ -61,12 +73,12 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 		if err == sql.ErrNoRows {
 			localID, err = randomID()
 			if err != nil { return err }
-			query := "INSERT INTO product_categories(id,name,sort_order,status,source_type,upstream_category_id,upstream_parent_id,upstream_icon,upstream_sync_batch_id,created_at,updated_at) VALUES("+
-				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")"
-			if _, err = tx.ExecContext(ctx, query, localID, item.Name, item.SortOrder, item.UpstreamID, item.ParentID, item.Icon, batchID, now, now); err != nil { return fmt.Errorf("insert upstream category %s: %w", item.UpstreamID, err) }
+			query := "INSERT INTO product_categories(id,name,sort_order,status,source_type,upstream_category_id,upstream_parent_id,upstream_icon,upstream_fingerprint,upstream_sync_batch_id,created_at,updated_at) VALUES("+
+				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+",1,'upstream',"+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")"
+			if _, err = tx.ExecContext(ctx, query, localID, item.Name, item.SortOrder, item.UpstreamID, item.ParentID, item.Icon, item.Fingerprint, batchID, now, now); err != nil { return fmt.Errorf("insert upstream category %s: %w", item.UpstreamID, err) }
 		} else if err != nil { return err } else {
-			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon=CASE WHEN "+placeholder(driver,5)+"=1 THEN upstream_icon ELSE "+placeholder(driver,4)+" END,upstream_sync_batch_id="+placeholder(driver,6)+",updated_at="+placeholder(driver,7)+" WHERE id="+placeholder(driver,8)+" AND source_type='upstream'"
-			if _, err := tx.ExecContext(ctx, query, item.Name, item.SortOrder, item.ParentID, boolInt(item.PreserveIcon), item.Icon, batchID, now, localID); err != nil { return fmt.Errorf("update upstream category %s: %w", item.UpstreamID, err) }
+			query := "UPDATE product_categories SET name="+placeholder(driver,1)+",sort_order="+placeholder(driver,2)+",status=1,upstream_parent_id="+placeholder(driver,3)+",upstream_icon=CASE WHEN "+placeholder(driver,5)+"=1 THEN upstream_icon ELSE "+placeholder(driver,4)+" END,upstream_fingerprint="+placeholder(driver,6)+",upstream_sync_batch_id="+placeholder(driver,7)+",updated_at="+placeholder(driver,8)+" WHERE id="+placeholder(driver,9)+" AND source_type='upstream'"
+			if _, err := tx.ExecContext(ctx, query, item.Name, item.SortOrder, item.ParentID, boolInt(item.PreserveIcon), item.Icon, item.Fingerprint, batchID, now, localID); err != nil { return fmt.Errorf("update upstream category %s: %w", item.UpstreamID, err) }
 		}
 		categoryIDs[item.UpstreamID] = localID
 	}
@@ -76,7 +88,13 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 		if item.Currency == "" { return fmt.Errorf("upstream currency is required for product %s/%s", item.ProductID, item.SKUID) }
 		if item.PriceMinor < 0 || item.PriceSnapshotMinor < 0 { return fmt.Errorf("invalid upstream price for product %s/%s", item.ProductID, item.SKUID) }
 		var category any
-		if id := categoryIDs[item.CategoryID]; id != "" { category = id }
+		if id := categoryIDs[item.CategoryID]; id != "" {
+			category = id
+		} else if item.CategoryID != "" && item.CategoryID != "0" {
+			var existingCategoryID string
+			lookupErr := tx.QueryRowContext(ctx, "SELECT id FROM product_categories WHERE source_type='upstream' AND upstream_category_id="+placeholder(driver,1), item.CategoryID).Scan(&existingCategoryID)
+			if lookupErr == nil { category = existingCategoryID } else if lookupErr != sql.ErrNoRows { return lookupErr }
+		}
 		var localID, previousImages string
 		err := tx.QueryRowContext(ctx, "SELECT id,COALESCE(image_paths_json,'[]') FROM products WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,1)+" AND upstream_sku_id="+placeholder(driver,2), item.ProductID, item.SKUID).Scan(&localID, &previousImages)
 		if err == sql.ErrNoRows {
@@ -84,28 +102,30 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 			if err != nil { return err }
 			images := item.ImagePathsJSON
 			if images == "" { images = "[]" }
-			query := "INSERT INTO products(id,category_id,name,description,price_minor,currency,delivery_type,status,bulk_discount_json,delivery_config_json,source_type,upstream_product_id,upstream_sku_id,upstream_sku_code,upstream_spec_values_json,upstream_fulfillment_type,upstream_manual_form_schema_json,upstream_tags_json,upstream_slug,upstream_price_snapshot_minor,upstream_currency,upstream_stock_quantity,upstream_stock_status,image_paths_json,upstream_sync_batch_id,created_at,updated_at) VALUES("+
-				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+",'USDT','upstream',"+placeholder(driver,6)+",'[]','{}','upstream',"+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+","+placeholder(driver,11)+","+placeholder(driver,12)+","+placeholder(driver,13)+","+placeholder(driver,14)+","+placeholder(driver,15)+","+placeholder(driver,16)+","+placeholder(driver,17)+","+placeholder(driver,18)+","+placeholder(driver,19)+","+placeholder(driver,20)+","+placeholder(driver,21)+","+placeholder(driver,22)+")"
+			query := "INSERT INTO products(id,category_id,name,description,price_minor,currency,delivery_type,status,bulk_discount_json,delivery_config_json,source_type,upstream_product_id,upstream_sku_id,upstream_sku_code,upstream_spec_values_json,upstream_fulfillment_type,upstream_manual_form_schema_json,upstream_tags_json,upstream_slug,upstream_updated_at,upstream_fingerprint,upstream_price_snapshot_minor,upstream_currency,upstream_stock_quantity,upstream_stock_status,image_paths_json,upstream_sync_batch_id,created_at,updated_at) VALUES("+
+				placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+",'USDT','upstream',"+placeholder(driver,6)+",'[]','{}','upstream',"+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+","+placeholder(driver,11)+","+placeholder(driver,12)+","+placeholder(driver,13)+","+placeholder(driver,14)+","+placeholder(driver,15)+","+placeholder(driver,16)+","+placeholder(driver,17)+","+placeholder(driver,18)+","+placeholder(driver,19)+","+placeholder(driver,20)+","+placeholder(driver,21)+","+placeholder(driver,22)+","+placeholder(driver,23)+","+placeholder(driver,24)+")"
 			status := 0
 			if item.Active { status = 1 }
-			if _, err = tx.ExecContext(ctx, query, localID, category, item.Name, item.Description, item.PriceMinor, status, item.ProductID, item.SKUID, item.SKUCode, item.SpecValuesJSON, item.FulfillmentType, item.ManualFormSchemaJSON, item.TagsJSON, item.Slug, item.PriceSnapshotMinor, item.Currency, item.StockQuantity, item.StockStatus, images, batchID, now, now); err != nil { return fmt.Errorf("insert upstream product %s/%s: %w", item.ProductID, item.SKUID, err) }
+			if _, err = tx.ExecContext(ctx, query, localID, category, item.Name, item.Description, item.PriceMinor, status, item.ProductID, item.SKUID, item.SKUCode, item.SpecValuesJSON, item.FulfillmentType, item.ManualFormSchemaJSON, item.TagsJSON, item.Slug, item.UpstreamUpdatedAt, item.UpstreamFingerprint, item.PriceSnapshotMinor, item.Currency, item.StockQuantity, item.StockStatus, images, batchID, now, now); err != nil { return fmt.Errorf("insert upstream product %s/%s: %w", item.ProductID, item.SKUID, err) }
 		} else if err != nil { return err } else {
 			images := item.ImagePathsJSON
 			if images == "" { images = previousImages }
 			status := 0
 			if item.Active { status = 1 }
-			query := "UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",status="+placeholder(driver,5)+",upstream_sku_code="+placeholder(driver,6)+",upstream_spec_values_json="+placeholder(driver,7)+",upstream_fulfillment_type="+placeholder(driver,8)+",upstream_manual_form_schema_json="+placeholder(driver,9)+",upstream_tags_json="+placeholder(driver,10)+",upstream_slug="+placeholder(driver,11)+",upstream_price_snapshot_minor="+placeholder(driver,12)+",upstream_currency="+placeholder(driver,13)+",upstream_stock_quantity="+placeholder(driver,14)+",upstream_stock_status="+placeholder(driver,15)+",image_paths_json="+placeholder(driver,16)+",upstream_sync_batch_id="+placeholder(driver,17)+",updated_at="+placeholder(driver,18)+" WHERE id="+placeholder(driver,19)+" AND source_type='upstream'"
-			if _, err := tx.ExecContext(ctx, query, category, item.Name, item.Description, item.PriceMinor, status, item.SKUCode, item.SpecValuesJSON, item.FulfillmentType, item.ManualFormSchemaJSON, item.TagsJSON, item.Slug, item.PriceSnapshotMinor, item.Currency, item.StockQuantity, item.StockStatus, images, batchID, now, localID); err != nil { return fmt.Errorf("update upstream product %s/%s: %w", item.ProductID, item.SKUID, err) }
+			query := "UPDATE products SET category_id="+placeholder(driver,1)+",name="+placeholder(driver,2)+",description="+placeholder(driver,3)+",price_minor="+placeholder(driver,4)+",status="+placeholder(driver,5)+",upstream_sku_code="+placeholder(driver,6)+",upstream_spec_values_json="+placeholder(driver,7)+",upstream_fulfillment_type="+placeholder(driver,8)+",upstream_manual_form_schema_json="+placeholder(driver,9)+",upstream_tags_json="+placeholder(driver,10)+",upstream_slug="+placeholder(driver,11)+",upstream_updated_at="+placeholder(driver,12)+",upstream_fingerprint="+placeholder(driver,13)+",upstream_price_snapshot_minor="+placeholder(driver,14)+",upstream_currency="+placeholder(driver,15)+",upstream_stock_quantity="+placeholder(driver,16)+",upstream_stock_status="+placeholder(driver,17)+",image_paths_json="+placeholder(driver,18)+",upstream_sync_batch_id="+placeholder(driver,19)+",updated_at="+placeholder(driver,20)+" WHERE id="+placeholder(driver,21)+" AND source_type='upstream'"
+			if _, err := tx.ExecContext(ctx, query, category, item.Name, item.Description, item.PriceMinor, status, item.SKUCode, item.SpecValuesJSON, item.FulfillmentType, item.ManualFormSchemaJSON, item.TagsJSON, item.Slug, item.UpstreamUpdatedAt, item.UpstreamFingerprint, item.PriceSnapshotMinor, item.Currency, item.StockQuantity, item.StockStatus, images, batchID, now, localID); err != nil { return fmt.Errorf("update upstream product %s/%s: %w", item.ProductID, item.SKUID, err) }
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE products SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream products missing from successful sync: %w", err) }
-	if _, err := tx.ExecContext(ctx, "UPDATE product_categories SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream categories missing from successful sync: %w", err) }
-	if _, err := tx.ExecContext(ctx, "UPDATE upstream_settings SET catalog_stale=0 WHERE id=1"); err != nil { return fmt.Errorf("mark upstream catalog fresh: %w", err) }
+	if finalize {
+		if _, err := tx.ExecContext(ctx, "UPDATE products SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream products missing from successful sync: %w", err) }
+		if _, err := tx.ExecContext(ctx, "UPDATE product_categories SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream categories missing from successful sync: %w", err) }
+		if _, err := tx.ExecContext(ctx, "UPDATE upstream_settings SET catalog_stale=0 WHERE id=1"); err != nil { return fmt.Errorf("mark upstream catalog fresh: %w", err) }
+	}
 	return tx.Commit()
 }
 
-func currentCatalogSource(ctx context.Context, db *sql.DB) (string, error) {
-	settings, err := GetUpstreamSettings(ctx, db, "")
+func currentCatalogSource(ctx context.Context, db *sql.DB, driver string) (string, error) {
+	settings, err := GetUpstreamSettings(ctx, db, driver)
 	if err == sql.ErrNoRows { return "local", nil }
 	if err != nil { return "", err }
 	if settings.Enabled && !settings.CatalogStale { return "upstream", nil }
@@ -115,7 +135,7 @@ func currentCatalogSource(ctx context.Context, db *sql.DB) (string, error) {
 func ListVisibleProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 	items, err := ListProducts(ctx, db)
 	if err != nil { return nil, err }
-	source, err := currentCatalogSource(ctx, db)
+	source, err := currentCatalogSource(ctx, db, "")
 	if err != nil { return nil, err }
 	visible := make([]Product, 0, len(items))
 	for _, item := range items { if item.SourceType == source && item.Status == 1 { visible = append(visible, item) } }
@@ -125,9 +145,38 @@ func ListVisibleProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 func ListVisibleCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
 	items, err := ListCategories(ctx, db)
 	if err != nil { return nil, err }
-	source, err := currentCatalogSource(ctx, db)
+	source, err := currentCatalogSource(ctx, db, "")
 	if err != nil { return nil, err }
 	visible := make([]Category, 0, len(items))
 	for _, item := range items { if item.SourceType == source && item.Status == 1 { visible = append(visible, item) } }
 	return visible, nil
+}
+
+
+// MarkUpstreamProductSeenIfUnchanged marks an unchanged upstream product as
+// observed in this run, allowing finalization to retain it without downloading
+// its images or rewriting all SKU rows.
+func MarkUpstreamProductSeenIfUnchanged(ctx context.Context, db *sql.DB, driver, productID, fingerprint, batchID string, expectedSKUs int) (bool,error) {
+ var count int
+ var saved sql.NullString
+ q:="SELECT COUNT(1),MIN(upstream_fingerprint) FROM products WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,1)
+ if err:=db.QueryRowContext(ctx,q,productID).Scan(&count,&saved);err!=nil{return false,err}
+ if count==0||count!=expectedSKUs||!saved.Valid||saved.String==""||saved.String!=fingerprint{return false,nil}
+ update:="UPDATE products SET upstream_sync_batch_id="+placeholder(driver,1)+" WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,2)
+ if _,err:=db.ExecContext(ctx,update,batchID,productID);err!=nil{return false,err}
+ return true,nil
+}
+
+
+// MarkUpstreamCategorySeenIfUnchanged records an unchanged category in the
+// current sync batch so finalization does not hide it or redownload its icon.
+func MarkUpstreamCategorySeenIfUnchanged(ctx context.Context,db *sql.DB,driver,upstreamID,fingerprint,batchID string)(bool,error){
+ var localID,saved string
+ q:="SELECT id,COALESCE(upstream_fingerprint,'') FROM product_categories WHERE source_type='upstream' AND upstream_category_id="+placeholder(driver,1)
+ err:=db.QueryRowContext(ctx,q,upstreamID).Scan(&localID,&saved)
+ if err==sql.ErrNoRows{return false,nil};if err!=nil{return false,err}
+ if saved==""||saved!=fingerprint{return false,nil}
+ update:="UPDATE product_categories SET upstream_sync_batch_id="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)
+ if _,err:=db.ExecContext(ctx,update,batchID,localID);err!=nil{return false,err}
+ return true,nil
 }
