@@ -2,7 +2,7 @@
 
 - 基线：PR U 合并后 main commit `b5ada0116fe4c33e0a4207ebb754715834e909d8`；分支 `feat/security-ops-hardening-pr-s`。
 - 已开始：核实 PR #53 登出撤销与 TokenVersion 既有实现；增加敏感写 API 限流、可信代理 IP 白名单、详细健康端点、Bot 连续轮询错误告警、Compose 数据库/数据卷备份恢复脚本。
-- PR #57 已创建并准备 Ready for review；Go Backend CI [#44603145324](https://github.com/seanldnet/TG-Card/actions/runs/44603145324)、Admin CI [#44603145200](https://github.com/seanldnet/TG-Card/actions/runs/44603145200)、Security [#44603145214](https://github.com/seanldnet/TG-Card/actions/runs/44603145214) 全部成功。Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
+- PR #57 已标记 Ready for review；Go Backend CI [#44603145324](https://github.com/seanldnet/TG-Card/actions/runs/44603145324)、Admin CI [#44603145200](https://github.com/seanldnet/TG-Card/actions/runs/44603145200)、Security [#44603145214](https://github.com/seanldnet/TG-Card/actions/runs/44603145214) 全部成功。Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
 - 后续：补齐测试、验证迁移版本与 health 字段、核对 Docker Compose 实际卷挂载与脚本恢复流程；修正文档并单独创建 PR。
 
 ## 2026-11-20 — 上游目录分页同步、增量处理与安全来源切换（PR U #56 已合并）
