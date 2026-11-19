@@ -158,6 +158,10 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	previous := current
+	if hasCurrent && previous.Enabled && !input.Enabled {
+		writeError(w,http.StatusConflict,"停用上游必须使用“停用并清除上游数据”流程；系统会先切回本地售卖，再安全清理上游目录")
+		return
+	}
 	if input.ClearCredentials { current.MerchantIDCiphertext = ""; current.SecretCiphertext = "" }
 	if input.MerchantID != "" {
 		current.MerchantIDCiphertext, err = a.secrets.Encrypt(input.MerchantID)
