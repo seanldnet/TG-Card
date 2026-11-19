@@ -638,6 +638,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
+	if first == "/cart" {
+		m.showCart(ctx,cfg,msg.Chat.ID,msg.From.ID)
+		return
+	}
 	if first == "/unsubscribe" || first == "/subscribe" {
 		optOut:=first=="/unsubscribe"
 		if err:=database.SetBroadcastOptOut(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),optOut);err!=nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订阅设置失败，请稍后重试。") } else if optOut { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已退订本机器人群发通知。发送 /subscribe 可重新订阅。") } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已重新订阅本机器人通知。") }
@@ -873,9 +877,9 @@ func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard"
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
  {{"text":"🛍️ 商品中心","callback_data":"menu:shop"},{"text":"🔎 搜索商品","callback_data":"menu:search"}},
- {{"text":"📦 我的订单","callback_data":"menu:orders"},{"text":"💳 我的余额","callback_data":"menu:balance"}},
- {{"text":"💰 余额充值","callback_data":"menu:recharge"},{"text":"🧾 申请售后","callback_data":"menu:support"}},
- {{"text":"❓ 使用帮助","callback_data":"menu:help"}},
+ {{"text":"🛒 购物车","callback_data":"menu:cart"},{"text":"📦 我的订单","callback_data":"menu:orders"}},
+ {{"text":"💳 我的余额","callback_data":"menu:balance"},{"text":"💰 余额充值","callback_data":"menu:recharge"}},
+ {{"text":"🧾 申请售后","callback_data":"menu:support"},{"text":"❓ 使用帮助","callback_data":"menu:help"}},
 }}}
 func welcomeKeyboard(cfg Config, isOwner bool) map[string]any {
  rows:=mainMenuKeyboard()["inline_keyboard"].([][]map[string]string)
@@ -929,6 +933,7 @@ func (m *Manager) configureMenu(ctx context.Context, token string) {
 		{"setMyCommands", map[string]any{"commands": []map[string]string{
 			{"command":"start","description":"打开主菜单"},
 			{"command":"shop","description":"浏览商城"},
+			{"command":"cart","description":"查看购物车"},
 			{"command":"orders","description":"查看我的订单"},
 			{"command":"balance","description":"查看站内余额"},
 			{"command":"recharge","description":"充值站内余额"},
@@ -1008,6 +1013,10 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
  if p.SourceType=="upstream" {
   if p.UpstreamFulfillmentType!="auto"||p.UpstreamStockStatus=="out_of_stock" {text+="\n\n⚠️ 该上游商品暂不支持自助购买或库存不足。"} else {buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})}
  } else if keyBacked&&p.StockCount<1{buttons=append(buttons,[]map[string]string{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}})}else if keyBacked{for _,quantity:=range []int{1,2,3,5,10}{if quantity<=p.StockCount{buttons=append(buttons,[]map[string]string{{"text":"购买 "+strconv.Itoa(quantity)+" 件","callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}})}}}else{buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})}
+ if p.SourceType=="local" && keyBacked && p.StockCount>0 {
+  buttons=append(buttons,[]map[string]string{{"text":"🛒 加入购物车","callback_data":"cart:add:"+p.ID}})
+  buttons=append(buttons,[]map[string]string{{"text":"🛒 查看购物车","callback_data":"cart:show"}})
+ }
  buttons=append(buttons,[]map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":buttons})
 }
@@ -1150,6 +1159,34 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订阅失败，请稍后重试"); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
+	case query.Data == "cart:show":
+		m.showCart(ctx,cfg,chatID,query.From.ID)
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开购物车")
+	case strings.HasPrefix(query.Data,"cart:add:"):
+		productID:=strings.TrimPrefix(query.Data,"cart:add:")
+		err:=database.AddCartItem(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),productID,1)
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"加入失败");_ = m.sendMessage(ctx,cfg.Token,chatID,"加入购物车失败："+err.Error());return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已加入购物车")
+		m.showCart(ctx,cfg,chatID,query.From.ID)
+	case strings.HasPrefix(query.Data,"cart:inc:") || strings.HasPrefix(query.Data,"cart:dec:") || strings.HasPrefix(query.Data,"cart:remove:"):
+		parts:=strings.SplitN(query.Data,":",3)
+		if len(parts)!=3 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车操作无效");return }
+		userID:=strconv.FormatInt(query.From.ID,10)
+		var err error
+		switch parts[1] {
+		case "inc": err=database.AdjustCartItemQuantity(ctx,m.db,m.driver,cfg.ID,userID,parts[2],1)
+		case "dec": err=database.AdjustCartItemQuantity(ctx,m.db,m.driver,cfg.ID,userID,parts[2],-1)
+		case "remove": err=database.RemoveCartItem(ctx,m.db,m.driver,cfg.ID,userID,parts[2])
+		}
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"更新失败："+err.Error());return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已更新")
+		m.showCart(ctx,cfg,chatID,query.From.ID)
+	case query.Data == "cart:clear":
+		if err:=database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10));err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"清空失败");return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车已清空")
+		m.showCart(ctx,cfg,chatID,query.From.ID)
+	case query.Data == "cart:checkout":
+		m.createCartCheckout(ctx,cfg,query,chatID)
 	case query.Data == "shop:home":
 		m.showShop(ctx,cfg,chatID)
 	case strings.HasPrefix(query.Data,"shop:catpage:"):
@@ -1161,6 +1198,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"menu:"):
 		switch strings.TrimPrefix(query.Data,"menu:") {
 		case "shop": m.showShop(ctx,cfg,chatID)
+		case "cart": m.showCart(ctx,cfg,chatID,query.From.ID)
 		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",shopBackKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
 		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
@@ -1326,6 +1364,10 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		b.WriteString("\n\n订单号：" + order.OrderNo)
 		b.WriteString("\n商品：" + order.ProductName)
 		b.WriteString("\n数量：" + strconv.Itoa(order.Quantity))
+		if lines,lineErr:=database.ListCartCheckoutItems(ctx,m.db,m.driver,order.ID);lineErr==nil && len(lines)>0 {
+			b.WriteString("\n商品明细：")
+			for _,line:=range lines { b.WriteString("\n· "+line.ProductName+" × "+strconv.Itoa(line.Quantity)) }
+		}
 		b.WriteString("\n金额：" + formatPrice(order.AmountMinor, order.Currency))
 		b.WriteString("\n状态：" + orderStatusLabel(order.Status))
 		buttons := []map[string]string{{"text":"查看详情","callback_data":"order:detail:"+order.ID}}
@@ -1363,6 +1405,10 @@ func (m *Manager) showOrderDetail(ctx context.Context, cfg Config, chatID int64,
 		"\n金额：" + formatPrice(order.AmountMinor, order.Currency) +
 		"\n状态：" + orderStatusLabel(order.Status) +
 		"\n创建时间：" + order.CreatedAt
+	if lines,lineErr:=database.ListCartCheckoutItems(ctx,m.db,m.driver,order.ID);lineErr==nil && len(lines)>0 {
+		text+="\n\n商品明细："
+		for _,line:=range lines { text+="\n- "+line.ProductName+" × "+strconv.Itoa(line.Quantity)+" · "+formatPrice(line.LineTotalMinor,line.Currency) }
+	}
 	buttons := make([][]map[string]string, 0, 3)
 	switch order.Status {
 	case "pending_payment":
