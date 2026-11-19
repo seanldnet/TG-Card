@@ -87,3 +87,11 @@ func RecoverInterruptedUpstreamSyncJobs(ctx context.Context,db *sql.DB,driver st
  _,err:=db.ExecContext(ctx,q,now,now)
  return err
 }
+
+
+func GetActiveUpstreamSyncJob(ctx context.Context,db *sql.DB,driver string)(UpstreamSyncJob,error){
+ var id string
+ q:="SELECT id FROM upstream_sync_jobs WHERE status IN ('queued','running','cleaning') ORDER BY created_at DESC LIMIT 1"
+ if err:=db.QueryRowContext(ctx,q).Scan(&id);err!=nil{return UpstreamSyncJob{},err}
+ return GetUpstreamSyncJob(ctx,db,driver,id)
+}
