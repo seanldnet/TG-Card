@@ -167,8 +167,7 @@ func TestCartCheckoutWalletPaymentDebitsOnceAndSellsAllKeys(t *testing.T) {
 	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
 	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
 	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
-	if err:=UpsertTelegramUser(ctx,db,cfg.DBDriver,"user-1","buyer","","","bot-1");err!=nil{t.Fatal(err)}
-	if _,err:=db.ExecContext(ctx,"UPDATE telegram_users SET balance_atomic=10000000 WHERE telegram_user_id='user-1'");err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO telegram_users(id,telegram_user_id,username,first_name,last_name,last_seen_bot_id,balance_atomic,created_at,updated_at) VALUES('u1','user-1','buyer','','','bot-1',10000000,'now','now')");err!=nil{t.Fatal(err)}
 	a,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Wallet A",PriceMinor:250,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
 	b,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Wallet B",PriceMinor:400,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
 	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,a.ID,[]StockSecret{{Ciphertext:"a",Fingerprint:"a"}});err!=nil{t.Fatal(err)}
