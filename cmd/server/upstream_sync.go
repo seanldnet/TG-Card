@@ -83,8 +83,9 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
   var products []upstream.DujiaoProduct
   var pageErr error
   for attempt:=1;attempt<=3;attempt++ {
-   products,total,pageErr=upstream.DujiaoFetchProductsPage(ctx,settings.BaseURL,apiKey,apiSecret,page,pageSize)
-   if pageErr==nil {break}
+   pageItems,pageTotal,fetchErr:=upstream.DujiaoFetchProductsPage(ctx,settings.BaseURL,apiKey,apiSecret,page,pageSize)
+   pageErr=fetchErr
+   if pageErr==nil {products=pageItems;if pageTotal>0||page==1{total=pageTotal};break}
    if attempt<3 {select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(attempt)*500*time.Millisecond):}}
   }
   if pageErr!=nil {
