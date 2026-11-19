@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/config"
 )
 
 func TestRenderWelcomeReplacesSupportedVariables(t *testing.T) {
@@ -83,4 +84,26 @@ func TestRedeliverPaidOrderRequiresDeliveredOrder(t *testing.T) {
 	if err := m.RedeliverPaidOrder(context.Background(), item); err == nil {
 		t.Fatal("only delivered orders may use the customer re-delivery action")
 	}
+}
+
+func TestOwnerTicketLookupRejectsDifferentBot(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner isolation",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=database.CreateOrder(ctx,db,"sqlite","bot-a","user-a","chat-a",product.ID,time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-a","user-a","chat-a",order.OrderNo,"other","isolated ticket")
+ if err!=nil{t.Fatal(err)}
+ manager:=&Manager{db:db,driver:"sqlite"}
+ if _,err:=manager.getOwnerSupportTicketForBot(ctx,Config{ID:"bot-a"},ticket.ID);err!=nil {
+  t.Fatalf("ticket must be available to its own Bot: %v",err)
+ }
+ if _,err:=manager.getOwnerSupportTicketForBot(ctx,Config{ID:"bot-b"},ticket.ID);err==nil {
+  t.Fatal("different Bot must not view, reply to, confirm, or resolve this ticket")
+ }
 }
