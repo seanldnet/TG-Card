@@ -1104,7 +1104,14 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"owner:order:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		id:=strings.TrimPrefix(query.Data,"owner:order:");item,err:=database.GetOrderByID(ctx,m.db,m.driver,id)
-		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单不存在。",ownerMenuKeyboard()) } else { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status,ownerMenuKeyboard()) }
+		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单不存在。",ownerMenuKeyboard()) } else {
+			detail:="订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status
+			if lines,lineErr:=database.ListCartCheckoutItems(ctx,m.db,m.driver,item.ID);lineErr==nil&&len(lines)>0 {
+				detail+="\n商品明细："
+				for _,line:=range lines { detail+="\n- "+line.ProductName+" × "+strconv.Itoa(line.Quantity)+" · "+formatPrice(line.LineTotalMinor,line.Currency) }
+			}
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,detail,ownerMenuKeyboard())
+		}
 	case strings.HasPrefix(query.Data,"owner:product:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
 		id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboard());break };for _,p:=range products { if p.ID==id { if p.SourceType!="local" { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"上游商品库存由供应商管理，不能手动导入本地卡密。",ownerMenuKeyboard());break }; _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品："+p.Name+"\n当前库存："+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"➕ 为此商品添加库存","callback_data":"owner:stockadd:"+p.ID}},{{"text":"⬅️ 返回商品列表","callback_data":"owner:addstock"}}}});break } }
