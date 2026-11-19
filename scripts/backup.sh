@@ -24,6 +24,8 @@ echo "[2/3] Archiving the tg_card_data Docker volume..."
 docker compose run --rm --no-deps -T --entrypoint sh app -c 'tar -czf - -C /app/data .' > "$tmp_dir/tg_card_data.tar.gz"
 test -s "$tmp_dir/tg_card_data.tar.gz"
 
+(cd "$tmp_dir" && sha256sum postgres.dump tg_card_data.tar.gz > SHA256SUMS)
+
 cat > "$tmp_dir/manifest.txt" <<EOF
 created_at_utc=$timestamp
 database=PostgreSQL tgcard
