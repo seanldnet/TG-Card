@@ -1901,7 +1901,7 @@ func ownerSupportReplyKeyboard() map[string]any { return map[string]any{"keyboar
 func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config,msg Message) bool {
  if m.db==nil{return false}
  ownerID:=strconv.FormatInt(msg.From.ID,10)
- session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+ session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10))
  if err!=nil{return false}
  if strings.TrimSpace(msg.Text)=="🧾 待处理工单" { m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0);return true }
  if strings.TrimSpace(msg.Text)=="返回" { m.sendOwnerOverview(ctx,cfg,msg.Chat.ID);return true }
@@ -1942,7 +1942,7 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"消息已发送给用户，但沟通记录保存失败，请检查数据库后再继续操作。")
   return true
  }
- _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticket.ID,"confirm",30*time.Minute)
+ _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticket.ID,"confirm",30*time.Minute)
  keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"是，结单","callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":"否，继续沟通","callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
  _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已发送给用户。是否结单？",keyboard)
  return true
