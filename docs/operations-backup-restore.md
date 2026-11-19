@@ -1,0 +1,49 @@
+# Backup and restore (Docker Compose)
+
+These scripts back up and restore both persistent data components used by the Compose deployment:
+
+- PostgreSQL database `tgcard` (custom-format `pg_dump` archive).
+- Docker volume mounted at `/app/data` in the application container (`tg_card_data`), including the JWT signing key, encryption key and uploaded files.
+
+## Create a backup
+
+Run from the directory containing `docker-compose.yml`:
+
+```bash
+bash scripts/backup.sh
+```
+
+The script writes a timestamped directory under `./backups` and applies restrictive file permissions. Keep the backup directory off-host and encrypted according to your organization's retention policy. The default retention is seven local backup directories.
+
+Optional environment variables:
+
+- `BACKUP_DIR`: backup destination (default `./backups`).
+- `BACKUP_KEEP`: number of newest backups to retain (default `7`, minimum `1`).
+
+A successful run must produce both `postgres.dump` and `tg_card_data.tar.gz`. Store the pair together; restoring only one component can make encrypted credentials or uploaded assets unavailable.
+
+## Restore a backup
+
+**Restore is destructive.** It stops the application, overwrites the PostgreSQL database and replaces all contents of the application data volume. Take a fresh backup of the current system first. Do not run while orders, payments or procurement jobs are being processed.
+
+Interactive restore:
+
+```bash
+bash scripts/restore.sh ./backups/tg-card-YYYYMMDDTHHMMSSZ
+```
+
+Non-interactive restore (explicit confirmation):
+
+```bash
+bash scripts/restore.sh ./backups/tg-card-YYYYMMDDTHHMMSSZ --yes
+```
+
+The database container remains online while the app is stopped. The script restores PostgreSQL, replaces `/app/data`, then starts the application. Afterward, verify `GET /api/health`, administrator login, Bot connectivity, payment watcher state, upstream status, recent orders and uploaded files before reopening sales.
+
+## Operational notes
+
+- Run backups on a host with Docker Compose access and enough free disk space for both archives.
+- The PostgreSQL archive and app data archive may contain sensitive business data and cryptographic keys. Restrict access and encrypt off-host copies.
+- A backup is not verified until a restore has been tested against an isolated deployment.
+- The scripts do not stop PostgreSQL during backup; `pg_dump` provides a transactionally consistent database snapshot. The application data volume is archived separately, so schedule backups during a quiet window for the strongest cross-component consistency.
+- The default Compose project volume name is managed by Docker Compose; the scripts access it through the `app` service mount rather than guessing the generated Docker volume name.
