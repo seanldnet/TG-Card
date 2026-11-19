@@ -54,6 +54,13 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		if category.ParentID > 0 {
 			if parent := categoryNames[category.ParentID]; parent != "" { name = parent + " / " + name }
 		}
+		upstreamID:=strconv.FormatInt(category.ID,10)
+		categoryFingerprint,fpErr:=upstream.DujiaoCategoryFingerprint(category)
+		if fpErr!=nil{return summary,fpErr}
+		categoryFingerprint=fmt.Sprintf("%s|resolved_name=%s",categoryFingerprint,name)
+		unchanged,seenErr:=database.MarkUpstreamCategorySeenIfUnchanged(ctx,a.db,a.driver,upstreamID,categoryFingerprint,fmt.Sprintf("%d",time.Now().UTC().UnixNano()))
+		if seenErr!=nil{return summary,seenErr}
+		if unchanged {continue}
 		iconPath := ""
 		preserveIcon := false
 		if strings.TrimSpace(category.Icon) != "" {
@@ -65,9 +72,9 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			} else { iconPath = localIcon }
 		}
 		categoryRecords = append(categoryRecords, database.UpstreamCategoryRecord{
-			UpstreamID: strconv.FormatInt(category.ID, 10),
+			UpstreamID: upstreamID,
 			ParentID: strconv.FormatInt(category.ParentID, 10),
-			Name: name, Icon: iconPath, PreserveIcon: preserveIcon, SortOrder: -category.SortOrder,
+			Name: name, Icon: iconPath, PreserveIcon: preserveIcon, Fingerprint: categoryFingerprint, SortOrder: -category.SortOrder,
 		})
 	}
  batchID:=fmt.Sprintf("%d",time.Now().UTC().UnixNano())
@@ -132,7 +139,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  if failedPages>0{return summary,fmt.Errorf("有 %d 个商品分页处理失败；为避免目录不完整，未执行下架收尾",failedPages)}
  if err:=ctx.Err();err!=nil{return summary,err}
  if err:=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,nil,nil,true);err!=nil{return summary,a.failUpstreamSync(ctx,"完成上游目录收尾失败："+err.Error())}
- summary.Categories=len(categoryRecords)
+ summary.Categories=len(categories)
  summary.SyncedAt=time.Now().UTC().Format(time.RFC3339Nano)
  if len(imageWarnings)>0{summary.Warning=strings.Join(imageWarnings,"；")}
  if summary.ImagesFailed>len(imageWarnings){summary.Warning+=fmt.Sprintf("；另有 %d 张图片下载失败",summary.ImagesFailed-len(imageWarnings))}
