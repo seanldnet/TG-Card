@@ -20,7 +20,7 @@ Optional environment variables:
 - `BACKUP_DIR`: backup destination (default `./backups`).
 - `BACKUP_KEEP`: number of newest backups to retain (default `7`, minimum `1`).
 
-A successful run must produce both `postgres.dump` and `tg_card_data.tar.gz`. Store the pair together; restoring only one component can make encrypted credentials or uploaded assets unavailable.
+A successful run must produce `postgres.dump`, `tg_card_data.tar.gz`, and `SHA256SUMS`. The restore script verifies both archives against the checksum manifest before any destructive operation. Store the complete directory together; restoring only one component can make encrypted credentials or uploaded assets unavailable.
 
 ## Restore a backup
 
