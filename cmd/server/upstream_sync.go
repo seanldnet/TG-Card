@@ -257,6 +257,12 @@ func redactUpstreamError(value, apiKey, apiSecret string) string {
 	return value
 }
 
+func isActiveUpstreamJobConflict(err error) bool {
+ if err==nil{return false}
+ message:=strings.ToLower(err.Error())
+ return strings.Contains(message,"idx_upstream_sync_single_active_job")||strings.Contains(message,"unique constraint failed")||strings.Contains(message,"duplicate key value")
+}
+
 func (a *application) startUpstreamSync(trigger string) (string, error) {
 	a.upstreamJobMu.Lock()
 	defer a.upstreamJobMu.Unlock()
@@ -265,7 +271,7 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 	settings,settingsErr:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
 	if settingsErr!=nil{return "",settingsErr}
 	job := database.UpstreamSyncJob{ID:jobID, Status:"queued", BatchSize:settings.SyncBatchSize, DelayMS:settings.SyncBatchDelayMS, TriggerType:trigger}
-	if err := database.CreateUpstreamSyncJob(context.Background(), a.db, a.driver, job); err != nil { return "", err }
+	if err := database.CreateUpstreamSyncJob(context.Background(), a.db, a.driver, job); err != nil { if isActiveUpstreamJobConflict(err){return "",errUpstreamSyncInProgress}; return "", err }
 	ctx, cancel := context.WithCancel(context.Background())
 	a.upstreamJobCancel = cancel
 	a.upstreamJobID = jobID
@@ -338,7 +344,7 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
  if err:=database.SaveUpstreamSettings(context.Background(),a.db,a.driver,settings);err!=nil{a.upstreamSyncMu.Unlock();return "",err}
  jobID:=fmt.Sprintf("upstream-cleanup-%d",time.Now().UTC().UnixNano())
  job:=database.UpstreamSyncJob{ID:jobID,Status:"cleaning",BatchSize:settings.SyncBatchSize,DelayMS:settings.SyncBatchDelayMS,TriggerType:trigger}
- if err:=database.CreateUpstreamSyncJob(context.Background(),a.db,a.driver,job);err!=nil{a.upstreamSyncMu.Unlock();return "",err}
+ if err:=database.CreateUpstreamSyncJob(context.Background(),a.db,a.driver,job);err!=nil{a.upstreamSyncMu.Unlock();if isActiveUpstreamJobConflict(err){return "",errUpstreamSyncInProgress};return "",err}
  go func(){
   defer a.upstreamSyncMu.Unlock()
   counts,cleanupErr:=database.ClearUpstreamCatalogRows(context.Background(),a.db,a.driver)
