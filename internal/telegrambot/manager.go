@@ -1548,10 +1548,36 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 			return err
 		}
 	}
+	groupedKeysMessage:=""
+	if mode=="card" || mode=="file_card" {
+		groups,groupErr:=database.ListCartCheckoutDeliveryGroups(ctx,m.db,m.driver,item.Order.ID)
+		if groupErr!=nil {
+			_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,"load cart delivery groups: "+groupErr.Error())
+			return fmt.Errorf("load cart delivery groups: %w",groupErr)
+		}
+		if len(groups)>0 {
+			groupTexts:=make([]string,0,len(groups))
+			for _,group:=range groups {
+				keys:=make([]string,0,len(group.SecretCiphertexts))
+				for _,ciphertext:=range group.SecretCiphertexts {
+					key,decryptErr:=m.decrypt(ciphertext)
+					if decryptErr!=nil {
+						_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,"decrypt grouped card key: "+decryptErr.Error())
+						return decryptErr
+					}
+					keys=append(keys,key)
+				}
+				groupTexts=append(groupTexts,fmt.Sprintf("%s × %d\n卡密：\n%s",group.ProductName,group.Quantity,strings.Join(keys,"\n")))
+			}
+			groupedKeysMessage=strings.Join(groupTexts,"\n\n")
+		}
+	}
+	cardDeliveryText:=strings.Join(deliveredKeys,"\n")
+	if groupedKeysMessage!="" { cardDeliveryText=groupedKeysMessage }
 	var deliveryErr error
 	switch mode {
 	case "card":
-		message := "订单：" + item.Order.OrderNo + "\n卡密：\n" + strings.Join(deliveredKeys,"\n") + "\n请妥善保存，不要转发给他人。"
+		message := "订单：" + item.Order.OrderNo + "\n" + cardDeliveryText + "\n请妥善保存，不要转发给他人。"
 		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,message)
 	case "fixed_text":
 		if strings.TrimSpace(config.Text)=="" { deliveryErr=fmt.Errorf("fixed text delivery is not configured") } else {
@@ -1589,7 +1615,7 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
 			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
 			if deliveryErr==nil {
-				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+strings.Join(deliveredKeys,"\n")+"\n请妥善保存，不要转发给他人。")
+				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
 			}
 		}
 	default:
