@@ -7,28 +7,21 @@
 - 验证：PR #61 head Go/Admin/Security 已通过；main Go/Admin/Security/Docker Publish 已触发，镜像发布结果与 digest 待核验。PR #62 新增 PostgreSQL 服务和并发测试，需由新 PR CI 验证。
 - Telegram 真机验收仍待项目所有者执行；自动化并发测试不替代链上付款、Bot 交付的真实验收。
 
-## 2026-11-20 — 购物车基线重整与私聊访问隔离补强（开发中）
+## 2026-11-20 — PR #61 购物车统一结算合并并发布
 
-- 基线：从最新 main 69ccab358c1bfefcf5ba79fcb04df5d9b17f48c1 建立独立开发分支，移植原 PR #59 的购物车代码、测试及迁移，避免旧 PR 与文档基线更新发生冲突。
-- 安全修复：购物车 inline callback 与消息入口均限制为私聊。群聊中的 /cart、/cart@bot 和“🛒 我的购物车”只返回私聊提示，不访问购物车数据；新增对应回归测试。此前消息处理器已忽略一般群聊消息，因此这项补强主要提供明确反馈，并不意味着旧版本曾在群聊暴露购物车内容。
-- 业务范围：本地 USDT card / file_card 商品；单笔统一订单、单次钱包/链上支付、逐商品订单快照与分组卡密交付。上游商品、其他交付类型、多币种混合及不同交付配置仍拒绝统一结算。
-- 数据库：沿用迁移 0049_shopping_cart.sql、0050_cart_checkout.sql，无新增迁移或环境变量；启动时自动迁移。
-- 验证：原 PR #59 head 的 Go CI、Admin CI、Security 均成功；由于本次重整并增加群聊入口保护，新分支 CI 必须重新运行，不能沿用旧 head 的检查结果。合并后代码路径会触发 Go CI 与 GHCR Docker Publish。
-- 发布/验收：尚未合并、尚未生成新镜像、尚未生产部署；Telegram 私聊/群聊、余额付款、TRC20 付款、库存并发与交付真机验收待完成。
+- PR #61 已 Squash Merge 至 main，merge commit 59337349d36937a467e673e427f571ec276c17ce；旧 PR #59 已关闭并由该 PR 替代。
+- 功能：按 Bot + Telegram 用户隔离的持久化购物车；本地 USDT card/file_card 商品多商品统一结算；事务内重新校验商品、价格、来源、币种、交付配置和库存；预留全部卡密并保存逐商品快照；余额与 TRC20 复用现有单笔订单支付流程；支付后按商品分组交付卡密。
+- 私聊边界：购物车回调和 /cart、/cart@bot、回复键盘文本入口均限制在私聊；群聊请求返回提示，不访问购物车数据。
+- 数据库迁移：0049_shopping_cart.sql、0050_cart_checkout.sql；随应用启动自动执行，无新增生产环境变量或手工 SQL。
+- 验证：PR #61 head Go/Admin/Security 全部成功；main Go CI #44636933083、Admin CI #44636932944、Security #44636932940、Docker Publish #44636932941 全部成功。
+- 镜像：GHCR 多架构 latest 与提交标签均已推送；digest sha256:09f9b2c7ee23037ad9c03e26d1b490bdb853988958e6e7804e224bc855039f7d。生产部署与 Telegram 真机验收未确认。
 
-## 2026-11-20 — main 文档基线校准（文档版本 2.2.17）
+## 2026-11-20 — PostgreSQL 购物车并发集成测试（PR #62 开发中）
 
-- 核对范围：`main` 当前 HEAD、PR #57/#58 合并记录、PR #59 开放分支、GitHub Actions 与 GHCR 发布记录；本次仅修改文档，不修改业务代码、数据库迁移、配置或部署文件。
-- 事实基线：`main@420427cba287ec297998f8ab02c85fb65c3b9bd7`。该 HEAD 提交信息为 docs(upstream): align PR D completion and PR E live-test status；其父提交为 `ef63ef56f1ee300b1750ff8ee8d5827bf9a4e56c`。因此旧元信息中的 `8260a9c4775726587c33100c939eb78018de8cb3` 已过期；交接提供的 `0b0f0514` 也不是当前 main HEAD。
-- PR 状态：PR #57 已合并，merge commit `41389825d6edef83330c4e28c7b5662e23f932a7`；PR #58 已合并，merge commit `9a4faafd11eaaee0a3d82feb9161ee63d424ad25`。PR #58 仅新增真实商户联调操作手册，不代表已完成真实商户连接、扣款、回调、采购交付或失败退款验收。
-- 当前 main 工作流：Admin frontend CI Run [#44604751902](https://github.com/seanldnet/TG-Card/actions/runs/44604751902) 对应 HEAD `420427c` 并成功。该 HEAD 是文档提交，不据此声称产生新业务镜像。
-- 当前可确认的最近业务镜像：PR #57 merge commit `41389825d6edef83330c4e28c7b5662e23f932a7` 的 Go CI [#44603593840](https://github.com/seanldnet/TG-Card/actions/runs/44603593840)、Admin CI [#44603593868](https://github.com/seanldnet/TG-Card/actions/runs/44603593868)、Security [#44603593955](https://github.com/seanldnet/TG-Card/actions/runs/44603593955)、Docker Publish [#44603594008](https://github.com/seanldnet/TG-Card/actions/runs/44603594008) 均成功；GHCR 多架构 latest digest 为 `sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署未由仓库 CI 证明。
-- PR #59 购物车：仍为 Open，分支 `feat/cart-unified-checkout-mainline`，head `5e0681b54fa2080b9e2ff65142edb6a61b9ebc87`，base 为本次核对的 main HEAD。Go test [#44634526556](https://github.com/seanldnet/TG-Card/actions/runs/44634526556)、Admin build [#44634526262](https://github.com/seanldnet/TG-Card/actions/runs/44634526262)、Security [#44634526351](https://github.com/seanldnet/TG-Card/actions/runs/44634526351) 均成功；仍未合并、未发布、未完成 Telegram 真机验收。购物车相关迁移 0049/0050 及代码只存在于 PR 分支，不计入 main 当前功能。
-- 专项文档复核：`docs/upstream-integration.md`、`docs/upstream-procurement.md`、`docs/payment-delivery.md`、`docs/support-tickets.md` 已检查。当前 PR E 真实验收边界、PR S 镜像 digest、采购 uncertain/退款红线及 Owner C1–C4 待验收状态与现有证据一致；本次没有机制或代码变化，不改写这些专项规则。
-- 数据库迁移/配置/部署影响：无。本次不新增迁移、不新增环境变量、不要求手工 SQL。
-- 兼容性与风险：仅修正文档事实基线；PR #59 未合并前，main 不具备其购物车功能。镜像发布、生产部署、真实商户联调和 Telegram 真机验收分别记录，不相互替代。
-- 验证：复核 GitHub main HEAD、PR 元数据、PR #59 head checks、main Admin CI 与 PR #57 发布工作流；本次为文档变更，不触发业务测试结论。
-
+- 为补足 SQLite 无法验证 PostgreSQL 行锁语义的缺口，Go CI 增加临时 PostgreSQL 16 服务。
+- 新增并发集成测试：两个独立 Bot/Telegram 用户同时竞争同一件卡密库存，必须且仅有一个订单成功预留；失败方购物车保留，不能重复占用库存。
+- 不修改运行时业务逻辑、数据库迁移或生产环境配置；TEST_POSTGRES_DSN 仅由 CI job 注入。
+- PR #62 的 PostgreSQL 服务已启动，Go vet 与全量 go test 已通过；最终构建和完整 PR checks 仍待完成。Telegram 真机支付/交付验收仍独立待执行。
 ## 2026-11-20 — PR E Dujiao-Next 真实商户联调操作手册（PR #58 已合并）
 
 - PR #58 已 Squash Merge 至 main，merge commit 9a4faafd11eaaee0a3d82feb9161ee63d424ad25；独立分支 docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。

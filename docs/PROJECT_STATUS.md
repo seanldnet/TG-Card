@@ -4,27 +4,21 @@
 - PR #61 head Go/Admin/Security 均成功；main Go CI、Admin CI、Security 与 Docker Publish 已触发，镜像 digest 尚待成功发布后核实。
 - 购物车关键锁逻辑依赖 PostgreSQL 的 FOR UPDATE / SKIP LOCKED，而此前购物车测试仅使用 SQLite。新增 PostgreSQL 16 CI 服务与并发库存争抢集成测试，验证同一件库存面对两个 Bot/用户同时结算时只允许一个成功，失败方购物车保留且不会重复预留。
 - 本次只增加测试与 CI PostgreSQL 服务，不修改运行时业务逻辑、数据库迁移或生产环境变量；测试数据库为 GitHub Actions 临时服务。
-## 2026-11-20 — 购物车 PR 基线重整与私聊隔离补强（开发中）
+## 2026-11-20 — main 合并与镜像发布基线校准（文档版本 2.2.19）
 
-- 购物车实现从旧基线重新移植到最新 main，保留原 PR #59 的数据库事务、逐商品订单快照、库存预留、余额/链上单笔付款和分组卡密交付实现；新分支基于当前 main，避免旧 PR 的文档冲突。
-- 二次审查补强：购物车回调和 /cart、 “🛒 我的购物车”消息入口均限制为 Telegram 私聊；群聊触发时仅返回私聊提示，不查询或展示购物车。新增回归测试覆盖 /cart、/cart@bot 和文本入口。
-- 范围仍限定为本地 USDT card / file_card 商品；上游商品、非卡密交付、混币和交付配置不一致继续拒绝统一结算。库存/商品校验失败时事务回滚并保留购物车。
-- 新分支 Go/Admin/Security CI 待重新运行；合并后由路径过滤触发 Go CI 与 GHCR 多架构 Docker Publish。Telegram 真机验收仍待项目所有者执行。
-- 数据库迁移沿用 0049_shopping_cart.sql 与 0050_cart_checkout.sql；不新增环境变量，不要求手工 SQL。自动迁移仍随应用启动执行。
+- 当前源码基线：main@59337349d36937a467e673e427f571ec276c17ce。PR #60 文档基线校准已合并（69ccab358c1bfefcf5ba79fcb04df5d9b17f48c1）；PR #61 Telegram 购物车与统一结算已合并（59337349d36937a467e673e427f571ec276c17ce）。
+- PR #59 旧分支已关闭并由 PR #61 替代；购物车迁移 0049/0050、Bot 菜单/交互、单笔订单和分组卡密交付现已进入 main。Telegram 私聊/群聊、余额付款、TRC20 付款与真实交付验收仍需项目所有者执行。
+- PR #61 head Go/Admin/Security 检查全部成功；合并后 main Go CI [#44636933083](https://github.com/seanldnet/TG-Card/actions/runs/44636933083)、Admin CI [#44636932944](https://github.com/seanldnet/TG-Card/actions/runs/44636932944)、Security [#44636932940](https://github.com/seanldnet/TG-Card/actions/runs/44636932940)、Docker Publish [#44636932941](https://github.com/seanldnet/TG-Card/actions/runs/44636932941) 全部成功。
+- GHCR 多架构镜像已发布：ghcr.io/seanldnet/tg-card:latest 与固定提交标签 59337349d36937a467e673e427f571ec276c17ce；manifest digest 为 sha256:09f9b2c7ee23037ad9c03e26d1b490bdb853988958e6e7804e224bc855039f7d。生产服务器是否已拉取/部署该镜像未由 CI 证明。
+- PR #62 PostgreSQL 并发集成测试仍在开发：Go CI 增加临时 PostgreSQL 16 服务，验证两个独立 Bot/用户争抢同一件卡密时只允许一个结算成功，失败方购物车保留。CI 验证完成前不合并。
+- 数据库影响：PR #61 新增迁移 0049/0050，随应用启动自动执行；PR #62 不新增迁移、不改运行时逻辑、不增加生产环境变量或手工 SQL。
+- 专项文档边界保持：PR E 真实商户联调未执行；Owner C1–C4、生产部署和真实 Telegram 验收分别跟踪，不以 CI 或镜像发布代替。
 
-## 2026-11-20 — main 文档基线校准（文档版本 2.2.17）
-
-- 核对范围：`main` 当前 HEAD、PR #57/#58 合并记录、PR #59 开放分支、GitHub Actions 与 GHCR 发布记录；本次仅修改文档，不修改业务代码、数据库迁移、配置或部署文件。
-- 事实基线：`main@420427cba287ec297998f8ab02c85fb65c3b9bd7`。该 HEAD 提交信息为 docs(upstream): align PR D completion and PR E live-test status；其父提交为 `ef63ef56f1ee300b1750ff8ee8d5827bf9a4e56c`。因此旧元信息中的 `8260a9c4775726587c33100c939eb78018de8cb3` 已过期；交接提供的 `0b0f0514` 也不是当前 main HEAD。
-- PR 状态：PR #57 已合并，merge commit `41389825d6edef83330c4e28c7b5662e23f932a7`；PR #58 已合并，merge commit `9a4faafd11eaaee0a3d82feb9161ee63d424ad25`。PR #58 仅新增真实商户联调操作手册，不代表已完成真实商户连接、扣款、回调、采购交付或失败退款验收。
-- 当前 main 工作流：Admin frontend CI Run [#44604751902](https://github.com/seanldnet/TG-Card/actions/runs/44604751902) 对应 HEAD `420427c` 并成功。该 HEAD 是文档提交，不据此声称产生新业务镜像。
-- 当前可确认的最近业务镜像：PR #57 merge commit `41389825d6edef83330c4e28c7b5662e23f932a7` 的 Go CI [#44603593840](https://github.com/seanldnet/TG-Card/actions/runs/44603593840)、Admin CI [#44603593868](https://github.com/seanldnet/TG-Card/actions/runs/44603593868)、Security [#44603593955](https://github.com/seanldnet/TG-Card/actions/runs/44603593955)、Docker Publish [#44603594008](https://github.com/seanldnet/TG-Card/actions/runs/44603594008) 均成功；GHCR 多架构 latest digest 为 `sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署未由仓库 CI 证明。
-- PR #59 旧购物车分支已关闭并由 PR #61 替代；PR #61 已合并至 main，merge commit `59337349d36937a467e673e427f571ec276c17ce`。购物车迁移 0049/0050 与实现现已进入 main；Telegram 真机验收仍待项目所有者执行。
-- 专项文档复核：`docs/upstream-integration.md`、`docs/upstream-procurement.md`、`docs/payment-delivery.md`、`docs/support-tickets.md` 已检查。当前 PR E 真实验收边界、PR S 镜像 digest、采购 uncertain/退款红线及 Owner C1–C4 待验收状态与现有证据一致；本次没有机制或代码变化，不改写这些专项规则。
-- 数据库迁移/配置/部署影响：无。本次不新增迁移、不新增环境变量、不要求手工 SQL。
-- 兼容性与风险：仅修正文档事实基线；PR #59 未合并前，main 不具备其购物车功能。镜像发布、生产部署、真实商户联调和 Telegram 真机验收分别记录，不相互替代。
-- 验证：复核 GitHub main HEAD、PR 元数据、PR #59 head checks、main Admin CI 与 PR #57 发布工作流；本次为文档变更，不触发业务测试结论。
-
+> **文档元信息**
+> - 最后更新时间：2026-11-20
+> - 文档版本：2.2.19
+> - 源码核对基线：main 分支，commit `59337349d36937a467e673e427f571ec276c17ce`
+> - 本次文档更新：记录 PR #61 合并与 GHCR digest，并跟踪 PR #62 PostgreSQL 并发测试
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
@@ -175,7 +169,7 @@ flowchart LR
 | 仪表盘 | 部分实现 | 提供工作台/分析页面；具体指标以页面和 API 实际返回为准，不应把规划中的全部经营指标视为已交付。 |
 | 机器人管理 | 已实现 | 添加/编辑/删除 Bot、Token 验证与加密保存、启停、欢迎内容、购买须知、介绍、Owner ID、客服/群组链接、运行状态、单 Bot 重启。 |
 | 商品与分类 | 已实现 | 分类管理、商品增删改、上下架、商品信息、价格及交付配置、库存卡密导入。 |
-| 购物车与多商品统一结算 | main 尚未合并（重整分支开发中） | PR #59 分支 `feat/cart-unified-checkout-mainline` 已实现本地 card/file_card 商品购物车及单笔订单结算；当前 main 不包含迁移 0049/0050 和对应代码。PR head `5e0681b54fa2080b9e2ff65142edb6a61b9ebc87` 的 Go test、Admin build、Security checks 均成功；Telegram 真机验收待执行。不得将分支能力视为 main 已交付功能。 |
+| 购物车与多商品统一结算 | 已实现（PR #61 已合并，真机待验收） | main 已包含迁移 0049/0050、按 Bot/用户隔离的购物车、单笔多商品订单、库存事务预留、余额/TRC20 付款复用和逐商品卡密交付；仅本地 USDT card/file_card 商品可统一结算。Telegram 真机验收待项目所有者执行。 |
 | 订单管理 | 已实现 | 订单列表、订单详情、支付状态与交付状态查看、清理入口、管理员重试发货；列表分页。 |
 | 支付流水 | 已实现 | 链上交易列表、状态筛选/搜索、已匹配/未匹配/需人工核对状态、人工匹配订单及备注。 |
 | 支付设置 | 已实现 | 后台设置 TRON 收款地址、TronGrid API Key、USDT 合约及启停；API Key 加密存储、脱敏显示，保存后更新运行配置。 |
