@@ -80,10 +80,11 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  pageSize:=settings.SyncBatchSize
  if pageSize<20||pageSize>50{pageSize=25}
  total:=0
+ maxPages:=(100000+pageSize-1)/pageSize
  processedProducts:=0
  consecutiveFailures:=0
  failedPages:=0
- for page:=1;page<=4000;page++ {
+ for page:=1;page<=maxPages;page++ {
   if err:=ctx.Err();err!=nil{return summary,err}
   var products []upstream.DujiaoProduct
   var pageErr error
