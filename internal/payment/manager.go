@@ -21,6 +21,9 @@ type Manager struct {
 	bots *telegrambot.Manager
 	mu sync.RWMutex
 	chain *tron.Client
+	lastScanAt time.Time
+	lastError string
+	lastErrorAt time.Time
 }
 
 func NewManager(cfg config.Config, db *sql.DB, driver string, bots *telegrambot.Manager) (*Manager, error) {
@@ -55,6 +58,10 @@ func (m *Manager) Run(ctx context.Context) {
 	delay := 15 * time.Second
 	for {
 		err := m.scan(ctx)
+		m.mu.Lock()
+		m.lastScanAt = time.Now().UTC()
+		if err != nil { m.lastError = err.Error(); m.lastErrorAt = m.lastScanAt } else { m.lastError = ""; m.lastErrorAt = time.Time{} }
+		m.mu.Unlock()
 		if ctx.Err() != nil {
 			return
 		}
@@ -75,6 +82,22 @@ func (m *Manager) Run(ctx context.Context) {
 			if delay > 5*time.Minute { delay = 5*time.Minute }
 		}
 	}
+}
+
+type RuntimeStatus struct {
+ Enabled bool `json:"enabled"`
+ LastScanAt string `json:"lastScanAt,omitempty"`
+ LastError string `json:"lastError,omitempty"`
+ LastErrorAt string `json:"lastErrorAt,omitempty"`
+}
+
+func (m *Manager) Status() RuntimeStatus {
+ m.mu.RLock()
+ defer m.mu.RUnlock()
+ out:=RuntimeStatus{Enabled:m.chain!=nil,LastError:m.lastError}
+ if !m.lastScanAt.IsZero(){out.LastScanAt=m.lastScanAt.Format(time.RFC3339)}
+ if !m.lastErrorAt.IsZero(){out.LastErrorAt=m.lastErrorAt.Format(time.RFC3339)}
+ return out
 }
 
 func (m *Manager) scan(ctx context.Context) error {

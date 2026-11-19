@@ -20,6 +20,7 @@ type Config struct {
 	TronGridAPIKey string
 	TronReceiveAddress string
 	TronUSDTContract string
+	TrustedProxyCIDRs string
 }
 
 func Load() (Config, error) {
@@ -49,6 +50,7 @@ func Load() (Config, error) {
 		TronGridAPIKey: strings.TrimSpace(os.Getenv("TRONGRID_API_KEY")),
 		TronReceiveAddress: strings.TrimSpace(os.Getenv("TRON_RECEIVE_ADDRESS")),
 		TronUSDTContract: env("TRON_USDT_CONTRACT", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"),
+		TrustedProxyCIDRs: strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")),
 	}, nil
 }
 

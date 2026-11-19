@@ -47,6 +47,7 @@ type RuntimeStatus struct {
 	LastUpdateAt string `json:"lastUpdateAt,omitempty"`
 	LastError string `json:"lastError,omitempty"`
 	LastErrorAt string `json:"lastErrorAt,omitempty"`
+	ConsecutiveErrors int `json:"consecutiveErrors,omitempty"`
 }
 
 type Manager struct {
@@ -432,6 +433,7 @@ func (m *Manager) RuntimeStatuses() []RuntimeStatus {
 
 func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
 	status := RuntimeStatus{BotID: cfg.ID, Username: cfg.Username, State: "starting", Running: true}
+	consecutiveErrors := 0
 	m.setWorkerRuntimeStatus(cfg.ID, current, status)
 	defer func() {
 		status.State = "stopped"
@@ -445,6 +447,8 @@ func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
 		updates, err := m.getUpdates(ctx, cfg.Token, offset)
 		if err != nil {
 			if ctx.Err() != nil { return }
+			consecutiveErrors++
+			status.ConsecutiveErrors = consecutiveErrors
 			status.State = "degraded"
 			status.Running = true
 			status.LastError = truncateButtonText(err.Error(), 300)
@@ -458,6 +462,8 @@ func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
 			if !wait(ctx, 5*time.Second) { return }
 			continue
 		}
+		consecutiveErrors = 0
+		status.ConsecutiveErrors = 0
 		status.State = "online"
 		status.Running = true
 		status.LastPollAt = time.Now().UTC().Format(time.RFC3339)

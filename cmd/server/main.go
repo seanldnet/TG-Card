@@ -48,6 +48,11 @@ type application struct {
 	upstreamJobMu sync.Mutex
 	upstreamJobCancel context.CancelFunc
 	upstreamJobID string
+	trustedProxyCIDRs []net.IPNet
+	rateLimitMu sync.Mutex
+	rateLimitHits map[string][]time.Time
+	botAlertMu sync.Mutex
+	botAlertState map[string]string
 	procurementAPI upstream.ProcurementAPI
 	procurementNotify func(context.Context,string,string)
 	dispatchProcurement func(context.Context,string) error
@@ -129,6 +134,8 @@ type userInfo struct {
 func main() {
 	cfg, err := config.Load()
 	if err != nil { log.Fatal(err) }
+	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
+	if err != nil { log.Fatalf("invalid TRUSTED_PROXY_CIDRS: %v", err) }
 
 	ctx := context.Background()
 	db, err := database.Open(ctx, cfg)
@@ -186,22 +193,24 @@ func main() {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time)}
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
 	go app.runUpstreamProcurementScheduler(ctx)
 	go app.runReconciliationScheduler(ctx)
+	go app.monitorBotHealth(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
+	api.HandleFunc("GET /api/health/detailed", app.detailedHealth)
 	api.HandleFunc("POST /api/auth/login", app.login)
 	api.HandleFunc("POST /api/auth/logout", app.logout)
-	api.HandleFunc("POST /api/admin/password", app.changePassword)
+	api.HandleFunc("POST /api/admin/password", app.sensitiveRateLimit("admin-password", 5, 5*time.Minute, app.changePassword))
 	api.HandleFunc("GET /api/bots", app.listBots)
 	api.HandleFunc("GET /api/bots/runtime", app.listBotRuntime)
 	api.HandleFunc("GET /api/broadcasts", app.listBroadcastTasks)
-	api.HandleFunc("POST /api/broadcasts", app.createBroadcastTask)
+	api.HandleFunc("POST /api/broadcasts", app.sensitiveRateLimit("broadcast-create", 5, 5*time.Minute, app.createBroadcastTask))
 	api.HandleFunc("POST /api/bots/{id}/restart", app.restartBotRuntime)
 	api.HandleFunc("POST /api/bots", app.createBot)
 	api.HandleFunc("PUT /api/bots/owner", app.updateBotOwnerID)
@@ -226,7 +235,7 @@ func main() {
 	api.HandleFunc("DELETE /api/redemption-codes/{id}", app.deleteRedemptionCode)
 	api.HandleFunc("POST /api/orders/cleanup", app.clearOrderData)
 	api.HandleFunc("GET /api/users", app.listTelegramUsers)
-	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
+	api.HandleFunc("POST /api/users/{id}/balance", app.sensitiveRateLimit("wallet-balance-adjust", 10, 5*time.Minute, app.adjustTelegramUserBalance))
 	api.HandleFunc("GET /api/users/{id}/wallet", app.listUserWalletLedger)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
@@ -234,13 +243,13 @@ func main() {
 	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
 	api.HandleFunc("POST /api/reconciliation/balance-check", app.runBalanceReconciliationNow)
-	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
+	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.sensitiveRateLimit("payment-manual-reconcile", 10, 5*time.Minute, app.reconcilePaymentTransaction))
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.updateSiteSettings)
 	api.HandleFunc("POST /api/settings/site/test-email", app.testSiteEmail)
 	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
-	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
+	api.HandleFunc("PUT /api/settings/payment", app.sensitiveRateLimit("payment-settings", 10, 5*time.Minute, app.updatePaymentSettings))
 	api.HandleFunc("GET /api/upstream/config", app.getUpstreamSettings)
 	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
@@ -251,10 +260,10 @@ func main() {
 	api.HandleFunc("POST /api/upstream/sync/{id}/cancel", app.cancelUpstreamSyncJob)
 	api.HandleFunc("POST /api/v1/upstream/callback", app.upstreamProcurementCallback)
 	api.HandleFunc("GET /api/upstream/procurements", app.listUpstreamProcurements)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.retryUpstreamProcurement)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/refund", app.refundUpstreamProcurement)
+	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.sensitiveRateLimit("upstream-procurement-retry", 5, 5*time.Minute, app.retryUpstreamProcurement))
+	api.HandleFunc("POST /api/upstream/procurements/{id}/refund", app.sensitiveRateLimit("upstream-procurement-refund", 5, 5*time.Minute, app.refundUpstreamProcurement))
 	api.HandleFunc("GET /api/upstream/procurements/uncertain", app.listUncertainProcurements)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/resolve", app.resolveUncertainProcurement)
+	api.HandleFunc("POST /api/upstream/procurements/{id}/resolve", app.sensitiveRateLimit("upstream-procurement-resolve", 5, 5*time.Minute, app.resolveUncertainProcurement))
 	api.HandleFunc("GET /api/upstream/fund-checks", app.listSupplierFundChecks)
 	api.HandleFunc("GET /api/finance/exceptions", app.listFinanceExceptions)
 	api.HandleFunc("GET /api/finance/exceptions/count", app.countFinanceExceptions)
@@ -310,7 +319,7 @@ func (a *application) updateRechargeBonusSettings(w http.ResponseWriter,r *http.
  var rule database.WalletRechargeBonusRule
  if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&rule);err!=nil{writeError(w,http.StatusBadRequest,"充值赠送规则格式无效");return}
  if err:=database.SaveWalletRechargeBonusRule(r.Context(),a.db,a.driver,rule);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
- database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.recharge_bonus.update","wallet:recharge_bonus",clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t tiers=%d",rule.Enabled,len(rule.Tiers)))
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.recharge_bonus.update","wallet:recharge_bonus",a.clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t tiers=%d",rule.Enabled,len(rule.Tiers)))
  saved,err:=database.GetWalletRechargeBonusRule(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"保存成功但读取配置失败");return}
  writeSuccess(w,http.StatusOK,saved)
 }
@@ -371,7 +380,7 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "TRON 配置校验失败："+err.Error()); return
 	}
 	a.botManager.SetPaymentConfig(input.ReceiveAddress, input.Enabled)
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
 		APIKeyConfigured: apiKeyCiphertext != "",
 		ReceiveAddress: input.ReceiveAddress,
@@ -387,7 +396,7 @@ func (a *application) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) login(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip := a.clientIP(r)
 	if !a.allowLoginAttempt(ip) { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
 	var input loginRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
@@ -450,7 +459,7 @@ func (a *application) logout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Unable to revoke login session")
 		return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "auth.logout", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "current bearer session revoked")
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "auth.logout", "admin:"+claims.Username, a.clientIP(r), r.UserAgent(), "current bearer session revoked")
 	writeSuccess(w, http.StatusOK, "")
 }
 
@@ -498,7 +507,7 @@ func (a *application) sendAdminEmailCode(w http.ResponseWriter,r *http.Request) 
 	body:="To: "+input.Email+"\r\nFrom: "+settings.SMTPFromName+" <"+settings.SMTPFromEmail+">\r\nSubject: TG-Card 邮箱绑定验证码\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n你的邮箱绑定验证码是："+code+"，10 分钟内有效。若非本人操作，请忽略此邮件。"
 	auth:=smtp.PlainAuth("",settings.SMTPUsername,password,settings.SMTPHost)
 	if err:=smtp.SendMail(fmt.Sprintf("%s:%d",settings.SMTPHost,port),auth,settings.SMTPFromEmail,[]string{input.Email},[]byte(body));err!=nil{log.Printf("send admin email verification: %v",err);writeError(w,http.StatusBadGateway,"验证码邮件发送失败，请检查 SMTP 配置");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.code.send","email:"+input.Email,clientIP(r),r.UserAgent(),"verification code sent")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.code.send","email:"+input.Email,a.clientIP(r),r.UserAgent(),"verification code sent")
 	writeSuccess(w,http.StatusOK,map[string]int{"expiresInSeconds":600})
 }
 
@@ -510,7 +519,7 @@ func (a *application) verifyAdminEmail(w http.ResponseWriter,r *http.Request) {
 	if len(input.Code)!=6{writeError(w,http.StatusBadRequest,"请输入 6 位邮箱验证码");return}
 	hash:=sha256.Sum256([]byte(input.Code))
 	if err:=database.VerifyAdminEmailCode(r.Context(),a.db,a.driver,claims.AdminID,input.Email,hex.EncodeToString(hash[:]));err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.bind","email:"+input.Email,clientIP(r),r.UserAgent(),"email verified")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.bind","email:"+input.Email,a.clientIP(r),r.UserAgent(),"email verified")
 	writeSuccess(w,http.StatusOK,map[string]any{"email":input.Email,"emailVerified":true})
 }
 
@@ -542,7 +551,7 @@ func (a *application) updateUserProfile(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "Unable to update profile")
 		return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.profile.update", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "profile updated")
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.profile.update", "admin:"+claims.Username, a.clientIP(r), r.UserAgent(), "profile updated")
 	writeSuccess(w, http.StatusOK, map[string]string{"realName": input.RealName, "avatar": input.AvatarURL})
 }
 
@@ -579,7 +588,7 @@ func storeUploadedImage(w http.ResponseWriter,r *http.Request,dataDir,folder,lab
 func (a *application) uploadUserAvatar(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
 	avatarURL,ok:=storeUploadedImage(w,r,a.dataDir,"avatars","头像",20<<20);if !ok{return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.avatar.upload","admin:"+claims.Username,clientIP(r),r.UserAgent(),"avatar uploaded")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.avatar.upload","admin:"+claims.Username,a.clientIP(r),r.UserAgent(),"avatar uploaded")
 	writeSuccess(w,http.StatusCreated,map[string]string{"avatar":avatarURL})
 }
 func (a *application) uploadSiteLogo(w http.ResponseWriter,r *http.Request) {
@@ -746,11 +755,6 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil { return host }
-	return r.RemoteAddr
-}
 
 
 func (a *application) changePassword(w http.ResponseWriter, r *http.Request) {
@@ -784,7 +788,7 @@ func (a *application) changePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Unable to update password")
 		return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.password.change", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "success; all existing sessions revoked")
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "admin.password.change", "admin:"+claims.Username, a.clientIP(r), r.UserAgent(), "success; all existing sessions revoked")
 	writeSuccess(w, http.StatusOK, map[string]string{"message": "Password updated; please sign in again"})
 }
 
@@ -840,7 +844,7 @@ func (a *application) createBot(w http.ResponseWriter, r *http.Request) {
 	item, err := database.CreateBot(r.Context(),a.db,a.driver,input.Name,info.Result.Username,encrypted,secret.Fingerprint(input.Token),input.WelcomeText)
 	if err != nil { log.Printf("create bot: %v",err); writeError(w,http.StatusConflict,"Bot already exists or could not be saved"); return }
  if err:=saveBotMenuSettings(r.Context(),a,item.ID,botMenuSettings{OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,WelcomeMessage:input.WelcomeMessage,PurchaseNotice:input.PurchaseNotice,Description:input.Description});err!=nil{writeError(w,500,"机器人配置保存失败");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.create","bot:"+item.ID,clientIP(r),r.UserAgent(),"telegram_username=@"+item.Username)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.create","bot:"+item.ID,a.clientIP(r),r.UserAgent(),"telegram_username=@"+item.Username)
 	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after create: %v", err) }
 	writeSuccess(w,http.StatusCreated,botView{ID:item.ID,Name:item.Name,Username:item.Username,Status:item.Status,WelcomeText:item.WelcomeText,WelcomeMessage:input.WelcomeMessage,PurchaseNotice:input.PurchaseNotice,Description:input.Description,OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,CreatedAt:item.CreatedAt,UpdatedAt:item.UpdatedAt})
 }
@@ -858,7 +862,7 @@ func (a *application) updateBotOwnerID(w http.ResponseWriter,r *http.Request) {
 	updated,err:=json.Marshal(settings);if err!=nil { writeError(w,http.StatusInternalServerError,"保存机器人主人设置失败");return }
 	if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(updated));err!=nil { writeError(w,http.StatusInternalServerError,"保存机器人主人设置失败");return }
 	a.botManager.SetOwnerID(input.TelegramOwnerID)
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.owner.update","telegram:owner",clientIP(r),r.UserAgent(),"owner ID updated")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.owner.update","telegram:owner",a.clientIP(r),r.UserAgent(),"owner ID updated")
 	writeSuccess(w,http.StatusOK,map[string]string{"telegramOwnerId":input.TelegramOwnerID})
 }
 
@@ -873,7 +877,7 @@ func (a *application) updateBot(w http.ResponseWriter, r *http.Request) {
 	if err:=database.UpdateBot(r.Context(),a.db,a.driver,id,input.Name,input.WelcomeText,input.Status); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to update Bot") }; return }
  if err:=saveBotMenuSettings(r.Context(),a,id,botMenuSettings{OwnerID:input.OwnerID,CustomerServiceURL:input.CustomerServiceURL,BusinessGroupURL:input.BusinessGroupURL,WelcomeMessage:input.WelcomeMessage,PurchaseNotice:input.PurchaseNotice,Description:input.Description});err!=nil{writeError(w,500,"机器人配置保存失败");return}
 	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after update: %v", err) }
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.update","bot:"+id,clientIP(r),r.UserAgent(),"settings updated")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.update","bot:"+id,a.clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,http.StatusOK,map[string]bool{"updated":true})
 }
 
@@ -882,7 +886,7 @@ func (a *application) deleteBot(w http.ResponseWriter, r *http.Request) {
 	id:=r.PathValue("id")
 	if err:=database.DeleteBot(r.Context(),a.db,a.driver,id); err!=nil { if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"Bot not found") } else { writeError(w,http.StatusInternalServerError,"Unable to delete Bot") }; return }
 	if err := a.syncBots(r.Context()); err != nil { log.Printf("sync Telegram bots after delete: %v", err) }
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.delete","bot:"+id,clientIP(r),r.UserAgent(),"deleted")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"bot.delete","bot:"+id,a.clientIP(r),r.UserAgent(),"deleted")
 	writeSuccess(w,http.StatusOK,map[string]bool{"deleted":true})
 }
 
@@ -983,7 +987,7 @@ func (a *application) createCategory(w http.ResponseWriter,r *http.Request) {
 	var in categoryInput;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&in);err!=nil{writeError(w,400,"Invalid request body");return}
 	in.Name=strings.TrimSpace(in.Name);if in.Name==""||len(in.Name)>80{writeError(w,400,"Category name is required (max 80 characters)");return}
 	item,err:=database.CreateCategory(r.Context(),a.db,a.driver,in.Name,in.SortOrder);if err!=nil{writeError(w,409,"Category already exists or could not be saved");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"category.create","category:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"category.create","category:"+item.ID,a.clientIP(r),r.UserAgent(),"name="+item.Name)
 	writeSuccess(w,201,item)
 }
 func (a *application) deleteCategory(w http.ResponseWriter,r *http.Request) {
@@ -1007,7 +1011,7 @@ func (a *application) createProduct(w http.ResponseWriter,r *http.Request) {
 	deliveryJSON,deliveryErr:=normalizeDeliveryConfig(in.DeliveryType,in.DeliveryConfig);if deliveryErr!=nil{writeError(w,400,deliveryErr.Error());return}
 	item,err:=database.CreateProduct(r.Context(),a.db,a.driver,database.Product{CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON,DeliveryConfigJSON:deliveryJSON})
 	if err!=nil{writeError(w,400,"Unable to save product; check the category");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.create","product:"+item.ID,clientIP(r),r.UserAgent(),"name="+item.Name)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.create","product:"+item.ID,a.clientIP(r),r.UserAgent(),"name="+item.Name)
 	writeSuccess(w,201,item)
 }
 func (a *application) updateProduct(w http.ResponseWriter,r *http.Request) {
@@ -1019,7 +1023,7 @@ func (a *application) updateProduct(w http.ResponseWriter,r *http.Request) {
 	deliveryJSON,deliveryErr:=normalizeDeliveryConfig(in.DeliveryType,in.DeliveryConfig);if deliveryErr!=nil{writeError(w,400,deliveryErr.Error());return}
 	err:=database.UpdateProduct(r.Context(),a.db,a.driver,database.Product{ID:r.PathValue("id"),CategoryID:in.CategoryID,Name:in.Name,Description:in.Description,PriceMinor:in.PriceMinor,Currency:in.Currency,DeliveryType:in.DeliveryType,Status:in.Status,BulkDiscountJSON:discountJSON,DeliveryConfigJSON:deliveryJSON})
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,400,"Unable to update product");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.update","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),"settings updated")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.update","product:"+r.PathValue("id"),a.clientIP(r),r.UserAgent(),"settings updated")
 	writeSuccess(w,200,map[string]bool{"updated":true})
 }
 func (a *application) deleteProduct(w http.ResponseWriter,r *http.Request) {
@@ -1042,7 +1046,7 @@ func (a *application) importProductKeys(w http.ResponseWriter,r *http.Request) {
 	if len(items)==0{writeError(w,400,"Paste at least one card key");return}
 	inserted,err:=database.ImportProductKeys(r.Context(),a.db,a.driver,r.PathValue("id"),items)
 	if errors.Is(err,sql.ErrNoRows){writeError(w,404,"Product not found");return};if err!=nil{writeError(w,500,"Unable to import card keys");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.keys.import","product:"+r.PathValue("id"),clientIP(r),r.UserAgent(),fmt.Sprintf("submitted=%d inserted=%d",len(items),inserted))
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"product.keys.import","product:"+r.PathValue("id"),a.clientIP(r),r.UserAgent(),fmt.Sprintf("submitted=%d inserted=%d",len(items),inserted))
 	if inserted>0 && a.botManager!=nil { go a.botManager.NotifyProductRestocked(context.Background(),r.PathValue("id")) }
 	writeSuccess(w,200,map[string]int{"submitted":len(items),"inserted":inserted,"duplicates":len(items)-inserted})
 }
@@ -1094,10 +1098,10 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 		item, loadErr := database.GetOrderDelivery(r.Context(), a.db, a.driver, orderID)
 		if loadErr != nil { writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
 		if err := a.botManager.RedeliverPaidOrder(r.Context(), item); err != nil {
-			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver", "order:"+orderID, clientIP(r), r.UserAgent(), "failed: "+err.Error())
+			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver", "order:"+orderID, a.clientIP(r), r.UserAgent(), "failed: "+err.Error())
 			writeError(w, http.StatusBadGateway, "商品重新发送失败："+err.Error()); return
 		}
-		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver", "order:"+orderID, clientIP(r), r.UserAgent(), "redelivered")
+		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver", "order:"+orderID, a.clientIP(r), r.UserAgent(), "redelivered")
 		writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true, "redelivered": true})
 		return
 	}
@@ -1109,10 +1113,10 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 	if errors.Is(err, sql.ErrNoRows) { writeError(w, http.StatusConflict, "订单当前不处于待发货状态"); return }
 	if err != nil { log.Printf("load order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
 	if err := a.botManager.DeliverPaidOrder(r.Context(), item); err != nil {
-		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, clientIP(r), r.UserAgent(), "failed: "+err.Error())
+		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, a.clientIP(r), r.UserAgent(), "failed: "+err.Error())
 		writeError(w, http.StatusBadGateway, "Delivery failed; order remains retryable"); return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, clientIP(r), r.UserAgent(), "delivered")
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, a.clientIP(r), r.UserAgent(), "delivered")
 	writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true})
 }
 
@@ -1155,7 +1159,7 @@ func (a *application) updateSupportTicket(w http.ResponseWriter, r *http.Request
 			if sendErr:=a.botManager.SendSupportReply(r.Context(),item);sendErr!=nil{log.Printf("send support ticket reply failed: ticket_id=%s error=%v",id,sendErr)}else{notificationSent=true}
 		}
 	}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.ticket.update","support_ticket:"+id,clientIP(r),r.UserAgent(),"status="+item.Status)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"support.ticket.update","support_ticket:"+id,a.clientIP(r),r.UserAgent(),"status="+item.Status)
 	writeSuccess(w,http.StatusOK,map[string]any{"ticket":item,"notificationSent":notificationSent})
 }
 
@@ -1200,7 +1204,7 @@ func (a *application) reconcilePaymentTransaction(w http.ResponseWriter, r *http
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.reconcile", "payment_transaction:"+transactionID, clientIP(r), r.UserAgent(), "order_id="+input.OrderID+"; "+input.Note)
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.reconcile", "payment_transaction:"+transactionID, a.clientIP(r), r.UserAgent(), "order_id="+input.OrderID+"; "+input.Note)
 	claimed, err := database.ClaimOrderDelivery(r.Context(), a.db, a.driver, input.OrderID, 2*time.Minute)
 	if err != nil {
 		log.Printf("claim reconciled payment delivery: order_id=%s tx=%s error=%v", input.OrderID, transactionID, err)
@@ -1216,13 +1220,13 @@ func (a *application) reconcilePaymentTransaction(w http.ResponseWriter, r *http
 			return
 		}
 		if sendErr := a.botManager.DeliverPaidOrder(r.Context(), delivery); sendErr != nil {
-			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.delivery", "order:"+input.OrderID, clientIP(r), r.UserAgent(), "failed: "+sendErr.Error())
+			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.delivery", "order:"+input.OrderID, a.clientIP(r), r.UserAgent(), "failed: "+sendErr.Error())
 			writeError(w, http.StatusBadGateway, "交易已核对入账，但 Telegram 发货失败；订单已保留，可重试发货")
 			return
 		}
 		delivered = true
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.delivery", "order:"+input.OrderID, clientIP(r), r.UserAgent(), fmt.Sprintf("delivery_claimed=%t", claimed))
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.transaction.delivery", "order:"+input.OrderID, a.clientIP(r), r.UserAgent(), fmt.Sprintf("delivery_claimed=%t", claimed))
 	writeSuccess(w, http.StatusOK, map[string]any{"matched": true, "delivered": delivered, "deliveryClaimed": claimed})
 }
 
@@ -1273,7 +1277,7 @@ func (a *application) adjustTelegramUserBalance(w http.ResponseWriter,r *http.Re
 	if input.AmountAtomic<=0||input.AmountAtomic>1_000_000_000_000_000||(input.Direction!="credit"&&input.Direction!="debit"){writeError(w,http.StatusBadRequest,"余额金额或操作类型无效");return}
 	balance,err:=database.AdjustTelegramUserBalance(r.Context(),a.db,a.driver,r.PathValue("id"),claims.AdminID,input.AmountAtomic,input.Direction,strings.TrimSpace(input.Note))
 	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"user.balance.adjust","telegram-user:"+r.PathValue("id"),clientIP(r),r.UserAgent(),input.Direction+" amount_atomic="+fmt.Sprint(input.AmountAtomic))
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"user.balance.adjust","telegram-user:"+r.PathValue("id"),a.clientIP(r),r.UserAgent(),input.Direction+" amount_atomic="+fmt.Sprint(input.AmountAtomic))
 	writeSuccess(w,http.StatusOK,map[string]int64{"balanceAtomic":balance})
 }
 
@@ -1309,7 +1313,7 @@ func (a *application) clearOrderData(w http.ResponseWriter,r *http.Request){
 	var input struct{Confirmation string `json:"confirmation"`}
 	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,4096)).Decode(&input);err!=nil||input.Confirmation!="CLEAR_ALL_ORDERS" { writeError(w,http.StatusBadRequest,"请输入正确的确认口令后再执行");return }
 	result,err:=database.ClearOrderData(r.Context(),a.db,a.driver);if err!=nil { log.Printf("clear commercial order data failed: %v",err);writeError(w,http.StatusInternalServerError,"清理订单数据失败，未完成清理");return }
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"orders.clear_all","orders:all",clientIP(r),r.UserAgent(),fmt.Sprintf("orders=%d payment_transactions=%d recharges=%d support_tickets=%d wallet_transactions=%d",result.Orders,result.PaymentTransactions,result.WalletRecharges,result.SupportTickets,result.WalletTransactions))
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"orders.clear_all","orders:all",a.clientIP(r),r.UserAgent(),fmt.Sprintf("orders=%d payment_transactions=%d recharges=%d support_tickets=%d wallet_transactions=%d",result.Orders,result.PaymentTransactions,result.WalletRecharges,result.SupportTickets,result.WalletTransactions))
 	writeSuccess(w,http.StatusOK,result)
 }
 
@@ -1388,7 +1392,7 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  a.botManager.SetOwnerID(input.TelegramOwnerID)
  a.botManager.SetCustomerServiceURL(input.TelegramCustomerServiceURL)
  a.botManager.SetCommunityLinks(input.TelegramCommunityURL, input.TelegramSupportGroupURL)
- database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",clientIP(r),r.UserAgent(),"updated")
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",a.clientIP(r),r.UserAgent(),"updated")
  configured:=input.SMTPPasswordCiphertext!=""
  input.SMTPPasswordCiphertext=""
  writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured})
@@ -1427,6 +1431,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  case "stock_relisted": telegramEnabled=s.TelegramNotifyStockLow; title="补货自动上架提醒"
  case "daily_report": emailEnabled=true; telegramEnabled=s.TelegramNotifyDailyReport; title="每日对账日报"
  case "risk_alert": telegramEnabled=s.TelegramNotifyRiskAlert; title="支付风险提醒"
+ case "bot_health_alert": telegramEnabled=true; title="Telegram Bot 运行告警"
  case "upstream_sync_paused": telegramEnabled=true; title="上游商品同步自动暂停"
  case "upstream_catalog_cleared": telegramEnabled=true; title="上游商品目录已清空"
  default: return
@@ -1447,7 +1452,7 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
  }
  if telegramEnabled {
   targets:=[]string{s.TelegramAdminChatID,s.TelegramGroupChatID}
-  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="support_created"||event=="upstream_sync_paused"||event=="upstream_catalog_cleared"{targets=append(targets,s.TelegramOwnerID)}
+  if event=="stock_low"||event=="stock_zero"||event=="stock_relisted"||event=="daily_report"||event=="risk_alert"||event=="bot_health_alert"||event=="support_created"||event=="upstream_sync_paused"||event=="upstream_catalog_cleared"{targets=append(targets,s.TelegramOwnerID)}
   sent:=map[string]bool{}
   bots,err:=database.ListBots(ctx,a.db)
   if err!=nil { log.Printf("Telegram notification bot list failed: %v",err);return }

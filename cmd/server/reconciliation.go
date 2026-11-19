@@ -96,7 +96,7 @@ func (a *application) runBalanceReconciliationNow(w http.ResponseWriter,r *http.
 	runKey:="manual-"+time.Now().UTC().Format("20060102T150405.000000000")
 	run,anomalies,_,err:=database.RunWalletBalanceReconciliation(r.Context(),a.db,a.driver,runKey)
 	if err!=nil{writeError(w,http.StatusInternalServerError,"余额一致性检查失败");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.reconciliation.run","wallet:reconciliation",clientIP(r),r.UserAgent(),fmt.Sprintf("checked=%d mismatches=%d",run.CheckedUsers,run.MismatchUsers))
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.reconciliation.run","wallet:reconciliation",a.clientIP(r),r.UserAgent(),fmt.Sprintf("checked=%d mismatches=%d",run.CheckedUsers,run.MismatchUsers))
 	if run.MismatchUsers>0 {
 		details:=fmt.Sprintf("管理员手动余额校验发现异常\n检查用户：%d\n异常用户：%d\n差异绝对值合计：%s USDT",run.CheckedUsers,run.MismatchUsers,formatUSDTAtomic(run.TotalDifferenceAtomic))
 		a.notifySiteEvent(r.Context(),"risk_alert",details,"")

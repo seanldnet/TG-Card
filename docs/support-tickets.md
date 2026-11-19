@@ -1,6 +1,6 @@
 # 售后工单、Owner Bot 转发与交互流程
 
-> 当前状态（2026-11-20）：PR #27 Owner Bot 流程与 PR #28 结单生命周期均已合并。PR #28 首次发布镜像历史 digest 为 `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`；后续生产统一验收使用 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。PR #28 的 B1–B6 已按项目所有者本次确认记录已验收（2026-11-19）；PR #27 的附件/媒体转发子项已由项目所有者实测确认通过（2026-11-20）；C1–C4 的 Owner 回复、继续沟通、结单幂等、超时/重启/多工单隔离仍待验收；PR #44 补强旧确认按钮与切换工单的隔离保护。
+> 当前状态（2026-11-20）：PR #27 Owner Bot 流程与 PR #28 结单生命周期均已合并。PR #28 首次发布镜像历史 digest 为 `sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`；后续统一验收基准镜像为 PR U 合并发布的 GHCR 多架构 latest digest `sha256:b92a802644f3fa6a834edf7e7e6d480cdd97419f60242bad3ed63358356afb58`；该镜像尚未据此记录生产部署或项目所有者验收。PR #28 的 B1–B6 已按项目所有者本次确认记录已验收（2026-11-19）；PR #27 的附件/媒体转发子项已由项目所有者实测确认通过（2026-11-20）；C1–C4 的 Owner 回复、继续沟通、结单幂等、超时/重启/多工单隔离仍待验收；PR #44 补强旧确认按钮与切换工单的隔离保护。
 
 > 安全修复记录（2026-11-20）：Owner Bot 待处理工单列表必须按当前 Bot ID 过滤；此前查询未限定 bot_id，存在跨 Bot 工单暴露及错误 Bot 上下文处理风险。PR #40 已合并（merge commit `69218784601f7d75b668b8047379d931c9a87564`）；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 均成功，GHCR latest digest `sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`。生产部署与真机验收仍待确认。
 

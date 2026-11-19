@@ -300,7 +300,7 @@ func (a *application) upstreamProcurementCallback(w http.ResponseWriter,r *http.
 	apiSecret,err:=a.secrets.Decrypt(settings.SecretCiphertext);if err!=nil{writeError(w,http.StatusServiceUnavailable,"上游回调密钥不可用");return}
 	verifyErr:=upstream.VerifyDujiaoCallback(apiKey,apiSecret,r.Header.Get("Dujiao-Next-Api-Key"),r.Header.Get("Dujiao-Next-Timestamp"),r.Header.Get("Dujiao-Next-Signature"),r.URL.Path,body,time.Now())
 	if verifyErr!=nil{
-		a.notifySiteEvent(r.Context(),"risk_alert","Dujiao-Next 回调验签失败，已拒绝请求。来源 IP："+clientIP(r)+"；原因："+verifyErr.Error()+"\n供应商采购处理入口："+a.procurementQueueLink(settings),"")
+		a.notifySiteEvent(r.Context(),"risk_alert","Dujiao-Next 回调验签失败，已拒绝请求。来源 IP："+a.clientIP(r)+"；原因："+verifyErr.Error()+"\n供应商采购处理入口："+a.procurementQueueLink(settings),"")
 		writeUpstreamCallbackError(w,http.StatusUnauthorized,"上游回调签名校验失败");return
 	}
 	var callback upstreamCallbackRequest
@@ -337,7 +337,7 @@ func (a *application) retryUpstreamProcurement(w http.ResponseWriter,r *http.Req
 	claims,ok:=a.authenticate(w,r);if !ok{return}
 	id:=strings.TrimSpace(r.PathValue("id"))
 	if err:=database.RetryUpstreamProcurement(r.Context(),a.db,a.driver,id,claims.AdminID);err!=nil{writeError(w,http.StatusConflict,err.Error());return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.retry","order:"+id,clientIP(r),r.UserAgent(),"manual retry queued")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.retry","order:"+id,a.clientIP(r),r.UserAgent(),"manual retry queued")
 	writeSuccess(w,http.StatusOK,map[string]any{"queued":true})
 }
 
@@ -348,7 +348,7 @@ func (a *application) refundUpstreamProcurement(w http.ResponseWriter,r *http.Re
 	id:=strings.TrimSpace(r.PathValue("id"))
 	balance,err:=database.RefundUpstreamProcurementToWallet(r.Context(),a.db,a.driver,id,claims.AdminID,input.Reason)
 	if err!=nil{writeError(w,http.StatusConflict,err.Error());return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.refund","order:"+id,clientIP(r),r.UserAgent(),input.Reason)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.procurement.refund","order:"+id,a.clientIP(r),r.UserAgent(),input.Reason)
 	if noticeErr:=a.botManager.SendProcurementRefundNotice(r.Context(),id,balance);noticeErr!=nil{log.Printf("notify buyer about upstream procurement refund failed: order_id=%s error=%v",id,noticeErr)}
 	writeSuccess(w,http.StatusOK,map[string]any{"refunded":true,"balanceAtomic":balance})
 }

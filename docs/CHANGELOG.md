@@ -1,6 +1,13 @@
-## 2026-11-20 — 上游目录分页同步、增量处理与安全来源切换（PR U #56 Ready for review）
+## 2026-11-20 — 安全与运维补欠（PR S，独立分支开发中）
 
-- 状态：PR #56 已 Ready for review；最新 Go/Admin/Security 检查正在复核；未合并、未发布镜像、未部署、未验收。
+- 基线：PR U 合并后 main commit `b5ada0116fe4c33e0a4207ebb754715834e909d8`；分支 `feat/security-ops-hardening-pr-s`。
+- 已开始：核实 PR #53 登出撤销与 TokenVersion 既有实现；增加敏感写 API 限流、可信代理 IP 白名单、详细健康端点、Bot 连续轮询错误告警、Compose 数据库/数据卷备份恢复脚本。
+- PR #57 已标记 Ready for review；Go Backend CI [#44603145324](https://github.com/seanldnet/TG-Card/actions/runs/44603145324)、Admin CI [#44603145200](https://github.com/seanldnet/TG-Card/actions/runs/44603145200)、Security [#44603145214](https://github.com/seanldnet/TG-Card/actions/runs/44603145214) 全部成功。Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
+- 后续：补齐测试、验证迁移版本与 health 字段、核对 Docker Compose 实际卷挂载与脚本恢复流程；修正文档并单独创建 PR。
+
+## 2026-11-20 — 上游目录分页同步、增量处理与安全来源切换（PR U #56 已合并）
+
+- 状态：PR #56 已 Squash Merge 至 main，merge commit `b5ada0116fe4c33e0a4207ebb754715834e909d8`；main Go CI [#44600428873](https://github.com/seanldnet/TG-Card/actions/runs/44600428873)、Admin CI [#44600428589](https://github.com/seanldnet/TG-Card/actions/runs/44600428589)、Security [#44600428737](https://github.com/seanldnet/TG-Card/actions/runs/44600428737)、Docker Publish [#44600428987](https://github.com/seanldnet/TG-Card/actions/runs/44600428987) 全部成功；GHCR 多架构 latest digest `sha256:b92a802644f3fa6a834edf7e7e6d480cdd97419f60242bad3ed63358356afb58`。生产部署与验收仍待项目所有者执行。
 - 影响模块：Dujiao-Next 商品目录同步、数据库目录查询、Telegram 商城、上游后台设置、上游目录清理。
 - 变更内容：
   - 增加商品分页 API 调用，批次大小/间隔后台可配置；每页独立事务写入，商品指纹结合上游内容和本地价格策略，跳过未变化商品的重复写入/图片下载。
@@ -11,7 +18,7 @@
 - 数据库迁移：0044_upstream_sync_jobs.sql、0045_upstream_sync_batch_config.sql、0046_upstream_product_fingerprint.sql、0047_upstream_sync_single_active_job.sql、`0048_upstream_category_fingerprint.sql`。
 - 验证：新增数据库分页/批次/清理快照、商品/分类指纹与任务互斥测试；Go Backend CI [#44598706303](https://github.com/seanldnet/TG-Card/actions/runs/44598706303)、Admin CI [#44598706271](https://github.com/seanldnet/TG-Card/actions/runs/44598706271)、Security [#44598706306](https://github.com/seanldnet/TG-Card/actions/runs/44598706306) 成功；镜像发布待 PR 合并后工作流。
 - 兼容性与边界：Dujiao 商品 API 无 updated_since，增量处理仍需扫描分页；分类 API 未确认分页/更新时间。清理仅按 source_type='upstream' 删除。真实环境资源与 Telegram 验收待项目所有者执行。
-- 发布镜像：不涉及；PR 尚未合并。
+- 发布镜像：Docker Publish 成功并发布上述 digest；生产部署与数千商品真实压力验收未完成。
 
 ## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 已合并）
 
