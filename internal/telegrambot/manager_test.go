@@ -185,7 +185,7 @@ func TestOwnerConfirmCallbackCannotActOnSwitchedTicket(t *testing.T) {
  }
  first:=createTicket("user-a","chat-a","ticket A")
  second:=createTicket("user-b","chat-b","ticket B")
- if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345",second.ID,"confirm",30*time.Minute);err!=nil{t.Fatal(err)}
+ if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345","12345",second.ID,"confirm",30*time.Minute);err!=nil{t.Fatal(err)}
  manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
   return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)),Request:req},nil
  })}}
@@ -197,7 +197,7 @@ func TestOwnerConfirmCallbackCannotActOnSwitchedTicket(t *testing.T) {
  firstAfter,err:=database.GetSupportTicket(ctx,db,"sqlite",first.ID)
  if err!=nil{t.Fatal(err)}
  if firstAfter.Status=="resolved"{t.Fatal("stale confirmation for ticket A must not resolve it after session switched to ticket B")}
- session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345")
+ session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345","12345")
  if err!=nil||session.TicketID!=second.ID||session.Phase!="confirm"{t.Fatalf("stale callback must preserve active ticket B session: %#v err=%v",session,err)}
  callback(second.ID,"yes")
  secondAfter,err:=database.GetSupportTicket(ctx,db,"sqlite",second.ID)
