@@ -209,6 +209,7 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 			}
 			fingerprint, fingerprintErr := a.upstreamProductSyncFingerprint(product,settings,currency,ratePPM)
 			if fingerprintErr != nil { return nil, fingerprintErr }
+			if imageFailed { fingerprint = "" } // Retry failed image downloads on the next catalogue scan.
 			productRecords = append(productRecords, database.UpstreamProductRecord{
 				ProductID: strconv.FormatInt(product.ID, 10), SKUID: skuID, SKUCode: sku.Code, Slug: product.Slug,
 				UpstreamUpdatedAt: product.UpdatedAt, UpstreamFingerprint: fingerprint,
