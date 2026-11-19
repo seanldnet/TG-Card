@@ -9,7 +9,7 @@
 
 - 基线：PR U 合并后 main commit `b5ada0116fe4c33e0a4207ebb754715834e909d8`；分支 `feat/security-ops-hardening-pr-s`。
 - 已开始：核实 PR #53 登出撤销与 TokenVersion 既有实现；增加敏感写 API 限流、可信代理 IP 白名单、详细健康端点、Bot 连续轮询错误告警、Compose 数据库/数据卷备份恢复脚本。
-- PR #57 已 Squash Merge 至 main，merge commit 41389825d6edef83330c4e28c7b5662e23f932a7；main Go CI [#44603593840](https://github.com/seanldnet/TG-Card/actions/runs/44603593840)、Admin CI [#44603593868](https://github.com/seanldnet/TG-Card/actions/runs/44603593868)、Security [#44603593955](https://github.com/seanldnet/TG-Card/actions/runs/44603593955) 全部成功；Docker Publish [#44603594008](https://github.com/seanldnet/TG-Card/actions/runs/44603594008) 正在运行。PR Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
+- PR #57 已 Squash Merge 至 main，merge commit 41389825d6edef83330c4e28c7b5662e23f932a7；main Go CI [#44603593840](https://github.com/seanldnet/TG-Card/actions/runs/44603593840)、Admin CI [#44603593868](https://github.com/seanldnet/TG-Card/actions/runs/44603593868)、Security [#44603593955](https://github.com/seanldnet/TG-Card/actions/runs/44603593955) 全部成功；Docker Publish [#44603594008](https://github.com/seanldnet/TG-Card/actions/runs/44603594008) 成功，GHCR 多架构 latest digest `sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。PR Go CI 包含 Bash 脚本语法检查、go vet、go test 与 CGO_ENABLED=0 构建。
 - 边界：Shell 脚本语法已通过 CI；实际 Docker Compose 备份/恢复演练尚未在隔离环境执行。生产部署与验收另行记录。
 
 ## 2026-11-20 — 上游目录分页同步、增量处理与安全来源切换（PR U #56 已合并）
