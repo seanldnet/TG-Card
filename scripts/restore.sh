@@ -21,15 +21,21 @@ if [ "$CONFIRM" != "--yes" ]; then
  [ "$answer" = "RESTORE" ] || { echo "Restore cancelled."; exit 1; }
 fi
 
-echo "[1/4] Stopping the application (database remains online)..."
+echo "[1/5] Stopping the application and ensuring PostgreSQL is online..."
 docker compose stop app
+docker compose up -d db
+for attempt in $(seq 1 30); do
+ if docker compose exec -T db pg_isready -U tgcard -d tgcard >/dev/null 2>&1; then break; fi
+ sleep 2
+done
+docker compose exec -T db pg_isready -U tgcard -d tgcard >/dev/null
 
-echo "[2/4] Restoring PostgreSQL database..."
+echo "[2/5] Restoring PostgreSQL database..."
 docker compose exec -T db pg_restore -U tgcard -d tgcard --clean --if-exists --no-owner < "$BACKUP_DIR/postgres.dump"
 
-echo "[3/4] Replacing /app/data volume contents..."
+echo "[3/5] Replacing /app/data volume contents..."
 docker compose run --rm --no-deps -T --entrypoint sh app -c 'for item in /app/data/* /app/data/.[!.]* /app/data/..?*; do [ -e "$item" ] || continue; rm -rf "$item"; done; tar -xzf - -C /app/data' < "$BACKUP_DIR/tg_card_data.tar.gz"
 
-echo "[4/4] Starting the application..."
+echo "[4/5] Starting the application..."
 docker compose up -d app
-echo "Restore completed. Verify application health and recent orders before resuming operations."
+echo "[5/5] Restore complete. Verify application health and recent orders before resuming operations."
