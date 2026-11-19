@@ -1837,7 +1837,7 @@ func (m *Manager) notifyOwnerSupportMessage(ctx context.Context,cfg Config,ticke
 }
 
 func (m *Manager) showOwnerSupportList(ctx context.Context,cfg Config,chatID int64,page int) {
- items,err:=database.ListPendingSupportTickets(ctx,m.db,m.driver);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"待处理工单暂时无法读取。");return}
+ items,err:=database.ListPendingSupportTickets(ctx,m.db,m.driver,cfg.ID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"待处理工单暂时无法读取。");return}
  const size=8;pages:=(len(items)+size-1)/size;if pages==0{_=m.sendMessage(ctx,cfg.Token,chatID,"目前没有待处理或处理中的工单。");return}
  if page<0{page=0};if page>=pages{page=pages-1};start:=page*size;end:=start+size;if end>len(items){end=len(items)}
  rows:=make([][]map[string]string,0,size+2)
@@ -1847,8 +1847,19 @@ func (m *Manager) showOwnerSupportList(ctx context.Context,cfg Config,chatID int
  _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"待处理/处理中工单（"+strconv.Itoa(len(items))+" 条，第 "+strconv.Itoa(page+1)+"/"+strconv.Itoa(pages)+" 页）：",map[string]any{"inline_keyboard":rows})
 }
 
+func (m *Manager) getOwnerSupportTicketForBot(ctx context.Context, cfg Config, ticketID string) (database.SupportTicket, error) {
+ ticket, err := database.GetSupportTicket(ctx, m.db, m.driver, ticketID)
+ if err != nil {
+  return database.SupportTicket{}, err
+ }
+ if ticket.BotID != cfg.ID {
+  return database.SupportTicket{}, fmt.Errorf("ticket does not belong to the current Bot")
+ }
+ return ticket, nil
+}
+
 func (m *Manager) showOwnerSupportTicket(ctx context.Context,cfg Config,chatID int64,ticketID string) {
- t,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return}
+ t,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
  messages,err:=database.ListSupportTicketMessages(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单记录读取失败。");return}
  photos,files:=0,0;lines:=[]string{}
  for _,item:=range messages{if item.AttachmentFileID!=""{if strings.Contains(strings.ToLower(item.AttachmentName),"图片"){photos++}else{files++}};if strings.TrimSpace(item.Message)!=""{who:="用户";if item.SenderType=="admin"{who="客服"};lines=append(lines,who+"："+item.Message)}}
@@ -1866,16 +1877,17 @@ func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q Ca
  case "list":page:=0;if len(parts)>3{page,_=strconv.Atoi(parts[3])};m.showOwnerSupportList(ctx,cfg,chatID,page)
  case "view":if len(parts)>3{m.showOwnerSupportTicket(ctx,cfg,chatID,parts[3])}
  case "reply":
-  if len(parts)<4{return};ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,parts[3]);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return}
+  if len(parts)<4{return};ticket,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
   if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");return}
   if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticket.ID,"reply",30*time.Minute);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"无法开启回复会话。");return}
   _,_=database.UpdateSupportTicket(ctx,m.db,m.driver,ticket.ID,"in_progress",ticket.AdminReply)
   _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单："+ticket.TicketNo,ownerSupportReplyKeyboard())
  case "resolve":
-  if len(parts)<4{return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return}
+  if len(parts)<4{return};if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return}
   if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,parts[3]);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
  case "confirm":
   if len(parts)<5{return};ticketID,choice:=parts[3],parts[4]
+  if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
   if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
   }else{ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return};if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);return};_=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticketID,"reply",30*time.Minute);_=m.sendMessage(ctx,cfg.Token,chatID,"继续回复即可。")}
  }
