@@ -20,6 +20,8 @@ func TestUpstreamSyncJobHasSingleActiveSlotAndCanResume(t *testing.T) {
  if err:=UpdateUpstreamSyncJobProgress(ctx,db,cfg.DBDriver,active.ID,500,125,5,1,0,"page 4 retry recovered");err!=nil{t.Fatal(err)}
  active,err=GetActiveUpstreamSyncJob(ctx,db,cfg.DBDriver);if err!=nil{t.Fatal(err)}
  if active.TotalItems!=500||active.ProcessedItems!=125||active.CurrentPage!=5||active.ErrorCount!=1{t.Fatalf("progress did not persist: %+v",active)}
- if err:=SetUpstreamSyncJobStatus(ctx,db,cfg.DBDriver,active.ID,"success");err!=nil{t.Fatal(err)}
+ if err:=RequestUpstreamSyncJobCancel(ctx,db,cfg.DBDriver,active.ID);err!=nil{t.Fatal(err)}
+ active,err=GetActiveUpstreamSyncJob(ctx,db,cfg.DBDriver);if err!=nil||!active.CancelRequested{t.Fatalf("cancel request must persist across app instances: %+v %v",active,err)}
+ if err:=SetUpstreamSyncJobStatus(ctx,db,cfg.DBDriver,active.ID,"cancelled");err!=nil{t.Fatal(err)}
  if _,err:=GetActiveUpstreamSyncJob(ctx,db,cfg.DBDriver);err==nil{t.Fatal("completed job must not be returned as active")}
 }
