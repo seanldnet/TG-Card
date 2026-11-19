@@ -130,3 +130,34 @@ func TestLatestSupportTicketCanBeRecoveredAfterResolution(t *testing.T) {
  latest,err:=GetLatestSupportTicketForUser(ctx,db,"sqlite",ticket.BotID,ticket.TelegramUserID)
  if err!=nil||latest.ID!=ticket.ID||latest.Status!="resolved"{t.Fatalf("latest terminal ticket not recoverable: %#v err=%v",latest,err)}
 }
+
+func TestListPendingSupportTicketsIsScopedToBot(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+
+ first:=createOwnerWorkflowTicket(t,db)
+ product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"Second Bot ticket product",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=CreateOrder(ctx,db,"sqlite","owner-workflow-bot-2","second-user","second-chat",product.ID,time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ second,err:=CreateSupportTicket(ctx,db,"sqlite","owner-workflow-bot-2","second-user","second-chat",order.OrderNo,"other","Second bot issue")
+ if err!=nil{t.Fatal(err)}
+
+ firstList,err:=ListPendingSupportTickets(ctx,db,"sqlite",first.BotID)
+ if err!=nil{t.Fatal(err)}
+ if len(firstList)!=1||firstList[0].ID!=first.ID||firstList[0].BotID!=first.BotID {
+  t.Fatalf("first Bot must only see its own ticket: %#v",firstList)
+ }
+ secondList,err:=ListPendingSupportTickets(ctx,db,"sqlite",second.BotID)
+ if err!=nil{t.Fatal(err)}
+ if len(secondList)!=1||secondList[0].ID!=second.ID||secondList[0].BotID!=second.BotID {
+  t.Fatalf("second Bot must only see its own ticket: %#v",secondList)
+ }
+ if _,err:=ListPendingSupportTickets(ctx,db,"sqlite"," ");err==nil {
+  t.Fatal("empty Bot ID must fail closed rather than list all tickets")
+ }
+}
