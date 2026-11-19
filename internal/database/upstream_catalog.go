@@ -115,8 +115,8 @@ func SyncUpstreamCatalogBatch(ctx context.Context, db *sql.DB, driver, batchID s
 	return tx.Commit()
 }
 
-func currentCatalogSource(ctx context.Context, db *sql.DB) (string, error) {
-	settings, err := GetUpstreamSettings(ctx, db, "")
+func currentCatalogSource(ctx context.Context, db *sql.DB, driver string) (string, error) {
+	settings, err := GetUpstreamSettings(ctx, db, driver)
 	if err == sql.ErrNoRows { return "local", nil }
 	if err != nil { return "", err }
 	if settings.Enabled && !settings.CatalogStale { return "upstream", nil }
@@ -126,7 +126,7 @@ func currentCatalogSource(ctx context.Context, db *sql.DB) (string, error) {
 func ListVisibleProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 	items, err := ListProducts(ctx, db)
 	if err != nil { return nil, err }
-	source, err := currentCatalogSource(ctx, db)
+	source, err := currentCatalogSource(ctx, db, driver)
 	if err != nil { return nil, err }
 	visible := make([]Product, 0, len(items))
 	for _, item := range items { if item.SourceType == source && item.Status == 1 { visible = append(visible, item) } }
