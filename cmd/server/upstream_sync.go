@@ -243,7 +243,7 @@ func redactUpstreamError(value, apiKey, apiSecret string) string {
 func (a *application) startUpstreamSync(trigger string) (string, error) {
 	a.upstreamJobMu.Lock()
 	defer a.upstreamJobMu.Unlock()
-	if a.upstreamJobCancel != nil { return "", errUpstreamSyncInProgress }
+	if a.upstreamJobCancel != nil || a.upstreamJobID != "" { return "", errUpstreamSyncInProgress }
 	jobID := fmt.Sprintf("upstream-%d", time.Now().UTC().UnixNano())
 	settings,settingsErr:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
 	if settingsErr!=nil{return "",settingsErr}
@@ -308,7 +308,7 @@ func databasePlaceholder(driver string,index int) string {
 func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error) {
  a.upstreamJobMu.Lock()
  defer a.upstreamJobMu.Unlock()
- if a.upstreamJobCancel!=nil{return "",errUpstreamSyncInProgress}
+ if a.upstreamJobCancel!=nil||a.upstreamJobID!=""{return "",errUpstreamSyncInProgress}
  if !a.upstreamSyncMu.TryLock(){return "",errUpstreamSyncInProgress}
  settings,err:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
  if err!=nil{a.upstreamSyncMu.Unlock();return "",err}
