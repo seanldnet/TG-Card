@@ -1942,7 +1942,7 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"消息已发送给用户，但沟通记录保存失败，请检查数据库后再继续操作。")
   return true
  }
- _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticket.ID,"confirm",30*time.Minute)
+ _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10),ticket.ID,"confirm",30*time.Minute)
  keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"是，结单","callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":"否，继续沟通","callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
  _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已发送给用户。是否结单？",keyboard)
  return true
