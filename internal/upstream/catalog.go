@@ -122,6 +122,13 @@ func DujiaoFetchProducts(ctx context.Context, baseURL, apiKey, apiSecret string)
 	return nil, fmt.Errorf("Dujiao 商品分页超过安全上限 %d", maxPages)
 }
 
+func DujiaoProductFingerprint(product DujiaoProduct) (string,error) {
+ payload,err:=json.Marshal(product)
+ if err!=nil{return "",fmt.Errorf("marshal upstream product fingerprint: %w",err)}
+ sum:=sha256.Sum256(payload)
+ return hex.EncodeToString(sum[:]),nil
+}
+
 func LocalizedText(values map[string]string) string {
 	for _, key := range []string{"zh-CN", "zh_CN", "zh", "en"} {
 		if value := strings.TrimSpace(values[key]); value != "" { return value }
