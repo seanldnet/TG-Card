@@ -142,7 +142,7 @@ func TestOwnerReplyTimelineReflectsTelegramDelivery(t *testing.T) {
    if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil { t.Fatal(err) }
    ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-reply","user-reply","987654",order.OrderNo,"other","delivery status test")
    if err!=nil { t.Fatal(err) }
-   if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345",ticket.ID,"reply",30*time.Minute);err!=nil { t.Fatal(err) }
+   if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345","12345",ticket.ID,"reply",30*time.Minute);err!=nil { t.Fatal(err) }
 
    response:=`{"ok":true,"result":{}}`
    if !tc.telegramOK { response=`{"ok":false,"description":"bot was blocked by the user"}` }
@@ -159,7 +159,7 @@ func TestOwnerReplyTimelineReflectsTelegramDelivery(t *testing.T) {
    adminMessages:=0
    for _,message:=range messages { if message.SenderType=="admin" { adminMessages++ } }
    if adminMessages!=tc.wantAdminMessages { t.Fatalf("admin timeline messages=%d, want %d (all messages=%#v)",adminMessages,tc.wantAdminMessages,messages) }
-   session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345")
+   session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345","12345")
    if err!=nil { t.Fatal(err) }
    if session.Phase!=tc.wantPhase { t.Fatalf("session phase=%q, want %q",session.Phase,tc.wantPhase) }
   })
