@@ -21,7 +21,7 @@ docker compose exec -T db pg_dump -U tgcard -d tgcard --format=custom --no-owner
 test -s "$tmp_dir/postgres.dump"
 
 echo "[2/3] Archiving the tg_card_data Docker volume..."
-docker compose run --rm --no-deps -T --entrypoint sh app -c 'tar -czf - -C /app/data .' > "$tmp_dir/tg_card_data.tar.gz"
+docker compose run --rm --no-deps -T --name "tg-card-backup-$timestamp" --entrypoint sh app -c 'tar -czf - -C /app/data .' > "$tmp_dir/tg_card_data.tar.gz"
 test -s "$tmp_dir/tg_card_data.tar.gz"
 
 (cd "$tmp_dir" && sha256sum postgres.dump tg_card_data.tar.gz > SHA256SUMS)
