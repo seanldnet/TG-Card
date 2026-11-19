@@ -142,7 +142,7 @@ func TestOwnerReplyTimelineReflectsTelegramDelivery(t *testing.T) {
    if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil { t.Fatal(err) }
    ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-reply","user-reply","987654",order.OrderNo,"other","delivery status test")
    if err!=nil { t.Fatal(err) }
-   if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345",ticket.ID,"reply",30*time.Minute);err!=nil { t.Fatal(err) }
+   if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345","12345",ticket.ID,"reply",30*time.Minute);err!=nil { t.Fatal(err) }
 
    response:=`{"ok":true,"result":{}}`
    if !tc.telegramOK { response=`{"ok":false,"description":"bot was blocked by the user"}` }
@@ -159,9 +159,86 @@ func TestOwnerReplyTimelineReflectsTelegramDelivery(t *testing.T) {
    adminMessages:=0
    for _,message:=range messages { if message.SenderType=="admin" { adminMessages++ } }
    if adminMessages!=tc.wantAdminMessages { t.Fatalf("admin timeline messages=%d, want %d (all messages=%#v)",adminMessages,tc.wantAdminMessages,messages) }
-   session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345")
+   session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-reply","12345","12345")
    if err!=nil { t.Fatal(err) }
    if session.Phase!=tc.wantPhase { t.Fatalf("session phase=%q, want %q",session.Phase,tc.wantPhase) }
   })
  }
+}
+
+
+func TestOwnerConfirmCallbackCannotActOnSwitchedTicket(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ createTicket:=func(user,chat,description string) database.SupportTicket {
+  product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner confirm isolation",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+  if err!=nil{t.Fatal(err)}
+  order,err:=database.CreateOrder(ctx,db,"sqlite","bot-confirm",user,chat,product.ID,time.Minute)
+  if err!=nil{t.Fatal(err)}
+  if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+  ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-confirm",user,chat,order.OrderNo,"other",description)
+  if err!=nil{t.Fatal(err)}
+  return ticket
+ }
+ first:=createTicket("user-a","chat-a","ticket A")
+ second:=createTicket("user-b","chat-b","ticket B")
+ if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345","12345",second.ID,"confirm",30*time.Minute);err!=nil{t.Fatal(err)}
+ manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
+  return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)),Request:req},nil
+ })}}
+ cfg:=Config{ID:"bot-confirm",Token:"test-token",OwnerID:"12345"}
+ callback:=func(ticketID,choice string){
+  manager.handleOwnerSupportCallback(ctx,cfg,CallbackQuery{ID:"callback",From:TelegramUser{ID:12345},Message:&Message{Chat:Chat{ID:12345}},Data:"support:owner:confirm:"+ticketID+":"+choice})
+ }
+ callback(first.ID,"yes")
+ firstAfter,err:=database.GetSupportTicket(ctx,db,"sqlite",first.ID)
+ if err!=nil{t.Fatal(err)}
+ if firstAfter.Status=="resolved"{t.Fatal("stale confirmation for ticket A must not resolve it after session switched to ticket B")}
+ session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345","12345")
+ if err!=nil||session.TicketID!=second.ID||session.Phase!="confirm"{t.Fatalf("stale callback must preserve active ticket B session: %#v err=%v",session,err)}
+ callback(second.ID,"yes")
+ secondAfter,err:=database.GetSupportTicket(ctx,db,"sqlite",second.ID)
+ if err!=nil{t.Fatal(err)}
+ if secondAfter.Status!="resolved"{t.Fatalf("current ticket B should resolve, got %q",secondAfter.Status)}
+ if _,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-confirm","12345","12345");err==nil{t.Fatal("successful confirmation must clear active session")}
+ callback(second.ID,"yes")
+ secondAfter,err=database.GetSupportTicket(ctx,db,"sqlite",second.ID)
+ if err!=nil{t.Fatal(err)}
+ if secondAfter.Status!="resolved"{t.Fatalf("repeated stale callback must not change resolved state, got %q",secondAfter.Status)}
+ var auditCount int
+ if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM support_ticket_audits WHERE ticket_id=? AND action='resolved'",second.ID).Scan(&auditCount);err!=nil{t.Fatal(err)}
+ if auditCount!=1{t.Fatalf("repeated confirmation must produce exactly one resolve audit, got %d",auditCount)}
+}
+
+
+func TestOwnerReplyMessageFromDifferentChatDoesNotConsumeSession(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner chat isolation",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=database.CreateOrder(ctx,db,"sqlite","bot-chat","user-chat","987654",product.ID,time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-chat","user-chat","987654",order.OrderNo,"other","chat isolation test")
+ if err!=nil{t.Fatal(err)}
+ if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-chat","12345","private-chat-12345",ticket.ID,"reply",30*time.Minute);err!=nil{t.Fatal(err)}
+ telegramCalls:=0
+ manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
+  telegramCalls++
+  return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)),Request:req},nil
+ })}}
+ handled:=manager.handleActiveOwnerSupportMessage(ctx,Config{ID:"bot-chat",Token:"test-token"},Message{
+  MessageID:88,Text:"private customer information",Chat:Chat{ID:67890},From:&TelegramUser{ID:12345},
+ })
+ if handled{t.Fatal("message from another chat must not be treated as the active support reply")}
+ if telegramCalls!=0{t.Fatalf("message from another chat must not call Telegram API, got %d calls",telegramCalls)}
+ messages,err:=database.ListSupportTicketMessages(ctx,db,"sqlite",ticket.ID)
+ if err!=nil{t.Fatal(err)}
+ for _,item:=range messages{if item.SenderType=="admin"{t.Fatal("cross-chat message must not be persisted as an Owner reply")}}
 }

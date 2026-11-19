@@ -29,12 +29,12 @@ func TestSupportOwnerSessionPersistsAndExpires(t *testing.T) {
  defer db.Close()
  if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
  ticket:=createOwnerWorkflowTicket(t,db)
- if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345",ticket.ID,"reply",time.Minute);err!=nil{t.Fatal(err)}
- session,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345")
+ if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345",ticket.ID,"reply",time.Minute);err!=nil{t.Fatal(err)}
+ session,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345")
  if err!=nil||session.TicketID!=ticket.ID||session.Phase!="reply"{t.Fatalf("session not persisted: %#v err=%v",session,err)}
- if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345",ticket.ID,"confirm",time.Millisecond);err!=nil{t.Fatal(err)}
+ if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345",ticket.ID,"confirm",time.Millisecond);err!=nil{t.Fatal(err)}
  time.Sleep(5*time.Millisecond)
- if _,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345");err!=sql.ErrNoRows{t.Fatalf("expired session should be removed, got %v",err)}
+ if _,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345");err!=sql.ErrNoRows{t.Fatalf("expired session should be removed, got %v",err)}
 }
 
 func TestResolveSupportTicketByOwnerIsIdempotent(t *testing.T) {
@@ -159,5 +159,23 @@ func TestListPendingSupportTicketsIsScopedToBot(t *testing.T) {
  }
  if _,err:=ListPendingSupportTickets(ctx,db,"sqlite"," ");err==nil {
   t.Fatal("empty Bot ID must fail closed rather than list all tickets")
+ }
+}
+
+
+func TestSupportOwnerSessionIsBoundToInitiatingChat(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ ticket:=createOwnerWorkflowTicket(t,db)
+ if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","private-chat-12345",ticket.ID,"reply",time.Minute);err!=nil{t.Fatal(err)}
+ if _,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","group-chat-999");err!=sql.ErrNoRows{
+  t.Fatalf("session must not be visible from another Telegram chat, got %v",err)
+ }
+ session,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","private-chat-12345")
+ if err!=nil||session.ChatID!="private-chat-12345"||session.TicketID!=ticket.ID{
+  t.Fatalf("initiating chat should recover its session: %#v err=%v",session,err)
  }
 }
