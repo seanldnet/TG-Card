@@ -185,3 +185,17 @@ func TestCartCheckoutWalletPaymentDebitsOnceAndSellsAllKeys(t *testing.T) {
 	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE order_id=? AND status=2",order.ID).Scan(&sold);err!=nil{t.Fatal(err)}
 	if sold!=2{t.Fatalf("expected both cart keys sold after one wallet payment, got %d",sold)}
 }
+
+
+func TestCartCheckoutRejectsInvoiceAmountOverflow(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	p,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Huge card",PriceMinor:922337203685477,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,p.ID,[]StockSecret{{Ciphertext:"huge-secret",Fingerprint:"huge-fp"}});err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",p.ID,1);err!=nil{t.Fatal(err)}
+	if _,_,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot","user","chat",20*time.Minute);err==nil{t.Fatal("checkout must reject payment invoice overflow")}
+	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
+	if len(items)!=1{t.Fatalf("overflow rejection must retain cart, got %+v",items)}
+}
