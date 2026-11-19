@@ -150,3 +150,17 @@ func TestAdjustCartItemQuantityIsAtomicAndBounded(t *testing.T) {
 	items,err=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
 	if len(items)!=0{t.Fatalf("decrement at one should remove item: %+v",items)}
 }
+
+
+func TestCartCheckoutRejectsNonUSDTInvoiceCurrency(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	p,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"USD card",PriceMinor:100,Currency:"USD",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,p.ID,[]StockSecret{{Ciphertext:"usd-secret",Fingerprint:"usd-fp"}});err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",p.ID,1);err!=nil{t.Fatal(err)}
+	if _,_,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot","user","chat",20*time.Minute);err==nil{t.Fatal("non-USDT cart checkout must be rejected")}
+	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
+	if len(items)!=1{t.Fatalf("rejected checkout must retain cart, got %+v",items)}
+}
