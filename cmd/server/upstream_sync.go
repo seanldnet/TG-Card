@@ -69,6 +69,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			if iconErr != nil {
 				summary.ImagesFailed++
 				preserveIcon = true
+				categoryFingerprint = "" // Retry failed category icon downloads on the next scan.
 				if len(imageWarnings) < 5 { imageWarnings = append(imageWarnings, fmt.Sprintf("分类 %s 图标下载失败", name)) }
 			} else { iconPath = localIcon }
 		}
