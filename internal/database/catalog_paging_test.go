@@ -36,3 +36,15 @@ func TestUpstreamCatalogBatchFinalizationAndVisiblePagination(t *testing.T) {
  all,err:=ListProducts(ctx,db);if err!=nil{t.Fatal(err)}
  for _,item:=range all {if item.ID==localProduct.ID&&item.Status!=1{t.Fatal("upstream batch changed local product status")}}
 }
+
+func TestMarkUpstreamProductSeenIfUnchanged(t *testing.T) {
+ ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+ db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+ if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+ if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"batch-old",nil,[]UpstreamProductRecord{{ProductID:"101",SKUID:"201",Name:"Fingerprint item",PriceMinor:100,Currency:"USDT",UpstreamUpdatedAt:"2026-11-20T10:00:00Z",UpstreamFingerprint:"fingerprint-a",Active:true}});err!=nil{t.Fatal(err)}
+ unchanged,err:=MarkUpstreamProductSeenIfUnchanged(ctx,db,cfg.DBDriver,"101","fingerprint-a","batch-new",1);if err!=nil||!unchanged{t.Fatalf("unchanged product should be marked seen: %v %v",unchanged,err)}
+ changed,err:=MarkUpstreamProductSeenIfUnchanged(ctx,db,cfg.DBDriver,"101","fingerprint-b","batch-new",1);if err!=nil||changed{t.Fatalf("changed fingerprint must require a rewrite: %v %v",changed,err)}
+ if err:=SyncUpstreamCatalogBatch(ctx,db,cfg.DBDriver,"batch-new",nil,nil,true);err!=nil{t.Fatal(err)}
+ visible,err:=ListVisibleProductsPage(ctx,db,cfg.DBDriver,10,0,"","");if err!=nil{t.Fatal(err)}
+ if len(visible)!=1||visible[0].UpstreamProductID!="101"{t.Fatalf("unchanged product was hidden by finalization: %+v",visible)}
+}
