@@ -213,7 +213,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
      <a-form-item label="同步批次大小（条）" extra="每页处理 20–50 个上游商品；默认 25。"><a-input-number v-model:value="settings.syncBatchSize" class="w-full" :min="20" :max="50" :step="5"/></a-form-item>
      <a-form-item label="批次间隔（毫秒）" extra="每批提交后暂停 250–10000 毫秒；默认 1000。"><a-input-number v-model:value="settings.syncBatchDelayMs" class="w-full" :min="250" :max="10000" :step="250"/></a-form-item>
     </div>
-    <a-form-item label="启用上游商品来源">
+    <a-form-item label="启用上游售卖">
      <div class="flex flex-wrap items-center gap-3">
       <a-switch v-model:checked="settings.enabled"  :disabled="settings.enabled||settings.catalogStale||settings.syncStatus!=='success'"/>
       <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；上游售卖启用期间不能直接修改站点、凭证或价格策略；请先停用并清除上游目录，再修改配置、重新同步后启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
