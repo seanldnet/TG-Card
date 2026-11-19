@@ -1,6 +1,7 @@
 package telegrambot
 
 import (
+	"database/sql"
 	"context"
 	"io"
 	"net/http"
