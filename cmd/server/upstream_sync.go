@@ -156,18 +156,6 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 		if len(skus) == 0 {
 			return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 没有 SKU 数据，已保留上一次目录数据", title))
 		}
-		for _, sku := range skus {
-			if sku.ID <= 0 { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 包含无效 SKU ID，已停止同步", strconv.FormatInt(product.ID,10))) }
-			skuID := strconv.FormatInt(sku.ID, 10)
-			priceText := strings.TrimSpace(sku.PriceAmount)
-			if priceText == "" { priceText = strings.TrimSpace(product.PriceAmount) }
-			priceSnapshot, priceErr := upstream.ParseMinorUnits(priceText)
-			if priceErr != nil { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s SKU %s 价格无效，已停止本次同步", strconv.FormatInt(product.ID,10), skuID)) }
-			basePriceUSDT, priceErr := upstream.ConvertMinorToUSDT(priceSnapshot, ratePPM)
-			if priceErr != nil { return nil, a.failUpstreamSync(ctx, "上游价格汇率换算失败："+priceErr.Error()) }
-			price, priceErr := upstream.ApplyMarkup(basePriceUSDT, settings.MarkupBPS, settings.MarkupMinor)
-			if priceErr != nil { return nil, a.failUpstreamSync(ctx, "上游加价策略计算失败："+priceErr.Error()) }
-
 			images := make([]string, 0, 5)
 			imageFailed := false
 			for index, imageURL := range product.Images {
@@ -189,6 +177,19 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "商品图片路径序列化失败") }
 				imageJSON = string(encoded)
 			}
+		for _, sku := range skus {
+			if sku.ID <= 0 { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 包含无效 SKU ID，已停止同步", strconv.FormatInt(product.ID,10))) }
+			skuID := strconv.FormatInt(sku.ID, 10)
+			priceText := strings.TrimSpace(sku.PriceAmount)
+			if priceText == "" { priceText = strings.TrimSpace(product.PriceAmount) }
+			priceSnapshot, priceErr := upstream.ParseMinorUnits(priceText)
+			if priceErr != nil { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s SKU %s 价格无效，已停止本次同步", strconv.FormatInt(product.ID,10), skuID)) }
+			basePriceUSDT, priceErr := upstream.ConvertMinorToUSDT(priceSnapshot, ratePPM)
+			if priceErr != nil { return nil, a.failUpstreamSync(ctx, "上游价格汇率换算失败："+priceErr.Error()) }
+			price, priceErr := upstream.ApplyMarkup(basePriceUSDT, settings.MarkupBPS, settings.MarkupMinor)
+			if priceErr != nil { return nil, a.failUpstreamSync(ctx, "上游加价策略计算失败："+priceErr.Error()) }
+
+
 			specJSON := "{}"
 			if len(sku.SpecValues) > 0 {
 				encoded, marshalErr := json.Marshal(sku.SpecValues)
