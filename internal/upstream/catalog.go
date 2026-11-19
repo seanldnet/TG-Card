@@ -43,6 +43,7 @@ type DujiaoSKU struct {
 type DujiaoProduct struct {
 	ID int64 `json:"id"`
 	Slug string `json:"slug"`
+	UpdatedAt string `json:"updated_at"`
 	Title map[string]string `json:"title"`
 	Description map[string]string `json:"description"`
 	Content map[string]string `json:"content"`
@@ -86,26 +87,37 @@ func DujiaoFetchCategories(ctx context.Context, baseURL, apiKey, apiSecret strin
 	return envelope.Categories, nil
 }
 
+// DujiaoFetchProductsPage retrieves one bounded page. The caller owns pacing,
+// retries and persistence so a large catalogue never has to be accumulated in memory.
+func DujiaoFetchProductsPage(ctx context.Context, baseURL, apiKey, apiSecret string, page, pageSize int) ([]DujiaoProduct, int, error) {
+	if page < 1 { return nil, 0, fmt.Errorf("商品页码必须大于 0") }
+	if pageSize < 1 || pageSize > 100 { return nil, 0, fmt.Errorf("商品分页大小必须为 1–100") }
+	query := url.Values{}
+	query.Set("page", strconv.Itoa(page))
+	query.Set("page_size", strconv.Itoa(pageSize))
+	payload, err := DujiaoRequest(ctx, baseURL, http.MethodGet, dujiaoAPIPrefix+"/products", query, nil, apiKey, apiSecret)
+	if err != nil { return nil, 0, err }
+	var envelope productsEnvelope
+	if err := json.Unmarshal(payload, &envelope); err != nil { return nil, 0, fmt.Errorf("Dujiao 商品响应格式无效（第 %d 页）", page) }
+	if !envelope.OK {
+		message := strings.TrimSpace(envelope.ErrorMessage)
+		if message == "" { message = "上游拒绝商品查询" }
+		return nil, 0, fmt.Errorf("Dujiao 商品同步失败（第 %d 页）：%s", page, truncate(message, 300))
+	}
+	if envelope.Total < 0 || envelope.Total > 100000 { return nil, 0, fmt.Errorf("Dujiao 商品数量超出安全范围") }
+	if len(envelope.Items) > pageSize { return nil, 0, fmt.Errorf("Dujiao 商品分页返回数量超过请求上限") }
+	return envelope.Items, envelope.Total, nil
+}
+
 func DujiaoFetchProducts(ctx context.Context, baseURL, apiKey, apiSecret string) ([]DujiaoProduct, error) {
 	const pageSize = 100
 	const maxPages = 1000
 	items := make([]DujiaoProduct, 0)
 	for page := 1; page <= maxPages; page++ {
-		query := url.Values{}
-		query.Set("page", strconv.Itoa(page))
-		query.Set("page_size", strconv.Itoa(pageSize))
-		payload, err := DujiaoRequest(ctx, baseURL, http.MethodGet, dujiaoAPIPrefix+"/products", query, nil, apiKey, apiSecret)
+		batch, total, err := DujiaoFetchProductsPage(ctx, baseURL, apiKey, apiSecret, page, pageSize)
 		if err != nil { return nil, err }
-		var envelope productsEnvelope
-		if err := json.Unmarshal(payload, &envelope); err != nil { return nil, fmt.Errorf("Dujiao 商品响应格式无效（第 %d 页）", page) }
-		if !envelope.OK {
-			message := strings.TrimSpace(envelope.ErrorMessage)
-			if message == "" { message = "上游拒绝商品查询" }
-			return nil, fmt.Errorf("Dujiao 商品同步失败（第 %d 页）：%s", page, truncate(message, 300))
-		}
-		items = append(items, envelope.Items...)
-		if envelope.Total > 100000 { return nil, fmt.Errorf("Dujiao 商品数量超过安全上限 100000") }
-		if len(envelope.Items) == 0 || page*pageSize >= envelope.Total || len(envelope.Items) < pageSize { return items, nil }
+		items = append(items, batch...)
+		if len(batch) == 0 || page*pageSize >= total || len(batch) < pageSize { return items, nil }
 	}
 	return nil, fmt.Errorf("Dujiao 商品分页超过安全上限 %d", maxPages)
 }
