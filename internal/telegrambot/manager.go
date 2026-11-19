@@ -1002,37 +1002,18 @@ func (m *Manager) showCategoryPage(ctx context.Context,cfg Config,chatID int64,c
 }
 
 func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, productID string) {
-	p, err := database.GetVisibleProductByID(ctx, m.db, m.driver, productID)
-	if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在、已下架或暂不可购买。"); return }
-	{
-		keyBacked := p.DeliveryType == "" || p.DeliveryType == "card" || p.DeliveryType == "file_card"
-		stockLabel := "库存：不限量交付"
-		if keyBacked { stockLabel = "库存：" + strconv.Itoa(p.StockCount) }
-		if p.SourceType == "upstream" { if p.UpstreamStockQuantity < 0 { stockLabel = "上游库存：不限量" } else { stockLabel = "上游库存：" + strconv.FormatInt(p.UpstreamStockQuantity,10) } }
-		text := p.Name + "\n\n" + p.Description + "\n\n价格：" + formatPrice(p.PriceMinor,p.Currency) + "\n" + stockLabel
-		var discountTiers []struct { MinQuantity int `json:"minQuantity"`; DiscountPercent int `json:"discountPercent"` }
-		if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil && len(discountTiers)>0 {
-			text += "\n批量优惠："
-			for _,tier:=range discountTiers { text += "\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%" }
-		}
-		buttons := make([][]map[string]string,0)
-		if p.SourceType == "upstream" {
-			text += "\n\n⚠️ 上游采购履约将在下一阶段开放，目前暂不可购买。"
-		} else if keyBacked && p.StockCount < 1 {
-			buttons = [][]map[string]string{{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}}}
-		} else if keyBacked {
-			for _, quantity := range []int{1,2,3,5,10} {
-				if quantity <= p.StockCount { label := "购买 "+strconv.Itoa(quantity)+" 件"; buttons = append(buttons, []map[string]string{{"text":label,"callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}}) }
-			}
-		} else {
-			buttons = append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}})
-			buttons = append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})
-		}
-		buttons = append(buttons, []map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
-		return
-	}
-	_ = m.sendMessage(ctx, cfg.Token, chatID, "商品不存在、已下架或暂不可购买。")
+ p,err:=database.GetVisibleProductByID(ctx,m.db,m.driver,productID)
+ if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在、已下架或暂不可购买。");return}
+ keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
+ stockLabel:="库存：不限量交付";if keyBacked{stockLabel="库存："+strconv.Itoa(p.StockCount)}
+ if p.SourceType=="upstream"{if p.UpstreamStockQuantity<0{stockLabel="上游库存：不限量"}else{stockLabel="上游库存："+strconv.FormatInt(p.UpstreamStockQuantity,10)}}
+ text:=p.Name+"\n\n"+p.Description+"\n\n价格："+formatPrice(p.PriceMinor,p.Currency)+"\n"+stockLabel
+ var discountTiers []struct{MinQuantity int;DiscountPercent int}
+ if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil&&len(discountTiers)>0{text+="\n批量优惠：";for _,tier:=range discountTiers{text+="\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%"}}
+ buttons:=make([][]map[string]string,0)
+ if p.SourceType=="upstream"{text+="\n\n⚠️ 上游采购履约将在下一阶段开放，目前暂不可购买。"}else if keyBacked&&p.StockCount<1{buttons=append(buttons,[]map[string]string{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}})}else if keyBacked{for _,quantity:=range []int{1,2,3,5,10}{if quantity<=p.StockCount{buttons=append(buttons,[]map[string]string{{"text":"购买 "+strconv.Itoa(quantity)+" 件","callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}})}}}else{buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})}
+ buttons=append(buttons,[]map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
+ _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":buttons})
 }
 
 func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int) {
