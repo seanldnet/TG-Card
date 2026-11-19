@@ -1837,7 +1837,7 @@ func (m *Manager) notifyOwnerSupportMessage(ctx context.Context,cfg Config,ticke
 }
 
 func (m *Manager) showOwnerSupportList(ctx context.Context,cfg Config,chatID int64,page int) {
- items,err:=database.ListPendingSupportTickets(ctx,m.db,m.driver);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"待处理工单暂时无法读取。");return}
+ items,err:=database.ListPendingSupportTickets(ctx,m.db,m.driver,cfg.ID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"待处理工单暂时无法读取。");return}
  const size=8;pages:=(len(items)+size-1)/size;if pages==0{_=m.sendMessage(ctx,cfg.Token,chatID,"目前没有待处理或处理中的工单。");return}
  if page<0{page=0};if page>=pages{page=pages-1};start:=page*size;end:=start+size;if end>len(items){end=len(items)}
  rows:=make([][]map[string]string,0,size+2)
