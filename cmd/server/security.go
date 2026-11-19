@@ -8,7 +8,8 @@ import (
  "time"
 )
 
-// A blank TRUSTED_PROXY_CIDRS intentionally trusts no forwarding headers.\nfunc parseTrustedProxyCIDRs(raw string) ([]net.IPNet,error) {
+// A blank TRUSTED_PROXY_CIDRS intentionally trusts no forwarding headers.
+func parseTrustedProxyCIDRs(raw string) ([]net.IPNet,error) {
  var out []net.IPNet
  for _,part:=range strings.Split(raw,",") {
   value:=strings.TrimSpace(part);if value==""{continue}
