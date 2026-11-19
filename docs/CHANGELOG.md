@@ -1,8 +1,8 @@
 ## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40）
 
 - 修复 `ListPendingSupportTickets` 未按 bot_id 过滤的跨 Bot 工单可见性问题。
-- 数据库查询现在要求非空 Bot ID，并在 SQL 条件中同时限定 bot_id 与待处理状态；Owner Bot 列表使用当前 worker 的 Bot ID。
-- 新增多 Bot 隔离回归测试，覆盖 Bot A 只能看到 A 工单、Bot B 只能看到 B 工单，以及空 Bot ID 失败关闭。
+- 数据库查询现在要求非空 Bot ID，并在 SQL 条件中同时限定 bot_id 与待处理状态；Owner Bot 列表使用当前 worker 的 Bot ID；工单查看、回复、结单和确认结单回调均校验工单归属当前 Bot。
+- 新增多 Bot 隔离回归测试，覆盖 Bot A 只能看到 A 工单、Bot B 只能看到 B 工单，以及空 Bot ID 失败关闭；新增回调层跨 Bot 工单访问拒绝测试。
 - 不改变已由项目所有者确认通过的附件转发行为；CI、合并、镜像发布、生产部署和真机验收待完成。
 
 
