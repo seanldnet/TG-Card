@@ -217,6 +217,30 @@ func UpdateAdminPassword(ctx context.Context, db *sql.DB, driver, adminID, passw
 	return nil
 }
 
+// CreateAdminTokenSession stores only a one-way token hash; raw bearer tokens are never persisted.
+func CreateAdminTokenSession(ctx context.Context, db *sql.DB, driver, adminID, tokenHash string, expiresAt time.Time) error {
+ adminID, tokenHash = strings.TrimSpace(adminID), strings.TrimSpace(tokenHash)
+ if adminID == "" || tokenHash == "" || !expiresAt.After(time.Now()) { return fmt.Errorf("administrator, token hash and future expiry are required") }
+ now := time.Now().UTC()
+ if _, err := db.ExecContext(ctx, "DELETE FROM admin_token_sessions WHERE expires_at <= "+placeholder(driver,1), now.Unix()); err != nil { return err }
+ query := "INSERT INTO admin_token_sessions(token_hash,admin_id,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+")"
+ _, err := db.ExecContext(ctx, query, tokenHash, adminID, expiresAt.Unix(), now.Format(time.RFC3339Nano))
+ return err
+}
+
+func IsAdminTokenSessionActive(ctx context.Context, db *sql.DB, driver, adminID, tokenHash string, now time.Time) (bool, error) {
+ var count int
+ query := "SELECT COUNT(1) FROM admin_token_sessions WHERE token_hash="+placeholder(driver,1)+" AND admin_id="+placeholder(driver,2)+" AND expires_at>"+placeholder(driver,3)
+ if err := db.QueryRowContext(ctx, query, strings.TrimSpace(tokenHash), strings.TrimSpace(adminID), now.Unix()).Scan(&count); err != nil { return false, err }
+ return count == 1, nil
+}
+
+func RevokeAdminTokenSession(ctx context.Context, db *sql.DB, driver, adminID, tokenHash string) error {
+ query := "DELETE FROM admin_token_sessions WHERE token_hash="+placeholder(driver,1)+" AND admin_id="+placeholder(driver,2)
+ _, err := db.ExecContext(ctx, query, strings.TrimSpace(tokenHash), strings.TrimSpace(adminID))
+ return err
+}
+
 func RecordAdminAudit(ctx context.Context, db *sql.DB, driver, adminID, action, resource, ip, userAgent, details string) {
 	id, err := randomID()
 	if err != nil { return }

@@ -20,6 +20,7 @@ type Claims struct {
 	RealName string `json:"realName"`
 	Role string `json:"role"`
 	TokenVersion int `json:"ver"`
+	TokenID string `json:"jti"`
 	Expires int64 `json:"exp"`
 }
 
@@ -55,6 +56,11 @@ func NewManager(secret, dataDir string) (*Manager, error) {
 }
 
 func (m *Manager) Issue(claims Claims, lifetime time.Duration) (string, error) {
+	if claims.TokenID == "" {
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil { return "", fmt.Errorf("generate token id: %w", err) }
+		claims.TokenID = base64.RawURLEncoding.EncodeToString(raw)
+	}
 	header := base64.RawURLEncoding.EncodeToString([]byte("{\"alg\":\"HS256\",\"typ\":\"JWT\"}"))
 	claims.Expires = time.Now().Add(lifetime).Unix()
 	payload, err := json.Marshal(claims)
@@ -72,7 +78,7 @@ func (m *Manager) Verify(token string) (Claims, error) {
 	if err != nil { return Claims{}, errors.New("invalid token payload") }
 	var claims Claims
 	if err := json.Unmarshal(payload, &claims); err != nil { return Claims{}, errors.New("invalid token claims") }
-	if claims.AdminID == "" || claims.Username == "" || claims.Expires <= time.Now().Unix() {
+	if claims.AdminID == "" || claims.Username == "" || claims.TokenID == "" || claims.Expires <= time.Now().Unix() {
 		return Claims{}, errors.New("expired or incomplete token")
 	}
 	return claims, nil

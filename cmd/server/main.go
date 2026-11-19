@@ -407,6 +407,12 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Unable to create login session")
 		return
 	}
+	tokenHash := adminTokenHash(token)
+	if err := database.CreateAdminTokenSession(r.Context(), a.db, a.driver, admin.ID, tokenHash, time.Now().Add(24*time.Hour)); err != nil {
+		log.Printf("persist administrator token session: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to persist login session")
+		return
+	}
 	if err := database.UpdateLastLogin(r.Context(), a.db, a.driver, admin.ID); err != nil {
 		log.Printf("update administrator last login: %v", err)
 	}
@@ -428,6 +434,15 @@ func (a *application) recordLoginFailure(ip string){a.loginMu.Lock();defer a.log
 func (a *application) clearLoginFailures(ip string){a.loginMu.Lock();delete(a.loginFailures,ip);a.loginMu.Unlock()}
 
 func (a *application) logout(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if err := database.RevokeAdminTokenSession(r.Context(), a.db, a.driver, claims.AdminID, adminTokenHash(token)); err != nil {
+		log.Printf("revoke administrator token session: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to revoke login session")
+		return
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "auth.logout", "admin:"+claims.Username, clientIP(r), r.UserAgent(), "current bearer session revoked")
 	writeSuccess(w, http.StatusOK, "")
 }
 
@@ -648,7 +663,8 @@ func (a *application) authenticate(w http.ResponseWriter, r *http.Request) (auth
 		writeError(w, http.StatusUnauthorized, "Unauthorized")
 		return auth.Claims{}, false
 	}
-	claims, err := a.tokens.Verify(strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")))
+	token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	claims, err := a.tokens.Verify(token)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "Unauthorized")
 		return auth.Claims{}, false
@@ -658,7 +674,22 @@ func (a *application) authenticate(w http.ResponseWriter, r *http.Request) (auth
 		writeError(w, http.StatusUnauthorized, "Session expired; please sign in again")
 		return auth.Claims{}, false
 	}
+	active, err := database.IsAdminTokenSessionActive(r.Context(), a.db, a.driver, claims.AdminID, adminTokenHash(token), time.Now())
+	if err != nil {
+		log.Printf("check administrator token session: %v", err)
+		writeError(w, http.StatusInternalServerError, "Unable to verify login session")
+		return auth.Claims{}, false
+	}
+	if !active {
+		writeError(w, http.StatusUnauthorized, "Session revoked or expired; please sign in again")
+		return auth.Claims{}, false
+	}
 	return claims, true
+}
+
+func adminTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func writeSuccess(w http.ResponseWriter, status int, data any) {
