@@ -193,7 +193,7 @@ onMounted(()=>{void load();});
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
       <a-switch v-model:checked="settings.enabled"  :disabled="settings.enabled||settings.catalogStale||settings.syncStatus!=='success'"/>
-      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
+      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；上游售卖启用期间不能直接修改站点、凭证或价格策略；请先停用并清除上游目录，再修改配置、重新同步后启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
      </div>
     </a-form-item>
     <a-divider />
