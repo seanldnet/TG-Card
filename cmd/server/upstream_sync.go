@@ -121,7 +121,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
     _=a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,"")
    }
   }
-  if page*pageSize>=total || len(products)==0 || len(products)<pageSize {break}
+  if pageErr==nil && (page*pageSize>=total || len(products)==0 || len(products)<pageSize) {break}
   select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(settings.SyncBatchDelayMS)*time.Millisecond):}
  }
  if failedPages>0{return summary,fmt.Errorf("有 %d 个商品分页处理失败；为避免目录不完整，未执行下架收尾",failedPages)}
