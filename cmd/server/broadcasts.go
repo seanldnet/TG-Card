@@ -40,6 +40,6 @@ func (a *application) createBroadcastTask(w http.ResponseWriter,r *http.Request)
 	if !found{writeError(w,http.StatusBadRequest,"所选机器人当前没有运行，请先启动机器人");return}
 	item,err:=database.CreateBroadcastTask(r.Context(),a.db,a.driver,input.BotID,input.Title,input.MessageText,input.ScheduledAt,claims.AdminID)
 	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"broadcast.create","broadcast:"+item.ID,clientIP(r),r.UserAgent(),"recipients="+strconv.Itoa(item.TotalCount))
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"broadcast.create","broadcast:"+item.ID,a.clientIP(r),r.UserAgent(),"recipients="+strconv.Itoa(item.TotalCount))
 	writeSuccess(w,http.StatusCreated,item)
 }
