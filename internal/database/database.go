@@ -217,6 +217,32 @@ func UpdateAdminPassword(ctx context.Context, db *sql.DB, driver, adminID, passw
 	return nil
 }
 
+// CountAdminLoginFailures counts recent failed login attempts for a one-way IP key.
+func CountAdminLoginFailures(ctx context.Context, db *sql.DB, driver, ipHash string, since time.Time) (int, error) {
+ var count int
+ query := "SELECT COUNT(1) FROM admin_login_attempts WHERE ip_hash="+placeholder(driver,1)+" AND attempted_at>"+placeholder(driver,2)
+ err := db.QueryRowContext(ctx, query, strings.TrimSpace(ipHash), since.Unix()).Scan(&count)
+ return count, err
+}
+
+func RecordAdminLoginFailure(ctx context.Context, db *sql.DB, driver, ipHash string, attemptedAt time.Time) error {
+ ipHash = strings.TrimSpace(ipHash)
+ if ipHash == "" { return fmt.Errorf("login rate limit IP hash is required") }
+ id, err := randomID()
+ if err != nil { return err }
+ now := time.Now().UTC()
+ if _, err := db.ExecContext(ctx, "DELETE FROM admin_login_attempts WHERE attempted_at<"+placeholder(driver,1), now.Add(-24*time.Hour).Unix()); err != nil { return err }
+ query := "INSERT INTO admin_login_attempts(id,ip_hash,attempted_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+")"
+ _, err = db.ExecContext(ctx, query, id, ipHash, attemptedAt.Unix())
+ return err
+}
+
+func ClearAdminLoginFailures(ctx context.Context, db *sql.DB, driver, ipHash string) error {
+ query := "DELETE FROM admin_login_attempts WHERE ip_hash="+placeholder(driver,1)
+ _, err := db.ExecContext(ctx, query, strings.TrimSpace(ipHash))
+ return err
+}
+
 // CreateAdminTokenSession stores only a one-way token hash; raw bearer tokens are never persisted.
 func CreateAdminTokenSession(ctx context.Context, db *sql.DB, driver, adminID, tokenHash string, expiresAt time.Time) error {
  adminID, tokenHash = strings.TrimSpace(adminID), strings.TrimSpace(tokenHash)
