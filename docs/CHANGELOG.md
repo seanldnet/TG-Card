@@ -1,4 +1,4 @@
-## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 开发中）
+## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 已合并）
 
 - 修复目标：原 `POST /api/auth/logout` 只返回成功，不撤销服务端 token；被复制的旧 Bearer token 在 24 小时内仍可访问 API。
 - 新增 `0041_admin_token_sessions.sql` 与服务端会话登记/查询/撤销；数据库只保存 token SHA-256 摘要。
