@@ -1,6 +1,14 @@
+## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 开发中）
+
+- 修复目标：旧的“是，结单 / 否，继续沟通”按钮在 Owner 已切换到另一工单后仍可操作原工单的问题。
+- 变更：确认回调必须匹配当前 Bot、Owner、ticket_id 与 confirm 会话阶段；会话已过期、切换工单或重复旧按钮时拒绝变更状态。开始回复时检查工单状态更新错误；继续沟通时检查会话写入错误。
+- 测试：增加双工单切换、旧回调拒绝、当前回调成功、会话清理及重复回调审计幂等测试。
+- 不新增数据库迁移；现有 30 分钟 TTL、数据库持久化与重启恢复方式保持不变。
+- 状态：独立 PR #44 开发中；Go/Admin/Security CI、合并、Docker Publish、digest 与生产验收待完成。
+
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
-- 状态：已合并至 main，merge commit `7fd658d1803d18442d9284098ddf8128cf22cc19`；PR head 与 main Go/Admin/Security 全部成功。Docker Publish Run [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 尚在运行，digest 待核实；生产部署/真机验收待确认。
+- 状态：已合并至 main，merge commit `7fd658d1803d18442d9284098ddf8128cf22cc19`；PR head 与 main Go/Admin/Security 全部成功。Docker Publish Run [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 成功，GHCR 多架构 latest manifest digest `sha256:025a45cccf1895c17882e863b15bb524adc83200b2a7b77b891cee9e75a9182d`；生产部署/真机验收待确认。
 - 影响模块：`cmd/server/support.go`、售后 API、售后后台交互、`.github/workflows/security.yml`、售后专项文档。
 - 修复：网页后台文本回复改为先发送 Telegram；明确发送失败时仅记录 system 失败事件，不写入 admin 客服时间线、不更新工单回复字段，返回 502 供前端保留窗口重试。Telegram 明确成功后才写入 admin 时间线并更新工单回复字段；前端状态更新也移至回复发送成功之后，避免发送失败时状态先行变更。
 - 测试：新增 Telegram 发送成功/失败回归测试，检查 timeline sender_type、工单状态和 adminReply 字段；PR Go CI、main Go CI、Admin CI 与 Security 均成功。main runs：[Go #44570069329](https://github.com/seanldnet/TG-Card/actions/runs/44570069329)、[Admin #44570069285](https://github.com/seanldnet/TG-Card/actions/runs/44570069285)、[Security #44570069428](https://github.com/seanldnet/TG-Card/actions/runs/44570069428)。
