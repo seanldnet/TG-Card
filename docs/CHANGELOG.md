@@ -1,9 +1,19 @@
-## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40）
+## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 开发中）
+
+- 修复 Owner 回复流程的消息时间线时序：先调用 Telegram 发送，确认成功后才写入客服消息时间线并切换至待结单确认阶段。
+- Telegram 发送失败时不再写入看似已送达的客服消息；保留 `reply` 会话，Owner 可重新发送新的回复消息，并记录系统失败事件。
+- 新增 Telegram 成功/失败响应回归测试，覆盖时间线条目数与会话阶段。
+- 边界：Telegram 不提供业务消息幂等键；网络超时/响应丢失仍存在远端送达状态不确定性。若 Telegram 已确认送达但本地时间线写入失败，明确通知 Owner 并记录错误。
+- 状态：独立分支 `fix/owner-reply-delivery-state-20261120`；PR/CI/合并/发布待完成。
+
+## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40 已合并）
 
 - 修复 `ListPendingSupportTickets` 未按 bot_id 过滤的跨 Bot 工单可见性问题。
 - 数据库查询现在要求非空 Bot ID，并在 SQL 条件中同时限定 bot_id 与待处理状态；Owner Bot 列表使用当前 worker 的 Bot ID；工单查看、回复、结单和确认结单回调均校验工单归属当前 Bot。
 - 新增多 Bot 隔离回归测试，覆盖 Bot A 只能看到 A 工单、Bot B 只能看到 B 工单，以及空 Bot ID 失败关闭；新增回调层跨 Bot 工单访问拒绝测试。
-- 不改变已由项目所有者确认通过的附件转发行为；CI、合并、镜像发布、生产部署和真机验收待完成。
+- 不改变已由项目所有者确认通过的附件转发行为。
+- PR #40 merge commit `69218784601f7d75b668b8047379d931c9a87564`；PR head Go/Admin/Security 全部成功，main Go/Admin/Security/Publish 全部成功。
+- GHCR `latest` digest：`sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`；Publish Run [#44565112822](https://github.com/seanldnet/TG-Card/actions/runs/44565112822)。生产部署/真机验收待确认。
 
 
 ## 2026-11-20 — 阶段一售后附件转发子项所有者实测确认
