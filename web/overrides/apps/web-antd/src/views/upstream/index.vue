@@ -150,7 +150,7 @@ onMounted(()=>{void load();});
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <a-card :bordered="false" :loading="loading" title="上游对接">
-   <template #extra><a-tag :color="settings.enabled?'success':'default'">{{settings.enabled?'上游已启用':'上游未启用'}}</a-tag></template>
+   <template #extra><a-tag :color="settings.enabled&&!settings.catalogStale?'success':'default'">{{settings.enabled&&!settings.catalogStale?'上游售卖中':'本地商品售卖'}}</a-tag></template>
    <a-alert class="mb-5" type="info" show-icon message="当前仅开放 Dujiao-Next 官方 Open API。异次元和萌次元尚无已核实的第三方商户采购协议，因此不提供可调用配置。" />
    <a-form layout="vertical">
     <a-form-item label="上游类型">
@@ -193,7 +193,7 @@ onMounted(()=>{void load();});
     <a-form-item label="启用上游商品来源">
      <div class="flex flex-wrap items-center gap-3">
       <a-switch v-model:checked="settings.enabled"  :disabled="settings.enabled||settings.catalogStale||settings.syncStatus!=='success'"/>
-      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 切换到上游商品目录，本地旧商品在后台保留并标记为隐藏。</span>
+      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；配置、凭证或价格策略变化会自动标记目录过期并关闭上游展示，重新同步成功后才能再次启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
      </div>
     </a-form-item>
     <a-divider />
