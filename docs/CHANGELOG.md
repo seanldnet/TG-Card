@@ -1,8 +1,8 @@
-## 2026-11-20 — Owner Bot 继续沟通与媒体回复回归覆盖（PR #47 开发中）
+## 2026-11-20 — Owner Bot 继续沟通与媒体回复回归覆盖（PR #47 已合并）
 
 - 新增 C1/C2 自动化测试：Owner 点击“否，继续沟通”恢复 reply 会话；不点按钮连续发送两条消息，两条均进入客户交付与客服时间线。
 - 新增图片与普通文件回复测试，验证 Telegram 分别调用 `sendPhoto` / `sendDocument`，发送成功后才保存附件时间线。
-- 本 PR 仅测试补强，不改变业务行为、迁移或部署配置；CI、合并和镜像发布待完成。
+- PR #47 已合并至 main，merge commit `7be8ddbb850c907060801dcb69bd0fea9c5e679b`。PR head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 正在执行，digest 待核实。仅测试补强，不改变业务行为、迁移或部署配置。
 
 ## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 已合并）
 
