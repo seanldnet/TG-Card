@@ -44,6 +44,9 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  categories,err:=upstream.DujiaoFetchCategories(ctx,settings.BaseURL,apiKey,apiSecret)
  if err!=nil{return summary,a.failUpstreamSync(ctx,redactUpstreamError(err.Error(),apiKey,apiSecret))}
  
+	// Switch to local sales before mutating any part of the upstream catalogue.
+	settings.CatalogStale=true
+	if err:=database.SaveUpstreamSettings(ctx,a.db,a.driver,settings);err!=nil{return summary,a.failUpstreamSync(ctx,"标记上游目录刷新状态失败："+err.Error())}
 	batchID:=fmt.Sprintf("%d",time.Now().UTC().UnixNano())
  imageWarnings := make([]string, 0)
 	categoryNames := make(map[int64]string, len(categories))
@@ -79,11 +82,6 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			Name: name, Icon: iconPath, PreserveIcon: preserveIcon, Fingerprint: categoryFingerprint, SortOrder: -category.SortOrder,
 		})
 	}
- // Hide the upstream catalogue while a multi-page refresh is in progress. A
- // failed/cancelled run therefore falls back to local sales rather than serving
- // a mixed old/new upstream catalogue.
- settings.CatalogStale=true
- if err:=database.SaveUpstreamSettings(ctx,a.db,a.driver,settings);err!=nil{return summary,a.failUpstreamSync(ctx,"标记上游目录刷新状态失败："+err.Error())}
  if err:=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,categoryRecords,nil,false);err!=nil{return summary,a.failUpstreamSync(ctx,"写入上游分类失败："+err.Error())}
  pageSize:=settings.SyncBatchSize
  if pageSize<20||pageSize>50{pageSize=25}
@@ -340,7 +338,6 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
  settings,err:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
  if err!=nil{a.upstreamSyncMu.Unlock();return "",err}
  if !settings.Enabled{a.upstreamSyncMu.Unlock();return "",fmt.Errorf("上游来源当前未启用")}
- settings.CatalogStale=true
  if err:=database.SaveUpstreamSettings(context.Background(),a.db,a.driver,settings);err!=nil{a.upstreamSyncMu.Unlock();return "",err}
  jobID:=fmt.Sprintf("upstream-cleanup-%d",time.Now().UTC().UnixNano())
  job:=database.UpstreamSyncJob{ID:jobID,Status:"cleaning",BatchSize:settings.SyncBatchSize,DelayMS:settings.SyncBatchDelayMS,TriggerType:trigger}
