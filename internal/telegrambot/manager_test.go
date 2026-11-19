@@ -242,3 +242,78 @@ func TestOwnerReplyMessageFromDifferentChatDoesNotConsumeSession(t *testing.T) {
  if err!=nil{t.Fatal(err)}
  for _,item:=range messages{if item.SenderType=="admin"{t.Fatal("cross-chat message must not be persisted as an Owner reply")}}
 }
+
+
+func TestOwnerContinueWithoutButtonSupportsConsecutiveReplies(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner continue workflow",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=database.CreateOrder(ctx,db,"sqlite","bot-continue","user-continue","987654",product.ID,time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-continue","user-continue","987654",order.OrderNo,"other","continue conversation test")
+ if err!=nil{t.Fatal(err)}
+ if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-continue","12345","12345",ticket.ID,"confirm",30*time.Minute);err!=nil{t.Fatal(err)}
+ telegramCalls:=0
+ manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
+  telegramCalls++
+  return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)),Request:req},nil
+ })}}
+ cfg:=Config{ID:"bot-continue",Token:"test-token",OwnerID:"12345"}
+ manager.handleOwnerSupportCallback(ctx,cfg,CallbackQuery{ID:"continue",From:TelegramUser{ID:12345},Message:&Message{Chat:Chat{ID:12345}},Data:"support:owner:confirm:"+ticket.ID+":no"})
+ session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-continue","12345","12345")
+ if err!=nil||session.Phase!="reply"{t.Fatalf("No/continue must restore reply phase: %#v err=%v",session,err)}
+ for i,body:=range []string{"first follow-up","second follow-up without pressing a button"}{
+  handled:=manager.handleActiveOwnerSupportMessage(ctx,cfg,Message{MessageID:int64(100+i),Text:body,Chat:Chat{ID:12345},From:&TelegramUser{ID:12345}})
+  if !handled{t.Fatalf("consecutive Owner reply %d was not handled",i+1)}
+ }
+ messages,err:=database.ListSupportTicketMessages(ctx,db,"sqlite",ticket.ID)
+ if err!=nil{t.Fatal(err)}
+ var replies []string
+ for _,item:=range messages{if item.SenderType=="admin"{replies=append(replies,item.Message)}}
+ if len(replies)!=2||replies[0]!="first follow-up"||replies[1]!="second follow-up without pressing a button"{t.Fatalf("expected both consecutive replies in timeline, got %#v",replies)}
+ session,err=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-continue","12345","12345")
+ if err!=nil||session.Phase!="confirm"{t.Fatalf("reply should return to confirm phase after successful delivery: %#v err=%v",session,err)}
+ if telegramCalls!=2{t.Fatalf("expected exactly two Telegram deliveries, got %d",telegramCalls)}
+}
+
+func TestOwnerReplyMediaUsesPhotoAndDocumentMethods(t *testing.T) {
+ for _,tc:=range []struct{name string; message Message; wantMethod string; wantFileID string; wantFileName string}{
+  {name:"photo",message:Message{MessageID:201,Caption:"photo evidence",Photo:[]TelegramPhoto{{FileID:"photo-file-id"}}},wantMethod:"sendPhoto",wantFileID:"photo-file-id",wantFileName:"Telegram 图片"},
+  {name:"document",message:Message{MessageID:202,Caption:"document evidence",Document:&TelegramDocument{FileID:"document-file-id",FileName:"proof.pdf"}},wantMethod:"sendDocument",wantFileID:"document-file-id",wantFileName:"proof.pdf"},
+ }{
+  t.Run(tc.name,func(t *testing.T){
+   ctx:=context.Background()
+   db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+   if err!=nil{t.Fatal(err)}
+   defer db.Close()
+   if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+   product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner media reply",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+   if err!=nil{t.Fatal(err)}
+   order,err:=database.CreateOrder(ctx,db,"sqlite","bot-media","user-media","987654",product.ID,time.Minute)
+   if err!=nil{t.Fatal(err)}
+   if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+   ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-media","user-media","987654",order.OrderNo,"other","media reply test")
+   if err!=nil{t.Fatal(err)}
+   if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-media","12345","12345",ticket.ID,"reply",30*time.Minute);err!=nil{t.Fatal(err)}
+   var methods []string
+   manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
+    methods=append(methods,req.URL.Path)
+    return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)),Request:req},nil
+   })}}
+   tc.message.Chat=Chat{ID:12345}
+   tc.message.From=&TelegramUser{ID:12345}
+   if !manager.handleActiveOwnerSupportMessage(ctx,Config{ID:"bot-media",Token:"test-token"},tc.message){t.Fatal("Owner media reply was not handled")}
+   if len(methods)!=1||!strings.HasSuffix(methods[0],"/"+tc.wantMethod){t.Fatalf("expected Telegram %s call, got %#v",tc.wantMethod,methods)}
+   messages,err:=database.ListSupportTicketMessages(ctx,db,"sqlite",ticket.ID)
+   if err!=nil{t.Fatal(err)}
+   found:=false
+   for _,item:=range messages{if item.SenderType=="admin"&&item.AttachmentFileID==tc.wantFileID&&item.AttachmentName==tc.wantFileName&&item.Message==tc.message.Caption{found=true}}
+   if !found{t.Fatalf("media reply not persisted after delivery: %#v",messages)}
+  })
+ }
+}
