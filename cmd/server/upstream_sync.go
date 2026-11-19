@@ -77,6 +77,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  pageSize:=settings.SyncBatchSize
  if pageSize<20||pageSize>50{pageSize=25}
  total:=0
+ processedProducts:=0
  consecutiveFailures:=0
  failedPages:=0
  for page:=1;page<=4000;page++ {
@@ -91,13 +92,22 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
   }
   if pageErr!=nil {
    failedPages++;consecutiveFailures++
-   _=a.updateUpstreamSyncProgress(total,summary.Products,page,failedPages,consecutiveFailures,redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
+   _=a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
    if consecutiveFailures>=3 {
     _=database.SaveUpstreamSyncResult(context.Background(),a.db,a.driver,"failed","连续多个商品分页失败，同步已暂停："+redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
     return summary,fmt.Errorf("连续 3 个商品分页失败，同步已暂停：%w",pageErr)
    }
   } else {
-   records,buildErr:=a.buildUpstreamProductRecords(ctx,products,settings,currency,ratePPM,&summary,&imageWarnings)
+   processedProducts+=len(products)
+   changedProducts:=make([]upstream.DujiaoProduct,0,len(products))
+   for _,product:=range products {
+    fingerprint,fingerprintErr:=upstream.DujiaoProductFingerprint(product)
+    if fingerprintErr!=nil{return summary,fingerprintErr}
+    unchanged,seenErr:=database.MarkUpstreamProductSeenIfUnchanged(ctx,a.db,a.driver,strconv.FormatInt(product.ID,10),fingerprint,batchID)
+    if seenErr!=nil{return summary,seenErr}
+    if !unchanged {changedProducts=append(changedProducts,product)}
+   }
+   records,buildErr:=a.buildUpstreamProductRecords(ctx,changedProducts,settings,currency,ratePPM,&summary,&imageWarnings)
    if buildErr!=nil{return summary,buildErr}
    var writeErr error
    for attempt:=1;attempt<=3;attempt++ {
@@ -105,10 +115,10 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
     if writeErr==nil {break}
     if attempt<3 {select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(attempt)*500*time.Millisecond):}}
    }
-   if writeErr!=nil {failedPages++;consecutiveFailures++;_ = a.updateUpstreamSyncProgress(total,summary.Products,page,failedPages,consecutiveFailures,writeErr.Error());if consecutiveFailures>=3{return summary,fmt.Errorf("连续多个商品批次写入失败，同步已暂停：%w",writeErr)}} else {
+   if writeErr!=nil {failedPages++;consecutiveFailures++;_ = a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,writeErr.Error());if consecutiveFailures>=3{return summary,fmt.Errorf("连续多个商品批次写入失败，同步已暂停：%w",writeErr)}} else {
     consecutiveFailures=0
     summary.Products+=len(records)
-    _=a.updateUpstreamSyncProgress(total,summary.Products,page,failedPages,consecutiveFailures,"")
+    _=a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,"")
    }
   }
   if page*pageSize>=total || len(products)==0 || len(products)<pageSize {break}
@@ -187,8 +197,11 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "商品标签序列化失败") }
 				tagsJSON = string(encoded)
 			}
+			fingerprint, fingerprintErr := upstream.DujiaoProductFingerprint(product)
+			if fingerprintErr != nil { return nil, fingerprintErr }
 			productRecords = append(productRecords, database.UpstreamProductRecord{
 				ProductID: strconv.FormatInt(product.ID, 10), SKUID: skuID, SKUCode: sku.Code, Slug: product.Slug,
+				UpstreamUpdatedAt: product.UpdatedAt, UpstreamFingerprint: fingerprint,
 				CategoryID: strconv.FormatInt(product.CategoryID, 10),
 				Name: upstream.VariantName(title, sku, len(skus)), Description: description,
 				SpecValuesJSON: specJSON, FulfillmentType: product.FulfillmentType,
