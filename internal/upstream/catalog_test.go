@@ -34,7 +34,7 @@ func TestOfficialDujiaoCatalogResponseShape(t *testing.T) {
 	payload := []byte(`{
 		"ok":true,
 		"items":[{
-			"id":101,"slug":"example","title":{"zh-CN":"示例商品"},
+			"id":101,"slug":"example","updated_at":"2026-11-20T10:00:00Z","title":{"zh-CN":"示例商品"},
 			"description":{"zh-CN":"商品摘要"},"content":{"zh-CN":"<p>商品详情</p>"},
 			"images":["https://cdn.example.com/item.png"],"tags":["hot"],
 			"price_amount":"7.90","fulfillment_type":"manual",
@@ -48,6 +48,6 @@ func TestOfficialDujiaoCatalogResponseShape(t *testing.T) {
 	if err:=json.Unmarshal(payload,&response);err!=nil{t.Fatal(err)}
 	if !response.OK||len(response.Items)!=1||response.Items[0].ID!=101||len(response.Items[0].SKUs)!=1{t.Fatalf("unexpected response: %+v",response)}
 	product:=response.Items[0]
-	if product.FulfillmentType!="manual"||product.SKUs[0].ID!=201||product.SKUs[0].StockQuantity!=12||product.SKUs[0].Code!="DEFAULT"{t.Fatalf("SKU/fulfillment metadata mismatch: %+v",product)}
+	if product.UpdatedAt!="2026-11-20T10:00:00Z"||product.FulfillmentType!="manual"||product.SKUs[0].ID!=201||product.SKUs[0].StockQuantity!=12||product.SKUs[0].Code!="DEFAULT"{t.Fatalf("SKU/fulfillment metadata mismatch: %+v",product)}
 	if LocalizedText(product.Title)!="示例商品"||CleanDescription(product.Description,product.Content)!="商品摘要"{t.Fatal("multilingual text normalization failed")}
 }
