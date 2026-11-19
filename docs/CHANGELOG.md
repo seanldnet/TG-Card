@@ -1,6 +1,6 @@
-## 2026-11-20 — PR E Dujiao-Next 真实商户联调操作手册
+## 2026-11-20 — PR E Dujiao-Next 真实商户联调操作手册（PR #58 已合并）
 
-- 独立分支：docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。
+- PR #58 已 Squash Merge 至 main，merge commit 9a4faafd11eaaee0a3d82feb9161ee63d424ad25；独立分支 docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。
 - 新增 docs/dujiao-live-integration-runbook.md：HTTPS 回调与反向代理要求、公网路由验证、回调 HMAC 验签边界、目录同步和来源切换、最低金额真实采购、供应商明确失败 SKU、人工退款/审计、uncertain 人工核实、资金红线及验收记录模板。
 - 真实商户连接、真实扣款、回调投递、采购交付和失败退款尚未执行；必须由项目所有者在 PR S 镜像发布并部署后完成。不得以 mock/CI/镜像发布代替真实验收。
 - PR E 当前只准备操作手册，不声称真实商户联调通过，不预填验收日期。
