@@ -1,9 +1,21 @@
-## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40 开发中）
+## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 开发中）
+
+- 代码审查发现：Owner 回复流程先写入客服消息时间线，再调用 Telegram 发送；当 Telegram 返回失败时，时间线可能留下未送达的客服回复，且同一 Telegram 消息会被幂等检查拦截，无法直接重试。
+- 修复方案：先发送给用户；Telegram 明确返回成功后才将客服回复写入工单时间线并切换到待结单确认阶段。发送失败仅写入系统失败记录，保留当前回复会话，允许 Owner 重新发送新的回复消息。
+- 边界：Telegram 不提供业务消息幂等键；网络超时/响应丢失时仍可能无法判断远端是否已送达。若 Telegram 已确认送达但本地时间线写入失败，会向 Owner 明确提示并记录日志，不伪装为持久化成功。
+- 回归测试：新增 Telegram 成功/失败响应测试，验证成功后才出现客服消息与 confirm 阶段，失败时无客服已送达记录且会话仍为 reply。
+- 状态：独立 PR #41；CI、合并、镜像发布及 Telegram 真机验收待完成。
 
 - 代码审查发现：Owner Bot 的待处理工单列表查询此前只按工单状态筛选，没有按当前 Bot ID 限定；多 Bot 环境下可能跨 Bot 暴露工单，并导致错误 Bot 上下文处理。
 - 修复方案：数据库查询强制要求非空 bot_id，并在 SQL 中同时约束 bot_id 与未结单状态；Telegram Owner 列表传入当前 worker 的 cfg.ID；查看、回复、结单、确认结单等回调也再次校验工单归属当前 Bot。
 - 回归测试：新增两个 Bot 各自创建工单的隔离测试、空 Bot ID 失败关闭测试，以及回调层跨 Bot 工单访问拒绝测试。该修复不改变附件转发逻辑。
 - 状态：独立 PR #40；CI/合并/镜像/生产部署/真机验收均待完成。阶段一其他 P0 仍待验收。
+
+## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40 已合并）
+
+- 修复已合并至 main，merge commit `69218784601f7d75b668b8047379d931c9a87564`。
+- PR head Go CI、Admin CI、安全扫描全部成功；main 合并后 Go CI、Admin CI、安全扫描及 Docker Publish 全部成功。
+- GHCR `latest` 镜像 digest：`sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`；Publish Run [#44565112822](https://github.com/seanldnet/TG-Card/actions/runs/44565112822)。生产部署与现场验收仍未确认。
 
 ## 2026-11-20 — 阶段一售后媒体转发子项按项目所有者实测确认
 
@@ -28,9 +40,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.1
-> - 源码核对基线：`main` 分支，commit `dd2aa982cf649ee35cc31d5d6b52c16a0f8b40fa`（PR #39 文档验收记录已合并）
-> - 本次文档更新：记录售后媒体转发实测确认；修复 Owner 工单列表跨 Bot 隔离；PR #38 生产验收及 C1–C4、其他 P0 仍待完成
+> - 文档版本：2.2.2
+> - 源码核对基线：`main` 分支，commit `69218784601f7d75b668b8047379d931c9a87564`（PR #40 已合并）
+> - 本次文档更新：记录 PR #40 合并与镜像发布、PR #41 Owner 回复送达状态修复开发中；售后 C1–C4、PR #38 生产验收及其他 P0 仍待完成
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -109,7 +121,7 @@ flowchart LR
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
 | 站点设置 | 已实现 | 站点资料、客服/社群链接、SMTP 与通知选项、Telegram 通知目标及开关等。 |
 | 系统权限与菜单 | 已实现 | 后台动态菜单/权限码接口；当前为单管理员产品结构，不应误认为完整多角色 RBAC。 |
-| 上游发卡对接 | 部分实现（PR A/B/C 已合并） | PR C #32 已合并，十项 mock 测试及 Go/Admin/Security/Publish 验证通过；manual 表单商品暂不开放自助购买；PR D/E 未完成，真实商户联调仅属 PR E。异次元/萌次元不开发适配器。详见 `docs/upstream-integration.md`。 |
+| 上游发卡对接 | 部分实现（PR A/B/C 已合并） | PR C #32 已合并，十项 mock 测试及 Go/Admin/Security/Publish 验证通过；manual 表单商品暂不开放自助购买；PR D 已合并发布、生产验收待确认；PR E 未完成，真实商户联调仅属 PR E。异次元/萌次元不开发适配器。详见 `docs/upstream-integration.md`。 |
 
 ## 4. Telegram Bot 用户端功能
 
