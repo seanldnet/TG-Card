@@ -260,13 +260,14 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 			_ = database.SaveUpstreamSyncResult(context.Background(), a.db, a.driver, "cancelled", "同步已由管理员取消；已完成批次保留")
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "cancelled")
 		} else if err != nil {
-			_ = database.UpdateUpstreamSyncJobProgress(context.Background(), a.db, a.driver, jobID, 0, 0, 0, 1, 1, err.Error())
+			if currentJob, jobErr := database.GetUpstreamSyncJob(context.Background(), a.db, a.driver, jobID); jobErr == nil {
+				_ = database.UpdateUpstreamSyncJobProgress(context.Background(), a.db, a.driver, jobID, currentJob.TotalItems, currentJob.ProcessedItems, currentJob.CurrentPage, currentJob.ErrorCount+1, currentJob.ConsecutiveFailures+1, err.Error())
+			}
 			status := "failed"
 			if strings.Contains(err.Error(), "同步已暂停") { status = "paused"; go a.notifySiteEvent(context.Background(), "upstream_sync_paused", err.Error(), "") }
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, status)
 			log.Printf("upstream sync job failed: job_id=%s status=%s error=%v", jobID, status, err)
 		} else {
-			_ = database.UpdateUpstreamSyncJobProgress(context.Background(), a.db, a.driver, jobID, summary.Products, summary.Products, 0, summary.ImagesFailed, 0, summary.Warning)
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "success")
 		}
 		a.upstreamJobMu.Lock()
