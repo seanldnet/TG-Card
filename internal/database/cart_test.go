@@ -70,7 +70,7 @@ func TestCartCheckoutCreatesOneOrderAndConsumesCart(t *testing.T) {
 	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE order_id=? AND status=1",order.ID).Scan(&reserved);err!=nil{t.Fatal(err)}
 	if reserved!=2{t.Fatalf("expected both product keys reserved by one order, got %d",reserved)}
 	saved,err:=ListCartCheckoutItems(ctx,db,cfg.DBDriver,order.ID);if err!=nil{t.Fatal(err)}
-	if len(saved)!=2{t.Fatalf("expected two order line snapshots, got %+v",saved)}
+	if len(saved)!=2||saved[0].ProductName!="Card A"||saved[1].ProductName!="Card B"||saved[0].LineNumber!=0||saved[1].LineNumber!=1{t.Fatalf("expected ordered product line snapshots, got %+v",saved)}
 	paid,err:=ConfirmOrderPayment(ctx,db,cfg.DBDriver,order.ID,"tron","cart-checkout-tx")
 	if err!=nil{t.Fatal(err)}
 	if paid.Order.Status!="paid"||len(strings.Split(paid.SecretCiphertext,"\n"))!=2{t.Fatalf("unified payment did not include both product keys: %+v",paid)}
