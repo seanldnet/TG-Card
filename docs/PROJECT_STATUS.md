@@ -8,7 +8,7 @@
 - 停用上游改为单独二次确认流程：先将目录标记 stale、切回本地售卖，再按分类→商品/SKU→图片清理；只删除 `source_type='upstream'` 数据；若发现上游商品关联本地卡密库存则中止清理防止级联丢失；图片只处理上游专属目录中的 hash 文件，并检查本地记录引用；历史订单依靠 `ON DELETE SET NULL` 与订单名称/价格快照保留。清理完成才把 `enabled` 置为 false；失败保持本地售卖并允许重试；完成写审计数量并通知 Owner。
 - 新增迁移：`0044_upstream_sync_jobs.sql`、`0045_upstream_sync_batch_config.sql`、`0046_upstream_product_fingerprint.sql`、`0047_upstream_sync_single_active_job.sql`、`0048_upstream_category_fingerprint.sql`。
 - 官方协议限制：商品接口支持 page/page_size（官方上限 100）并返回 updated_at；官方未提供 updated_since；分类接口文档没有分页与更新时间字段。因此当前“增量”是分页扫描后按稳定指纹只处理变化商品/分类，不声称减少上游分页请求。
-- 当前状态：代码已推送到 PR #56（Ready for review）；已有一轮 Go/Admin/Security 全部通过；最新提交的 Go/Admin/Security 正在复核。未合并、未发布 GHCR、未部署、未由项目所有者验收。不能将上述实现描述为已通过 CI 或生产可用。
+- 当前状态：PR #56（Ready for review）。Go Backend CI #44598639867、Admin CI #44598706271、Security #44598706306 均成功；最后仅修改后台开关标签后，Go CI #44598706303 正在复跑。未合并、未发布 GHCR、未部署、未由项目所有者验收。
 - 验收仍需项目所有者执行：数千商品同步期间资源占用与 Bot 响应；进度/取消；启用只展示上游；停用后目录与图片清理、历史订单保留。本 PR 未进入 PR S/PR E。
 
 ## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 已合并）
