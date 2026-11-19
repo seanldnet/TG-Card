@@ -26,7 +26,7 @@ func (a *application) detailedHealth(w http.ResponseWriter,r *http.Request) {
  if botErr!=nil{dbStatus["botInventoryError"]="unable to read configured bot inventory"}
  upstreamStatus:=map[string]any{"enabled":false,"syncStatus":"not_configured"}
  if settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver);err==nil{
-  upstreamStatus=map[string]any{"enabled":settings.Enabled,"catalogStale":settings.CatalogStale,"syncStatus":settings.SyncStatus,"lastSyncAt":settings.SyncAt,"lastAttemptAt":settings.SyncAttemptAt,"lastError":settings.SyncError}
+  upstreamStatus=map[string]any{"enabled":settings.Enabled,"catalogStale":settings.CatalogStale,"syncStatus":settings.SyncStatus,"lastSyncAt":settings.SyncAt,"lastAttemptAt":settings.SyncAttemptAt,"syncErrorPresent":settings.SyncError!=""}
  }else if err!=sql.ErrNoRows{upstreamStatus["error"]="unable to read upstream status"}
  writeSuccess(w,http.StatusOK,map[string]any{
   "status":map[bool]string{true:"ok",false:"degraded"}[dbStatus["connected"]==true],
