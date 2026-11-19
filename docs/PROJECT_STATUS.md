@@ -1,11 +1,14 @@
-## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 开发中）
+## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 已合并）
 
-- 审查发现 Owner 回复成功后生成的“是，结单 / 否，继续沟通”旧 Inline Keyboard 回调只校验 Bot 与工单归属，没有核对当前 Owner 的活动会话是否仍指向该工单。Owner 切换到另一张工单后，旧按钮仍可能操作先前工单。
-- PR #44 为确认回调增加活动会话校验：必须同时匹配当前 Bot、Owner、ticket_id 与 `confirm` 阶段；会话过期、已切换工单或重复使用旧按钮时拒绝操作，不改变工单状态。
-- Owner 会话持久化增加 chat_id 绑定，消息必须来自点击“开始回复”时的同一 Telegram 聊天，防止 Owner 在群聊/其他私聊中的消息误发给客户；新增迁移 `0040_support_owner_session_chat.sql`，无法安全关联旧会话的空 chat_id 记录在迁移时清理，Owner 需重新打开工单。“开始回复”流程现在检查工单状态更新错误；“否，继续沟通”会检查会话写入结果。
-- 新增回归测试覆盖 A/B 双工单切换后 A 的旧确认按钮不得结单、B 当前确认成功、会话清理及重复旧回调不重复写审计。
-- 新增迁移 `0040_support_owner_session_chat.sql`；会话仍持久化于数据库，30 分钟 TTL 与 Bot 重启恢复机制不变。
-- PR #44 head CI、合并、Docker Publish 与 digest 待核实；生产部署/Telegram 真机验收未确认。
+- 已合并至 main，merge commit `0c705ed99c76488aeafa273b019fb3262d19d398`。
+- 确认回调必须匹配当前 Bot、Owner、Telegram chat_id、ticket_id 与 `confirm` 阶段；Owner 切换工单、会话过期/清理或使用旧按钮时拒绝操作，不变更错误工单。
+- Owner 回复会话绑定发起“开始回复”时的 Telegram chat_id；从其他群聊或私聊发来的消息不会命中当前工单会话。
+- 新增迁移 `0040_support_owner_session_chat.sql`，为持久化会话增加 chat_id；升级时清理无法安全关联 chat_id 的旧会话，Owner 重新点击“开始回复”即可。30 分钟 TTL、数据库持久化与 Bot 重启恢复保持不变。
+- “开始回复”现在检查工单状态更新结果；“否，继续沟通”检查会话写入结果。
+- 新增双工单旧按钮隔离、重复回调审计幂等、跨 Telegram chat 会话隔离回归测试。
+- PR head Go/Admin/Security 全部成功；Go CI [#44573219338](https://github.com/seanldnet/TG-Card/actions/runs/44573219338)、Admin CI [#44573220790](https://github.com/seanldnet/TG-Card/actions/runs/44573220790)、Security [#44573219439](https://github.com/seanldnet/TG-Card/actions/runs/44573219439)。
+- main Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 已成功；main Go CI [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin CI [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 尚在运行，digest 待发布完成后核实。
+- 生产部署与 Telegram C1–C4 真机验收未确认；不把 CI 结果视为生产验收。
 
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
@@ -41,9 +44,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.5
-> - 源码核对基线：`main` 分支，commit `166f54e5744d1a74a32ec1c6c52148e7d370b36a`（PR #43 文档校准已合并；PR #44 独立开发中）
-> - 本次文档更新：记录 PR #42 镜像发布 digest、PR #43 文档校准合并及 PR #44 Owner 确认回调会话隔离开发中；生产部署与售后 C1–C4 真机验收仍待完成
+> - 文档版本：2.2.6
+> - 源码核对基线：`main` 分支，commit `0c705ed99c76488aeafa273b019fb3262d19d398`（PR #44 Owner 会话隔离已合并）
+> - 本次文档更新：记录 PR #44 合并、迁移 0040、PR head CI 与 main Security 结果；main Go/Admin/Publish 和生产验收仍待确认
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
