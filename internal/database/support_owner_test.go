@@ -161,3 +161,21 @@ func TestListPendingSupportTicketsIsScopedToBot(t *testing.T) {
   t.Fatal("empty Bot ID must fail closed rather than list all tickets")
  }
 }
+
+
+func TestSupportOwnerSessionIsBoundToInitiatingChat(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ ticket:=createOwnerWorkflowTicket(t,db)
+ if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","private-chat-12345",ticket.ID,"reply",time.Minute);err!=nil{t.Fatal(err)}
+ if _,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","group-chat-999");err!=sql.ErrNoRows{
+  t.Fatalf("session must not be visible from another Telegram chat, got %v",err)
+ }
+ session,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","private-chat-12345")
+ if err!=nil||session.ChatID!="private-chat-12345"||session.TicketID!=ticket.ID{
+  t.Fatalf("initiating chat should recover its session: %#v err=%v",session,err)
+ }
+}
