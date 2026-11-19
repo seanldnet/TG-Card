@@ -225,7 +225,7 @@ func (a *application) updateUpstreamSettings(w http.ResponseWriter, r *http.Requ
 			log.Printf("mark upstream catalog stale: %v", err)
 		}
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "upstream.settings.update", "upstream:"+input.Provider, clientIP(r), r.UserAgent(),
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "upstream.settings.update", "upstream:"+input.Provider, a.clientIP(r), r.UserAgent(),
 		fmt.Sprintf("enabled=%t; base_url=%s; catalog_changed=%t; credentials_changed=%t", current.Enabled, baseURL, catalogChanged, previous.MerchantIDCiphertext != current.MerchantIDCiphertext || previous.SecretCiphertext != current.SecretCiphertext))
 	saved, err := database.GetUpstreamSettings(r.Context(), a.db, a.driver)
 	if err != nil { writeError(w, http.StatusInternalServerError, "配置已保存但读取失败"); return }
@@ -247,9 +247,9 @@ func (a *application) testUpstreamConnection(w http.ResponseWriter,r *http.Reque
 	if callErr!=nil{status="failed";message=callErr.Error();message=strings.ReplaceAll(message,apiKey,"[redacted]");message=strings.ReplaceAll(message,secretValue,"[redacted]");if len(message)>500{message=message[:500]}}
 	if saveErr:=database.SaveUpstreamTestResult(r.Context(),a.db,a.driver,status,message);saveErr!=nil{log.Printf("save upstream test status: %v",saveErr)}
 	if callErr!=nil{
-		database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,clientIP(r),r.UserAgent(),"failed")
+		database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,a.clientIP(r),r.UserAgent(),"failed")
 		writeError(w,http.StatusBadGateway,message);return
 	}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,clientIP(r),r.UserAgent(),"success")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.connection.test","upstream:"+item.Provider,a.clientIP(r),r.UserAgent(),"success")
 	writeSuccess(w,http.StatusOK,map[string]any{"connected":true,"siteName":ping.SiteName,"protocolVersion":ping.ProtocolVersion,"balance":ping.Balance,"currency":ping.Currency,"testedAt":time.Now().UTC().Format(time.RFC3339Nano)})
 }
