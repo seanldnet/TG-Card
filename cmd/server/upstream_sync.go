@@ -44,6 +44,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  categories,err:=upstream.DujiaoFetchCategories(ctx,settings.BaseURL,apiKey,apiSecret)
  if err!=nil{return summary,a.failUpstreamSync(ctx,redactUpstreamError(err.Error(),apiKey,apiSecret))}
  
+	batchID:=fmt.Sprintf("%d",time.Now().UTC().UnixNano())
  imageWarnings := make([]string, 0)
 	categoryNames := make(map[int64]string, len(categories))
 	for _, category := range categories { categoryNames[category.ID] = upstream.LocalizedText(category.Name) }
@@ -77,7 +78,6 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			Name: name, Icon: iconPath, PreserveIcon: preserveIcon, Fingerprint: categoryFingerprint, SortOrder: -category.SortOrder,
 		})
 	}
- batchID:=fmt.Sprintf("%d",time.Now().UTC().UnixNano())
  // Hide the upstream catalogue while a multi-page refresh is in progress. A
  // failed/cancelled run therefore falls back to local sales rather than serving
  // a mixed old/new upstream catalogue.
