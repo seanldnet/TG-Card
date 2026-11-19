@@ -3,9 +3,11 @@ package telegrambot
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/seanldnet/TG-Card/internal/database"
 )
@@ -62,7 +64,7 @@ func logCartError(botID string,userID int64,err error) {
 
 func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query CallbackQuery,chatID int64) {
 	userID:=strconv.FormatInt(query.From.ID,10)
-	order,items,err:=database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,userID,strconv.FormatInt(chatID,10),20*60*1000000000)
+	order,items,err:=database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,userID,strconv.FormatInt(chatID,10),20*time.Minute)
 	if err!=nil {
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法结算")
 		_ = m.sendMessage(ctx,cfg.Token,chatID,"购物车结算失败："+err.Error()+"\n购物车内容已保留，你可以调整商品后重试。")
