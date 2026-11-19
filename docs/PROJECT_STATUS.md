@@ -1,9 +1,10 @@
-## 2026-11-20 — PostgreSQL 购物车并发验收补强（开发中）
+## 2026-11-20 — PostgreSQL 购物车并发验收补强（PR #62 Open）
 
-- PR #61 已合并至 main，merge commit 59337349d36937a467e673e427f571ec276c17ce；购物车功能已进入 main，包含 0049/0050 迁移、单笔多商品结算、库存预留和私聊入口限制。
-- PR #61 head Go/Admin/Security 均成功；main Go CI、Admin CI、Security 与 Docker Publish 已触发，镜像 digest 尚待成功发布后核实。
-- 购物车关键锁逻辑依赖 PostgreSQL 的 FOR UPDATE / SKIP LOCKED，而此前购物车测试仅使用 SQLite。新增 PostgreSQL 16 CI 服务与并发库存争抢集成测试，验证同一件库存面对两个 Bot/用户同时结算时只允许一个成功，失败方购物车保留且不会重复预留。
-- 本次只增加测试与 CI PostgreSQL 服务，不修改运行时业务逻辑、数据库迁移或生产环境变量；测试数据库为 GitHub Actions 临时服务。
+- PR #61 购物车实现已合并至 main，merge commit 59337349d36937a467e673e427f571ec276c17ce；对应 GHCR 多架构镜像已成功发布，digest 为 sha256:09f9b2c7ee23037ad9c03e26d1b490bdb853988958e6e7804e224bc855039f7d。
+- main Go CI #44636933083、Admin CI #44636932944、Security #44636932940、Docker Publish #44636932941 全部成功；生产服务器部署状态未由 CI 证明。
+- PR #62 增加 PostgreSQL 16 临时 CI 服务与双用户并发库存争抢集成测试。代码提交 49d6ef3e27ea28af1e5a8ee6bdd36c2eaf486deb 的 Go/Admin/Security 检查均成功，PostgreSQL 测试通过；当前最新 head d3323142ea77fe97cbd3887ab8570122151ced98 仅追加文档校准，CI 正在重新运行。
+- PR #62 不修改运行时业务逻辑、数据库迁移或生产环境变量；TEST_POSTGRES_DSN 仅由 GitHub Actions 临时 PostgreSQL 服务注入。合并前以最新 head 的检查结果为准。
+- Telegram 真机私聊/群聊、余额付款、TRC20 付款和实际交付仍需项目所有者执行；镜像发布不等于生产部署或真机验收。
 ## 2026-11-20 — main 合并与镜像发布基线校准（文档版本 2.2.19）
 
 - 当前源码基线：main@59337349d36937a467e673e427f571ec276c17ce。PR #60 文档基线校准已合并（69ccab358c1bfefcf5ba79fcb04df5d9b17f48c1）；PR #61 Telegram 购物车与统一结算已合并（59337349d36937a467e673e427f571ec276c17ce）。
@@ -99,8 +100,8 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.18
-> - 源码核对基线：`main` 分支，commit `69ccab358c1bfefcf5ba79fcb04df5d9b17f48c1`（PR #60 文档基线校准已合并）
+> - 文档版本：2.2.19
+> - 源码核对基线：`main` 分支，commit `59337349d36937a467e673e427f571ec276c17ce`（PR #60 文档校准、PR #61 购物车已合并）
 > - 本次文档更新：记录购物车重整分支及私聊入口隔离补强；购物车仍未合并、未发布，未执行生产验收
 
 - 项目：TG-Card
