@@ -1,13 +1,8 @@
-## 2026-11-20 — Owner Bot 重启恢复、超时与工单切换回归（PR #50 开发中）
-
-- 新增 C3/C4 自动化测试：Manager 重建后恢复数据库中的 Owner reply 会话；会话 TTL 过期后拒绝处理新消息；切换到工单 B 后工单 A 的旧确认按钮不得结单 A 或影响 B 的活动会话。
-- 本 PR 仅测试补强，不改变业务行为、数据库结构或部署配置；CI、合并和镜像发布待完成。
-
 ## 2026-11-20 — Owner Bot 重启恢复、超时与工单切换回归（PR #50 已合并）
 
 - PR #50 已合并至 main，merge commit `eee2b3ae5505d3d97e8a45b07672f53530b78ba9`。
 - 新增 C3/C4 自动化测试：Manager 重建后从数据库恢复 reply 会话；TTL 过期后拒绝消费、发送或记录新消息；切换到工单 B 后，A 的旧确认按钮不得结单 A 或影响 B 的活动会话。
-- PR head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 正在运行，digest 待核实。
+- PR head 与 main Go/Admin/Security/Docker Publish 全部成功；GHCR 多架构 latest manifest digest `sha256:eb0776f9dafc7d90aa1928a9f85eeeaf1488891c16ab843826aa0db9ab2a1a4e`。
 - 仅测试补强，不改变业务行为、数据库结构或部署配置；真实 Telegram C3/C4 仍待项目所有者验收。
 
 ## 2026-11-20 — Owner Bot 继续沟通与媒体回复回归覆盖（PR #47 已合并）

@@ -12,9 +12,9 @@
 
 > 验收记录（2026-11-20）：项目所有者明确确认售后附件/媒体转发测试已亲自完成且无异常，因此“用户图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体”子项记为**所有者实测通过**。本次未提供镜像 digest、设备、订单/工单号或截图，不将其绑定到某一发布镜像。此确认不覆盖 C1–C4 的 Owner 回复、继续沟通、结单幂等、超时/重启/多工单隔离，也不覆盖补发/退款全分支；这些仍保持待验收。
 
-> C1/C2 自动化回归补强（2026-11-20，PR #47 已合并）：新增“否，继续沟通”后恢复 reply 阶段、不点按钮连续发送两条文字，以及 Owner 图片/普通文件回复分别调用 `sendPhoto` / `sendDocument` 并在成功后写入时间线的测试。该批次不替代真实 Telegram 验收。PR #50 head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 正在运行，digest 待核实。PR #47 head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 全部成功，Publish Run [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792)，GHCR latest digest `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。
+> C1/C2 自动化回归补强（2026-11-20，PR #47 已合并）：新增“否，继续沟通”后恢复 reply 阶段、不点按钮连续发送两条文字，以及 Owner 图片/普通文件回复分别调用 `sendPhoto` / `sendDocument` 并在成功后写入时间线的测试。该批次不替代真实 Telegram 验收。PR #47 head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 全部成功，Publish Run [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792)，GHCR latest digest `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。
 
-> C3/C4 自动化回归补强（2026-11-20，PR #50 已合并）：新增 Manager 重建后的数据库会话恢复、过期会话不发送/不写时间线，以及切换到工单 B 后 A 的旧确认按钮不能操作 A 或覆盖 B 会话的测试。该批次不替代真实 Telegram 验收。
+> C3/C4 自动化回归补强（2026-11-20，PR #50 已合并）：新增 Manager 重建后的数据库会话恢复、过期会话不发送/不写时间线，以及切换到工单 B 后 A 的旧确认按钮不能操作 A 或覆盖 B 会话的测试。该批次不替代真实 Telegram 验收。 PR #50 head 与 main Go/Admin/Security/Docker Publish 全部成功，Publish Run [#44577264695](https://github.com/seanldnet/TG-Card/actions/runs/44577264695)，GHCR latest digest `sha256:eb0776f9dafc7d90aa1928a9f85eeeaf1488891c16ab843826aa0db9ab2a1a4e`。
 
 ## 产品规则
 
@@ -78,7 +78,7 @@ Owner 点击“开始回复”后，Bot 提示直接发送文字/图片/文件�
 
 ### 并发、超时与失败边界
 
-- 当前激活工单按 `(bot_id, owner_id)` 唯一保存；新工单通知不会抢占当前会话。切换工单必须由 Owner 显式点击另一工单的“开始回复”。
+- 当前激活工单按 `(bot_id, owner_id)` 唯一保存，并绑定 `chat_id`；仅在启动回复会话的同一 Telegram 聊天中接收消息。新工单通知不会抢占当前会话。切换工单必须由 Owner 显式点击另一工单的“开始回复”。
 - 激活会话默认 30 分钟过期；过期后消息不会发给旧工单用户，Owner 需重新从列表打开工单。
 - Owner 回复发送失败（例如用户拉黑 Bot、用户不存在或 Telegram API 错误）时，Bot 向 Owner 返回 Telegram 错误描述，工单不结单，失败消息不会标记为已送达。
 - Telegram update/message ID 用作时间线写入幂等键，重复处理同一更新不重复插入消息；Owner 回复在发送前检查该键，避免同一更新再次发送。
@@ -97,7 +97,7 @@ Owner 点击“开始回复”后，Bot 提示直接发送文字/图片/文件�
 
 - 历史消息表仍保留 `attachment_file_id`、`attachment_name` 字段。
 - 新增迁移 `0035_support_owner_workflow.sql`：增加 Telegram update idempotency 字段及唯一索引、附件去重唯一索引、持久化 Owner 会话表、结单审计表。PR1 另新增 `0036_support_resolution_lifecycle.sql`：用户维度后续工单节流表及用户确认审计幂等索引。
-- Owner 会话表以 Bot + Owner 为主键，保存 ticket ID、阶段、过期时间和更新时间。
+- Owner 会话表以 Bot + Owner 为主键，保存 `chat_id`、ticket ID、阶段、过期时间和更新时间；会话查询同时校验 Bot、Owner 与 chat_id。迁移 `0040_support_owner_session_chat.sql` 为旧表增加 chat_id，并清理无法安全关联聊天的旧活动会话。
 - 结单审计仅在工单从活动状态成功转为已解决时写入；重复结单不会产生第二条审计。
 - SQLite 与 PostgreSQL 使用相同迁移语句及数据库层 placeholder 适配。
 - 无新增环境变量；Owner ID 使用 Bot 管理中已有的 Owner ID，SMTP/Telegram 通知继续使用站点设置。
