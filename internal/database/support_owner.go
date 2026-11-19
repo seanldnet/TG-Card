@@ -11,30 +11,31 @@ import (
 type SupportOwnerSession struct {
   BotID string
   OwnerID string
+  ChatID string
   TicketID string
   Phase string
   ExpiresAt string
 }
 
-func SetSupportOwnerSession(ctx context.Context, db *sql.DB, driver, botID, ownerID, ticketID, phase string, ttl time.Duration) error {
-  botID, ownerID, ticketID = strings.TrimSpace(botID), strings.TrimSpace(ownerID), strings.TrimSpace(ticketID)
-  if botID == "" || ownerID == "" || ticketID == "" { return fmt.Errorf("bot, owner and ticket are required") }
+func SetSupportOwnerSession(ctx context.Context, db *sql.DB, driver, botID, ownerID, chatID, ticketID, phase string, ttl time.Duration) error {
+  botID, ownerID, chatID, ticketID = strings.TrimSpace(botID), strings.TrimSpace(ownerID), strings.TrimSpace(chatID), strings.TrimSpace(ticketID)
+  if botID == "" || ownerID == "" || chatID == "" || ticketID == "" { return fmt.Errorf("bot, owner, chat and ticket are required") }
   if phase != "reply" && phase != "confirm" { return fmt.Errorf("invalid owner support phase") }
   if ttl <= 0 || ttl > 24*time.Hour { ttl = 30*time.Minute }
   now := time.Now().UTC()
   expires := now.Add(ttl).Format(time.RFC3339Nano)
   updated := now.Format(time.RFC3339Nano)
-  query := "INSERT INTO support_owner_sessions(bot_id,owner_id,ticket_id,phase,expires_at,updated_at) VALUES("+
-    placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+") "+
-    "ON CONFLICT(bot_id,owner_id) DO UPDATE SET ticket_id=excluded.ticket_id,phase=excluded.phase,expires_at=excluded.expires_at,updated_at=excluded.updated_at"
-  _, err := db.ExecContext(ctx, query, botID, ownerID, ticketID, phase, expires, updated)
+  query := "INSERT INTO support_owner_sessions(bot_id,owner_id,chat_id,ticket_id,phase,expires_at,updated_at) VALUES("+
+    placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+") "+
+    "ON CONFLICT(bot_id,owner_id) DO UPDATE SET chat_id=excluded.chat_id,ticket_id=excluded.ticket_id,phase=excluded.phase,expires_at=excluded.expires_at,updated_at=excluded.updated_at"
+  _, err := db.ExecContext(ctx, query, botID, ownerID, chatID, ticketID, phase, expires, updated)
   return err
 }
 
-func GetSupportOwnerSession(ctx context.Context, db *sql.DB, driver, botID, ownerID string) (SupportOwnerSession, error) {
+func GetSupportOwnerSession(ctx context.Context, db *sql.DB, driver, botID, ownerID, chatID string) (SupportOwnerSession, error) {
   var item SupportOwnerSession
-  query := "SELECT bot_id,owner_id,ticket_id,phase,expires_at FROM support_owner_sessions WHERE bot_id="+placeholder(driver,1)+" AND owner_id="+placeholder(driver,2)
-  err := db.QueryRowContext(ctx, query, strings.TrimSpace(botID), strings.TrimSpace(ownerID)).Scan(&item.BotID,&item.OwnerID,&item.TicketID,&item.Phase,&item.ExpiresAt)
+  query := "SELECT bot_id,owner_id,chat_id,ticket_id,phase,expires_at FROM support_owner_sessions WHERE bot_id="+placeholder(driver,1)+" AND owner_id="+placeholder(driver,2)+" AND chat_id="+placeholder(driver,3)
+  err := db.QueryRowContext(ctx, query, strings.TrimSpace(botID), strings.TrimSpace(ownerID), strings.TrimSpace(chatID)).Scan(&item.BotID,&item.OwnerID,&item.ChatID,&item.TicketID,&item.Phase,&item.ExpiresAt)
   if err != nil { return item, err }
   expiry, parseErr := time.Parse(time.RFC3339Nano, item.ExpiresAt)
   if parseErr != nil || !expiry.After(time.Now().UTC()) {
