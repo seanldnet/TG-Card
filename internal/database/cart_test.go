@@ -100,3 +100,52 @@ func TestCartCheckoutRejectsMixedCurrenciesWithoutConsumingCart(t *testing.T) {
 }
 
 
+
+
+func TestCartCheckoutInsufficientStockIsAtomic(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	a,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Enough",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	b,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Short",PriceMinor:200,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if _,err:=ImportProductKeys(ctx,db,cfg.DBDriver,a.ID,[]StockSecret{{Ciphertext:"a",Fingerprint:"a"}});err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",a.ID,1);err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",b.ID,1);err!=nil{t.Fatal(err)}
+	if _,_,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot","user","chat",20*time.Minute);err==nil{t.Fatal("checkout should fail when any line lacks stock")}
+	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
+	if len(items)!=2{t.Fatalf("failed checkout must retain all cart lines, got %d",len(items))}
+	var reserved int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_keys WHERE status=1").Scan(&reserved);err!=nil{t.Fatal(err)}
+	if reserved!=0{t.Fatalf("failed checkout partially reserved %d keys",reserved)}
+	var orders int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM orders").Scan(&orders);err!=nil{t.Fatal(err)}
+	if orders!=0{t.Fatalf("failed checkout created %d orders",orders)}
+}
+
+func TestCartRejectsUpstreamAndNonCardProducts(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	upstream,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Supplier item",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1,SourceType:"upstream"});if err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",upstream.ID,1);err==nil{t.Fatal("upstream products must not enter local cart checkout")}
+	fixed,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Fixed text",PriceMinor:100,Currency:"USDT",DeliveryType:"fixed_text",Status:1});if err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",fixed.ID,1);err==nil{t.Fatal("non-card delivery must not enter cart checkout")}
+}
+
+func TestAdjustCartItemQuantityIsAtomicAndBounded(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	p,err:=CreateProduct(ctx,db,cfg.DBDriver,Product{Name:"Card",PriceMinor:100,Currency:"USDT",DeliveryType:"card",Status:1});if err!=nil{t.Fatal(err)}
+	if err:=AddCartItem(ctx,db,cfg.DBDriver,"bot","user",p.ID,1);err!=nil{t.Fatal(err)}
+	if err:=AdjustCartItemQuantity(ctx,db,cfg.DBDriver,"bot","user",p.ID,1);err!=nil{t.Fatal(err)}
+	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
+	if len(items)!=1||items[0].Quantity!=2{t.Fatalf("increment failed: %+v",items)}
+	if err:=AdjustCartItemQuantity(ctx,db,cfg.DBDriver,"bot","user",p.ID,-1);err!=nil{t.Fatal(err)}
+	if err:=AdjustCartItemQuantity(ctx,db,cfg.DBDriver,"bot","user",p.ID,-1);err!=nil{t.Fatal(err)}
+	items,err=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
+	if len(items)!=0{t.Fatalf("decrement at one should remove item: %+v",items)}
+}
