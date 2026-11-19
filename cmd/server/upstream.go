@@ -28,8 +28,6 @@ type upstreamSettingsRequest struct {
 	SyncIntervalMinutes int `json:"syncIntervalMinutes"`
 	SyncBatchSize int `json:"syncBatchSize"`
 	SyncBatchDelayMS int `json:"syncBatchDelayMs"`
-	SyncBatchSize int `json:"syncBatchSize"`
-	SyncBatchDelayMS int `json:"syncBatchDelayMs"`
 	ProcurementPollIntervalSeconds int `json:"procurementPollIntervalSeconds"`
 	ProcurementTimeoutMinutes int `json:"procurementTimeoutMinutes"`
 	SupplierLowBalanceThreshold string `json:"supplierLowBalanceThreshold"`
