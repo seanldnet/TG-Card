@@ -5,7 +5,7 @@
 - 每次签发生成独立随机 JTI，避免同一秒内重复登录产生相同 token；登录成功后登记当前 token；所有鉴权请求同时检查签名、管理员状态/TokenVersion 与服务端会话记录；登出只撤销当前设备 token，不影响同一管理员的其他有效登录。
 - 新增 SQLite/PostgreSQL 兼容迁移 `0041_admin_token_sessions.sql`、会话生命周期测试及登录→登出→旧 token 拒绝/另一设备 token 保持有效的集成测试。
 - 迁移上线后，部署前签发的旧 token 不在新会话表中，将要求管理员重新登录；密码修改仍通过 TokenVersion 撤销全部旧会话。
-- PR #53 已合并至 main，merge commit `8260a9c4775726587c33100c939eb78018de8cb3`；PR head Go/Admin/Security 全部成功。main Go/Admin/Security/Docker Publish 正在运行，digest 待核实。
+- PR #53 已合并至 main，merge commit `8260a9c4775726587c33100c939eb78018de8cb3`；PR head Go/Admin/Security 全部成功。main Go CI [#44579627983](https://github.com/seanldnet/TG-Card/actions/runs/44579627983)、Admin CI [#44579627988](https://github.com/seanldnet/TG-Card/actions/runs/44579627988)、Security [#44579628087](https://github.com/seanldnet/TG-Card/actions/runs/44579628087)、Docker Publish [#44579628246](https://github.com/seanldnet/TG-Card/actions/runs/44579628246) 全部成功；GHCR 多架构 latest manifest digest 为 `sha256:7c14fabea0d23e7903785237052fa69fc1144a8d7be263c420373555131c5e37`。
 
 ## 2026-11-20 — Owner Bot 重启恢复、超时与工单切换回归（PR #50 已合并）
 
@@ -65,9 +65,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.15
-> - 源码核对基线：`main` 分支，commit `eee2b3ae5505d3d97e8a45b07672f53530b78ba9`（PR #50 Owner C3/C4 测试补强已合并）
-> - 本次文档更新：记录 PR #53 合并及 main CI/镜像发布待核验状态；PR #50 发布 digest 已记录，生产部署与售后 C1–C4 真机验收仍待确认
+> - 文档版本：2.2.16
+> - 源码核对基线：`main` 分支，commit `8260a9c4775726587c33100c939eb78018de8cb3`（PR #53 管理员登出会话撤销已合并）
+> - 本次文档更新：补录 PR #53 main Go/Admin/Security/Docker Publish 全部成功及 GHCR latest digest；生产部署与管理员登录/登出、售后 C1–C4 真机验收仍待确认
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
