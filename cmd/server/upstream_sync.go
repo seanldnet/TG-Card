@@ -101,14 +101,14 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
     return summary,fmt.Errorf("连续 3 个商品分页失败，同步已暂停：%w",pageErr)
    }
   } else {
-   processedProducts+=len(products)
+   unchangedProducts:=0
    changedProducts:=make([]upstream.DujiaoProduct,0,len(products))
    for _,product:=range products {
     fingerprint,fingerprintErr:=upstream.DujiaoProductFingerprint(product)
     if fingerprintErr!=nil{return summary,fingerprintErr}
     unchanged,seenErr:=database.MarkUpstreamProductSeenIfUnchanged(ctx,a.db,a.driver,strconv.FormatInt(product.ID,10),fingerprint,batchID,len(product.SKUs))
     if seenErr!=nil{return summary,seenErr}
-    if !unchanged {changedProducts=append(changedProducts,product)}
+    if !unchanged {changedProducts=append(changedProducts,product)} else {unchangedProducts++}
    }
    records,buildErr:=a.buildUpstreamProductRecords(ctx,changedProducts,settings,currency,ratePPM,&summary,&imageWarnings)
    if buildErr!=nil{return summary,buildErr}
@@ -118,8 +118,9 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
     if writeErr==nil {break}
     if attempt<3 {select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(attempt)*500*time.Millisecond):}}
    }
-   if writeErr!=nil {failedPages++;consecutiveFailures++;_ = a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,writeErr.Error());if consecutiveFailures>=3{return summary,fmt.Errorf("连续多个商品批次写入失败，同步已暂停：%w",writeErr)}} else {
+   if writeErr!=nil {processedProducts+=unchangedProducts;failedPages++;consecutiveFailures++;_ = a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,writeErr.Error());if consecutiveFailures>=3{return summary,fmt.Errorf("连续多个商品批次写入失败，同步已暂停：%w",writeErr)}} else {
     consecutiveFailures=0
+    processedProducts+=unchangedProducts+len(changedProducts)
     summary.Products+=len(records)
     _=a.updateUpstreamSyncProgress(total,processedProducts,page,failedPages,consecutiveFailures,"")
    }
