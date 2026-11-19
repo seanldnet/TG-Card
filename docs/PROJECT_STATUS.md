@@ -746,7 +746,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 新迁移：0039_finance_safety.sql；新增 finance_exceptions、upstream_procurement_fund_checks，并扩展采购行的供应商资金核对字段。
 - 资金红线：不自动修改买家或供应商余额；采购失败不改变原支付记录；退款每订单最多一条、每笔退款唯一关联一个钱包 credit；同一采购订单重试沿用本地订单号。
 - 验证：SQLite 覆盖供应商余额匹配/差异、退款账本异常只读检测、重复退款拒绝、uncertain ageing 与 Owner 恢复；Go CI #44370639264（vet/test/build）、Admin CI #44370639142、Security #44370639404 全部成功。真实供应商扣款对账与实际资金变动仍属于 PR E。
-- PR E 仍未开始；PR #27 媒体转发子项已由项目所有者实测确认通过，C1–C4 其余交互场景保持待验收。
+- PR E 真实商户联调手册已建立：docs/dujiao-live-integration-runbook.md，包含 HTTPS 回调、公网可达性、最低金额正常采购、供应商失败 SKU、人工退款/审计及验收记录模板；真实环境尚未执行，需项目所有者在 PR S 镜像部署后操作。PR #27 媒体转发子项已由项目所有者实测确认通过，C1–C4 其余交互场景保持待验收。
 
 ## 20. 安全基线
 
@@ -784,6 +784,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 安全限流与可信代理：cmd/server/security.go、internal/config/config.go、docker-compose.yml（TRUSTED_PROXY_CIDRS）。
 - 详细健康与 Bot 告警：cmd/server/health.go、internal/payment/manager.go、internal/telegrambot/manager.go。
 - Compose 备份/恢复：scripts/backup.sh、scripts/restore.sh、docs/operations-backup-restore.md。
+- Dujiao-Next 真实商户联调：docs/dujiao-live-integration-runbook.md（待项目所有者执行）。
 - Dujiao-Next 上游配置：internal/upstream/dujiao.go、internal/database/upstream.go、internal/database/migrations/0029_upstream_settings.sql、cmd/server/upstream.go、web/overrides/apps/web-antd/src/views/upstream/index.vue。
 - Dujiao-Next 目录同步：internal/upstream/catalog.go、internal/database/upstream_catalog.go、internal/database/migrations/0030–0034、cmd/server/upstream_sync.go、internal/telegrambot/manager.go、web/overrides/apps/web-antd/src/views/catalog/index.vue。
 
