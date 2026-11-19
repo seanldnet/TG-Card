@@ -9,7 +9,7 @@
   - 增加停用并清理上游目录的异步确认流程；保留本地商品和历史订单快照，图片删除限定于上游 hash 文件并检查引用。
   - 新增迁移 0044–0048，覆盖同步任务、批次配置、商品/分类指纹和活动任务唯一约束。
 - 数据库迁移：0044_upstream_sync_jobs.sql、0045_upstream_sync_batch_config.sql、0046_upstream_product_fingerprint.sql、0047_upstream_sync_single_active_job.sql、`0048_upstream_category_fingerprint.sql`。
-- 验证：新增数据库分页/批次/清理快照测试与商品指纹测试；上一轮 Go/Admin/Security 检查全部通过；最新提交的检查正在复核。镜像发布待 PR 合并后工作流。
+- 验证：新增数据库分页/批次/清理快照、商品/分类指纹与任务互斥测试；Go Backend CI [#44598639867](https://github.com/seanldnet/TG-Card/actions/runs/44598639867)、Admin CI [#44598706271](https://github.com/seanldnet/TG-Card/actions/runs/44598706271)、Security [#44598706306](https://github.com/seanldnet/TG-Card/actions/runs/44598706306) 成功。最后一个 UI-only 提交的 Go CI 复跑中；镜像发布待 PR 合并后工作流。
 - 兼容性与边界：Dujiao 商品 API 无 updated_since，增量处理仍需扫描分页；分类 API 未确认分页/更新时间。清理仅按 source_type='upstream' 删除。真实环境资源与 Telegram 验收待项目所有者执行。
 - 发布镜像：不涉及；PR 尚未合并。
 
