@@ -2,7 +2,7 @@
 
 - 补强 C3/C4 自动化覆盖：模拟 Manager 重建后从数据库恢复 Owner reply 会话并成功发送；验证 30 分钟 TTL 过期后新消息不会被消费、不会发送或写入客服时间线。
 - 验证 Owner 从工单 A 切换到工单 B 后，A 的旧确认按钮不能结单 A，也不能覆盖 B 的当前 reply 会话。
-- 本批次仅增加测试，不改变业务行为、数据库结构或部署配置。PR #50 head Go/Admin/Security 全部成功；合并后 main Go/Admin/Security/Docker Publish 正在运行，digest 待核实。真实 Telegram C3/C4 仍需项目所有者实测。
+- 本批次仅增加测试，不改变业务行为、数据库结构或部署配置。PR #50 head Go/Admin/Security 全部成功；合并后 main Go CI [#44577264757](https://github.com/seanldnet/TG-Card/actions/runs/44577264757)、Admin CI [#44577264448](https://github.com/seanldnet/TG-Card/actions/runs/44577264448)、Security [#44577264428](https://github.com/seanldnet/TG-Card/actions/runs/44577264428)、Docker Publish [#44577264695](https://github.com/seanldnet/TG-Card/actions/runs/44577264695) 全部成功；GHCR 多架构 latest manifest digest 为 `sha256:eb0776f9dafc7d90aa1928a9f85eeeaf1488891c16ab843826aa0db9ab2a1a4e`。真实 Telegram C3/C4 仍需项目所有者实测。
 
 ## 2026-11-20 — Owner Bot 继续沟通与媒体回复回归覆盖（PR #47 已合并）
 
@@ -56,9 +56,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.12
+> - 文档版本：2.2.13
 > - 源码核对基线：`main` 分支，commit `eee2b3ae5505d3d97e8a45b07672f53530b78ba9`（PR #50 Owner C3/C4 测试补强已合并）
-> - 本次文档更新：记录 PR #50 合并及 C3/C4 自动化测试范围；main CI/镜像发布待核验，生产部署与售后 C1–C4 真机验收仍待确认
+> - 本次文档更新：补录 PR #50 main Go/Admin/Security/Docker Publish 全部成功及 GHCR latest digest；补充 Owner 会话 chat_id 绑定说明；生产部署与售后 C1–C4 真机验收仍待确认
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
