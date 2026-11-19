@@ -63,6 +63,32 @@ func (a *application) getSupportTicketAttachment(w http.ResponseWriter,r *http.R
  log.Printf("support_attachment_success ticket_id=%q message_id=%q bot_id=%q file_id_prefix=%q bytes=%d content_type=%q",ticketID,messageID,attachment.BotID,prefix,len(data),contentType)
 }
 
+
+ // deliverSupportAdminReply sends first and only then persists a customer-visible
+ // admin reply. A failed Telegram send is recorded as a system event, never as
+ // a delivered admin message. The callback is injectable for deterministic tests.
+ func (a *application) deliverSupportAdminReply(ctx context.Context, ticket database.SupportTicket, adminID, message string, send func(context.Context, database.SupportTicket) error) (database.SupportTicketMessage, bool, error) {
+	outgoing := ticket
+	outgoing.AdminReply = message
+	if send == nil {
+		return database.SupportTicketMessage{}, false, errors.New("support reply sender is unavailable")
+	}
+	if err := send(ctx, outgoing); err != nil {
+		if _, recordErr := database.AppendSupportTicketMessage(ctx, a.db, a.driver, ticket.ID, "system", "", "客服回复发送失败："+err.Error(), "", ""); recordErr != nil {
+			log.Printf("support admin reply failure event could not be stored: ticket_id=%s error=%v", ticket.ID, recordErr)
+		}
+		return database.SupportTicketMessage{}, true, err
+	}
+	item, err := database.AppendSupportTicketMessage(ctx, a.db, a.driver, ticket.ID, "admin", adminID, message, "", "")
+	if err != nil {
+		return database.SupportTicketMessage{}, false, err
+	}
+	if _, err := database.UpdateSupportTicket(ctx, a.db, a.driver, ticket.ID, ticket.Status, message); err != nil {
+		return item, false, err
+	}
+	return item, false, nil
+}
+
 func (a *application) appendSupportTicketMessage(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r); if !ok { return }
 	var input supportMessageRequest
@@ -72,18 +98,23 @@ func (a *application) appendSupportTicketMessage(w http.ResponseWriter, r *http.
 	ticketID := strings.TrimSpace(r.PathValue("id"))
 	ticket, err := database.GetSupportTicket(r.Context(), a.db, a.driver, ticketID)
 	if err != nil { writeError(w, http.StatusNotFound, "售后工单不存在"); return }
-	item, err := database.AppendSupportTicketMessage(r.Context(), a.db, a.driver, ticketID, "admin", claims.AdminID, input.Message, input.AttachmentFileID, input.AttachmentName)
-	if err != nil { writeError(w, http.StatusBadRequest, err.Error()); return }
 	if strings.TrimSpace(input.Message) != "" {
-		ticket, err = database.UpdateSupportTicket(r.Context(), a.db, a.driver, ticketID, ticket.Status, input.Message)
-		if err != nil { writeError(w, http.StatusInternalServerError, "沟通记录已保存，但工单回复状态更新失败"); return }
-		ticket.AdminReply = input.Message
-		if err := a.botManager.SendSupportReply(r.Context(), ticket); err != nil {
-			// The message remains in the timeline; the UI can retry notification without losing the reply.
-			writeSuccess(w, http.StatusAccepted, map[string]any{"message": item, "notificationError": "消息已保存，但 Telegram 通知发送失败"})
+		item, sendFailed, err := a.deliverSupportAdminReply(r.Context(), ticket, claims.AdminID, input.Message, func(ctx context.Context, outgoing database.SupportTicket) error {
+			return a.botManager.SendSupportReply(ctx, outgoing)
+		})
+		if err != nil {
+			if sendFailed {
+				writeError(w, http.StatusBadGateway, "Telegram 发送失败，客服回复未写入时间线；工单保持原状态，请检查后重试")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "Telegram 已发送，但沟通记录或工单状态保存失败，请检查时间线后再继续")
 			return
 		}
+		writeSuccess(w, http.StatusCreated, item)
+		return
 	}
+	item, err := database.AppendSupportTicketMessage(r.Context(), a.db, a.driver, ticketID, "admin", claims.AdminID, input.Message, input.AttachmentFileID, input.AttachmentName)
+	if err != nil { writeError(w, http.StatusBadRequest, err.Error()); return }
 	writeSuccess(w, http.StatusCreated, item)
 }
 
