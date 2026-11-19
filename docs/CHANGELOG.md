@@ -1,6 +1,6 @@
 ## 2026-11-20 — Telegram 购物车与多商品统一结算（开发中）
 
-- 状态：独立开发分支；尚未创建 PR / 尚未运行 CI / 未合并 / 未发布 / 未生产验收。
+- 状态：PR #59 已创建并开放；Go/Admin/Security CI 运行中。未合并 / 未发布 / 未生产验收。
 - 分支与基线：`feat/cart-unified-checkout-mainline`，基于 `main@420427cba287ec297998f8ab02c85fb65c3b9bd7`。旧 PR #7 落后当前 main 120 个提交，且旧迁移编号与当前迁移冲突，因此重新移植而非直接合并。
 - 影响模块：Telegram 用户菜单、商品详情、购物车、订单历史、商品库存与支付交付。
 - 变更内容：
@@ -14,7 +14,7 @@
 - 兼容性与已知限制：购物车仅用于本地 `card` / `file_card` 商品；上游商品和其他交付模式继续单独购买。多商品统一结算尚待 CI 与端到端验证。
 - 验证：
   - 新增 SQLite 测试：Bot/用户隔离、数量边界、统一订单与多卡密消费、混币拒绝、库存不足全量回滚、上游/非卡密商品拒绝、数量原子调整。
-  - Go CI、Admin CI、安全扫描与 Docker Publish：待 PR 创建后运行。
+  - Go CI [#44632621672](https://github.com/seanldnet/TG-Card/actions/runs/44632621672)、Admin CI [#44632621810](https://github.com/seanldnet/TG-Card/actions/runs/44632621810)、Security [#44632621683](https://github.com/seanldnet/TG-Card/actions/runs/44632621683)：Go/Admin 运行中，Security 已成功；旧一次 Go 运行暴露了非卡密测试与本期范围不一致，已修正测试并在最新提交重跑。Docker Publish 仅在合并后触发。
   - Telegram 真机测试：待项目所有者在发布镜像后验收。
 - 发布镜像：无；PR 未合并。
 
