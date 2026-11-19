@@ -63,6 +63,7 @@ func logCartError(botID string,userID int64,err error) {
 }
 
 func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query CallbackQuery,chatID int64) {
+	_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在创建统一订单")
 	userID:=strconv.FormatInt(query.From.ID,10)
 	order,items,err:=database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,userID,strconv.FormatInt(chatID,10),20*time.Minute)
 	if err!=nil {
@@ -81,7 +82,6 @@ func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query Callba
 		{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}},
 		{{"text":"📦 查看我的订单","callback_data":"menu:orders"}},
 	}}
-	_ = m.answerCallback(ctx,cfg.Token,query.ID,"统一订单已创建")
 	m.Notify("order_created","购物车统一订单："+order.OrderNo+"\n商品种类："+strconv.Itoa(len(items))+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,message,keyboard)
 }
