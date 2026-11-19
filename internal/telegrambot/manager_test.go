@@ -417,3 +417,25 @@ func TestSwitchingOwnerReplyTicketInvalidatesPreviousConfirmation(t *testing.T) 
  session,err:=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-switch","12345","12345")
  if err!=nil||session.TicketID!=second.ID||session.Phase!="reply"{t.Fatalf("active session must remain on ticket B reply phase: %#v err=%v",session,err)}
 }
+
+func TestCartCommandInGroupReturnsPrivateChatNotice(t *testing.T) {
+	for _, textValue := range []string{"/cart", "/cart@shop_bot", "🛒 我的购物车"} {
+		t.Run(textValue, func(t *testing.T) {
+			var requestBody string
+			manager := &Manager{client: &http.Client{Transport: telegramTestTransport(func(req *http.Request) (*http.Response, error) {
+				body, err := io.ReadAll(req.Body)
+				if err != nil { return nil, err }
+				requestBody = string(body)
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)), Request: req}, nil
+			})}}
+			manager.handleMessage(context.Background(), Config{ID: "cart-test", Token: "test-token"}, Message{
+				Text: textValue,
+				Chat: Chat{ID: -100123, Type: "supergroup"},
+				From: &TelegramUser{ID: 12345},
+			})
+			if !strings.Contains(requestBody, "购物车仅支持在机器人私聊中使用") {
+				t.Fatalf("group cart command should return private-chat notice, request body: %s", requestBody)
+			}
+		})
+	}
+}

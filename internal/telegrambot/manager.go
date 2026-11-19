@@ -508,7 +508,15 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 		return
 	}
-	if msg.Chat.Type != "private" || msg.From == nil { return }
+	if msg.Chat.Type != "private" {
+		text := strings.TrimSpace(msg.Text)
+		command := strings.Fields(text)
+		if text == "🛒 我的购物车" || (len(command) > 0 && strings.SplitN(command[0], "@", 2)[0] == "/cart") {
+			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "购物车仅支持在机器人私聊中使用。")
+		}
+		return
+	}
+	if msg.From == nil { return }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
 		if !m.isOwner(cfg,msg.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",msg.From.ID,banErr);return };if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"你的账号当前无法使用此机器人服务。如有疑问，请联系平台客服。");return } }
@@ -639,10 +647,6 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	command := strings.Fields(text)
 	first := strings.SplitN(command[0], "@", 2)[0]
 	if first == "/cart" || text == "🛒 我的购物车" {
-		if msg.Chat.Type != "private" {
-			_ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "购物车仅支持在机器人私聊中使用。")
-			return
-		}
 		m.showCart(ctx,cfg,msg.Chat.ID,msg.From.ID)
 		return
 	}
