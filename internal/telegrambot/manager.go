@@ -1063,6 +1063,10 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
+	if (strings.HasPrefix(query.Data,"cart:") || query.Data=="menu:cart") && query.Message.Chat.Type!="private" {
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车仅支持在机器人私聊中使用")
+		return
+	}
 	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID) }
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
