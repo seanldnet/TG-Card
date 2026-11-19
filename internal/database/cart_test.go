@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"os"
+	"sync"
 	"strings"
 	"testing"
 	"time"
@@ -199,4 +201,60 @@ func TestCartCheckoutRejectsInvoiceAmountOverflow(t *testing.T) {
 	if _,_,err:=CreateCartCheckout(ctx,db,cfg.DBDriver,"bot","user","chat",20*time.Minute);err==nil{t.Fatal("checkout must reject payment invoice overflow")}
 	items,err:=ListCartItems(ctx,db,cfg.DBDriver,"bot","user");if err!=nil{t.Fatal(err)}
 	if len(items)!=1{t.Fatalf("overflow rejection must retain cart, got %+v",items)}
+}
+
+func TestPostgresCartCheckoutConcurrentStockReservation(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
+	if dsn == "" { t.Skip("TEST_POSTGRES_DSN is not configured") }
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cfg := config.Config{DBDriver: "postgres", DatabaseDSN: dsn}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	suffix, err := randomID()
+	if err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Postgres cart concurrency " + suffix, PriceMinor: 125, Currency: "USDT", DeliveryType: "card", Status: 1})
+	if err != nil { t.Fatal(err) }
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM products WHERE id=$1", product.ID) }()
+	if _, err := ImportProductKeys(ctx, db, cfg.DBDriver, product.ID, []StockSecret{{Ciphertext: "pg-cart-secret-" + suffix, Fingerprint: "pg-cart-fingerprint-" + suffix}}); err != nil { t.Fatal(err) }
+	type buyer struct { botID, userID, chatID string }
+	buyers := []buyer{{"pg-cart-bot-a-" + suffix, "pg-cart-user-a-" + suffix, "pg-cart-chat-a-" + suffix}, {"pg-cart-bot-b-" + suffix, "pg-cart-user-b-" + suffix, "pg-cart-chat-b-" + suffix}}
+	for _, b := range buyers { if err := AddCartItem(ctx, db, cfg.DBDriver, b.botID, b.userID, product.ID, 1); err != nil { t.Fatal(err) } }
+	type checkoutResult struct { buyer buyer; order Order; err error }
+	start := make(chan struct{})
+	results := make(chan checkoutResult, len(buyers))
+	var wg sync.WaitGroup
+	for _, b := range buyers {
+		wg.Add(1)
+		go func(b buyer) {
+			defer wg.Done()
+			<-start
+			order, _, err := CreateCartCheckout(ctx, db, cfg.DBDriver, b.botID, b.userID, b.chatID, 20*time.Minute)
+			results <- checkoutResult{buyer: b, order: order, err: err}
+		}(b)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	var succeeded, failed *checkoutResult
+	for result := range results {
+		current := result
+		if current.err == nil {
+			if succeeded != nil { t.Fatal("only one buyer may reserve the single available key") }
+			succeeded = &current
+		} else {
+			if failed != nil { t.Fatalf("unexpected multiple checkout failures: %v", current.err) }
+			failed = &current
+		}
+	}
+	if succeeded == nil || failed == nil { t.Fatalf("expected one successful checkout and one stock conflict; success=%+v failure=%+v", succeeded, failed) }
+	var reserved int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM product_keys WHERE product_id=$1 AND status=1 AND order_id=$2", product.ID, succeeded.order.ID).Scan(&reserved); err != nil { t.Fatal(err) }
+	if reserved != 1 { t.Fatalf("successful checkout must reserve exactly one key, got %d", reserved) }
+	remaining, err := ListCartItems(ctx, db, cfg.DBDriver, failed.buyer.botID, failed.buyer.userID)
+	if err != nil { t.Fatal(err) }
+	if len(remaining) != 1 { t.Fatalf("losing checkout must retain its cart, got %+v", remaining) }
+	if _, err := db.ExecContext(ctx, "DELETE FROM orders WHERE id=$1", succeeded.order.ID); err != nil { t.Fatal(err) }
 }
