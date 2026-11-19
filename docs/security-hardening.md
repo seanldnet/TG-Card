@@ -9,7 +9,7 @@
 ### 设计
 
 - 新增 `admin_token_sessions` 会话登记表，保存 token 的 SHA-256 摘要、管理员 ID、过期 Unix 时间和创建时间；不保存原始 Bearer token。
-- 登录签发 token 后，先将摘要登记入数据库，再向客户端返回 token。
+- 每个 token 在签名载荷中包含独立随机 JTI，确保同一秒内多次登录也会签发不同 token；登录后先将摘要登记入数据库，再向客户端返回 token。
 - 每个鉴权请求除验证 HMAC 签名、管理员状态和 TokenVersion 外，还必须命中未过期的服务端会话记录。
 - 登出只删除当前 Bearer token 对应的会话，不影响同一管理员在其他设备的有效会话。
 - 修改密码仍通过递增 TokenVersion 撤销该管理员全部旧 token。
@@ -22,6 +22,7 @@
 ### 验证
 
 - 数据库测试：登记、查询有效会话、撤销当前 token、保留另一设备 token、过期拒绝。
+- Token 单元测试：验证每次签发生成不同 JTI，避免同秒登录生成相同 bearer token。
 - HTTP 集成测试：登录两次、登出其中一个 token、确认该 token 被拒绝而另一个仍有效。
 - Go/Admin/Security CI 与 Docker 发布状态以 PR #53 和主分支 Actions 为准。
 - 生产部署和真实登录/登出验收未完成前，不标记生产安全验收通过。
