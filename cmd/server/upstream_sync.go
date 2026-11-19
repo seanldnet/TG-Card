@@ -58,7 +58,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		categoryFingerprint,fpErr:=upstream.DujiaoCategoryFingerprint(category)
 		if fpErr!=nil{return summary,fpErr}
 		categoryFingerprint=fmt.Sprintf("%s|resolved_name=%s",categoryFingerprint,name)
-		unchanged,seenErr:=database.MarkUpstreamCategorySeenIfUnchanged(ctx,a.db,a.driver,upstreamID,categoryFingerprint,fmt.Sprintf("%d",time.Now().UTC().UnixNano()))
+		unchanged,seenErr:=database.MarkUpstreamCategorySeenIfUnchanged(ctx,a.db,a.driver,upstreamID,categoryFingerprint,batchID)
 		if seenErr!=nil{return summary,seenErr}
 		if unchanged {continue}
 		iconPath := ""
