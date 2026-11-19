@@ -1,3 +1,11 @@
+## 2026-11-20 — 阶段一售后附件转发子项所有者实测确认
+
+- 项目所有者确认：售后附件转发相关测试已亲自完成且无异常；将“用户提交图片/文件后由对应 Bot 转发给 Owner，Owner 收到原始媒体”这一子项记录为所有者实测通过。
+- 证据边界：本次未提供测试镜像 digest、设备、订单/工单号或截图；不将本次确认绑定到 PR #38 镜像，也不补造测试证据。
+- PR #27 C1–C4 其余交互验收、菜单全链路、补发/退款全分支、CDN Network 检查仍待完成；阶段一尚未清零。
+- 同步纠正 PR #38 状态：已合并并发布，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认，PR E 尚未开始。
+- 本次为验收记录修订，不代表阶段完成；文档版本号待阶段一全部完成后按强制规则递增。
+
 ## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 Draft，分支 CI 通过）
 
 - PR：[PR #38](https://github.com/seanldnet/TG-Card/pull/38)，独立分支 feat/dujiao-fund-safety-pr-d，head 5dbd0269a719f91b74458f03bd67a25aeab0761b，基线 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f。
