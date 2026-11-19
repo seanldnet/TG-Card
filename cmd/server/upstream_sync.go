@@ -285,7 +285,7 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 	go func() {
 		_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "running")
 		_, err := a.syncUpstreamCatalog(ctx)
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 			_ = database.SaveUpstreamSyncResult(context.Background(), a.db, a.driver, "cancelled", "同步已由管理员取消；已完成批次保留")
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "cancelled")
 		} else if err != nil {
