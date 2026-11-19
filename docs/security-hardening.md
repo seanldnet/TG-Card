@@ -1,6 +1,6 @@
 # 安全加固记录
 
-## 管理员 Bearer Token 会话撤销（PR #53 开发中）
+## 管理员 Bearer Token 会话撤销（PR #53 已合并）
 
 ### 风险
 
@@ -24,7 +24,7 @@
 - 数据库测试：登记、查询有效会话、撤销当前 token、保留另一设备 token、过期拒绝。
 - Token 单元测试：验证每次签发生成不同 JTI，避免同秒登录生成相同 bearer token。
 - HTTP 集成测试：登录两次、登出其中一个 token、确认该 token 被拒绝而另一个仍有效。
-- Go/Admin/Security CI 与 Docker 发布状态以 PR #53 和主分支 Actions 为准。
+- PR #53 已合并至 main，merge commit `8260a9c4775726587c33100c939eb78018de8cb3`；PR head Go/Admin/Security 全部成功。main Go/Admin/Security/Docker Publish 正在运行，发布 digest 待核实。
 - 生产部署和真实登录/登出验收未完成前，不标记生产安全验收通过。
 
 ### 后续安全事项
