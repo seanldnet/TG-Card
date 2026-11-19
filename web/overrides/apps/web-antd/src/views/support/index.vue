@@ -45,14 +45,14 @@ async function save(){
  if(!selected.value)return;
  saving.value=true;
  try{
-  await requestClient.put('/support/tickets/'+selected.value.id,{status:editStatus.value,adminReply:''});
-  let notifyFailed=false;
+  // Deliver and persist the reply before changing ticket status. If Telegram
+  // rejects the message, the selected status must not be applied.
   if(replyText.value.trim()){
-   const response=await requestClient.post<any>('/support/tickets/'+selected.value.id+'/messages',{message:replyText.value.trim()});
-   if(response?.notificationError)notifyFailed=true;
+   await requestClient.post<any>('/support/tickets/'+selected.value.id+'/messages',{message:replyText.value.trim()});
+   replyText.value='';
   }
-  if(notifyFailed)message.warning('工单已保存，但 Telegram 通知发送失败');
-  else message.success('工单状态和沟通记录已保存');
+  await requestClient.put('/support/tickets/'+selected.value.id,{status:editStatus.value,adminReply:''});
+  message.success('工单状态和沟通记录已保存');
   ticketModalOpen.value=false;await loadTickets();
  }catch(error:any){message.error(error?.response?.data?.message||error?.message||'工单更新失败')}finally{saving.value=false}
 }
