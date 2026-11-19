@@ -1,3 +1,11 @@
+## 2026-11-20 — 管理员登出撤销当前 Bearer 会话（PR #53 开发中）
+
+- 修复目标：原 `POST /api/auth/logout` 只返回成功，不撤销服务端 token；被复制的旧 Bearer token 在 24 小时内仍可访问 API。
+- 新增 `0041_admin_token_sessions.sql` 与服务端会话登记/查询/撤销；数据库只保存 token SHA-256 摘要。
+- 登录登记会话；鉴权检查服务端会话是否仍有效；登出只撤销当前 token，不影响同一管理员的其他设备。密码修改仍由 TokenVersion 撤销全部会话。
+- 迁移后既有未登记 token 将失效，管理员需重新登录。
+- 新增数据库生命周期与登录/登出集成测试；CI/合并/发布待完成。
+
 ## 2026-11-20 — Owner Bot 重启恢复、超时与工单切换回归（PR #50 已合并）
 
 - PR #50 已合并至 main，merge commit `eee2b3ae5505d3d97e8a45b07672f53530b78ba9`。
