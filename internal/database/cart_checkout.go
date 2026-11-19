@@ -23,13 +23,13 @@ type CartCheckoutItem struct {
 func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID string, ttl time.Duration) (Order, []CartCheckoutItem, error) {
 	if ttl <= 0 { ttl = 20*time.Minute }
 	tx, err := db.BeginTx(ctx,nil); if err != nil { return Order{},nil,err }; defer tx.Rollback()
-	q := `SELECT c.product_id,c.quantity,p.name,p.price_minor,p.currency,p.status,COALESCE(p.delivery_type,'card'),COALESCE(p.delivery_config_json,'{}'),COALESCE(p.bulk_discount_json,'[]'),COALESCE(p.source_type,'local')
+	q := `SELECT c.id,c.product_id,c.quantity,p.name,p.price_minor,p.currency,p.status,COALESCE(p.delivery_type,'card'),COALESCE(p.delivery_config_json,'{}'),COALESCE(p.bulk_discount_json,'[]'),COALESCE(p.source_type,'local')
 		FROM shopping_cart_items c JOIN products p ON p.id=c.product_id
 		WHERE c.bot_id=`+placeholder(driver,1)+` AND c.telegram_user_id=`+placeholder(driver,2)+` ORDER BY c.created_at,c.id`
 	if driver=="postgres" { q += " FOR UPDATE OF c,p" }
 	rows,err:=tx.QueryContext(ctx,q,botID,telegramUserID);if err!=nil{return Order{},nil,err}
-	type liveItem struct{ CartCheckoutItem; status int; deliveryType,deliveryConfig,discountJSON,sourceType string }
-	live:=make([]liveItem,0);for rows.Next(){var x liveItem;if err:=rows.Scan(&x.ProductID,&x.Quantity,&x.ProductName,&x.UnitPriceMinor,&x.Currency,&x.status,&x.deliveryType,&x.deliveryConfig,&x.discountJSON,&x.sourceType);err!=nil{rows.Close();return Order{},nil,err};live=append(live,x)}
+	type liveItem struct{ CartCheckoutItem; cartItemID string; status int; deliveryType,deliveryConfig,discountJSON,sourceType string }
+	live:=make([]liveItem,0);for rows.Next(){var x liveItem;if err:=rows.Scan(&x.cartItemID,&x.ProductID,&x.Quantity,&x.ProductName,&x.UnitPriceMinor,&x.Currency,&x.status,&x.deliveryType,&x.deliveryConfig,&x.discountJSON,&x.sourceType);err!=nil{rows.Close();return Order{},nil,err};live=append(live,x)}
 	if err:=rows.Err();err!=nil{rows.Close();return Order{},nil,err};if err:=rows.Close();err!=nil{return Order{},nil,err}
 	if len(live)==0{return Order{},nil,fmt.Errorf("购物车为空")}
 	currency,deliveryType,deliveryConfig:=live[0].Currency,live[0].deliveryType,live[0].deliveryConfig
@@ -88,7 +88,9 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		_,e=tx.ExecContext(ctx,"INSERT INTO cart_checkout_items(id,order_id,product_id,product_name,quantity,unit_price_minor,line_total_minor,currency,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")",itemID,order.ID,item.ProductID,item.ProductName,item.Quantity,item.UnitPriceMinor,item.LineTotalMinor,item.Currency,now.Format(time.RFC3339Nano))
 		if e!=nil{return Order{},nil,e};items=append(items,item)
 	}
-	if _,err=tx.ExecContext(ctx,"DELETE FROM shopping_cart_items WHERE bot_id="+placeholder(driver,1)+" AND telegram_user_id="+placeholder(driver,2),botID,telegramUserID);err!=nil{return Order{},nil,err}
+	for _,x:=range live {
+		if _,err=tx.ExecContext(ctx,"DELETE FROM shopping_cart_items WHERE id="+placeholder(driver,1)+" AND bot_id="+placeholder(driver,2)+" AND telegram_user_id="+placeholder(driver,3),x.cartItemID,botID,telegramUserID);err!=nil{return Order{},nil,err}
+	}
 	if err=tx.Commit();err!=nil{return Order{},nil,err}
 	return order,items,nil
 }
