@@ -136,6 +136,7 @@ func main() {
 	defer db.Close()
 
 	if err := database.Migrate(ctx, db, cfg.DBDriver); err != nil { log.Fatal(err) }
+	if err := database.RecoverInterruptedUpstreamSyncJobs(ctx, db, cfg.DBDriver); err != nil { log.Printf("recover interrupted upstream sync jobs: %v", err) }
 
 	bootstrap, err := database.EnsureAdmin(ctx, db, cfg.DBDriver, cfg.AdminUsername, cfg.AdminPassword)
 	if err != nil { log.Fatal(err) }
