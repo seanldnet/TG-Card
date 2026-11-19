@@ -155,12 +155,12 @@ func ListVisibleCategories(ctx context.Context, db *sql.DB) ([]Category, error) 
 // MarkUpstreamProductSeenIfUnchanged marks an unchanged upstream product as
 // observed in this run, allowing finalization to retain it without downloading
 // its images or rewriting all SKU rows.
-func MarkUpstreamProductSeenIfUnchanged(ctx context.Context, db *sql.DB, driver, productID, fingerprint, batchID string) (bool,error) {
+func MarkUpstreamProductSeenIfUnchanged(ctx context.Context, db *sql.DB, driver, productID, fingerprint, batchID string, expectedSKUs int) (bool,error) {
  var count int
  var saved sql.NullString
  q:="SELECT COUNT(1),MIN(upstream_fingerprint) FROM products WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,1)
  if err:=db.QueryRowContext(ctx,q,productID).Scan(&count,&saved);err!=nil{return false,err}
- if count==0||!saved.Valid||saved.String==""||saved.String!=fingerprint{return false,nil}
+ if count==0||count!=expectedSKUs||!saved.Valid||saved.String==""||saved.String!=fingerprint{return false,nil}
  update:="UPDATE products SET upstream_sync_batch_id="+placeholder(driver,1)+" WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,2)
  if _,err:=db.ExecContext(ctx,update,batchID,productID);err!=nil{return false,err}
  return true,nil
