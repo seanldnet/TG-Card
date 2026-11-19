@@ -74,7 +74,8 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  settings.CatalogStale=true
  if err:=database.SaveUpstreamSettings(ctx,a.db,a.driver,settings);err!=nil{return summary,a.failUpstreamSync(ctx,"标记上游目录刷新状态失败："+err.Error())}
  if err:=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,categoryRecords,nil,false);err!=nil{return summary,a.failUpstreamSync(ctx,"写入上游分类失败："+err.Error())}
- const pageSize=25
+ pageSize:=settings.SyncBatchSize
+ if pageSize<20||pageSize>50{pageSize=25}
  total:=0
  consecutiveFailures:=0
  failedPages:=0
@@ -111,7 +112,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
    }
   }
   if page*pageSize>=total || len(products)==0 || len(products)<pageSize {break}
-  select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Second):}
+  select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(settings.SyncBatchDelayMS)*time.Millisecond):}
  }
  if failedPages>0{return summary,fmt.Errorf("有 %d 个商品分页处理失败；为避免目录不完整，未执行下架收尾",failedPages)}
  if err:=ctx.Err();err!=nil{return summary,err}
@@ -228,7 +229,9 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 	defer a.upstreamJobMu.Unlock()
 	if a.upstreamJobCancel != nil { return "", errUpstreamSyncInProgress }
 	jobID := fmt.Sprintf("upstream-%d", time.Now().UTC().UnixNano())
-	job := database.UpstreamSyncJob{ID:jobID, Status:"queued", BatchSize:25, DelayMS:1000, TriggerType:trigger}
+	settings,settingsErr:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
+	if settingsErr!=nil{return "",settingsErr}
+	job := database.UpstreamSyncJob{ID:jobID, Status:"queued", BatchSize:settings.SyncBatchSize, DelayMS:settings.SyncBatchDelayMS, TriggerType:trigger}
 	if err := database.CreateUpstreamSyncJob(context.Background(), a.db, a.driver, job); err != nil { return "", err }
 	ctx, cancel := context.WithCancel(context.Background())
 	a.upstreamJobCancel = cancel
