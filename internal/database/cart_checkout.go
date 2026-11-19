@@ -12,6 +12,7 @@ import (
 )
 
 type CartCheckoutItem struct {
+	LineNumber int `json:"lineNumber"`
 	ProductID string `json:"productId"`
 	ProductName string `json:"productName"`
 	Quantity int `json:"quantity"`
@@ -73,7 +74,7 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 	for i:=1;i<=19;i++{if i>1{insert+=","};insert+=placeholder(driver,i)};insert+=")"
 	if _,err=tx.ExecContext(ctx,insert,order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON);err!=nil{return Order{},nil,err}
 	items:=make([]CartCheckoutItem,0,len(live))
-	for _,x:=range live {
+	for lineNumber,x:=range live {
 		if deliveryType=="card"||deliveryType=="file_card"{
 			keyQ:="SELECT id FROM product_keys WHERE product_id="+placeholder(driver,1)+" AND status=0 ORDER BY created_at,id LIMIT "+fmt.Sprint(x.Quantity)
 			if driver=="postgres"{keyQ+=" FOR UPDATE SKIP LOCKED"}
@@ -84,8 +85,8 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 			for _,kid:=range keys{res,e:=tx.ExecContext(ctx,"UPDATE product_keys SET status=1,order_id="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND status=0",order.ID,kid);if e!=nil{return Order{},nil,e};n,e:=res.RowsAffected();if e!=nil||n!=1{if e!=nil{return Order{},nil,e};return Order{},nil,fmt.Errorf("商品 %s 库存预留冲突",x.ProductName)}}
 		}
 		itemID,e:=randomID();if e!=nil{return Order{},nil,e}
-		item:=CartCheckoutItem{ProductID:x.ProductID,ProductName:x.ProductName,Quantity:x.Quantity,UnitPriceMinor:x.UnitPriceMinor,LineTotalMinor:x.LineTotalMinor,Currency:x.Currency}
-		_,e=tx.ExecContext(ctx,"INSERT INTO cart_checkout_items(id,order_id,product_id,product_name,quantity,unit_price_minor,line_total_minor,currency,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+")",itemID,order.ID,item.ProductID,item.ProductName,item.Quantity,item.UnitPriceMinor,item.LineTotalMinor,item.Currency,now.Format(time.RFC3339Nano))
+		item:=CartCheckoutItem{LineNumber:lineNumber,ProductID:x.ProductID,ProductName:x.ProductName,Quantity:x.Quantity,UnitPriceMinor:x.UnitPriceMinor,LineTotalMinor:x.LineTotalMinor,Currency:x.Currency}
+		_,e=tx.ExecContext(ctx,"INSERT INTO cart_checkout_items(id,order_id,line_number,product_id,product_name,quantity,unit_price_minor,line_total_minor,currency,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+","+placeholder(driver,9)+","+placeholder(driver,10)+")",itemID,order.ID,lineNumber,item.ProductID,item.ProductName,item.Quantity,item.UnitPriceMinor,item.LineTotalMinor,item.Currency,now.Format(time.RFC3339Nano))
 		if e!=nil{return Order{},nil,e};items=append(items,item)
 	}
 	for _,x:=range live {
