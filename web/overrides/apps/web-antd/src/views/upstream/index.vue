@@ -87,13 +87,29 @@ async function save():Promise<boolean>{
 async function syncNow(){
  if(clearCredentials.value){message.warning('请先保存配置后再同步');return;}
  if(merchantId.value||merchantSecret.value||!settings.merchantIdConfigured||!settings.merchantSecretConfigured){const saved=await save();if(!saved)return;}
- syncing.value=true;syncResult.value=null;
+ syncing.value=true;syncResult.value=null;syncProgress.status='queued';
  try{
-  const data=await requestClient.post<any>('/upstream/sync',{});
-  syncResult.value={categories:data.categories||0,products:data.products||0,imagesFailed:data.imagesFailed||0,warning:data.warning||''};
-  await load();message.success('上游商品同步完成');
- }catch(error:any){await load();message.error(error?.response?.data?.message||'上游商品同步失败，旧目录数据已保留');}
- finally{syncing.value=false;}
+  const started=await requestClient.post<any>('/upstream/sync',{});
+  syncJobId.value=started.jobId;
+  if(!syncJobId.value)throw new Error('同步任务未返回任务 ID');
+  while(syncing.value){
+   const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
+   Object.assign(syncProgress,state);
+   if(['success','failed','cancelled','paused'].includes(state.status)){
+    if(state.status==='success'){await load();message.success('上游商品同步完成');}
+    else if(state.status==='cancelled'){await load();message.info('同步已取消，已完成的数据批次予以保留');}
+    else{await load();message.error(state.lastError||'上游商品同步失败');}
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+ }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游商品同步启动或查询失败');}
+ finally{syncing.value=false;syncJobId.value='';}
+}
+async function cancelSync(){
+ if(!syncJobId.value)return;
+ try{await requestClient.post('/upstream/sync/'+syncJobId.value+'/cancel',{});message.info('已提交取消请求，正在等待当前批次安全结束');}
+ catch(error:any){message.error(error?.response?.data?.message||'取消同步失败');}
 }
 async function testConnection(){
  if(clearCredentials.value){message.warning('请先保存配置后再测试连接，不能在清除凭证后测试');return;}
@@ -166,6 +182,7 @@ onMounted(()=>{void load();});
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
      <a-button :loading="syncing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="syncNow">立即同步商品</a-button>
+     <a-button v-if="syncing" danger :disabled="!syncJobId" @click="cancelSync">取消同步</a-button>
      <a-button :disabled="saving||testing||syncing" @click="load">重新加载</a-button>
     </div>
    </a-form>
@@ -205,6 +222,8 @@ onMounted(()=>{void load();});
      <a-tag color="default">{{syncLabel}}</a-tag>
      <div v-if="settings.syncAt" class="mt-2 text-xs text-gray-500">最近成功同步：{{settings.syncAt}}</div>
      <div v-if="settings.syncAttemptAt" class="mt-1 text-xs text-gray-500">最近尝试：{{settings.syncAttemptAt}}</div>
+     <div v-if="syncing" class="mt-2 text-xs text-gray-600">任务状态：{{syncProgress.status}} · 已处理 {{syncProgress.processedItems}} / {{syncProgress.totalItems}} · 当前页 {{syncProgress.currentPage}} · 错误 {{syncProgress.errorCount}}</div>
+     <a-alert v-if="syncProgress.lastError" class="mt-2" type="warning" show-icon :message="syncProgress.lastError"/>
      <a-alert v-if="settings.syncError" class="mt-3" type="warning" show-icon :message="settings.syncError"/>
      <div v-else class="mt-2 text-xs text-gray-500">自动同步按上方间隔运行；同步失败会保留上一次成功的数据。</div>
      <div v-if="syncResult" class="mt-3 text-sm">本次同步：{{syncResult.categories}} 个分类 · {{syncResult.products}} 个 SKU 商品 · 图片失败 {{syncResult.imagesFailed}} 张</div>
