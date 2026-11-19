@@ -14,7 +14,7 @@
 - 兼容性与已知限制：购物车仅用于本地 `card` / `file_card` 商品；上游商品和其他交付模式继续单独购买。多商品统一结算尚待 CI 与端到端验证。
 - 验证：
   - 新增 SQLite 测试：Bot/用户隔离、数量边界、统一订单与多卡密消费、混币拒绝、库存不足全量回滚、上游/非卡密商品拒绝、数量原子调整。
-  - Go CI [#44632621672](https://github.com/seanldnet/TG-Card/actions/runs/44632621672)、Admin CI [#44632621810](https://github.com/seanldnet/TG-Card/actions/runs/44632621810)、Security [#44632621683](https://github.com/seanldnet/TG-Card/actions/runs/44632621683)：Go/Admin 运行中，Security 已成功；旧一次 Go 运行暴露了非卡密测试与本期范围不一致，已修正测试并在最新提交重跑。Docker Publish 仅在合并后触发。
+  - 最新 PR head `a764b2bc0cb85d7362368b39095f3244c2e036e0` 的 Go CI [#44633169401](https://github.com/seanldnet/TG-Card/actions/runs/44633169401)、Admin CI [#44633169411](https://github.com/seanldnet/TG-Card/actions/runs/44633169411)、Security [#44633169391](https://github.com/seanldnet/TG-Card/actions/runs/44633169391) 全部成功；Go CI 已完成 gofmt、go vet、全量 go test 和 CGO_ENABLED=0 构建。早期一次测试发现非卡密旧测试与本期范围不一致，已修正测试并在最新 head 全部通过。Docker Publish 仅在合并后触发。
   - Telegram 真机测试：待项目所有者在发布镜像后验收。
 - 发布镜像：无；PR 未合并。
 
