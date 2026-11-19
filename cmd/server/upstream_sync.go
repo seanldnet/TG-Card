@@ -290,6 +290,7 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 			_ = database.SaveUpstreamSyncResult(context.Background(), a.db, a.driver, "cancelled", "同步已由管理员取消；已完成批次保留")
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "cancelled")
 		} else if err != nil {
+			_ = database.SaveUpstreamSyncResult(context.Background(), a.db, a.driver, "failed", err.Error())
 			if currentJob, jobErr := database.GetUpstreamSyncJob(context.Background(), a.db, a.driver, jobID); jobErr == nil {
 				_ = database.UpdateUpstreamSyncJobProgress(context.Background(), a.db, a.driver, jobID, currentJob.TotalItems, currentJob.ProcessedItems, currentJob.CurrentPage, currentJob.ErrorCount+1, currentJob.ConsecutiveFailures+1, err.Error())
 			}
