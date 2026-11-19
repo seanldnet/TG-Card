@@ -41,6 +41,7 @@ func TestMarkUpstreamProductSeenIfUnchanged(t *testing.T) {
  ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
  db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
  if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+ if err:=SaveUpstreamSettings(ctx,db,cfg.DBDriver,UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",Enabled:true,CatalogStale:true});err!=nil{t.Fatal(err)}
  if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"batch-old",nil,[]UpstreamProductRecord{{ProductID:"101",SKUID:"201",Name:"Fingerprint item",PriceMinor:100,Currency:"USDT",UpstreamUpdatedAt:"2026-11-20T10:00:00Z",UpstreamFingerprint:"fingerprint-a",Active:true}});err!=nil{t.Fatal(err)}
  unchanged,err:=MarkUpstreamProductSeenIfUnchanged(ctx,db,cfg.DBDriver,"101","fingerprint-a","batch-new",1);if err!=nil||!unchanged{t.Fatalf("unchanged product should be marked seen: %v %v",unchanged,err)}
  changed,err:=MarkUpstreamProductSeenIfUnchanged(ctx,db,cfg.DBDriver,"101","fingerprint-b","batch-new",1);if err!=nil||changed{t.Fatalf("changed fingerprint must require a rewrite: %v %v",changed,err)}
