@@ -79,3 +79,11 @@ func RequestUpstreamSyncJobCancel(ctx context.Context, db *sql.DB, driver, id st
  if n != 1 { return fmt.Errorf("同步任务不存在或已结束") }
  return nil
 }
+
+
+func RecoverInterruptedUpstreamSyncJobs(ctx context.Context,db *sql.DB,driver string) error {
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ q:="UPDATE upstream_sync_jobs SET status='failed',last_error='服务进程重启，任务已中断；请重新执行',updated_at="+placeholder(driver,1)+",finished_at="+placeholder(driver,2)+" WHERE status IN ('queued','running','cleaning')"
+ _,err:=db.ExecContext(ctx,q,now,now)
+ return err
+}
