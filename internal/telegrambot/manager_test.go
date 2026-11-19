@@ -278,7 +278,7 @@ func TestOwnerContinueWithoutButtonSupportsConsecutiveReplies(t *testing.T) {
  if len(replies)!=2||replies[0]!="first follow-up"||replies[1]!="second follow-up without pressing a button"{t.Fatalf("expected both consecutive replies in timeline, got %#v",replies)}
  session,err=database.GetSupportOwnerSession(ctx,db,"sqlite","bot-continue","12345","12345")
  if err!=nil||session.Phase!="confirm"{t.Fatalf("reply should return to confirm phase after successful delivery: %#v err=%v",session,err)}
- if telegramCalls!=2{t.Fatalf("expected exactly two Telegram deliveries, got %d",telegramCalls)}
+ if telegramCalls!=5{t.Fatalf("expected one continue notice plus two customer replies and two confirmation prompts, got %d Telegram calls",telegramCalls)}
 }
 
 func TestOwnerReplyMediaUsesPhotoAndDocumentMethods(t *testing.T) {
@@ -308,7 +308,7 @@ func TestOwnerReplyMediaUsesPhotoAndDocumentMethods(t *testing.T) {
    tc.message.Chat=Chat{ID:12345}
    tc.message.From=&TelegramUser{ID:12345}
    if !manager.handleActiveOwnerSupportMessage(ctx,Config{ID:"bot-media",Token:"test-token"},tc.message){t.Fatal("Owner media reply was not handled")}
-   if len(methods)!=1||!strings.HasSuffix(methods[0],"/"+tc.wantMethod){t.Fatalf("expected Telegram %s call, got %#v",tc.wantMethod,methods)}
+   if len(methods)!=2||!strings.HasSuffix(methods[0],"/"+tc.wantMethod){t.Fatalf("expected Telegram %s delivery followed by owner confirmation prompt, got %#v",tc.wantMethod,methods)}
    messages,err:=database.ListSupportTicketMessages(ctx,db,"sqlite",ticket.ID)
    if err!=nil{t.Fatal(err)}
    found:=false
