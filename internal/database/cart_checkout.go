@@ -56,7 +56,7 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 		total+=line;totalQty+=x.Quantity
 	}
 	if totalQty>500{return Order{},nil,fmt.Errorf("购物车总数量最多 500 件")}
-	if total<=0||total> (1<<63-1)/10000{return Order{},nil,fmt.Errorf("购物车总金额无效")}
+	if total<=0||total> ((1<<63-1)-10000)/10000{return Order{},nil,fmt.Errorf("购物车总金额无效或超出付款金额范围")}
 	now:=time.Now().UTC();expires:=now.Add(ttl)
 	id,err:=randomID();if err!=nil{return Order{},nil,err};suffixID,err:=randomID();if err!=nil{return Order{},nil,err}
 	var invoice int64
