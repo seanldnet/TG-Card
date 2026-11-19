@@ -1,10 +1,12 @@
-## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 开发中）
+## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 已合并）
 
-- 修复目标：旧的“是，结单 / 否，继续沟通”按钮在 Owner 已切换到另一工单后仍可操作原工单的问题。
-- 变更：确认回调必须匹配当前 Bot、Owner、ticket_id 与 confirm 会话阶段；会话已过期、切换工单或重复旧按钮时拒绝变更状态。开始回复时检查工单状态更新错误；继续沟通时检查会话写入错误。
-- 测试：增加双工单切换、旧回调拒绝、当前回调成功、会话清理及重复回调审计幂等测试。
-- 新增迁移 `0040_support_owner_session_chat.sql`；现有 30 分钟 TTL、数据库持久化与重启恢复方式保持不变，升级时清理无法安全恢复 chat_id 的旧会话，Owner 重新打开工单即可。
-- 状态：独立 PR #44 开发中；Go/Admin/Security CI、合并、Docker Publish、digest 与生产验收待完成。
+- 状态：已合并至 main，merge commit `0c705ed99c76488aeafa273b019fb3262d19d398`。
+- 确认按钮必须匹配当前 Bot、Owner、Telegram chat_id、ticket_id 与 confirm 阶段；旧工单按钮、过期会话及已清理会话均拒绝状态变更。
+- Owner 回复会话绑定开始回复时的 Telegram chat_id，其他聊天中的消息不会被当作工单回复。
+- 新增迁移 `0040_support_owner_session_chat.sql`；清理无法安全关联 chat_id 的旧会话，Owner 重新打开工单即可。30 分钟 TTL 与重启恢复保持不变。
+- 新增双工单旧按钮隔离、重复回调审计幂等、跨聊天会话隔离测试。
+- PR head Go/Admin/Security 全部成功；main Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 成功。main Go [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 尚在运行，digest 待核实。
+- 生产部署与 Telegram 真机 C1–C4 验收待执行。
 
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
