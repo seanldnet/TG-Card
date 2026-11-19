@@ -14,6 +14,8 @@
 
 > C1/C2 自动化回归补强（2026-11-20，PR #47 已合并）：新增“否，继续沟通”后恢复 reply 阶段、不点按钮连续发送两条文字，以及 Owner 图片/普通文件回复分别调用 `sendPhoto` / `sendDocument` 并在成功后写入时间线的测试。该批次不替代真实 Telegram 验收。PR #47 head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 全部成功，Publish Run [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792)，GHCR latest digest `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。
 
+> C3/C4 自动化回归补强（2026-11-20，PR #50 开发中）：新增 Manager 重建后的数据库会话恢复、过期会话不发送/不写时间线，以及切换到工单 B 后 A 的旧确认按钮不能操作 A 或覆盖 B 会话的测试。该批次不替代真实 Telegram 验收。
+
 ## 产品规则
 
 - 工单仍关联真实订单、提交用户和创建工单的 Bot；同一订单同时只允许一个未关闭工单。
