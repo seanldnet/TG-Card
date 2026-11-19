@@ -85,7 +85,13 @@ func SyncUpstreamCatalogBatch(ctx context.Context, db *sql.DB, driver, batchID s
 		if item.Currency == "" { return fmt.Errorf("upstream currency is required for product %s/%s", item.ProductID, item.SKUID) }
 		if item.PriceMinor < 0 || item.PriceSnapshotMinor < 0 { return fmt.Errorf("invalid upstream price for product %s/%s", item.ProductID, item.SKUID) }
 		var category any
-		if id := categoryIDs[item.CategoryID]; id != "" { category = id }
+		if id := categoryIDs[item.CategoryID]; id != "" {
+			category = id
+		} else if item.CategoryID != "" && item.CategoryID != "0" {
+			var existingCategoryID string
+			lookupErr := tx.QueryRowContext(ctx, "SELECT id FROM product_categories WHERE source_type='upstream' AND upstream_category_id="+placeholder(driver,1), item.CategoryID).Scan(&existingCategoryID)
+			if lookupErr == nil { category = existingCategoryID } else if lookupErr != sql.ErrNoRows { return lookupErr }
+		}
 		var localID, previousImages string
 		err := tx.QueryRowContext(ctx, "SELECT id,COALESCE(image_paths_json,'[]') FROM products WHERE source_type='upstream' AND upstream_product_id="+placeholder(driver,1)+" AND upstream_sku_id="+placeholder(driver,2), item.ProductID, item.SKUID).Scan(&localID, &previousImages)
 		if err == sql.ErrNoRows {
