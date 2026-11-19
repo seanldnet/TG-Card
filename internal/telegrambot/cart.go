@@ -54,7 +54,7 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 	for _,currency:=range currencies { totalLines=append(totalLines,formatPrice(totals[currency],currency)) }
 	rows=append(rows,[]map[string]string{{"text":"🧹 清空购物车","callback_data":"cart:clear"},{"text":"🛍️ 继续选购","callback_data":"shop:home"}})
 	rows=append(rows,[]map[string]string{{"text":"✅ 统一结算（一次付款）","callback_data":"cart:checkout"}})
-	message:="🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计：\n"+strings.Join(totalLines,"\n")+"\n\n库存、价格和商品状态会在结算时重新校验。"
+	message:="🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计（未扣批量优惠）：\n"+strings.Join(totalLines,"\n")+"\n\n符合条件的商品批量折扣会在结算时自动计算；库存、价格和商品状态也会在结算时重新校验。"
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,message,map[string]any{"inline_keyboard":rows})
 }
 
