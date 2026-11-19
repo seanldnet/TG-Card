@@ -389,26 +389,18 @@ func (m *Manager) retryDueDeliveries(ctx context.Context) {
 }
 
 func (m *Manager) showPurchaseConfirmation(ctx context.Context, cfg Config, chatID int64, productID string) {
-	products, err := database.ListVisibleProducts(ctx, m.db)
-	if err != nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"商品暂时无法加载，请稍后再试。"); return }
-	for _,p:=range products {
-		if p.ID!=productID||p.Status!=1 { continue }
-		keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
-		if keyBacked&&p.StockCount<1 { _ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。"); return }
-		if p.SourceType=="upstream" {
-			settings,settingsErr:=database.GetUpstreamSettings(ctx,m.db,m.driver)
-			if settingsErr!=nil||!settings.Enabled||settings.CatalogStale||settings.CallbackURL=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游采购暂不可用：管理员需先启用上游目录并配置公网回调地址。"); return }
-		}
-		if p.SourceType=="upstream" && p.UpstreamStockStatus=="out_of_stock" { _ = m.sendMessage(ctx,cfg.Token,chatID,"上游商品库存不足，请返回商城选择其他商品。"); return }
-		if p.SourceType=="upstream" && p.UpstreamFulfillmentType=="manual" { _ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品需要人工交付表单信息，目前请联系客服处理，暂不支持自助下单。"); return }
-		stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}else if p.SourceType=="upstream"{stockText="上游库存："+p.UpstreamStockStatus}
-		text:="请确认订单信息：\n商品："+p.Name+"\n商品金额："+formatPrice(p.PriceMinor,p.Currency)+"\n数量：1\n"+stockText+"\n\n确认后将创建订单，需在 20 分钟内完成付款。"
-		paymentAddress,paymentEnabled:=m.paymentConfig()
-		if paymentEnabled&&paymentAddress!=""{text+="\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"}else{text+="\n支付尚未启用，请勿转账。"}
-		markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"🎟️ 使用优惠码","callback_data":"shop:coupon:"+p.ID+":1"}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,markup);return
-	}
-	_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在或已下架。")
+ p,err:=database.GetVisibleProductByID(ctx,m.db,m.driver,productID)
+ if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在或已下架。");return}
+ keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
+ if keyBacked&&p.StockCount<1{_ = m.sendMessage(ctx,cfg.Token,chatID,"该商品库存不足，请返回商城选择其他商品。");return}
+ if p.SourceType=="upstream"{settings,e:=database.GetUpstreamSettings(ctx,m.db,m.driver);if e!=nil||!settings.Enabled||settings.CatalogStale||settings.CallbackURL==""{_ = m.sendMessage(ctx,cfg.Token,chatID,"上游采购暂不可用：管理员需先启用上游目录并配置公网回调地址。");return}}
+ if p.SourceType=="upstream"&&p.UpstreamStockStatus=="out_of_stock"{_ = m.sendMessage(ctx,cfg.Token,chatID,"上游商品库存不足，请返回商城选择其他商品。");return}
+ if p.SourceType=="upstream"&&p.UpstreamFulfillmentType=="manual"{_ = m.sendMessage(ctx,cfg.Token,chatID,"该上游商品需要人工交付表单信息，目前请联系客服处理，暂不支持自助下单。");return}
+ stockText:="库存：不限量交付";if keyBacked{stockText="可售卡密库存："+strconv.Itoa(p.StockCount)}else if p.SourceType=="upstream"{stockText="上游库存："+p.UpstreamStockStatus}
+ text:="请确认订单信息：\n商品："+p.Name+"\n商品金额："+formatPrice(p.PriceMinor,p.Currency)+"\n数量：1\n"+stockText+"\n\n确认后将创建订单，需在 20 分钟内完成付款。"
+ paymentAddress,paymentEnabled:=m.paymentConfig();if paymentEnabled&&paymentAddress!=""{text+="\n支持网络：TRON（TRC20）USDT。创建订单后会显示本订单专属应付金额与收款地址。"}else{text+="\n支付尚未启用，请勿转账。"}
+ markup:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"确认并创建订单","callback_data":"shop:buy:"+p.ID}},{{"text":"🎟️ 使用优惠码","callback_data":"shop:coupon:"+p.ID+":1"}},{{"text":"取消","callback_data":"shop:product:"+p.ID}}}}
+ _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,markup)
 }
 
 func (m *Manager) setRuntimeStatus(botID string, status RuntimeStatus) {
@@ -581,17 +573,13 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			m.createPurchaseOrderWithPromotion(ctx,cfg,query,msg.Chat.ID,parts[0],quantity,text)
 			return
 		case pending == "search":
-			products, err := database.ListVisibleProducts(ctx, m.db)
+			products, err := database.ListVisibleProductsPage(ctx, m.db, m.driver, 7, 0, "", text)
 			if err != nil { _ = m.sendMessage(ctx, cfg.Token, msg.Chat.ID, "商品搜索暂时不可用，请稍后重试。"); return }
-			needle := strings.ToLower(text)
 			rows := make([][]map[string]string, 0)
 			for _, product := range products {
-				if product.Status != 1 { continue }
-				if strings.Contains(strings.ToLower(product.Name+" "+product.Description), needle) {
 					stockLabel:="不限量";if product.SourceType=="upstream"{if product.UpstreamStockQuantity<0{stockLabel="上游不限量"}else{stockLabel="上游库存 "+strconv.FormatInt(product.UpstreamStockQuantity,10)}}else if product.DeliveryType==""||product.DeliveryType=="card"||product.DeliveryType=="file_card"{stockLabel="库存 "+strconv.Itoa(product.StockCount)}
 					label := truncateButtonText(product.Name, 14) + " · " + formatPrice(product.PriceMinor, product.Currency) + " · " + stockLabel
-					rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
-				}
+				rows = append(rows, []map[string]string{{"text": label, "callback_data": "shop:product:"+product.ID}})
 			}
 			if len(rows) == 0 { _ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "没有找到匹配的在售商品，请换一个关键词试试。", shopBackKeyboard()); return }
 			rows = append(rows,[]map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
@@ -1021,24 +1009,15 @@ func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query Cal
 }
 
 func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int, promotionCode string) {
-	products, catalogErr := database.ListVisibleProducts(ctx, m.db)
+	product, catalogErr := database.GetVisibleProductByID(ctx, m.db, m.driver, productID)
 	if catalogErr != nil {
-		_ = m.sendMessage(ctx, cfg.Token, chatID, "商品目录暂时不可用，请稍后重试。")
-		return
-	}
-	visible := false
-	for _, product := range products {
-		if product.ID != productID { continue }
-		visible = true
-		if product.SourceType == "upstream" {
-			if query.ID != "" { _ = m.answerCallback(ctx, cfg.Token, query.ID, "上游采购功能尚未开放") }
-			_ = m.sendMessage(ctx, cfg.Token, chatID, "该商品来自上游，采购与支付转发将在下一阶段开放；当前不会创建订单或扣款。")
-			return
-		}
-	}
-	if !visible {
 		if query.ID != "" { _ = m.answerCallback(ctx, cfg.Token, query.ID, "商品当前不可售") }
 		_ = m.sendMessage(ctx, cfg.Token, chatID, "商品已下架或当前商品来源已切换，请返回商城刷新商品列表。")
+		return
+	}
+	if product.SourceType == "upstream" {
+		if query.ID != "" { _ = m.answerCallback(ctx, cfg.Token, query.ID, "上游商品采购当前暂不可购买") }
+		_ = m.sendMessage(ctx, cfg.Token, chatID, "该商品来自上游，当前采购流程暂不可用；系统不会创建订单或扣款。")
 		return
 	}
 	order, err := database.CreateOrderWithPromotion(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(query.From.ID,10), strconv.FormatInt(chatID,10), productID, quantity, promotionCode, 20*time.Minute)
