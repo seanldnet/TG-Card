@@ -104,7 +104,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
    unchangedProducts:=0
    changedProducts:=make([]upstream.DujiaoProduct,0,len(products))
    for _,product:=range products {
-    fingerprint,fingerprintErr:=upstream.DujiaoProductFingerprint(product)
+    fingerprint,fingerprintErr:=a.upstreamProductSyncFingerprint(product,settings,currency,ratePPM)
     if fingerprintErr!=nil{return summary,fingerprintErr}
     unchanged,seenErr:=database.MarkUpstreamProductSeenIfUnchanged(ctx,a.db,a.driver,strconv.FormatInt(product.ID,10),fingerprint,batchID,len(product.SKUs))
     if seenErr!=nil{return summary,seenErr}
@@ -137,6 +137,11 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  if summary.ImagesFailed>len(imageWarnings){summary.Warning+=fmt.Sprintf("；另有 %d 张图片下载失败",summary.ImagesFailed-len(imageWarnings))}
  if err:=database.SaveUpstreamSyncResult(ctx,a.db,a.driver,"success",summary.Warning);err!=nil{log.Printf("save successful upstream sync status failed: %v",err)}
  return summary,nil
+}
+
+func (a *application) upstreamProductSyncFingerprint(product upstream.DujiaoProduct,settings database.UpstreamSettings,currency string,ratePPM int64)(string,error){
+ base,err:=upstream.DujiaoProductFingerprint(product);if err!=nil{return "",err}
+ return fmt.Sprintf("%s|markup_bps=%d|markup_minor=%d|rate_ppm=%d|currency=%s",base,settings.MarkupBPS,settings.MarkupMinor,ratePPM,currency),nil
 }
 
 func (a *application) buildUpstreamProductRecords(ctx context.Context, products []upstream.DujiaoProduct, settings database.UpstreamSettings, currency string, ratePPM int64, summary *upstreamSyncSummary, imageWarnings *[]string) ([]database.UpstreamProductRecord,error) {
@@ -201,7 +206,7 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "商品标签序列化失败") }
 				tagsJSON = string(encoded)
 			}
-			fingerprint, fingerprintErr := upstream.DujiaoProductFingerprint(product)
+			fingerprint, fingerprintErr := a.upstreamProductSyncFingerprint(product,settings,currency,ratePPM)
 			if fingerprintErr != nil { return nil, fingerprintErr }
 			productRecords = append(productRecords, database.UpstreamProductRecord{
 				ProductID: strconv.FormatInt(product.ID, 10), SKUID: skuID, SKUCode: sku.Code, Slug: product.Slug,
