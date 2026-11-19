@@ -246,6 +246,7 @@ func main() {
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
 	api.HandleFunc("POST /api/upstream/sync", app.syncUpstreamNow)
 	api.HandleFunc("POST /api/upstream/disable", app.disableUpstreamCatalog)
+	api.HandleFunc("GET /api/upstream/sync/active", app.getActiveUpstreamSyncJob)
 	api.HandleFunc("GET /api/upstream/sync/{id}", app.getUpstreamSyncJob)
 	api.HandleFunc("POST /api/upstream/sync/{id}/cancel", app.cancelUpstreamSyncJob)
 	api.HandleFunc("POST /api/v1/upstream/callback", app.upstreamProcurementCallback)
