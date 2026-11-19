@@ -2,7 +2,7 @@
 
 - 审查发现 `POST /api/auth/logout` 原先只返回成功，不撤销服务端 JWT；复制出的旧 Bearer token 在 24 小时有效期内仍可继续调用 API。
 - PR #53 新增管理员 Token 会话表，数据库仅保存 Bearer token 的 SHA-256 摘要及管理员 ID/过期时间，不保存原始 token。
-- 登录成功后登记当前 token；所有鉴权请求同时检查签名、管理员状态/TokenVersion 与服务端会话记录；登出只撤销当前设备 token，不影响同一管理员的其他有效登录。
+- 每次签发生成独立随机 JTI，避免同一秒内重复登录产生相同 token；登录成功后登记当前 token；所有鉴权请求同时检查签名、管理员状态/TokenVersion 与服务端会话记录；登出只撤销当前设备 token，不影响同一管理员的其他有效登录。
 - 新增 SQLite/PostgreSQL 兼容迁移 `0041_admin_token_sessions.sql`、会话生命周期测试及登录→登出→旧 token 拒绝/另一设备 token 保持有效的集成测试。
 - 迁移上线后，部署前签发的旧 token 不在新会话表中，将要求管理员重新登录；密码修改仍通过 TokenVersion 撤销全部旧会话。
 - CI、合并、镜像发布与生产验收待完成。
