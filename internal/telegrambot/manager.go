@@ -1880,7 +1880,7 @@ func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q Ca
   if len(parts)<4{return};ticket,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
   if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");return}
   if _,err:=database.UpdateSupportTicket(ctx,m.db,m.driver,ticket.ID,"in_progress",ticket.AdminReply);err!=nil{log.Printf("support owner start reply status update failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,"无法开启回复会话：工单状态更新失败，请稍后重试。");return}
-  if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticket.ID,"reply",30*time.Minute);err!=nil{log.Printf("support owner start reply session failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,"工单已进入处理中，但回复会话未能开启，请重新点击开始回复。");return}
+  if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticket.ID,"reply",30*time.Minute);err!=nil{log.Printf("support owner start reply session failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,"工单已进入处理中，但回复会话未能开启，请重新点击开始回复。");return}
   _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单："+ticket.TicketNo,ownerSupportReplyKeyboard())
  case "resolve":
   if len(parts)<4{return};if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return}
@@ -1889,10 +1889,10 @@ func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q Ca
   if len(parts)<5{return};ticketID,choice:=parts[3],parts[4]
   if choice!="yes"&&choice!="no"{_=m.sendMessage(ctx,cfg.Token,chatID,"确认操作无效，请重新打开工单。");return}
   if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
-  session,sessionErr:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+  session,sessionErr:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10))
   if sessionErr!=nil||session.TicketID!=ticketID||session.Phase!="confirm"{_=m.sendMessage(ctx,cfg.Token,chatID,"这条确认操作已过期或当前已切换其他工单，请重新打开工单后操作。");return}
   if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
-  }else{ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return};if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);return};if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticketID,"reply",30*time.Minute);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"无法继续回复，请重新打开工单。");return};_=m.sendMessage(ctx,cfg.Token,chatID,"继续回复即可。")}
+  }else{ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return};if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);return};if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticketID,"reply",30*time.Minute);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"无法继续回复，请重新打开工单。");return};_=m.sendMessage(ctx,cfg.Token,chatID,"继续回复即可。")}
  }
 }
 
