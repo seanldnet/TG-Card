@@ -22,7 +22,7 @@ func scanVisibleProducts(rows *sql.Rows) ([]Product,error) {
 
 func ListVisibleProductsPage(ctx context.Context, db *sql.DB, driver string, limit, offset int, categoryID, search string) ([]Product,error) {
  if limit<1 {limit=8}; if limit>100 {limit=100}; if offset<0 {offset=0}
- source,err:=currentCatalogSource(ctx,db);if err!=nil{return nil,err}
+ source,err:=currentCatalogSource(ctx,db,driver);if err!=nil{return nil,err}
  search=strings.TrimSpace(search)
  if len(search)>100 {search=search[:100]}
  if categoryID=="all" {categoryID=""}
