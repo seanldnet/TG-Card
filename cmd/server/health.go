@@ -58,7 +58,7 @@ func (a *application) monitorBotHealth(ctx context.Context) {
    a.botAlertMu.Unlock()
    if shouldNotify {
     details:=fmt.Sprintf("Telegram Bot 运行告警：@%s（ID %s）\n状态：%s\n连续轮询错误：%d\n最近错误：%s",bot.Username,bot.ID,problem,status.ConsecutiveErrors,status.LastError)
-    a.botManager.Notify("risk_alert",details,"")
+    a.botManager.Notify("bot_health_alert",details,"")
     log.Printf("telegram bot health alert: bot_id=%s username=@%s state=%s consecutive_errors=%d",bot.ID,bot.Username,problem,status.ConsecutiveErrors)
    }
   }
