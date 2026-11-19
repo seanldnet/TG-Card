@@ -212,3 +212,33 @@ func TestOwnerConfirmCallbackCannotActOnSwitchedTicket(t *testing.T) {
  if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM support_ticket_audits WHERE ticket_id=? AND action='resolved'",second.ID).Scan(&auditCount);err!=nil{t.Fatal(err)}
  if auditCount!=1{t.Fatalf("repeated confirmation must produce exactly one resolve audit, got %d",auditCount)}
 }
+
+
+func TestOwnerReplyMessageFromDifferentChatDoesNotConsumeSession(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Owner chat isolation",PriceMinor:100,Currency:"USDT",DeliveryType:"text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=database.CreateOrder(ctx,db,"sqlite","bot-chat","user-chat","987654",product.ID,time.Minute)
+ if err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ ticket,err:=database.CreateSupportTicket(ctx,db,"sqlite","bot-chat","user-chat","987654",order.OrderNo,"other","chat isolation test")
+ if err!=nil{t.Fatal(err)}
+ if err:=database.SetSupportOwnerSession(ctx,db,"sqlite","bot-chat","12345","private-chat-12345",ticket.ID,"reply",30*time.Minute);err!=nil{t.Fatal(err)}
+ telegramCalls:=0
+ manager:=&Manager{db:db,driver:"sqlite",client:&http.Client{Transport:telegramTestTransport(func(req *http.Request)(*http.Response,error){
+  telegramCalls++
+  return &http.Response{StatusCode:http.StatusOK,Header:http.Header{"Content-Type":[]string{"application/json"}},Body:io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)),Request:req},nil
+ })}}
+ handled:=manager.handleActiveOwnerSupportMessage(ctx,Config{ID:"bot-chat",Token:"test-token"},Message{
+  MessageID:88,Text:"private customer information",Chat:Chat{ID:67890},From:&TelegramUser{ID:12345},
+ })
+ if handled{t.Fatal("message from another chat must not be treated as the active support reply")}
+ if telegramCalls!=0{t.Fatalf("message from another chat must not call Telegram API, got %d calls",telegramCalls)}
+ messages,err:=database.ListSupportTicketMessages(ctx,db,"sqlite",ticket.ID)
+ if err!=nil{t.Fatal(err)}
+ for _,item:=range messages{if item.SenderType=="admin"{t.Fatal("cross-chat message must not be persisted as an Owner reply")}}
+}
