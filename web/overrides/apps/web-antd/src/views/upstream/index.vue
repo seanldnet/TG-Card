@@ -144,7 +144,30 @@ async function testConnection(){
  }catch(error:any){await load();message.error(error?.response?.data?.message||'上游连接测试失败');}
  finally{testing.value=false;}
 }
-onMounted(()=>{void load();});
+async function resumeActiveSyncJob(){
+ try{
+  const active=await requestClient.get<any>('/upstream/sync/active');
+  if(!active?.id)return;
+  syncJobId.value=active.id;Object.assign(syncProgress,active);syncing.value=true;
+  while(syncing.value){
+   const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
+   Object.assign(syncProgress,state);
+   if(['success','failed','cancelled','paused'].includes(state.status)){
+    await load();
+    if(state.status==='success'){
+     if(state.triggerType==='manual_disable')message.success('上游数据已清空，已恢复本地商品售卖');
+     else message.success('上游商品同步完成');
+    }else if(state.status==='cancelled')message.info('同步已取消，已完成批次予以保留');
+    else message.error(state.lastError||'上游任务执行失败');
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+ }catch(error:any){message.warning(error?.response?.data?.message||'读取进行中的上游任务失败');}
+ finally{syncing.value=false;syncJobId.value='';}
+}
+
+onMounted(()=>{void load();void resumeActiveSyncJob();});
 </script>
 
 <template>
