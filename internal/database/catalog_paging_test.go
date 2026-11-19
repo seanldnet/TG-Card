@@ -49,3 +49,16 @@ func TestMarkUpstreamProductSeenIfUnchanged(t *testing.T) {
  visible,err:=ListVisibleProductsPage(ctx,db,cfg.DBDriver,10,0,"","");if err!=nil{t.Fatal(err)}
  if len(visible)!=1||visible[0].UpstreamProductID!="101"{t.Fatalf("unchanged product was hidden by finalization: %+v",visible)}
 }
+
+func TestMarkUpstreamCategorySeenIfUnchanged(t *testing.T) {
+ ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+ db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+ if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+ if err:=SaveUpstreamSettings(ctx,db,cfg.DBDriver,UpstreamSettings{Provider:"dujiao_next",BaseURL:"https://supplier.example.com",Enabled:true,CatalogStale:true});err!=nil{t.Fatal(err)}
+ categories:=[]UpstreamCategoryRecord{{UpstreamID:"cat-1",Name:"Stable category",Fingerprint:"category-fp-1"}}
+ if err:=SyncUpstreamCatalog(ctx,db,cfg.DBDriver,"category-old",categories,nil);err!=nil{t.Fatal(err)}
+ unchanged,err:=MarkUpstreamCategorySeenIfUnchanged(ctx,db,cfg.DBDriver,"cat-1","category-fp-1","category-new");if err!=nil||!unchanged{t.Fatalf("unchanged category should be marked seen: %v %v",unchanged,err)}
+ changed,err:=MarkUpstreamCategorySeenIfUnchanged(ctx,db,cfg.DBDriver,"cat-1","category-fp-2","category-new");if err!=nil||changed{t.Fatalf("changed category fingerprint must require an update: %v %v",changed,err)}
+ if err:=SyncUpstreamCatalogBatch(ctx,db,cfg.DBDriver,"category-new",nil,nil,true);err!=nil{t.Fatal(err)}
+ visible,err:=ListVisibleCategoriesPage(ctx,db,cfg.DBDriver,8,0);if err!=nil||len(visible)!=1{t.Fatalf("unchanged category was hidden by finalization: %+v %v",visible,err)}
+}
