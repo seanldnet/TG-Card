@@ -92,6 +92,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  failedPages:=0
  for page:=1;page<=maxPages;page++ {
   if err:=ctx.Err();err!=nil{return summary,err}
+  if a.upstreamSyncCancellationRequested(){return summary,context.Canceled}
   var products []upstream.DujiaoProduct
   var pageErr error
   for attempt:=1;attempt<=3;attempt++ {
@@ -137,6 +138,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
  }
  if failedPages>0{return summary,fmt.Errorf("有 %d 个商品分页处理失败；为避免目录不完整，未执行下架收尾",failedPages)}
  if err:=ctx.Err();err!=nil{return summary,err}
+ if a.upstreamSyncCancellationRequested(){return summary,context.Canceled}
  if err:=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,nil,nil,true);err!=nil{return summary,a.failUpstreamSync(ctx,"完成上游目录收尾失败："+err.Error())}
  summary.Categories=len(categories)
  summary.SyncedAt=time.Now().UTC().Format(time.RFC3339Nano)
@@ -231,6 +233,13 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 		}
 	}
  return productRecords,nil
+}
+
+func (a *application) upstreamSyncCancellationRequested() bool {
+ a.upstreamJobMu.Lock();id:=a.upstreamJobID;a.upstreamJobMu.Unlock()
+ if id=="" {return false}
+ job,err:=database.GetUpstreamSyncJob(context.Background(),a.db,a.driver,id)
+ return err==nil&&job.CancelRequested
 }
 
 func (a *application) updateUpstreamSyncProgress(total,processed,page,errors,consecutive int,lastError string) error {
