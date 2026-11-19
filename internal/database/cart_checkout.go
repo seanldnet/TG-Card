@@ -101,3 +101,32 @@ func ListCartCheckoutItems(ctx context.Context,db *sql.DB,driver,orderID string)
 	items:=make([]CartCheckoutItem,0);for rows.Next(){var x CartCheckoutItem;if err:=rows.Scan(&x.ProductID,&x.ProductName,&x.Quantity,&x.UnitPriceMinor,&x.LineTotalMinor,&x.Currency);err!=nil{return nil,err};items=append(items,x)}
 	return items,rows.Err()
 }
+
+
+type CartCheckoutDeliveryGroup struct {
+	ProductID string
+	ProductName string
+	Quantity int
+	SecretCiphertexts []string
+}
+
+// ListCartCheckoutDeliveryGroups preserves the product-to-key relationship for
+// one paid cart order so the Bot can label each product's delivered keys.
+func ListCartCheckoutDeliveryGroups(ctx context.Context,db *sql.DB,driver,orderID string)([]CartCheckoutDeliveryGroup,error){
+	items,err:=ListCartCheckoutItems(ctx,db,driver,orderID)
+	if err!=nil{return nil,err}
+	if len(items)==0{return nil,nil}
+	groups:=make([]CartCheckoutDeliveryGroup,0,len(items))
+	for _,item:=range items{
+		q:="SELECT secret_ciphertext FROM product_keys WHERE order_id="+placeholder(driver,1)+" AND product_id="+placeholder(driver,2)+" AND status=2 ORDER BY created_at,id"
+		rows,err:=db.QueryContext(ctx,q,orderID,item.ProductID)
+		if err!=nil{return nil,err}
+		group:=CartCheckoutDeliveryGroup{ProductID:item.ProductID,ProductName:item.ProductName,Quantity:item.Quantity,SecretCiphertexts:make([]string,0,item.Quantity)}
+		for rows.Next(){var secret string;if err:=rows.Scan(&secret);err!=nil{rows.Close();return nil,err};group.SecretCiphertexts=append(group.SecretCiphertexts,secret)}
+		if err:=rows.Err();err!=nil{rows.Close();return nil,err}
+		if err:=rows.Close();err!=nil{return nil,err}
+		if len(group.SecretCiphertexts)!=item.Quantity{return nil,fmt.Errorf("cart order product %s key count mismatch: expected %d, got %d",item.ProductID,item.Quantity,len(group.SecretCiphertexts))}
+		groups=append(groups,group)
+	}
+	return groups,nil
+}
