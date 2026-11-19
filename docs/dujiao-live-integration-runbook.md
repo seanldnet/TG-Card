@@ -4,7 +4,7 @@
 
 ## 0. 阶段边界与前置条件
 
-PR C 采购队列/幂等/查单回调/失败退款、PR D 供应商资金核对/退款账本/uncertain 治理、PR U 分页同步/来源总闸、PR S 安全与运维补欠均已合并。PR S 的 main Docker Publish 仍需确认成功后，记录实际 GHCR digest 并部署该镜像，才能开始真实验收。
+PR C 采购队列/幂等/查单回调/失败退款、PR D 供应商资金核对/退款账本/uncertain 治理、PR U 分页同步/来源总闸、PR S 安全与运维补欠均已合并。PR S main Docker Publish #44603594008 已成功，GHCR 多架构 latest digest 为 sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac；部署和真实验收仍需项目所有者执行。
 
 禁止在聊天、工单或验收表中记录 API Key、API Secret、Bot Token、JWT Secret、数据库 DSN、买家完整支付凭证或交付明文。
 
