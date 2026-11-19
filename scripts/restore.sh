@@ -10,10 +10,11 @@ if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
 fi
 BACKUP_DIR="$1"
 CONFIRM="${2:-}"
-if [ ! -f "$BACKUP_DIR/postgres.dump" ] || [ ! -f "$BACKUP_DIR/tg_card_data.tar.gz" ]; then
+if [ ! -f "$BACKUP_DIR/postgres.dump" ] || [ ! -f "$BACKUP_DIR/tg_card_data.tar.gz" ] || [ ! -f "$BACKUP_DIR/SHA256SUMS" ]; then
  echo "Backup directory must contain postgres.dump and tg_card_data.tar.gz" >&2
  exit 2
 fi
+(cd "$BACKUP_DIR" && sha256sum -c SHA256SUMS)
 if [ "$CONFIRM" != "--yes" ]; then
  echo "WARNING: this will stop the application and OVERWRITE the current PostgreSQL database and /app/data volume."
  echo "Backup: $BACKUP_DIR"
