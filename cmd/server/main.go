@@ -48,6 +48,11 @@ type application struct {
 	upstreamJobMu sync.Mutex
 	upstreamJobCancel context.CancelFunc
 	upstreamJobID string
+	trustedProxyCIDRs []net.IPNet
+	rateLimitMu sync.Mutex
+	rateLimitHits map[string][]time.Time
+	botAlertMu sync.Mutex
+	botAlertState map[string]string
 	procurementAPI upstream.ProcurementAPI
 	procurementNotify func(context.Context,string,string)
 	dispatchProcurement func(context.Context,string) error
@@ -129,6 +134,8 @@ type userInfo struct {
 func main() {
 	cfg, err := config.Load()
 	if err != nil { log.Fatal(err) }
+	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
+	if err != nil { log.Fatalf("invalid TRUSTED_PROXY_CIDRS: %v", err) }
 
 	ctx := context.Background()
 	db, err := database.Open(ctx, cfg)
@@ -186,22 +193,24 @@ func main() {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time)}
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
 	go app.runUpstreamProcurementScheduler(ctx)
 	go app.runReconciliationScheduler(ctx)
+	go app.monitorBotHealth(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
+	api.HandleFunc("GET /api/health/detailed", app.detailedHealth)
 	api.HandleFunc("POST /api/auth/login", app.login)
 	api.HandleFunc("POST /api/auth/logout", app.logout)
-	api.HandleFunc("POST /api/admin/password", app.changePassword)
+	api.HandleFunc("POST /api/admin/password", app.sensitiveRateLimit("admin-password", 5, 5*time.Minute, app.changePassword))
 	api.HandleFunc("GET /api/bots", app.listBots)
 	api.HandleFunc("GET /api/bots/runtime", app.listBotRuntime)
 	api.HandleFunc("GET /api/broadcasts", app.listBroadcastTasks)
-	api.HandleFunc("POST /api/broadcasts", app.createBroadcastTask)
+	api.HandleFunc("POST /api/broadcasts", app.sensitiveRateLimit("broadcast-create", 5, 5*time.Minute, app.createBroadcastTask))
 	api.HandleFunc("POST /api/bots/{id}/restart", app.restartBotRuntime)
 	api.HandleFunc("POST /api/bots", app.createBot)
 	api.HandleFunc("PUT /api/bots/owner", app.updateBotOwnerID)
@@ -226,7 +235,7 @@ func main() {
 	api.HandleFunc("DELETE /api/redemption-codes/{id}", app.deleteRedemptionCode)
 	api.HandleFunc("POST /api/orders/cleanup", app.clearOrderData)
 	api.HandleFunc("GET /api/users", app.listTelegramUsers)
-	api.HandleFunc("POST /api/users/{id}/balance", app.adjustTelegramUserBalance)
+	api.HandleFunc("POST /api/users/{id}/balance", app.sensitiveRateLimit("wallet-balance-adjust", 10, 5*time.Minute, app.adjustTelegramUserBalance))
 	api.HandleFunc("GET /api/users/{id}/wallet", app.listUserWalletLedger)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
@@ -234,13 +243,13 @@ func main() {
 	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
 	api.HandleFunc("POST /api/reconciliation/balance-check", app.runBalanceReconciliationNow)
-	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.reconcilePaymentTransaction)
+	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.sensitiveRateLimit("payment-manual-reconcile", 10, 5*time.Minute, app.reconcilePaymentTransaction))
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.updateSiteSettings)
 	api.HandleFunc("POST /api/settings/site/test-email", app.testSiteEmail)
 	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
-	api.HandleFunc("PUT /api/settings/payment", app.updatePaymentSettings)
+	api.HandleFunc("PUT /api/settings/payment", app.sensitiveRateLimit("payment-settings", 10, 5*time.Minute, app.updatePaymentSettings))
 	api.HandleFunc("GET /api/upstream/config", app.getUpstreamSettings)
 	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
@@ -251,10 +260,10 @@ func main() {
 	api.HandleFunc("POST /api/upstream/sync/{id}/cancel", app.cancelUpstreamSyncJob)
 	api.HandleFunc("POST /api/v1/upstream/callback", app.upstreamProcurementCallback)
 	api.HandleFunc("GET /api/upstream/procurements", app.listUpstreamProcurements)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.retryUpstreamProcurement)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/refund", app.refundUpstreamProcurement)
+	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.sensitiveRateLimit("upstream-procurement-retry", 5, 5*time.Minute, app.retryUpstreamProcurement))
+	api.HandleFunc("POST /api/upstream/procurements/{id}/refund", app.sensitiveRateLimit("upstream-procurement-refund", 5, 5*time.Minute, app.refundUpstreamProcurement))
 	api.HandleFunc("GET /api/upstream/procurements/uncertain", app.listUncertainProcurements)
-	api.HandleFunc("POST /api/upstream/procurements/{id}/resolve", app.resolveUncertainProcurement)
+	api.HandleFunc("POST /api/upstream/procurements/{id}/resolve", app.sensitiveRateLimit("upstream-procurement-resolve", 5, 5*time.Minute, app.resolveUncertainProcurement))
 	api.HandleFunc("GET /api/upstream/fund-checks", app.listSupplierFundChecks)
 	api.HandleFunc("GET /api/finance/exceptions", app.listFinanceExceptions)
 	api.HandleFunc("GET /api/finance/exceptions/count", app.countFinanceExceptions)
@@ -310,7 +319,7 @@ func (a *application) updateRechargeBonusSettings(w http.ResponseWriter,r *http.
  var rule database.WalletRechargeBonusRule
  if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<20)).Decode(&rule);err!=nil{writeError(w,http.StatusBadRequest,"充值赠送规则格式无效");return}
  if err:=database.SaveWalletRechargeBonusRule(r.Context(),a.db,a.driver,rule);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
- database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.recharge_bonus.update","wallet:recharge_bonus",clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t tiers=%d",rule.Enabled,len(rule.Tiers)))
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"wallet.recharge_bonus.update","wallet:recharge_bonus",a.clientIP(r),r.UserAgent(),fmt.Sprintf("enabled=%t tiers=%d",rule.Enabled,len(rule.Tiers)))
  saved,err:=database.GetWalletRechargeBonusRule(r.Context(),a.db);if err!=nil{writeError(w,http.StatusInternalServerError,"保存成功但读取配置失败");return}
  writeSuccess(w,http.StatusOK,saved)
 }
@@ -746,11 +755,6 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil { return host }
-	return r.RemoteAddr
-}
 
 
 func (a *application) changePassword(w http.ResponseWriter, r *http.Request) {
