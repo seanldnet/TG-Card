@@ -4,7 +4,7 @@
 - 新增 `0041_admin_token_sessions.sql` 与服务端会话登记/查询/撤销；数据库只保存 token SHA-256 摘要。
 - 登录登记会话；鉴权检查服务端会话是否仍有效；登出只撤销当前 token，不影响同一管理员的其他设备。密码修改仍由 TokenVersion 撤销全部会话。
 - 迁移后既有未登记 token 将失效，管理员需重新登录。
-- 新增数据库生命周期与登录/登出集成测试；CI/合并/发布待完成。
+- 新增数据库生命周期、JTI 唯一性与登录/登出集成测试。PR head Go/Admin/Security 全部成功；main Go [#44579627983](https://github.com/seanldnet/TG-Card/actions/runs/44579627983)、Admin [#44579627988](https://github.com/seanldnet/TG-Card/actions/runs/44579627988)、Security [#44579628087](https://github.com/seanldnet/TG-Card/actions/runs/44579628087)、Docker Publish [#44579628246](https://github.com/seanldnet/TG-Card/actions/runs/44579628246) 全部成功；GHCR 多架构 latest manifest digest `sha256:7c14fabea0d23e7903785237052fa69fc1144a8d7be263c420373555131c5e37`。
 
 ## 2026-11-20 — Owner Bot 重启恢复、超时与工单切换回归（PR #50 已合并）
 
