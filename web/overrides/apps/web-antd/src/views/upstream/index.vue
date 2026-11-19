@@ -65,7 +65,7 @@ async function submitRefund(){
 }
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
 const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
-const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',success:'同步成功',failed:'同步失败'};return labels[settings.syncStatus]||settings.syncStatus;});
+const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',cleaning:'正在清理上游数据',success:'同步成功',failed:'同步失败',cancelled:'已取消',paused:'已暂停'};return labels[settings.syncStatus]||settings.syncStatus;});
 async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
@@ -208,7 +208,7 @@ onMounted(()=>{void load();});
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
      <a-button :loading="syncing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="syncNow">立即同步商品</a-button>
-     <a-button v-if="syncing" danger :disabled="!syncJobId" @click="cancelSync">取消同步</a-button>
+     <a-button v-if="syncing&&syncProgress.status!=='cleaning'" danger :disabled="!syncJobId" @click="cancelSync">取消同步</a-button>
      <a-popconfirm title="停用后将删除全部上游分类、商品、SKU 和不再被本地商品引用的上游图片；历史订单及资金流水保留。此操作不可恢复，是否继续？" ok-text="确认清除" cancel-text="取消" @confirm="disableUpstream"><a-button danger :disabled="!settings.enabled||syncing">停用并清除上游数据</a-button></a-popconfirm>
      <a-button :disabled="saving||testing||syncing" @click="load">重新加载</a-button>
     </div>
