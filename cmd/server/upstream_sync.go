@@ -345,7 +345,7 @@ func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error
  go func(){
   defer a.upstreamSyncMu.Unlock()
   counts,cleanupErr:=database.ClearUpstreamCatalogRows(context.Background(),a.db,a.driver)
-  baseProgress:=counts.Categories+counts.Products+counts.SKUs
+  baseProgress:=counts.Categories+counts.Products
   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,baseProgress,baseProgress,1,0,0,"")
   imagesRemoved:=0
   if cleanupErr==nil {
