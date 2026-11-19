@@ -969,7 +969,7 @@ func (m *Manager) showShopPage(ctx context.Context,cfg Config,chatID int64,page 
  cats,err:=database.ListVisibleCategoriesPage(ctx,m.db,m.driver,7,page*6)
  if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0,8)
- count:=len(cats);hasNext:=count>6;if hasNext{cats=cats[:6]}
+ count:=len(cats);hasNext:=count>5;if hasNext{cats=cats[:5]}
  for _,category:=range cats {rows=append(rows,[]map[string]string{{"text":truncateButtonText(category.Name,28),"callback_data":"shop:category:"+category.ID}})}
  if page>0 {rows=append(rows,[]map[string]string{{"text":"⬅️ 上一页","callback_data":"shop:catpage:"+strconv.Itoa(page-1)}})}
  if hasNext {rows=append(rows,[]map[string]string{{"text":"下一页 ➡️","callback_data":"shop:catpage:"+strconv.Itoa(page+1)}})}
