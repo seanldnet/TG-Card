@@ -29,12 +29,12 @@ func TestSupportOwnerSessionPersistsAndExpires(t *testing.T) {
  defer db.Close()
  if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
  ticket:=createOwnerWorkflowTicket(t,db)
- if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345",ticket.ID,"reply",time.Minute);err!=nil{t.Fatal(err)}
- session,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345")
+ if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345",ticket.ID,"reply",time.Minute);err!=nil{t.Fatal(err)}
+ session,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345")
  if err!=nil||session.TicketID!=ticket.ID||session.Phase!="reply"{t.Fatalf("session not persisted: %#v err=%v",session,err)}
- if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345",ticket.ID,"confirm",time.Millisecond);err!=nil{t.Fatal(err)}
+ if err:=SetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345",ticket.ID,"confirm",time.Millisecond);err!=nil{t.Fatal(err)}
  time.Sleep(5*time.Millisecond)
- if _,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345");err!=sql.ErrNoRows{t.Fatalf("expired session should be removed, got %v",err)}
+ if _,err:=GetSupportOwnerSession(ctx,db,"sqlite",ticket.BotID,"12345","12345");err!=sql.ErrNoRows{t.Fatalf("expired session should be removed, got %v",err)}
 }
 
 func TestResolveSupportTicketByOwnerIsIdempotent(t *testing.T) {
