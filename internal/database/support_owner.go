@@ -53,9 +53,13 @@ func ResolveSupportTicketByOwner(ctx context.Context, db *sql.DB, driver, ticket
   return ResolveSupportTicket(ctx, db, driver, ticketID, "owner", ownerID)
 }
 
-func ListPendingSupportTickets(ctx context.Context, db *sql.DB, driver string) ([]SupportTicket, error) {
-  query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets WHERE status IN ('open','in_progress','waiting_user') ORDER BY created_at ASC LIMIT 500"
-  rows, err := db.QueryContext(ctx,query)
+func ListPendingSupportTickets(ctx context.Context, db *sql.DB, driver, botID string) ([]SupportTicket, error) {
+  botID = strings.TrimSpace(botID)
+  if botID == "" {
+    return nil, fmt.Errorf("bot id is required")
+  }
+  query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets WHERE bot_id=" + placeholder(driver,1) + " AND status IN ('open','in_progress','waiting_user') ORDER BY created_at ASC LIMIT 500"
+  rows, err := db.QueryContext(ctx,query,botID)
   if err != nil { return nil,err }
   defer rows.Close()
   items := make([]SupportTicket,0)
