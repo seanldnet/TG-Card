@@ -1,9 +1,18 @@
+## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 开发中）
+
+- 审查发现 Owner 回复成功后生成的“是，结单 / 否，继续沟通”旧 Inline Keyboard 回调只校验 Bot 与工单归属，没有核对当前 Owner 的活动会话是否仍指向该工单。Owner 切换到另一张工单后，旧按钮仍可能操作先前工单。
+- PR #44 为确认回调增加活动会话校验：必须同时匹配当前 Bot、Owner、ticket_id 与 `confirm` 阶段；会话过期、已切换工单或重复使用旧按钮时拒绝操作，不改变工单状态。
+- “开始回复”流程现在检查工单状态更新错误，避免状态更新失败却显示回复会话已开启；“否，继续沟通”会检查会话写入结果。
+- 新增回归测试覆盖 A/B 双工单切换后 A 的旧确认按钮不得结单、B 当前确认成功、会话清理及重复旧回调不重复写审计。
+- 不新增迁移；既有会话仍持久化于数据库，30 分钟 TTL 与 Bot 重启恢复机制不变。
+- PR #44 head CI、合并、Docker Publish 与 digest 待核实；生产部署/Telegram 真机验收未确认。
+
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
 - 已合并至 main，merge commit `7fd658d1803d18442d9284098ddf8128cf22cc19`。
 - 网页后台文本客服回复改为先发送 Telegram，明确成功后才写入 admin 时间线并更新工单回复字段；明确发送失败仅记录 system 事件，工单状态/回复字段不变并返回 502。前端改为先提交回复、成功后再更新工单状态。
 - 新增成功/失败回归测试；PR head Go CI、Admin CI、Security 均成功；main Go CI、Admin CI、Security 均成功。
-- main Go CI [#44570069329](https://github.com/seanldnet/TG-Card/actions/runs/44570069329)、Admin CI [#44570069285](https://github.com/seanldnet/TG-Card/actions/runs/44570069285)、Security [#44570069428](https://github.com/seanldnet/TG-Card/actions/runs/44570069428) 均成功。Docker Publish [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 尚在运行，镜像 digest 待发布完成后核实。
+- main Go CI [#44570069329](https://github.com/seanldnet/TG-Card/actions/runs/44570069329)、Admin CI [#44570069285](https://github.com/seanldnet/TG-Card/actions/runs/44570069285)、Security [#44570069428](https://github.com/seanldnet/TG-Card/actions/runs/44570069428) 均成功。Docker Publish [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 已成功，GHCR 多架构 latest manifest digest 为 `sha256:025a45cccf1895c17882e863b15bb524adc83200b2a7b77b891cee9e75a9182d`。
 - 生产部署及 Telegram 真机验收未确认；Telegram 无业务消息幂等键，网络超时/响应丢失仍不能保证 exactly-once。
 
 ## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 已合并）
@@ -32,9 +41,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.4
-> - 源码核对基线：`main` 分支，commit `7fd658d1803d18442d9284098ddf8128cf22cc19`（PR #42 已合并）
-> - 本次文档更新：记录 PR #42 合并及 main CI 结果，Docker Publish digest 待核实；PR #38 生产验收、售后 C1–C4 与其他 P0 仍待完成
+> - 文档版本：2.2.5
+> - 源码核对基线：`main` 分支，commit `166f54e5744d1a74a32ec1c6c52148e7d370b36a`（PR #43 文档校准已合并；PR #44 独立开发中）
+> - 本次文档更新：记录 PR #42 镜像发布 digest、PR #43 文档校准合并及 PR #44 Owner 确认回调会话隔离开发中；生产部署与售后 C1–C4 真机验收仍待完成
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
