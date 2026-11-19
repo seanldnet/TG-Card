@@ -26,36 +26,22 @@ type upstreamSyncSummary struct {
 }
 
 func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSummary, error) {
-	var summary upstreamSyncSummary
-	if !a.upstreamSyncMu.TryLock() { return summary, errUpstreamSyncInProgress }
-	defer a.upstreamSyncMu.Unlock()
-
-	settings, err := database.GetUpstreamSettings(ctx, a.db, a.driver)
-	if err != nil { return summary, fmt.Errorf("请先保存 Dujiao-Next 上游配置") }
-	if err := database.SaveUpstreamSyncResult(ctx, a.db, a.driver, "running", ""); err != nil { return summary, fmt.Errorf("无法更新同步状态：%w", err) }
-
-	apiKey, err := a.secrets.Decrypt(settings.MerchantIDCiphertext)
-	if err != nil { return summary, a.failUpstreamSync(ctx, "无法解密上游 API Key，请检查持久化数据目录") }
-	apiSecret, err := a.secrets.Decrypt(settings.SecretCiphertext)
-	if err != nil { return summary, a.failUpstreamSync(ctx, "无法解密上游 API Secret，请检查持久化数据目录") }
-
-	ping, err := upstream.DujiaoPing(ctx, settings.BaseURL, apiKey, apiSecret)
-	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
-	currency := strings.ToUpper(strings.TrimSpace(ping.Currency))
-	if currency == "" { return summary, a.failUpstreamSync(ctx, "Dujiao-Next ping 未返回币种，已停止同步以避免错误定价") }
-	ratePPM := int64(1_000_000)
-	if currency != "USDT" {
-		ratePPM = settings.ExchangeRatePPM
-		if ratePPM <= 0 {
-			return summary, a.failUpstreamSync(ctx, fmt.Sprintf("上游币种为 %s；请在上游设置中配置“1 单位 %s = ? USDT”的汇率后再同步，未修改旧商品数据", currency, currency))
-		}
-	}
-	categories, err := upstream.DujiaoFetchCategories(ctx, settings.BaseURL, apiKey, apiSecret)
-	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
-	products, err := upstream.DujiaoFetchProducts(ctx, settings.BaseURL, apiKey, apiSecret)
-	if err != nil { return summary, a.failUpstreamSync(ctx, redactUpstreamError(err.Error(), apiKey, apiSecret)) }
-
-	imageWarnings := make([]string, 0)
+ var summary upstreamSyncSummary
+ if !a.upstreamSyncMu.TryLock() { return summary, errUpstreamSyncInProgress }
+ defer a.upstreamSyncMu.Unlock()
+ settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver)
+ if err!=nil{return summary,fmt.Errorf("请先保存 Dujiao-Next 上游配置")}
+ if err:=database.SaveUpstreamSyncResult(ctx,a.db,a.driver,"running","");err!=nil{return summary,fmt.Errorf("无法更新同步状态：%w",err)}
+ apiKey,err:=a.secrets.Decrypt(settings.MerchantIDCiphertext);if err!=nil{return summary,a.failUpstreamSync(ctx,"无法解密上游 API Key，请检查持久化数据目录")}
+ apiSecret,err:=a.secrets.Decrypt(settings.SecretCiphertext);if err!=nil{return summary,a.failUpstreamSync(ctx,"无法解密上游 API Secret，请检查持久化数据目录")}
+ ping,err:=upstream.DujiaoPing(ctx,settings.BaseURL,apiKey,apiSecret);if err!=nil{return summary,a.failUpstreamSync(ctx,redactUpstreamError(err.Error(),apiKey,apiSecret))}
+ currency:=strings.ToUpper(strings.TrimSpace(ping.Currency));if currency==""{return summary,a.failUpstreamSync(ctx,"Dujiao-Next ping 未返回币种，已停止同步以避免错误定价")}
+ ratePPM:=int64(1_000_000)
+ if currency!="USDT"{ratePPM=settings.ExchangeRatePPM;if ratePPM<=0{return summary,a.failUpstreamSync(ctx,fmt.Sprintf("上游币种为 %s；请配置兑 USDT 汇率，未修改旧商品数据",currency))}}
+ categories,err:=upstream.DujiaoFetchCategories(ctx,settings.BaseURL,apiKey,apiSecret)
+ if err!=nil{return summary,a.failUpstreamSync(ctx,redactUpstreamError(err.Error(),apiKey,apiSecret))}
+ 
+ imageWarnings := make([]string, 0)
 	categoryNames := make(map[int64]string, len(categories))
 	for _, category := range categories { categoryNames[category.ID] = upstream.LocalizedText(category.Name) }
 	categoryRecords := make([]database.UpstreamCategoryRecord, 0, len(categories))
@@ -81,28 +67,84 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			Name: name, Icon: iconPath, PreserveIcon: preserveIcon, SortOrder: -category.SortOrder,
 		})
 	}
+ batchID:=fmt.Sprintf("%d",time.Now().UTC().UnixNano())
+ // Hide the upstream catalogue while a multi-page refresh is in progress. A
+ // failed/cancelled run therefore falls back to local sales rather than serving
+ // a mixed old/new upstream catalogue.
+ settings.CatalogStale=true
+ if err:=database.SaveUpstreamSettings(ctx,a.db,a.driver,settings);err!=nil{return summary,a.failUpstreamSync(ctx,"标记上游目录刷新状态失败："+err.Error())}
+ if err:=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,categoryRecords,nil,false);err!=nil{return summary,a.failUpstreamSync(ctx,"写入上游分类失败："+err.Error())}
+ const pageSize=25
+ total:=0
+ consecutiveFailures:=0
+ failedPages:=0
+ for page:=1;page<=4000;page++ {
+  if err:=ctx.Err();err!=nil{return summary,err}
+  var products []upstream.DujiaoProduct
+  var pageErr error
+  for attempt:=1;attempt<=3;attempt++ {
+   products,total,pageErr=upstream.DujiaoFetchProductsPage(ctx,settings.BaseURL,apiKey,apiSecret,page,pageSize)
+   if pageErr==nil {break}
+   if attempt<3 {select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(attempt)*500*time.Millisecond):}}
+  }
+  if pageErr!=nil {
+   failedPages++;consecutiveFailures++
+   _=a.updateUpstreamSyncProgress(total,summary.Products,page,failedPages,consecutiveFailures,redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
+   if consecutiveFailures>=3 {
+    _=database.SaveUpstreamSyncResult(context.Background(),a.db,a.driver,"failed","连续多个商品分页失败，同步已暂停："+redactUpstreamError(pageErr.Error(),apiKey,apiSecret))
+    return summary,fmt.Errorf("连续 3 个商品分页失败，同步已暂停：%w",pageErr)
+   }
+  } else {
+   records,buildErr:=a.buildUpstreamProductRecords(ctx,products,settings,currency,ratePPM,&summary,&imageWarnings)
+   if buildErr!=nil{return summary,buildErr}
+   var writeErr error
+   for attempt:=1;attempt<=3;attempt++ {
+    writeErr=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,nil,records,false)
+    if writeErr==nil {break}
+    if attempt<3 {select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Duration(attempt)*500*time.Millisecond):}}
+   }
+   if writeErr!=nil {failedPages++;consecutiveFailures++;_ = a.updateUpstreamSyncProgress(total,summary.Products,page,failedPages,consecutiveFailures,writeErr.Error());if consecutiveFailures>=3{return summary,fmt.Errorf("连续多个商品批次写入失败，同步已暂停：%w",writeErr)}} else {
+    consecutiveFailures=0
+    summary.Products+=len(records)
+    _=a.updateUpstreamSyncProgress(total,summary.Products,page,failedPages,consecutiveFailures,"")
+   }
+  }
+  if page*pageSize>=total || len(products)==0 || len(products)<pageSize {break}
+  select{case <-ctx.Done():return summary,ctx.Err();case <-time.After(time.Second):}
+ }
+ if failedPages>0{return summary,fmt.Errorf("有 %d 个商品分页处理失败；为避免目录不完整，未执行下架收尾",failedPages)}
+ if err:=ctx.Err();err!=nil{return summary,err}
+ if err:=database.SyncUpstreamCatalogBatch(ctx,a.db,a.driver,batchID,nil,nil,true);err!=nil{return summary,a.failUpstreamSync(ctx,"完成上游目录收尾失败："+err.Error())}
+ summary.Categories=len(categoryRecords)
+ summary.SyncedAt=time.Now().UTC().Format(time.RFC3339Nano)
+ if len(imageWarnings)>0{summary.Warning=strings.Join(imageWarnings,"；")}
+ if summary.ImagesFailed>len(imageWarnings){summary.Warning+=fmt.Sprintf("；另有 %d 张图片下载失败",summary.ImagesFailed-len(imageWarnings))}
+ if err:=database.SaveUpstreamSyncResult(ctx,a.db,a.driver,"success",summary.Warning);err!=nil{log.Printf("save successful upstream sync status failed: %v",err)}
+ return summary,nil
+}
 
-	productRecords := make([]database.UpstreamProductRecord, 0)
+func (a *application) buildUpstreamProductRecords(ctx context.Context, products []upstream.DujiaoProduct, settings database.UpstreamSettings, currency string, ratePPM int64, summary *upstreamSyncSummary, imageWarnings *[]string) ([]database.UpstreamProductRecord,error) {
+ productRecords := make([]database.UpstreamProductRecord, 0)
 	for _, product := range products {
-		if product.ID <= 0 { return summary, a.failUpstreamSync(ctx, "上游商品包含无效商品 ID，已保留上一次目录数据") }
+		if product.ID <= 0 { return nil, a.failUpstreamSync(ctx, "上游商品包含无效商品 ID，已保留上一次目录数据") }
 		title := upstream.LocalizedText(product.Title)
-		if title == "" { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("上游商品 %d 缺少可识别名称，已保留上一次目录数据", product.ID)) }
+		if title == "" { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("上游商品 %d 缺少可识别名称，已保留上一次目录数据", product.ID)) }
 		description := upstream.CleanDescription(product.Description, product.Content)
 		skus := product.SKUs
 		if len(skus) == 0 {
-			return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 没有 SKU 数据，已保留上一次目录数据", title))
+			return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 没有 SKU 数据，已保留上一次目录数据", title))
 		}
 		for _, sku := range skus {
-			if sku.ID <= 0 { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 包含无效 SKU ID，已停止同步", strconv.FormatInt(product.ID,10))) }
+			if sku.ID <= 0 { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s 包含无效 SKU ID，已停止同步", strconv.FormatInt(product.ID,10))) }
 			skuID := strconv.FormatInt(sku.ID, 10)
 			priceText := strings.TrimSpace(sku.PriceAmount)
 			if priceText == "" { priceText = strings.TrimSpace(product.PriceAmount) }
 			priceSnapshot, priceErr := upstream.ParseMinorUnits(priceText)
-			if priceErr != nil { return summary, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s SKU %s 价格无效，已停止本次同步", strconv.FormatInt(product.ID,10), skuID)) }
+			if priceErr != nil { return nil, a.failUpstreamSync(ctx, fmt.Sprintf("商品 %s SKU %s 价格无效，已停止本次同步", strconv.FormatInt(product.ID,10), skuID)) }
 			basePriceUSDT, priceErr := upstream.ConvertMinorToUSDT(priceSnapshot, ratePPM)
-			if priceErr != nil { return summary, a.failUpstreamSync(ctx, "上游价格汇率换算失败："+priceErr.Error()) }
+			if priceErr != nil { return nil, a.failUpstreamSync(ctx, "上游价格汇率换算失败："+priceErr.Error()) }
 			price, priceErr := upstream.ApplyMarkup(basePriceUSDT, settings.MarkupBPS, settings.MarkupMinor)
-			if priceErr != nil { return summary, a.failUpstreamSync(ctx, "上游加价策略计算失败："+priceErr.Error()) }
+			if priceErr != nil { return nil, a.failUpstreamSync(ctx, "上游加价策略计算失败："+priceErr.Error()) }
 
 			images := make([]string, 0, 5)
 			imageFailed := false
@@ -112,7 +154,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 				if imageErr != nil {
 					summary.ImagesFailed++
 					imageFailed = true
-					if len(imageWarnings) < 5 { imageWarnings = append(imageWarnings, fmt.Sprintf("商品 %s 图片下载失败", title)) }
+					if len(*imageWarnings) < 5 { *imageWarnings = append(*imageWarnings, fmt.Sprintf("商品 %s 图片下载失败", title)) }
 					continue
 				}
 				images = append(images, localPath)
@@ -122,25 +164,25 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 				imageJSON = "" // Preserve the last known local images when any download fails.
 			} else if len(images) > 0 {
 				encoded, marshalErr := json.Marshal(images)
-				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "商品图片路径序列化失败") }
+				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "商品图片路径序列化失败") }
 				imageJSON = string(encoded)
 			}
 			specJSON := "{}"
 			if len(sku.SpecValues) > 0 {
 				encoded, marshalErr := json.Marshal(sku.SpecValues)
-				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "SKU 规格序列化失败") }
+				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "SKU 规格序列化失败") }
 				specJSON = string(encoded)
 			}
 			manualFormJSON := "{}"
 			if len(product.ManualFormSchema) > 0 {
 				encoded, marshalErr := json.Marshal(product.ManualFormSchema)
-				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "人工交付表单结构序列化失败") }
+				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "人工交付表单结构序列化失败") }
 				manualFormJSON = string(encoded)
 			}
 			tagsJSON := "[]"
 			if len(product.Tags) > 0 {
 				encoded, marshalErr := json.Marshal(product.Tags)
-				if marshalErr != nil { return summary, a.failUpstreamSync(ctx, "商品标签序列化失败") }
+				if marshalErr != nil { return nil, a.failUpstreamSync(ctx, "商品标签序列化失败") }
 				tagsJSON = string(encoded)
 			}
 			productRecords = append(productRecords, database.UpstreamProductRecord{
@@ -155,20 +197,13 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 			})
 		}
 	}
+ return productRecords,nil
+}
 
-	batchID := fmt.Sprintf("%d-%d", time.Now().UTC().UnixNano(), len(productRecords))
-	if err := database.SyncUpstreamCatalog(ctx, a.db, a.driver, batchID, categoryRecords, productRecords); err != nil {
-		return summary, a.failUpstreamSync(ctx, "写入上游商品目录失败；已回滚本次目录事务："+err.Error())
-	}
-	summary.Categories = len(categoryRecords)
-	summary.Products = len(productRecords)
-	summary.SyncedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if len(imageWarnings) > 0 { summary.Warning = strings.Join(imageWarnings, "；") }
-	if summary.ImagesFailed > len(imageWarnings) { summary.Warning += fmt.Sprintf("；另有 %d 张图片下载失败", summary.ImagesFailed-len(imageWarnings)) }
-	if err := database.SaveUpstreamSyncResult(ctx, a.db, a.driver, "success", summary.Warning); err != nil {
-		log.Printf("save successful upstream sync status failed: %v", err)
-	}
-	return summary, nil
+func (a *application) updateUpstreamSyncProgress(total,processed,page,errors,consecutive int,lastError string) error {
+ a.upstreamJobMu.Lock();id:=a.upstreamJobID;a.upstreamJobMu.Unlock()
+ if id=="" {return nil}
+ return database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,id,total,processed,page,errors,consecutive,lastError)
 }
 
 func (a *application) failUpstreamSync(ctx context.Context, message string) error {
