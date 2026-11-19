@@ -1,6 +1,14 @@
-## 2026-11-19 — PR2 与 Dujiao-Next PR B 生产验收更新；PR C 已合并，PR D 开发中
+## 2026-11-20 — 阶段一售后媒体转发子项按项目所有者实测确认
 
-- 状态：PR #30（PR2）已合并，Go CI、Admin CI、安全扫描和 Docker Publish 全部成功；项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收均按项目所有者本次指示于 2026-11-19 默认通过记录。Dujiao-Next PR C 已通过独立 PR #32 合并；merge commit 镜像 digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 当前重建发布 Run #44338105044 对应 latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍以项目所有者确认的 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 为准；PR D 独立分支开发中，PR E 尚未开始。
+- 项目所有者明确确认：售后附件转发相关测试已亲自完成且无异常。本次将“用户提交的图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体内容”这一子项记录为**所有者实测通过**。
+- 验收边界：该确认仅覆盖附件/媒体转发本身；未提供本次测试所用生产镜像 digest、测试设备、订单/工单号或截图，因此不将其归因于 PR #38 的新镜像，也不补造这些证据。
+- 仍待验收：PR #27 C1–C4（Owner 开始回复、连续沟通、结单幂等、30 分钟超时/重启恢复/多工单隔离）；完整 Telegram 菜单与按钮；补发/退款各状态分支；跟踪防护下静态资源零外部 CDN Network 检查。
+- PR #38（PR D）已合并并成功发布 GHCR；镜像 digest 为 `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。生产部署与该 digest 的生产验收仍未得到项目所有者确认；PR E 真实商户联调未开始。
+- 本次仅更新验收事实与文档状态，不将阶段一标记为完成；不推进依赖阶段一清零的后续阶段。
+
+## 2026-11-19 — PR2 与 Dujiao-Next PR B 生产验收更新；PR C 已合并（历史记录）
+
+- 状态：PR #30（PR2）已合并，Go CI、Admin CI、安全扫描和 Docker Publish 全部成功；项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收均按项目所有者本次指示于 2026-11-19 默认通过记录。Dujiao-Next PR C 已通过独立 PR #32 合并；merge commit 镜像 digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 当前重建发布 Run #44338105044 对应 latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍以项目所有者确认的 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 为准；PR D 后续已通过 PR #38 合并并发布（当前状态见 2026-11-20 更新）；PR E 尚未开始。
 - PR #28 merge commit：`6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`。
 - PR2 当前生产验收镜像 digest（覆盖 PR #19/#26/#28 与 PR2 本次验收）：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)。
 - Go CI [#44317232633](https://github.com/seanldnet/TG-Card/actions/runs/44317232633) 与 Security [#44317232660](https://github.com/seanldnet/TG-Card/actions/runs/44317232660) 均成功。
@@ -12,10 +20,10 @@
 > 本文是项目当前实现状态的主文档。内容以 `main` 分支源码、数据库迁移、后台页面和现有技术文档为依据；产品规划不等于已交付功能。每次开发、修复、重构或发布都必须同步更新本文和 `docs/CHANGELOG.md`。
 
 > **文档元信息**
-> - 最后更新时间：2026-11-19
-> - 文档版本：2.2.0
-> - 源码核对基线：`main` 分支，commit `0b0f0514a1c5850aafec0018c95570d0bce8a39f`（PR #37 文档记录已合并；PR D 开发分支从该提交创建）
-> - 本次文档更新：启动独立 PR D 资金安全深化；记录 PR #31/#37 追踪项；PR B D1–D5 验收日期更新为 2026-11-19；PR #27 C1–C4 继续待验收
+> - 最后更新时间：2026-11-20
+> - 文档版本：2.2.0（阶段一尚未清零，暂不递增）
+> - 源码核对基线：`main` 分支，commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`（PR #38 已合并）
+> - 本次文档更新：记录项目所有者确认的售后媒体转发子项实测通过；纠正 PR #38 合并、镜像发布与生产验收状态；C1–C4 及其他 P0 验收继续待完成
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -162,7 +170,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - Dujiao-Next PR C（PR #32，已合并）在本地订单支付确认事务内登记采购任务；采购前重新读取订单与商品状态，拒绝已取消/已退款、下架或来源已变化的订单。
 - 上游 auto 商品必须先在后台配置公网 HTTPS 回调地址才允许自助下单；本地订单号作为 `downstream_order_no` 幂等标识，上游订单 ID/订单号持久化映射；已知上游订单 ID 后按可配置间隔查单，回调验签/去重后加密保存交付内容，再走现有 Telegram 交付管线。
 - 采购失败/受理状态不确定进入持久化人工队列；失败不改写原始支付记录、不自动扣减/退款买家资金。管理员可按原幂等键手动恢复，或确认无法履约后退至买家站内余额并写独立退款账本与审计。
-- PR D 正在深化供应商采购前后余额差异核对、退款账本巡检、uncertain ageing/人工核实与统一异常中心；检测结果只告警，不自动修正任何资金。
+- PR D（PR #38）已合并并发布 GHCR，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收尚未确认。检测结果只告警，不自动修正任何资金。
 - Telegram 消息发送没有幂等键，因此网络响应丢失后仍存在重复发送可能；当前交付保证是**至少一次**，不是严格 exactly-once。
 - 已交付订单的售后补发属于单独的重发流程，不应误用首次交付重试接口；邀请链接不应被重复发放。
 
@@ -183,7 +191,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 
 已知限制：
 - 当前为单收款地址 + 唯一金额识别，不是每笔订单独立钱包地址。
-- PR D 将把供应商采购扣款前后余额差异、退款账本完整性与悬空订单纳入独立资金异常中心；该批次开发/CI/发布/生产部署/验收状态分别记录，任何检查均不自动改账。
+- PR D 已将供应商采购扣款前后余额差异、退款账本完整性与悬空订单纳入独立资金异常中心并合并发布；生产部署/验收待确认，任何检查均不自动改账。
 - 监听器使用 TronGrid 的已确认交易标记；当前没有单独配置多级 N-confirmation 策略。
 - 过期、少付、多付、无法匹配或存在歧义的交易需要人工核对。
 - 尚未实现自动退款、钱包私钥签名、归集/提现。
@@ -274,14 +282,14 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 4. 签到积分、用户等级、邀请推广等完整营销套件。 | P2 | 营销能力扩展阶段 |
 | 5. 完整商业授权/机器指纹授权系统。 | P2 | 独立授权产品阶段，需先确认产品范围 |
 | 6. 所有 Telegram 菜单、所有按钮流程的真实客户端端到端验收。 | P0 | 当前版本发布验收阶段 |
-| 7. 所有售后附件、补发、退款路径的完整真实 Telegram 验收。 | P0 | 当前版本售后验收阶段 |
+| 7. 售后附件转发子项已由项目所有者实测确认通过；补发、退款及其完整状态分支的真实 Telegram 验收仍待完成。 | P0（剩余路径） | 当前版本售后验收阶段 |
 | 8. 对 Telegram 网络超时导致的消息重复发送实现严格 exactly-once（Telegram API 本身不提供消息幂等键）。 | P1 | 交付可靠性专项评估阶段 |
 | 9. 所有移动端页面在真实设备上的完整回归测试。 | P1 | 当前版本移动端回归阶段 |
 | 10. 旧网站附件预览/下载方案 | 已由产品决策替代并关闭 | 改为 Bot 转发 Owner；历史附件字段和 API 保留，媒体验收转入新售后工作流清单 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | P0 | 本次 CDN 修复 PR 构建后由项目所有者验收 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | P1 | 本次布局修复 PR 构建后回归 |
-| 13. 上游发卡对接：PR A/B/C 已合并；PR C mock/CI 已通过；PR D 资金安全、PR E 真实商户联调仍未完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR C 合并后再进入 PR D；真实商户端到端验收仅在 PR E 执行 |
-| 14. 售后 Owner Bot 工作流：媒体转发、Owner 菜单、直接回复/继续沟通、结单幂等、超时与通知。 | P0 | 本专项 PR CI 通过后，由项目所有者按 `docs/support-tickets.md` 执行真实 Telegram、SMTP、串单与失败场景验收 |
+| 13. 上游发卡对接：PR A/B/C/D 已合并；PR D 资金安全已发布 GHCR，生产部署/验收待确认；PR E 真实商户联调尚未开始。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR D 生产 digest 验收后，进入 PR E 真实商户端到端联调 |
+| 14. 售后 Owner Bot 工作流：媒体转发子项已由项目所有者实测确认通过；Owner 菜单、直接回复/继续沟通、结单幂等、超时与通知等 C1–C4 及失败场景仍待验收。 | P0（剩余路径） | 按 `docs/support-tickets.md` 继续完成真实 Telegram、SMTP、串单与失败场景验收 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
 
@@ -546,8 +554,8 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-19）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-19）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
 | [PR #37](https://github.com/seanldnet/TG-Card/pull/37) | PR C 合并状态、CI/镜像与 PR D/E 边界文档记录。 | 已合并，merge commit 0b0f0514a1c5850aafec0018c95570d0bce8a39f；Admin CI #44338591754/#44338655437 与 main Admin CI #44338618618 成功；文档-only，不触发业务镜像发布。 | 已完成文档记录；PR C 镜像/CI证据见第 19.7 节。 | 已完成。 |
-| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 独立 Draft PR；head 5dbd0269a719f91b74458f03bd67a25aeab0761b；Go CI #44370903772、Admin CI #44370904017、Security #44370903744 均成功；尚未合并，未触发发布。 | 尚未生产部署或验收；PR E 真实供应商联调仍未完成。 | CI 通过后合并；main Publish 成功后再通知项目所有者拉取测试。 |
-| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B/C 已合并；PR B 已验收；PR D #38 Draft，Go/Admin/Security CI 通过，等待合并/发布；真实上游联调留待 PR E。 | PR C 代码已合并并完成 mock/CI 验证；PR D #38 Draft，CI 已通过但未合并/发布；未进行真实商户联调，真实商户联调仅属于 PR E。 | PR C 已合并；下一阶段按 PR D→PR E 独立推进。 |
+| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，main 对应 CI 后续通过，流程瑕疵保留记录。 | 生产部署及该 digest 的生产验收尚未确认；PR E 真实商户联调未开始。 | 先完成生产 digest 验收，再启动 PR E 独立联调。 |
+| Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B/C/D 已合并；PR D #38 已发布 GHCR，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认；真实上游联调留待 PR E。 | PR C 完成 mock/CI；PR D 代码、CI、合并与镜像发布已完成；未进行真实商户联调，真实商户联调仅属于 PR E。 | 完成 PR D 生产 digest 验收后，再启动 PR E 独立联调。 |
 
 ### 19.1 PR #19 镜像发布证据
 
@@ -660,7 +668,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 ## 19.6 Dujiao-Next 后续采购路线
 
 - **PR C：采购转发**——已通过独立 PR #32 合并，包含支付确认登记采购任务、采购前状态复核、下游幂等、双向订单映射、异步查单/回调、失败人工队列、手动恢复、退款账本与审计、Owner 通知、供应商余额日报及十项 mock 测试。PR C 不代表真实商户联调完成。
-- **PR D：资金安全**——独立 PR #38（Draft）已创建，Go/Admin/Security CI 通过；等待合并与 Docker Publish。生产部署和生产验收尚未完成。
+- **PR D：资金安全**——PR #38 已合并并成功发布 GHCR，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署和生产验收尚未确认。
 - **PR E：真实上游联调**——未完成；必须在 PR C/D 完成后进行。PR C 的 mock 测试不能表述为真实上游联调。
 
 ### 19.7 Dujiao-Next PR C（PR #32）合并记录
@@ -671,17 +679,17 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 协议限制：官方 API 没有按 `downstream_order_no` 查单的接口。若首次 POST 发生网络异常且未取得上游订单 ID，系统标记 `uncertain` 并暂停自动重发；人工核实后可使用同一幂等键重试。已取得上游订单 ID 才调用 `GET /orders/:id`。
 - 当前限制：仅开放 `auto` 自动交付 SKU；`manual` 表单商品在买家表单采集能力完成前不允许自助购买。公网 HTTPS 回调地址必须在后台配置后才能自助下单。真实供应商凭证联调留给 PR E。
 - 验证：PR head Go CI #44335141310、Admin CI #44335141493、Security #44335141220 成功；合并后 main Go CI #44335573358、Admin CI #44335573432、Security #44335573555、Docker Publish #44335573493 成功。PR #32 merge Publish manifest digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；当前 main rebuild Publish Run #44338105044 成功，latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。`go test ./...` 全部通过。10 项 mock 测试覆盖同步交付、异步查单成功、查单超时、采购失败、重复回调、回调验签失败、超时后同幂等键手动重试、已退款订单跳过、HTTP 402 余额不足、HTTP 404 查单错误。
-- PR D（供应商资金安全）已提交独立 PR #38，分支 CI 通过，等待合并/镜像发布；PR E（真实上游联调）尚未开始；PR C/D/E 不与 PR3–PR6 混合。当前不宣称已使用真实商户凭证或完成真实上游联调。
+- PR D（供应商资金安全）已通过独立 PR #38 合并并发布；生产部署/验收待确认。PR E（真实上游联调）尚未开始；PR C/D/E 不与 PR3–PR6 混合。当前不宣称已使用真实商户凭证或完成真实上游联调。
 
-### 19.8 Dujiao-Next PR D（资金安全深化）开发记录
+### 19.8 Dujiao-Next PR D（资金安全深化）发布记录
 
-- 状态：独立分支 feat/dujiao-fund-safety-pr-d，基于 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f；PR #38 已创建 Draft，head 5dbd0269a719f91b74458f03bd67a25aeab0761b。Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；尚未合并、未发布镜像、未生产部署/验收。
+- 状态：PR #38 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go CI、Admin CI、Security 与 Docker Publish 均成功。GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，merge 后 main 对应 Admin CI 成功；此流程瑕疵如实保留。生产部署/验收尚未确认。
 - 仓库审查结论：PR2 的余额校验只覆盖买家钱包余额与 credit/debit 流水；PR C 已有独立退款表（order_id 主键、wallet_transaction_id 唯一）和人工退款流程，但缺少退款账本完整性巡检；供应商余额已有快照/低余额阈值告警，但此前没有逐笔采购前后余额变动对照；uncertain 订单混在采购队列中，没有等待时长与独立人工核实入口；没有统一资金异常列表。
 - 当前实现方向：采购前后获取供应商余额快照，按本地订单号关联上游订单 ID、上游返回采购金额和余额变化；差异/缺快照只生成异常，不修正余额。退款账本一致性检查核对订单退款状态、唯一钱包 credit 流水、金额、管理员和买家；uncertain 独立列表显示 ageing，Owner 人工核实后恢复查单或确认未受理；统一 finance_exceptions 异常中心纳入采购失败、uncertain、供应商余额差异、退款账本异常。
 - 新迁移：0039_finance_safety.sql；新增 finance_exceptions、upstream_procurement_fund_checks，并扩展采购行的供应商资金核对字段。
 - 资金红线：不自动修改买家或供应商余额；采购失败不改变原支付记录；退款每订单最多一条、每笔退款唯一关联一个钱包 credit；同一采购订单重试沿用本地订单号。
 - 验证：SQLite 覆盖供应商余额匹配/差异、退款账本异常只读检测、重复退款拒绝、uncertain ageing 与 Owner 恢复；Go CI #44370639264（vet/test/build）、Admin CI #44370639142、Security #44370639404 全部成功。真实供应商扣款对账与实际资金变动仍属于 PR E。
-- PR E 仍未完成；PR #27 C1–C4 保持待验收。
+- PR E 仍未开始；PR #27 媒体转发子项已由项目所有者实测确认通过，C1–C4 其余交互场景保持待验收。
 
 ## 20. 安全基线
 
