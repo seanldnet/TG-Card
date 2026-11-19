@@ -136,7 +136,7 @@ func ListVisibleProducts(ctx context.Context, db *sql.DB) ([]Product, error) {
 func ListVisibleCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
 	items, err := ListCategories(ctx, db)
 	if err != nil { return nil, err }
-	source, err := currentCatalogSource(ctx, db)
+	source, err := currentCatalogSource(ctx, db, driver)
 	if err != nil { return nil, err }
 	visible := make([]Category, 0, len(items))
 	for _, item := range items { if item.SourceType == source && item.Status == 1 { visible = append(visible, item) } }
