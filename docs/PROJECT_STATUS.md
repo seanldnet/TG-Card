@@ -1,10 +1,10 @@
-## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 开发中）
+## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
-- 代码审查发现：网页后台客服回复接口与此前 Owner Bot 修复前相同，先写客服消息时间线，再发送 Telegram；发送失败会产生未送达却看似成功的回复记录。
-- 本次修复：网页后台文本回复改为先发送 Telegram；明确发送失败时仅记录系统失败事件，不写入客服回复时间线、不更新工单回复字段，并返回网关错误让前端保留处理窗口供重试。前端也调整为回复发送成功后才提交工单状态，避免先把工单设为已解决再遇到发送失败。Telegram 明确成功后才写入客服时间线并更新工单回复字段。
-- 自动化测试：新增成功/失败两条回归测试；验证失败时没有 admin 时间线记录、工单状态和回复字段不变，成功时才持久化回复。
-- 边界：Telegram 无业务消息幂等键；网络超时/响应丢失仍无法保证 exactly-once。Telegram 已确认送达但本地持久化失败时，接口明确报告“已发送但保存失败”，不能声称未送达。
-- 状态：独立分支 `fix/admin-support-reply-delivery-state-20261120`；PR、CI、合并、镜像发布和生产验收待完成。
+- 已合并至 main，merge commit `7fd658d1803d18442d9284098ddf8128cf22cc19`。
+- 网页后台文本客服回复改为先发送 Telegram，明确成功后才写入 admin 时间线并更新工单回复字段；明确发送失败仅记录 system 事件，工单状态/回复字段不变并返回 502。前端改为先提交回复、成功后再更新工单状态。
+- 新增成功/失败回归测试；PR head Go CI、Admin CI、Security 均成功；main Go CI、Admin CI、Security 均成功。
+- main Go CI [#44570069329](https://github.com/seanldnet/TG-Card/actions/runs/44570069329)、Admin CI [#44570069285](https://github.com/seanldnet/TG-Card/actions/runs/44570069285)、Security [#44570069428](https://github.com/seanldnet/TG-Card/actions/runs/44570069428) 均成功。Docker Publish [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 尚在运行，镜像 digest 待发布完成后核实。
+- 生产部署及 Telegram 真机验收未确认；Telegram 无业务消息幂等键，网络超时/响应丢失仍不能保证 exactly-once。
 
 ## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 已合并）
 
@@ -32,9 +32,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.3
-> - 源码核对基线：`main` 分支，commit `af53dad378bb8d1d89385246bd7d11a308e8b7e0`（PR #41 已合并）
-> - 本次文档更新：校准 PR #41 合并/发布状态，记录 PR #42 网页后台回复送达修复开发中；PR #38 生产验收、售后 C1–C4 与其他 P0 仍待完成
+> - 文档版本：2.2.4
+> - 源码核对基线：`main` 分支，commit `7fd658d1803d18442d9284098ddf8128cf22cc19`（PR #42 已合并）
+> - 本次文档更新：记录 PR #42 合并及 main CI 结果，Docker Publish digest 待核实；PR #38 生产验收、售后 C1–C4 与其他 P0 仍待完成
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card

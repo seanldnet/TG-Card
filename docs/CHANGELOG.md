@@ -1,9 +1,9 @@
-## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 开发中）
+## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
-- 状态：独立分支开发中；PR/CI/合并/镜像/生产验收待完成。
+- 状态：已合并至 main，merge commit `7fd658d1803d18442d9284098ddf8128cf22cc19`；PR head 与 main Go/Admin/Security 全部成功。Docker Publish Run [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 尚在运行，digest 待核实；生产部署/真机验收待确认。
 - 影响模块：`cmd/server/support.go`、售后 API、售后后台交互、`.github/workflows/security.yml`、售后专项文档。
 - 修复：网页后台文本回复改为先发送 Telegram；明确发送失败时仅记录 system 失败事件，不写入 admin 客服时间线、不更新工单回复字段，返回 502 供前端保留窗口重试。Telegram 明确成功后才写入 admin 时间线并更新工单回复字段；前端状态更新也移至回复发送成功之后，避免发送失败时状态先行变更。
-- 测试：新增 Telegram 发送成功/失败回归测试，检查 timeline sender_type、工单状态和 adminReply 字段。
+- 测试：新增 Telegram 发送成功/失败回归测试，检查 timeline sender_type、工单状态和 adminReply 字段；PR Go CI、main Go CI、Admin CI 与 Security 均成功。main runs：[Go #44570069329](https://github.com/seanldnet/TG-Card/actions/runs/44570069329)、[Admin #44570069285](https://github.com/seanldnet/TG-Card/actions/runs/44570069285)、[Security #44570069428](https://github.com/seanldnet/TG-Card/actions/runs/44570069428)。
 - CI：Security workflow 原先只监听 `internal/**`，会漏掉 `cmd/server/**` 的后端 handler 变更；本次把 `cmd/**` 同时加入 push/PR 路径过滤，确保本类 API 变更触发漏洞扫描。
 - 边界：Telegram 无业务消息幂等键；网络超时/响应丢失仍存在远端送达不确定性。发送成功但本地持久化失败时返回明确错误，不声称消息未送达。
 
