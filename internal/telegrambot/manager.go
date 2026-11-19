@@ -1918,11 +1918,6 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  exists,lookupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,updateKey)
  if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法确认消息是否已处理，请稍后重试。");return true}
  if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已处理，请继续发送下一条内容。");return true}
- if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,text,fileID,fileName,updateKey);err!=nil{
-  log.Printf("support owner reply timeline append failed: ticket_id=%s error=%v",ticket.ID,err)
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"沟通记录保存失败，尚未发送给用户，请稍后重试。")
-  return true
- }
  userChat,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil{
   _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败：用户会话地址无效","","")
@@ -1936,6 +1931,12 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
   _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败："+err.Error(),"","")
   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"发送给用户失败："+err.Error()+"\n工单保持处理中，可重新发送新的回复。")
   log.Printf("support owner reply failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err)
+  return true
+ }
+ // Persist the customer-visible reply only after Telegram confirms delivery.
+ if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,text,fileID,fileName,updateKey);err!=nil{
+  log.Printf("support owner reply delivered but timeline append failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err)
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"消息已发送给用户，但沟通记录保存失败，请检查数据库后再继续操作。")
   return true
  }
  _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,ticket.ID,"confirm",30*time.Minute)
