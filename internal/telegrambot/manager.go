@@ -1110,7 +1110,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			prompts:=map[string]string{"owner:ban":"请发送要封禁的 Telegram 用户 ID。","owner:unban":"请发送要解除封禁的 Telegram 用户 ID。","owner:closeorder":"请发送需要关闭的待付款订单号。"}
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,prompts[query.Data],ownerMenuKeyboard())
 		case "owner:products":
-			products,err:=database.ListVisibleProducts(ctx,m.db);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
+			products,err:=database.ListVisibleProductsPage(ctx,m.db,m.driver,50,0,"","");if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
 			var lines []string
 			for _,p:=range products{stock:=strconv.Itoa(p.StockCount);if p.SourceType=="upstream"{stock=strconv.FormatInt(p.UpstreamStockQuantity,10)};lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+stock)}
 			if len(lines)==0{lines=append(lines,"暂无商品")}
