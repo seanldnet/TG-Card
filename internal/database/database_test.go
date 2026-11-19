@@ -643,3 +643,34 @@ func TestOrderRedeliveryLeaseOnlyAllowsOneRecentDeliveredOrderClaim(t *testing.T
 	if err != nil { t.Fatal(err) }
 	if claimed { t.Fatal("duplicate re-delivery request should be rate-limited") }
 }
+
+
+func TestAdminTokenSessionCanBeRevokedIndependently(t *testing.T) {
+ ctx:=context.Background()
+ db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+ if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ boot,err:=EnsureAdmin(ctx,db,"sqlite","admin","a-strong-test-password")
+ if err!=nil{t.Fatal(err)}
+ expiry:=time.Now().Add(time.Hour)
+ if err:=CreateAdminTokenSession(ctx,db,"sqlite",mustFindAdminID(t,ctx,db,boot.Username),"hash-current-device",expiry);err!=nil{t.Fatal(err)}
+ adminID:=mustFindAdminID(t,ctx,db,boot.Username)
+ active,err:=IsAdminTokenSessionActive(ctx,db,"sqlite",adminID,"hash-current-device",time.Now())
+ if err!=nil||!active{t.Fatalf("new session should be active: active=%v err=%v",active,err)}
+ if err:=CreateAdminTokenSession(ctx,db,"sqlite",adminID,"hash-other-device",expiry);err!=nil{t.Fatal(err)}
+ if err:=RevokeAdminTokenSession(ctx,db,"sqlite",adminID,"hash-current-device");err!=nil{t.Fatal(err)}
+ active,err=IsAdminTokenSessionActive(ctx,db,"sqlite",adminID,"hash-current-device",time.Now())
+ if err!=nil||active{t.Fatalf("revoked session should be inactive: active=%v err=%v",active,err)}
+ active,err=IsAdminTokenSessionActive(ctx,db,"sqlite",adminID,"hash-other-device",time.Now())
+ if err!=nil||!active{t.Fatalf("revoking one device must not revoke another: active=%v err=%v",active,err)}
+ active,err=IsAdminTokenSessionActive(ctx,db,"sqlite",adminID,"hash-other-device",expiry.Add(time.Second))
+ if err!=nil||active{t.Fatalf("expired session should be inactive: active=%v err=%v",active,err)}
+}
+
+func mustFindAdminID(t *testing.T,ctx context.Context,db *sql.DB,username string) string {
+ t.Helper()
+ admin,err:=FindAdminByUsername(ctx,db,"sqlite",username)
+ if err!=nil{t.Fatal(err)}
+ return admin.ID
+}
