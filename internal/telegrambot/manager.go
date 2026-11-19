@@ -954,7 +954,7 @@ func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
 }
 func (m *Manager) showShopPage(ctx context.Context,cfg Config,chatID int64,page int) {
  if page<0 {page=0}
- cats,err:=database.ListVisibleCategoriesPage(ctx,m.db,m.driver,7,page*6)
+ cats,err:=database.ListVisibleCategoriesPage(ctx,m.db,m.driver,6,page*5)
  if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
  rows:=make([][]map[string]string,0,8)
  count:=len(cats);hasNext:=count>5;if hasNext{cats=cats[:5]}
