@@ -19,6 +19,7 @@ func TestUpstreamCatalogBatchFinalizationAndVisiblePagination(t *testing.T) {
  categories:=[]UpstreamCategoryRecord{{UpstreamID:"cat-1",Name:"Supplier category"}}
  first:=[]UpstreamProductRecord{{ProductID:"p-1",SKUID:"s-1",CategoryID:"cat-1",Name:"First supplier item",PriceMinor:100,Currency:"USDT",Active:true}}
  if err:=SyncUpstreamCatalogBatch(ctx,db,cfg.DBDriver,"batch-one",categories,first,true);err!=nil{t.Fatal(err)}
+ if err:=SyncUpstreamCatalogBatch(ctx,db,cfg.DBDriver,"batch-two",categories,nil,false);err!=nil{t.Fatal(err)}
  second:=[]UpstreamProductRecord{{ProductID:"p-2",SKUID:"s-2",CategoryID:"cat-1",Name:"Second supplier item",PriceMinor:200,Currency:"USDT",Active:true}}
  if err:=SyncUpstreamCatalogBatch(ctx,db,cfg.DBDriver,"batch-two",nil,second,false);err!=nil{t.Fatal(err)}
  visible,err:=ListVisibleProductsPage(ctx,db,cfg.DBDriver,10,0,"","");if err!=nil{t.Fatal(err)}
