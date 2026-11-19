@@ -12,7 +12,7 @@
 
 > 验收记录（2026-11-20）：项目所有者明确确认售后附件/媒体转发测试已亲自完成且无异常，因此“用户图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体”子项记为**所有者实测通过**。本次未提供镜像 digest、设备、订单/工单号或截图，不将其绑定到某一发布镜像。此确认不覆盖 C1–C4 的 Owner 回复、继续沟通、结单幂等、超时/重启/多工单隔离，也不覆盖补发/退款全分支；这些仍保持待验收。
 
-> C1/C2 自动化回归补强（2026-11-20，PR #47 已合并）：新增“否，继续沟通”后恢复 reply 阶段、不点按钮连续发送两条文字，以及 Owner 图片/普通文件回复分别调用 `sendPhoto` / `sendDocument` 并在成功后写入时间线的测试。该批次不替代真实 Telegram 验收。PR #47 head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 正在执行，digest 待核实。
+> C1/C2 自动化回归补强（2026-11-20，PR #47 已合并）：新增“否，继续沟通”后恢复 reply 阶段、不点按钮连续发送两条文字，以及 Owner 图片/普通文件回复分别调用 `sendPhoto` / `sendDocument` 并在成功后写入时间线的测试。该批次不替代真实 Telegram 验收。PR #47 head Go/Admin/Security 全部成功；main Go/Admin/Security/Docker Publish 全部成功，Publish Run [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792)，GHCR latest digest `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。
 
 ## 产品规则
 

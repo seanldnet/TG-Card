@@ -2,7 +2,7 @@
 
 - 在 PR #44 会话隔离修复基础上补齐 C1/C2 自动化回归：验证 Owner 点击“否，继续沟通”后会话恢复 reply 阶段；不再点击按钮直接连续发送两条消息时，两条回复均成功送达并写入时间线。
 - 新增图片与普通文件回复测试，验证图片使用 Telegram `sendPhoto`、文件使用 `sendDocument`，且 Telegram 确认成功后才保存对应附件时间线记录。
-- 本批次仅增加测试，不改变业务行为、数据库结构或部署配置。PR #47 head Go/Admin/Security 全部成功；合并后 main Go/Admin/Security/Docker Publish 仍在运行，digest 待发布完成后核实。真实 Telegram C1/C2 仍需项目所有者实测。
+- 本批次仅增加测试，不改变业务行为、数据库结构或部署配置。PR #47 head Go/Admin/Security 全部成功；合并后 main Go CI [#44575485326](https://github.com/seanldnet/TG-Card/actions/runs/44575485326)、Admin CI [#44575484730](https://github.com/seanldnet/TG-Card/actions/runs/44575484730)、Security [#44575484649](https://github.com/seanldnet/TG-Card/actions/runs/44575484649)、Docker Publish [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792) 全部成功；GHCR 多架构 latest manifest digest 为 `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。真实 Telegram C1/C2 仍需项目所有者实测。
 
 ## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 已合并）
 
@@ -50,9 +50,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.9
+> - 文档版本：2.2.10
 > - 源码核对基线：`main` 分支，commit `7be8ddbb850c907060801dcb69bd0fea9c5e679b`（PR #47 Owner 继续沟通与媒体回复回归覆盖已合并）
-> - 本次文档更新：记录 PR #47 合并与 C1/C2 自动化测试范围；PR #47 main CI/镜像发布结果待核验，生产部署与售后 C1–C4 真机验收仍待确认
+> - 本次文档更新：补录 PR #47 main Go/Admin/Security/Docker Publish 全部成功及 GHCR latest digest；生产部署与售后 C1–C4 真机验收仍待确认
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
