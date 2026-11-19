@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"errors"
 	"fmt"
 	"log"
@@ -270,6 +273,87 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 		a.upstreamJobMu.Unlock()
 	}()
 	return jobID, nil
+}
+
+
+// removeUnreferencedUpstreamImages deletes only regular, hash-named files inside
+// DATA_DIR/uploads/upstream and preserves any path still referenced by a local row.
+func (a *application) removeUnreferencedUpstreamImages(ctx context.Context) (int,error) {
+ directory:=filepath.Join(a.dataDir,"uploads","upstream")
+ entries,err:=os.ReadDir(directory)
+ if os.IsNotExist(err){return 0,nil};if err!=nil{return 0,err}
+ removed:=0
+ for _,entry:=range entries {
+  if !entry.Type().IsRegular(){continue}
+  name:=entry.Name();ext:=filepath.Ext(name);base:=strings.TrimSuffix(name,ext)
+  if len(base)!=64 {continue}
+  if _,decodeErr:=hex.DecodeString(base);decodeErr!=nil {continue}
+  switch ext {case ".jpg",".png",".gif",".webp",".avif":default:continue}
+  path:="/uploads/upstream/"+name
+  var productRefs,categoryRefs int
+  if err:=a.db.QueryRowContext(ctx,"SELECT COUNT(1) FROM products WHERE source_type='local' AND image_paths_json LIKE "+databasePlaceholder(a.driver,1),"%"+path+"%").Scan(&productRefs);err!=nil{return removed,err}
+  if err:=a.db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_categories WHERE source_type='local' AND upstream_icon LIKE "+databasePlaceholder(a.driver,1),"%"+path+"%").Scan(&categoryRefs);err!=nil{return removed,err}
+  if productRefs+categoryRefs>0 {continue}
+  if err:=os.Remove(filepath.Join(directory,name));err!=nil&&!os.IsNotExist(err){return removed,err}
+  removed++
+ }
+ return removed,nil
+}
+
+func databasePlaceholder(driver string,index int) string {
+ if driver=="postgres" {return fmt.Sprintf("$%d",index)}
+ return "?"
+}
+
+func (a *application) startUpstreamCleanup(adminID,trigger string) (string,error) {
+ a.upstreamJobMu.Lock()
+ defer a.upstreamJobMu.Unlock()
+ if a.upstreamJobCancel!=nil{return "",errUpstreamSyncInProgress}
+ if !a.upstreamSyncMu.TryLock(){return "",errUpstreamSyncInProgress}
+ settings,err:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
+ if err!=nil{a.upstreamSyncMu.Unlock();return "",err}
+ if !settings.Enabled{a.upstreamSyncMu.Unlock();return "",fmt.Errorf("上游来源当前未启用")}
+ settings.CatalogStale=true
+ if err:=database.SaveUpstreamSettings(context.Background(),a.db,a.driver,settings);err!=nil{a.upstreamSyncMu.Unlock();return "",err}
+ jobID:=fmt.Sprintf("upstream-cleanup-%d",time.Now().UTC().UnixNano())
+ job:=database.UpstreamSyncJob{ID:jobID,Status:"cleaning",BatchSize:settings.SyncBatchSize,DelayMS:settings.SyncBatchDelayMS,TriggerType:trigger}
+ if err:=database.CreateUpstreamSyncJob(context.Background(),a.db,a.driver,job);err!=nil{a.upstreamSyncMu.Unlock();return "",err}
+ go func(){
+  defer a.upstreamSyncMu.Unlock()
+  counts,cleanupErr:=database.ClearUpstreamCatalogRows(context.Background(),a.db,a.driver)
+  if cleanupErr==nil {
+   _,cleanupErr=a.removeUnreferencedUpstreamImages(context.Background())
+  }
+  if cleanupErr!=nil {
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,counts.Categories+counts.Products+counts.SKUs,0,0,1,1,cleanupErr.Error())
+   _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"failed")
+   log.Printf("upstream catalog cleanup failed; source remains stale and cleanup can be retried: job_id=%s error=%v",jobID,cleanupErr)
+   a.upstreamJobMu.Lock();if a.upstreamJobID==jobID{a.upstreamJobID="";a.upstreamJobCancel=nil};a.upstreamJobMu.Unlock()
+   return
+  }
+  latest,settingsErr:=database.GetUpstreamSettings(context.Background(),a.db,a.driver)
+  if settingsErr==nil {latest.Enabled=false;latest.CatalogStale=true;settingsErr=database.SaveUpstreamSettings(context.Background(),a.db,a.driver,latest)}
+  if settingsErr!=nil {
+   _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"failed")
+   log.Printf("upstream cleanup data cleared but source setting finalization failed: job_id=%s error=%v",jobID,settingsErr)
+  } else {
+   _=database.UpdateUpstreamSyncJobProgress(context.Background(),a.db,a.driver,jobID,counts.Categories+counts.Products+counts.SKUs,counts.Categories+counts.Products+counts.SKUs,0,0,0,"")
+   _=database.SetUpstreamSyncJobStatus(context.Background(),a.db,a.driver,jobID,"success")
+   database.RecordAdminAudit(context.Background(),a.db,a.driver,adminID,"upstream.catalog.disable","upstream:dujiao_next","", "",fmt.Sprintf("trigger=%s categories=%d products=%d skus=%d",trigger,counts.Categories,counts.Products,counts.SKUs))
+   go a.notifySiteEvent(context.Background(),"upstream_catalog_cleared","上游数据已清空，已恢复本地商品售卖。", "")
+  }
+  a.upstreamJobMu.Lock();if a.upstreamJobID==jobID{a.upstreamJobID="";a.upstreamJobCancel=nil};a.upstreamJobMu.Unlock()
+ }()
+ a.upstreamJobID=jobID
+ return jobID,nil
+}
+
+func (a *application) disableUpstreamCatalog(w http.ResponseWriter,r *http.Request) {
+ claims,ok:=a.authenticate(w,r);if !ok{return}
+ jobID,err:=a.startUpstreamCleanup(claims.AdminID,"manual_disable")
+ if err!=nil {if errors.Is(err,errUpstreamSyncInProgress){writeError(w,http.StatusConflict,err.Error());return};writeError(w,http.StatusBadRequest,err.Error());return}
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.catalog.disable.request","upstream:dujiao_next",clientIP(r),r.UserAgent(),"queued:"+jobID)
+ writeSuccess(w,http.StatusAccepted,map[string]any{"jobId":jobID,"status":"cleaning"})
 }
 
 func (a *application) syncUpstreamNow(w http.ResponseWriter, r *http.Request) {
