@@ -48,12 +48,11 @@ func (a *application) monitorBotHealth(ctx context.Context) {
    if bot.Status!=1{continue}
    status,ok:=statuses[bot.ID]
    problem:=""
-   if !ok {problem="worker_missing"} else if !status.Running {problem="worker_stopped"} else if status.State=="conflict" {problem="polling_conflict"} else if status.ConsecutiveErrors>=3 {problem=fmt.Sprintf("polling_errors_%d",status.ConsecutiveErrors)}
+   if !ok {problem="worker_missing"} else if !status.Running {problem="worker_stopped"} else if status.State=="conflict" {problem="polling_conflict"} else if status.ConsecutiveErrors>=3 {problem="polling_errors"}
    a.botAlertMu.Lock()
    previous:=a.botAlertState[bot.ID]
    if problem=="" {delete(a.botAlertState,bot.ID);a.botAlertMu.Unlock();continue}
    alertKey:=problem
-   if ok&&status.LastError!=""{alertKey+="|"+status.LastError}
    shouldNotify:=previous!=alertKey
    if shouldNotify {a.botAlertState[bot.ID]=alertKey}
    a.botAlertMu.Unlock()
@@ -64,6 +63,5 @@ func (a *application) monitorBotHealth(ctx context.Context) {
    }
   }
  }
- check()
  for{select{case <-ctx.Done():return;case <-ticker.C:check()}}
 }
