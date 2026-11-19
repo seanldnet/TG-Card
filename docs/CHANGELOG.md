@@ -1,10 +1,18 @@
-## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 开发中）
+## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 开发中）
 
-- 修复 Owner 回复流程的消息时间线时序：先调用 Telegram 发送，确认成功后才写入客服消息时间线并切换至待结单确认阶段。
-- Telegram 发送失败时不再写入看似已送达的客服消息；保留 `reply` 会话，Owner 可重新发送新的回复消息，并记录系统失败事件。
+- 状态：独立分支开发中；PR/CI/合并/镜像/生产验收待完成。
+- 影响模块：`cmd/server/support.go`、售后 API、售后后台交互、`docs/support-tickets.md`。
+- 修复：网页后台文本回复改为先发送 Telegram；明确发送失败时仅记录 system 失败事件，不写入 admin 客服时间线、不更新工单回复字段，返回 502 供前端保留窗口重试。Telegram 明确成功后才写入 admin 时间线并更新工单回复字段。
+- 测试：新增 Telegram 发送成功/失败回归测试，检查 timeline sender_type、工单状态和 adminReply 字段。
+- 边界：Telegram 无业务消息幂等键；网络超时/响应丢失仍存在远端送达不确定性。发送成功但本地持久化失败时返回明确错误，不声称消息未送达。
+
+## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 已合并）
+
+- 状态：已合并至 main，merge commit `af53dad378bb8d1d89385246bd7d11a308e8b7e0`。
+- 修复 Owner 回复流程：先发送 Telegram，确认成功后才写入客服时间线并切换至待结单确认阶段；发送失败只写系统失败事件并保留 reply 会话。
 - 新增 Telegram 成功/失败响应回归测试，覆盖时间线条目数与会话阶段。
-- 边界：Telegram 不提供业务消息幂等键；网络超时/响应丢失仍存在远端送达状态不确定性。若 Telegram 已确认送达但本地时间线写入失败，明确通知 Owner 并记录错误。
-- 状态：独立分支 `fix/owner-reply-delivery-state-20261120`；PR/CI/合并/发布待完成。
+- PR head Go/Admin/Security 与 main Go/Admin/Security/Docker Publish 均成功；Docker Publish Run [#44567512730](https://github.com/seanldnet/TG-Card/actions/runs/44567512730) 成功。该轮 GHCR digest 尚未独立核实，生产部署/Telegram 真机验收未确认。
+- 边界：Telegram 不提供业务消息幂等键；网络超时/响应丢失仍存在远端送达状态不确定性。
 
 ## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40 已合并）
 
@@ -24,19 +32,19 @@
 - 同步纠正 PR #38 状态：已合并并发布，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认，PR E 尚未开始。
 - 本次为验收记录修订，不代表阶段完成；文档版本号待阶段一全部完成后按强制规则递增。
 
-## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 Draft，分支 CI 通过）
+## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 已合并并发布）
 
 - PR：[PR #38](https://github.com/seanldnet/TG-Card/pull/38)，独立分支 feat/dujiao-fund-safety-pr-d，head 5dbd0269a719f91b74458f03bd67a25aeab0761b，基线 main@0b0f0514a1c5850aafec0018c95570d0bce8a39f。
-- 状态：Go CI #44370639264、Admin CI #44370639142、Security #44370639404 均成功；PR #38 仍为 Draft、尚未合并；分支 CI 通过，Docker Publish/生产部署/验收待后续。
+- 状态：PR #38 已合并至 main，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。生产部署/验收待项目所有者确认。
 - 实现：供应商采购前后余额快照和差异异常、15 分钟未完成快照巡检、退款账本完整性检查与重复退款保护、uncertain ageing/Owner 核实恢复、统一资金异常中心及处理状态。
 - 测试：go vet ./...、go test ./...、CGO_ENABLED=0 go build 全部成功；SQLite 测试覆盖供应商资金差异、退款关联异常不自动修正、重复退款仅一笔 credit、uncertain ageing 和 Owner 恢复。
 - 资金边界：不自动修改买家或供应商余额；采购失败/重试不改原始支付引用；退款单订单唯一；供应商差异只进入人工审查。PR E 真实供应商资金联调未完成。
 
-## 2026-11-19 — Dujiao-Next PR D 资金安全深化（独立分支开发中）
+## 2026-11-19 — Dujiao-Next PR D 资金安全深化（历史开发记录，已由 PR #38 合并完成）
 
-- 状态：独立分支 feat/dujiao-fund-safety-pr-d 基于 main 0b0f0514a1c5850aafec0018c95570d0bce8a39f；正在实现，PR 尚未创建，CI/镜像/生产部署/验收均未完成。
+- 历史状态：该分支开发记录已由后续 PR #38 合并与发布结果取代；当前以本文件上方“PR #38 已合并并发布”记录为准。
 - 仓库审查：PR2 只读校验覆盖买家余额流水；PR C 退款有唯一退款行与唯一钱包流水关联，但缺少完整性巡检；供应商余额快照尚未按采购逐笔与扣款金额比对；uncertain 缺少 ageing/独立人工核实；无统一资金异常中心。
-- 当前代码变更：新增迁移 0039_finance_safety.sql、供应商采购前后余额对照、退款账本一致性检查、uncertain ageing 与 Owner 核实 API、统一资金异常 API/后台页面和定时巡检。检测只生成异常与通知，不自动调整余额。
+- 实际合并内容：新增迁移 0039_finance_safety.sql、供应商采购前后余额对照、退款账本一致性检查、uncertain ageing 与 Owner 核实 API、统一资金异常 API/后台页面和定时巡检。检测只生成异常与通知，不自动调整余额。
 - 新增 SQLite 测试覆盖供应商余额差异、退款账本损坏检测、重复退款拒绝、uncertain ageing/Owner 恢复；需以 PR Actions 最终结果为准。
 - 资金红线：退款仅一条独立账本并关联唯一 wallet credit；采购重试沿用原本地订单幂等键；采购失败不改变原始支付记录；不自动修改买家或供应商余额。
 - PR E 真实供应商联调仍未完成；PR #27 C1–C4 继续待验收。
