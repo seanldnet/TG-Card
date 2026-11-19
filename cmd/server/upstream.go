@@ -87,7 +87,7 @@ func (a *application) getUpstreamSettings(w http.ResponseWriter, r *http.Request
 	if _, ok := a.authenticate(w,r); !ok { return }
 	item, err := database.GetUpstreamSettings(r.Context(),a.db,a.driver)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,ProcurementPollIntervalSeconds:30,ProcurementTimeoutMinutes:30,SupplierLowBalanceThreshold:"0",CatalogStale:true})
+		writeSuccess(w,http.StatusOK,upstreamSettingsView{Provider:string(upstream.ProviderDujiaoNext),LastTestStatus:"not_tested",SyncStatus:"not_started",SyncIntervalMinutes:15,SyncBatchSize:25,SyncBatchDelayMS:1000,ProcurementPollIntervalSeconds:30,ProcurementTimeoutMinutes:30,SupplierLowBalanceThreshold:"0",CatalogStale:true})
 		return
 	}
 	if err != nil { log.Printf("load upstream settings: %v",err);writeError(w,http.StatusInternalServerError,"读取上游配置失败");return }
