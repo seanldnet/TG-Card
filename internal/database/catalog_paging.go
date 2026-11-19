@@ -25,6 +25,7 @@ func ListVisibleProductsPage(ctx context.Context, db *sql.DB, driver string, lim
  source,err:=currentCatalogSource(ctx,db);if err!=nil{return nil,err}
  search=strings.TrimSpace(search)
  if len(search)>100 {search=search[:100]}
+ if categoryID=="all" {categoryID=""}
  pattern:="%"+strings.ToLower(search)+"%"
  q:="SELECT "+visibleProductColumns+" FROM products p LEFT JOIN product_categories c ON c.id=p.category_id WHERE COALESCE(p.source_type,'local')="+placeholder(driver,1)+" AND p.status=1 AND ("+placeholder(driver,2)+"='' OR ("+placeholder(driver,3)+"='__uncategorized__' AND COALESCE(p.category_id,'')='') OR COALESCE(p.category_id,'')="+placeholder(driver,4)+") AND ("+placeholder(driver,5)+"='' OR LOWER(p.name || ' ' || p.description) LIKE "+placeholder(driver,6)+") ORDER BY p.created_at DESC LIMIT "+placeholder(driver,7)+" OFFSET "+placeholder(driver,8)
  rows,err:=db.QueryContext(ctx,q,source,categoryID,categoryID,categoryID,search,pattern,limit,offset);if err!=nil{return nil,err};defer rows.Close()
