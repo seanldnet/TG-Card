@@ -46,7 +46,16 @@ type UpstreamProductRecord struct {
 	Active bool
 }
 
+// SyncUpstreamCatalog keeps the legacy all-at-once contract for callers that
+// have already collected a complete catalogue.
 func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string, categories []UpstreamCategoryRecord, products []UpstreamProductRecord) error {
+	return SyncUpstreamCatalogBatch(ctx, db, driver, batchID, categories, products, true)
+}
+
+// SyncUpstreamCatalogBatch commits one bounded batch. finalize must be true only
+// after every upstream page has been processed successfully; otherwise unseen
+// products/categories remain visible in the upstream catalogue.
+func SyncUpstreamCatalogBatch(ctx context.Context, db *sql.DB, driver, batchID string, categories []UpstreamCategoryRecord, products []UpstreamProductRecord, finalize bool) error {
 	if batchID == "" { return fmt.Errorf("upstream sync batch ID is required") }
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return err }
@@ -98,9 +107,11 @@ func SyncUpstreamCatalog(ctx context.Context, db *sql.DB, driver, batchID string
 			if _, err := tx.ExecContext(ctx, query, category, item.Name, item.Description, item.PriceMinor, status, item.SKUCode, item.SpecValuesJSON, item.FulfillmentType, item.ManualFormSchemaJSON, item.TagsJSON, item.Slug, item.PriceSnapshotMinor, item.Currency, item.StockQuantity, item.StockStatus, images, batchID, now, localID); err != nil { return fmt.Errorf("update upstream product %s/%s: %w", item.ProductID, item.SKUID, err) }
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE products SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream products missing from successful sync: %w", err) }
-	if _, err := tx.ExecContext(ctx, "UPDATE product_categories SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream categories missing from successful sync: %w", err) }
-	if _, err := tx.ExecContext(ctx, "UPDATE upstream_settings SET catalog_stale=0 WHERE id=1"); err != nil { return fmt.Errorf("mark upstream catalog fresh: %w", err) }
+	if finalize {
+		if _, err := tx.ExecContext(ctx, "UPDATE products SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream products missing from successful sync: %w", err) }
+		if _, err := tx.ExecContext(ctx, "UPDATE product_categories SET status=0,updated_at="+placeholder(driver,1)+" WHERE source_type='upstream' AND (upstream_sync_batch_id IS NULL OR upstream_sync_batch_id<>"+placeholder(driver,2)+")", now, batchID); err != nil { return fmt.Errorf("hide upstream categories missing from successful sync: %w", err) }
+		if _, err := tx.ExecContext(ctx, "UPDATE upstream_settings SET catalog_stale=0 WHERE id=1"); err != nil { return fmt.Errorf("mark upstream catalog fresh: %w", err) }
+	}
 	return tx.Commit()
 }
 
