@@ -282,8 +282,11 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 // DATA_DIR/uploads/upstream and preserves any path still referenced by a local row.
 func (a *application) removeUnreferencedUpstreamImages(ctx context.Context) (int,error) {
  directory:=filepath.Join(a.dataDir,"uploads","upstream")
+ info,statErr:=os.Lstat(directory)
+ if os.IsNotExist(statErr){return 0,nil};if statErr!=nil{return 0,statErr}
+ if info.Mode()&os.ModeSymlink!=0||!info.IsDir(){return 0,fmt.Errorf("upstream image directory is not a regular directory")}
  entries,err:=os.ReadDir(directory)
- if os.IsNotExist(err){return 0,nil};if err!=nil{return 0,err}
+ if err!=nil{return 0,err}
  removed:=0
  for _,entry:=range entries {
   if !entry.Type().IsRegular(){continue}
