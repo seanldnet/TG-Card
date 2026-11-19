@@ -1,3 +1,11 @@
+## 2026-11-20 — 阶段一售后媒体转发子项按项目所有者实测确认
+
+- 项目所有者明确确认：售后附件转发相关测试已亲自完成且无异常。本次将“用户提交的图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体内容”这一子项记录为**所有者实测通过**。
+- 验收边界：该确认仅覆盖附件/媒体转发本身；未提供本次测试所用生产镜像 digest、测试设备、订单/工单号或截图，因此不将其归因于 PR #38 的新镜像，也不补造这些证据。
+- 仍待验收：PR #27 C1–C4（Owner 开始回复、连续沟通、结单幂等、30 分钟超时/重启恢复/多工单隔离）；完整 Telegram 菜单与按钮；补发/退款各状态分支；跟踪防护下静态资源零外部 CDN Network 检查。
+- PR #38（PR D）已合并并成功发布 GHCR；镜像 digest 为 `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。生产部署与该 digest 的生产验收仍未得到项目所有者确认；PR E 真实商户联调未开始。
+- 本次仅更新验收事实与文档状态，不将阶段一标记为完成；不推进依赖阶段一清零的后续阶段。
+
 ## 2026-11-19 — PR2 与 Dujiao-Next PR B 生产验收更新；PR C 已合并，PR D 开发中
 
 - 状态：PR #30（PR2）已合并，Go CI、Admin CI、安全扫描和 Docker Publish 全部成功；项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收均按项目所有者本次指示于 2026-11-19 默认通过记录。Dujiao-Next PR C 已通过独立 PR #32 合并；merge commit 镜像 digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 当前重建发布 Run #44338105044 对应 latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍以项目所有者确认的 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 为准；PR D 独立分支开发中，PR E 尚未开始。
@@ -274,14 +282,14 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 4. 签到积分、用户等级、邀请推广等完整营销套件。 | P2 | 营销能力扩展阶段 |
 | 5. 完整商业授权/机器指纹授权系统。 | P2 | 独立授权产品阶段，需先确认产品范围 |
 | 6. 所有 Telegram 菜单、所有按钮流程的真实客户端端到端验收。 | P0 | 当前版本发布验收阶段 |
-| 7. 所有售后附件、补发、退款路径的完整真实 Telegram 验收。 | P0 | 当前版本售后验收阶段 |
+| 7. 售后附件转发子项已由项目所有者实测确认通过；补发、退款及其完整状态分支的真实 Telegram 验收仍待完成。 | P0（剩余路径） | 当前版本售后验收阶段 |
 | 8. 对 Telegram 网络超时导致的消息重复发送实现严格 exactly-once（Telegram API 本身不提供消息幂等键）。 | P1 | 交付可靠性专项评估阶段 |
 | 9. 所有移动端页面在真实设备上的完整回归测试。 | P1 | 当前版本移动端回归阶段 |
 | 10. 旧网站附件预览/下载方案 | 已由产品决策替代并关闭 | 改为 Bot 转发 Owner；历史附件字段和 API 保留，媒体验收转入新售后工作流清单 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | P0 | 本次 CDN 修复 PR 构建后由项目所有者验收 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | P1 | 本次布局修复 PR 构建后回归 |
 | 13. 上游发卡对接：PR A/B/C 已合并；PR C mock/CI 已通过；PR D 资金安全、PR E 真实商户联调仍未完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR C 合并后再进入 PR D；真实商户端到端验收仅在 PR E 执行 |
-| 14. 售后 Owner Bot 工作流：媒体转发、Owner 菜单、直接回复/继续沟通、结单幂等、超时与通知。 | P0 | 本专项 PR CI 通过后，由项目所有者按 `docs/support-tickets.md` 执行真实 Telegram、SMTP、串单与失败场景验收 |
+| 14. 售后 Owner Bot 工作流：媒体转发子项已由项目所有者实测确认通过；Owner 菜单、直接回复/继续沟通、结单幂等、超时与通知等 C1–C4 及失败场景仍待验收。 | P0（剩余路径） | 按 `docs/support-tickets.md` 继续完成真实 Telegram、SMTP、串单与失败场景验收 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
 
@@ -546,7 +554,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-19）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-19）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
 | [PR #37](https://github.com/seanldnet/TG-Card/pull/37) | PR C 合并状态、CI/镜像与 PR D/E 边界文档记录。 | 已合并，merge commit 0b0f0514a1c5850aafec0018c95570d0bce8a39f；Admin CI #44338591754/#44338655437 与 main Admin CI #44338618618 成功；文档-only，不触发业务镜像发布。 | 已完成文档记录；PR C 镜像/CI证据见第 19.7 节。 | 已完成。 |
-| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 独立 Draft PR；head 5dbd0269a719f91b74458f03bd67a25aeab0761b；Go CI #44370903772、Admin CI #44370904017、Security #44370903744 均成功；尚未合并，未触发发布。 | 尚未生产部署或验收；PR E 真实供应商联调仍未完成。 | CI 通过后合并；main Publish 成功后再通知项目所有者拉取测试。 |
+| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，main 对应 CI 后续通过，流程瑕疵保留记录。 | 生产部署及该 digest 的生产验收尚未确认；PR E 真实商户联调未开始。 | 先完成生产 digest 验收，再启动 PR E 独立联调。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B/C 已合并；PR B 已验收；PR D #38 Draft，Go/Admin/Security CI 通过，等待合并/发布；真实上游联调留待 PR E。 | PR C 代码已合并并完成 mock/CI 验证；PR D #38 Draft，CI 已通过但未合并/发布；未进行真实商户联调，真实商户联调仅属于 PR E。 | PR C 已合并；下一阶段按 PR D→PR E 独立推进。 |
 
 ### 19.1 PR #19 镜像发布证据
