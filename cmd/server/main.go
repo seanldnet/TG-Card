@@ -45,6 +45,9 @@ type application struct {
 	dataDir string
 	loginMu sync.Mutex
 	upstreamSyncMu sync.Mutex
+	upstreamJobMu sync.Mutex
+	upstreamJobCancel context.CancelFunc
+	upstreamJobID string
 	procurementAPI upstream.ProcurementAPI
 	procurementNotify func(context.Context,string,string)
 	dispatchProcurement func(context.Context,string) error
@@ -241,6 +244,8 @@ func main() {
 	api.HandleFunc("PUT /api/upstream/config", app.updateUpstreamSettings)
 	api.HandleFunc("POST /api/upstream/test", app.testUpstreamConnection)
 	api.HandleFunc("POST /api/upstream/sync", app.syncUpstreamNow)
+	api.HandleFunc("GET /api/upstream/sync/{id}", app.getUpstreamSyncJob)
+	api.HandleFunc("POST /api/upstream/sync/{id}/cancel", app.cancelUpstreamSyncJob)
 	api.HandleFunc("POST /api/v1/upstream/callback", app.upstreamProcurementCallback)
 	api.HandleFunc("GET /api/upstream/procurements", app.listUpstreamProcurements)
 	api.HandleFunc("POST /api/upstream/procurements/{id}/retry", app.retryUpstreamProcurement)
