@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -32,6 +33,7 @@ func CreateCartCheckout(ctx context.Context, db *sql.DB, driver, botID, telegram
 	if err:=rows.Err();err!=nil{rows.Close();return Order{},nil,err};if err:=rows.Close();err!=nil{return Order{},nil,err}
 	if len(live)==0{return Order{},nil,fmt.Errorf("购物车为空")}
 	currency,deliveryType,deliveryConfig:=live[0].Currency,live[0].deliveryType,live[0].deliveryConfig
+	if !strings.EqualFold(currency,"USDT") { return Order{},nil,fmt.Errorf("购物车统一结算目前仅支持 USDT 商品") }
 	total:=int64(0);totalQty:=0
 	for i:=range live {
 		x:=&live[i]
