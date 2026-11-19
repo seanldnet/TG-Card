@@ -392,7 +392,7 @@ func (a *application) disableUpstreamCatalog(w http.ResponseWriter,r *http.Reque
  claims,ok:=a.authenticate(w,r);if !ok{return}
  jobID,err:=a.startUpstreamCleanup(claims.AdminID,"manual_disable")
  if err!=nil {if errors.Is(err,errUpstreamSyncInProgress){writeError(w,http.StatusConflict,err.Error());return};writeError(w,http.StatusBadRequest,err.Error());return}
- database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.catalog.disable.request","upstream:dujiao_next",clientIP(r),r.UserAgent(),"queued:"+jobID)
+ database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"upstream.catalog.disable.request","upstream:dujiao_next",a.clientIP(r),r.UserAgent(),"queued:"+jobID)
  writeSuccess(w,http.StatusAccepted,map[string]any{"jobId":jobID,"status":"cleaning"})
 }
 
@@ -405,7 +405,7 @@ func (a *application) syncUpstreamNow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "无法创建上游同步任务")
 		return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "upstream.catalog.sync", "upstream:dujiao_next", clientIP(r), r.UserAgent(), "queued:"+jobID)
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "upstream.catalog.sync", "upstream:dujiao_next", a.clientIP(r), r.UserAgent(), "queued:"+jobID)
 	writeSuccess(w, http.StatusAccepted, map[string]any{"jobId":jobID,"status":"queued"})
 }
 
