@@ -7,7 +7,7 @@
 - “开始回复”现在检查工单状态更新结果；“否，继续沟通”检查会话写入结果。
 - 新增双工单旧按钮隔离、重复回调审计幂等、跨 Telegram chat 会话隔离回归测试。
 - PR head Go/Admin/Security 全部成功；Go CI [#44573219338](https://github.com/seanldnet/TG-Card/actions/runs/44573219338)、Admin CI [#44573220790](https://github.com/seanldnet/TG-Card/actions/runs/44573220790)、Security [#44573219439](https://github.com/seanldnet/TG-Card/actions/runs/44573219439)。
-- main Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 已成功；main Go CI [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin CI [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 尚在运行，digest 待发布完成后核实。
+- main Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 已成功；main Go CI [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin CI [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 全部成功；Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 成功，GHCR 多架构 latest manifest digest 为 `sha256:64cbbf218f0aff25d0eddf6e784929a134596f1ae7c85b13bec48ba89cf5d1fe`。
 - 生产部署与 Telegram C1–C4 真机验收未确认；不把 CI 结果视为生产验收。
 
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
@@ -44,9 +44,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.6
+> - 文档版本：2.2.7
 > - 源码核对基线：`main` 分支，commit `0c705ed99c76488aeafa273b019fb3262d19d398`（PR #44 Owner 会话隔离已合并）
-> - 本次文档更新：记录 PR #44 合并、迁移 0040、PR head CI 与 main Security 结果；main Go/Admin/Publish 和生产验收仍待确认
+> - 本次文档更新：补录 PR #44 main Go/Admin/Security/Docker Publish 全部成功及 GHCR latest digest；生产部署与售后 C1–C4 真机验收仍待确认
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card

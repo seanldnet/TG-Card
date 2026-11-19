@@ -5,7 +5,7 @@
 - Owner 回复会话绑定开始回复时的 Telegram chat_id，其他聊天中的消息不会被当作工单回复。
 - 新增迁移 `0040_support_owner_session_chat.sql`；清理无法安全关联 chat_id 的旧会话，Owner 重新打开工单即可。30 分钟 TTL 与重启恢复保持不变。
 - 新增双工单旧按钮隔离、重复回调审计幂等、跨聊天会话隔离测试。
-- PR head Go/Admin/Security 全部成功；main Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 成功。main Go [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 尚在运行，digest 待核实。
+- PR head Go/Admin/Security 全部成功；main Go [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 全部成功；Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 成功，GHCR 多架构 latest manifest digest `sha256:64cbbf218f0aff25d0eddf6e784929a134596f1ae7c85b13bec48ba89cf5d1fe`。
 - 生产部署与 Telegram 真机 C1–C4 验收待执行。
 
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
