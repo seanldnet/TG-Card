@@ -26,7 +26,7 @@ func (a *application) savePromotion(w http.ResponseWriter, r *http.Request) {
 	saved,err:=database.SavePromotion(r.Context(),a.db,a.driver,item)
 	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
 	action:="promotion.create";if r.Method==http.MethodPut{action="promotion.update"}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,action,"promotion:"+saved.ID,clientIP(r),r.UserAgent(),"code="+saved.Code)
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,action,"promotion:"+saved.ID,a.clientIP(r),r.UserAgent(),"code="+saved.Code)
 	status:=http.StatusCreated;if r.Method==http.MethodPut{status=http.StatusOK}
 	writeSuccess(w,status,saved)
 }
@@ -35,6 +35,6 @@ func (a *application) deletePromotion(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
 	id:=r.PathValue("id")
 	if err:=database.DeletePromotion(r.Context(),a.db,a.driver,id);err!=nil{writeError(w,http.StatusNotFound,"优惠活动不存在或已删除");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"promotion.delete","promotion:"+id,clientIP(r),r.UserAgent(),"deleted")
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"promotion.delete","promotion:"+id,a.clientIP(r),r.UserAgent(),"deleted")
 	writeSuccess(w,http.StatusOK,map[string]bool{"deleted":true})
 }
