@@ -4,7 +4,9 @@
 
 > 安全修复记录（2026-11-20）：Owner Bot 待处理工单列表必须按当前 Bot ID 过滤；此前查询未限定 bot_id，存在跨 Bot 工单暴露及错误 Bot 上下文处理风险。PR #40 已合并（merge commit `69218784601f7d75b668b8047379d931c9a87564`）；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 均成功，GHCR latest digest `sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`。生产部署与真机验收仍待确认。
 
-> Owner 回复可靠性修复（2026-11-20，PR #41 开发中）：当前发现 Owner 回复代码在 Telegram 发送前写入客服时间线，发送失败会留下误导性的客服回复记录并阻碍相同 update 重试。PR #41 将改为 Telegram 明确成功后才持久化客服消息；失败只记录系统事件并保留回复会话。Telegram 网络超时仍无法保证 exactly-once，若已送达但本地写入失败会明确通知 Owner。
+> Owner 回复可靠性修复（2026-11-20，PR #41 已合并）：Owner Bot 现在先发送 Telegram，明确成功后才持久化客服回复；发送失败仅记录 system 事件并保留 reply 会话。Telegram 超时/响应丢失仍不能保证 exactly-once。main merge commit `af53dad378bb8d1d89385246bd7d11a308e8b7e0`；main Go/Admin/Security/Publish 成功，Publish Run #44567512730；该轮 digest 未独立核实，生产验收待确认。
+
+> 网页后台客服回复可靠性修复（2026-11-20，PR #42 开发中）：审查发现网页后台的 `POST /api/support/tickets/{id}/messages` 仍先写 admin 时间线再调用 Telegram。PR #42 将采用与 Owner Bot 一致的发送顺序：Telegram 明确成功后才保存客服回复；明确失败只写 system 失败事件，工单回复字段与客服时间线不变，并返回错误让前端重试。Telegram 已确认发送但本地保存失败时会明确报错，不宣称未送达。
 
 > 验收记录（2026-11-20）：项目所有者明确确认售后附件/媒体转发测试已亲自完成且无异常，因此“用户图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体”子项记为**所有者实测通过**。本次未提供镜像 digest、设备、订单/工单号或截图，不将其绑定到某一发布镜像。此确认不覆盖 C1–C4 的 Owner 回复、继续沟通、结单幂等、超时/重启/多工单隔离，也不覆盖补发/退款全分支；这些仍保持待验收。
 
