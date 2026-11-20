@@ -1,19 +1,19 @@
-## 2026-11-21 — PostgreSQL 退款并发幂等验证（PR #65 开发中）
+## 2026-11-21 — PostgreSQL 订单退款并发幂等验证（PR #65 已合并）
 
-- 新增 PostgreSQL 16 集成测试：多个 worker 同时对同一笔已付款订单执行钱包退款，必须且仅有一次成功；钱包余额与退款账本只能增加一笔，订单最终状态为 refunded，后续重复退款必须被拒绝。
-- 测试覆盖 `RefundOrderToWallet` 的事务隔离与 PostgreSQL 行锁路径；不修改退款业务逻辑、数据库迁移或生产配置。
-- 测试通过现有 Go CI 临时 PostgreSQL 16 服务运行；本地未配置 `TEST_POSTGRES_DSN` 时自动跳过。
-- PR #64 已合并（merge commit `1d88c5499d5ca87352391e051fd272cf2772f068`）；其 PR head Go/Admin/Security 全部成功。
-- PR #64 合并后的 main Go CI #44782049335、Admin CI #44782049138、Security #44782049101、Docker Publish #44782049176 已触发；最终结果及新镜像 digest 待补录。
-- PR #62 的上一版镜像发布成功，digest `sha256:282f6018e2d4d229e9fbf2e14755a9c946d1b947460981fa552cb817e654a302`。生产服务器是否已部署仍需项目所有者确认。
+- PR #65 已 Squash Merge 至 main，merge commit `7e2d1f843bbe77bad92252d61b77b6716393dd2f`。
+- 新增 PostgreSQL 16 集成测试：多个 worker 并发对同一笔已付款订单执行钱包退款，必须且仅有一次成功；钱包余额仅增加一笔，退款账本仅写入一条记录，订单最终状态为 `refunded`，后续重复退款被拒绝。
+- PR head Go CI（含 PostgreSQL 并发退款测试）、Admin CI、Security 全部成功；仅增加测试与文档，不改变退款业务逻辑、数据库迁移或生产配置。
+- PR #65 合并后的 main Go CI #44783008576、Admin CI #44783008481、Security #44783008445、Docker Publish #44783008524 已触发；截至本次文档更新，Admin/Security 成功，Go/Publish 仍在运行。
+- 生产部署及真实退款操作验收仍需项目所有者确认。
 
-## 2026-11-21 — PostgreSQL 订单交付租约并发验证（PR #64 已合并）
+## 2026-11-21 — PostgreSQL 订单交付租约并发验证（PR #64 已合并并发布）
 
 - PR #64 已 Squash Merge 至 main，merge commit `1d88c5499d5ca87352391e051fd272cf2772f068`。
-- 新增 PostgreSQL 16 集成测试，验证同一已付款订单的多个 worker 并发争抢即时交付租约时只能有一个 worker 获胜；批量 worker 并发领取时必须领取不同订单。
+- PostgreSQL 16 集成测试验证同一已付款订单的多个 worker 并发争抢即时交付租约时只能有一个 worker 获胜；批量 worker 并发领取时必须领取不同订单。
 - PR head Go CI（含 PostgreSQL 测试）、Admin CI、Security 全部成功；该 PR 只增加测试，不修改订单状态机、租约算法、数据库迁移或生产配置。
-- 合并后 main Go CI #44782049335、Admin CI #44782049138、Security #44782049101、Docker Publish #44782049176 正在运行；镜像 digest 待发布完成后补录。
-- 生产部署及 Telegram 真机交付仍需项目所有者确认。
+- 合并后 main Go CI #44782049335、Admin CI #44782049138、Security #44782049101、Docker Publish #44782049176 全部成功。
+- GHCR 多架构镜像标签 `latest` 与提交标签 `1d88c5499d5ca87352391e051fd272cf2772f068` 已发布；manifest digest `sha256:a6378128ff6c184dce3c22337df9b4c061f76547fd1d66974f13799d2496570e`。
+- 生产服务器是否已部署该 digest、Telegram 真机交付仍需项目所有者确认。
 
 ## 2026-11-20 — PostgreSQL 购物车并发验收补强（PR #62 已合并）
 
@@ -35,7 +35,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.22
+> - 文档版本：2.2.23
 > - 源码核对基线：main 分支，commit `59337349d36937a467e673e427f571ec276c17ce`
 > - 本次文档更新：记录 PR #61 合并与 GHCR digest，并跟踪 PR #62 PostgreSQL 并发测试
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
@@ -120,7 +120,7 @@
 > - 最后更新时间：2026-11-20
 > - 文档版本：2.2.19
 > - 源码核对基线：`main` 分支，commit `d988c6a554392af86ea03b9ba60297e1debab011`（PR #62 PostgreSQL 并发测试已合并）
-> - 本次文档更新：记录 PR #64 合并与主分支 CI 跟踪，并新增 PR #65 PostgreSQL 退款并发幂等测试
+> - 本次文档更新：记录 PR #64 镜像 digest、PR #65 合并与主分支 CI 状态
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
