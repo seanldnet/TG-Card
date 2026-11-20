@@ -51,7 +51,15 @@ func BeginOrderDeliveryStep(ctx context.Context, db *sql.DB, driver, orderID, st
 	selectSQL:="SELECT id,order_id,step_key,step_order,status,attempts,telegram_message_id,last_error,started_at,completed_at,created_at,updated_at FROM order_delivery_steps WHERE order_id="+placeholder(driver,1)+" AND step_key="+placeholder(driver,2)
 	if err=tx.QueryRowContext(ctx,selectSQL,orderID,stepKey).Scan(&item.ID,&item.OrderID,&item.StepKey,&item.StepOrder,&item.Status,&item.Attempts,&item.TelegramMessageID,&item.LastError,&item.StartedAt,&item.CompletedAt,&item.CreatedAt,&item.UpdatedAt);err!=nil{return item,err}
 	if item.Status=="succeeded" { return item,tx.Commit() }
-	if item.Status=="uncertain" || item.Status=="sending" { return item,ErrOrderDeliveryStepUncertain }
+	if item.Status=="sending" {
+		interrupted:="previous delivery process stopped before recording the Telegram result; manual verification required"
+		updateInterrupted:="UPDATE order_delivery_steps SET status='uncertain',last_error="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE order_id="+placeholder(driver,3)+" AND step_key="+placeholder(driver,4)+" AND status='sending'"
+		if _,err:=tx.ExecContext(ctx,updateInterrupted,interrupted,now,orderID,stepKey);err!=nil{return item,err}
+		item.Status="uncertain";item.LastError=interrupted;item.UpdatedAt=now
+		if err:=tx.Commit();err!=nil{return item,err}
+		return item,ErrOrderDeliveryStepUncertain
+	}
+	if item.Status=="uncertain" { return item,ErrOrderDeliveryStepUncertain }
 	update:="UPDATE order_delivery_steps SET status='sending',attempts=attempts+1,last_error='',started_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE order_id="+placeholder(driver,3)+" AND step_key="+placeholder(driver,4)+" AND status IN ('pending','failed')"
 	result,err:=tx.ExecContext(ctx,update,now,now,orderID,stepKey);if err!=nil{return item,err}
 	affected,err:=result.RowsAffected();if err!=nil{return item,err};if affected!=1{return item,ErrOrderDeliveryStepUncertain}
