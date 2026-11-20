@@ -1154,6 +1154,9 @@ func (a *application) resolveOrderDeliveryStep(w http.ResponseWriter, r *http.Re
 	if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"订单不存在"); return }
 	if err!=nil { writeError(w,http.StatusInternalServerError,"读取订单失败"); return }
 	if order.DeliveryType!="file_card" || order.Status!="delivery_uncertain" { writeError(w,http.StatusConflict,"仅支持处理发货结果待核实的文件+卡密订单"); return }
+	leaseActive,leaseErr:=database.OrderDeliveryLeaseActive(r.Context(),a.db,a.driver,orderID)
+	if leaseErr!=nil { writeError(w,http.StatusInternalServerError,"检查发货任务状态失败"); return }
+	if leaseActive { writeError(w,http.StatusConflict,"发货任务仍在执行，请等待当前发送请求结束后再核实步骤"); return }
 	var input resolveOrderDeliveryStepRequest
 	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<16)).Decode(&input);err!=nil { writeError(w,http.StatusBadRequest,"处理参数无效"); return }
 	input.Status=strings.TrimSpace(input.Status)
