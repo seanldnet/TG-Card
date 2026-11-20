@@ -3,14 +3,14 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 
-interface FinanceException {id:string;sourceKey:string;category:string;severity:string;entityType:string;entityId:string;title:string;detail:string;status:string;resolutionNote:string;resolvedBy:string;createdAt:string;updatedAt:string;resolvedAt:string}
+interface FinanceException {id:string;sourceKey:string;category:string;severity:string;entityType:string;entityId:string;title:string;detail:string;status:string;resolutionNote:string;resolvedBy:string;createdAt:string;updatedAt:string;resolvedAt:string;occurrenceCount:number;lastSeenAt:string}
 interface UncertainOrder {localOrderId:string;localOrderNo:string;externalOrderId:string;externalOrderNo:string;status:string;lastError:string;createdAt:string;ageingSeconds:number;waitSeconds:number}
 interface FundCheck {localOrderId:string;localOrderNo:string;externalOrderId:string;currency:string;balanceBefore:string;balanceAfter:string;expectedDebit:string;observedDebit:string;difference:string;status:string;detail:string;checkedAt:string}
 const exceptions=ref<FinanceException[]>([]),uncertain=ref<UncertainOrder[]>([]),fundChecks=ref<FundCheck[]>([]);
-const openCount=ref(0),loading=ref(false),checking=ref(false),statusFilter=ref('open');
+const openCount=ref(0),loading=ref(false),checking=ref(false),statusFilter=ref('open'),categoryFilter=ref(''),fromDate=ref(''),toDate=ref('');
 const selected=ref<FinanceException|null>(null),note=ref(''),actionStatus=ref('resolved'),saving=ref(false),modalOpen=ref(false);
 const uncertainSelected=ref<UncertainOrder|null>(null),resolution=ref('accepted'),externalOrderId=ref(''),externalOrderNo=ref(''),resolutionNote=ref(''),resolutionOpen=ref(false),resolving=ref(false);
-const categoryLabel=(v:string)=>({procurement_failed:'采购失败',procurement_uncertain:'采购受理不确定',supplier_balance:'上下游余额差异',refund_ledger:'退款账本异常'} as Record<string,string>)[v]||v;
+const categoryLabel=(v:string)=>({delivery_uncertain:'交付结果不确定',refund_conflict:'退款冲突',upstream_procurement_failed:'上游采购失败',procurement_failed:'采购失败',procurement_uncertain:'采购受理不确定',upstream_sync_failed:'上游同步失败',cap_verification_failed:'Cap 人机验证失败',supplier_balance:'上下游余额差异',refund_ledger:'退款账本异常'} as Record<string,string>)[v]||v;
 const severityColor=(v:string)=>v==='critical'?'red':v==='error'?'orange':'gold';
 const statusLabel=(v:string)=>({open:'待处理',processing:'处理中',resolved:'已解决',ignored:'已忽略'} as Record<string,string>)[v]||v;
 const ageing=(n:number)=>{const h=Math.floor(n/3600),d=Math.floor(h/24);return d>0?d+'天'+Math.floor((h%24))+'小时':h>0?h+'小时'+Math.floor((n%3600)/60)+'分钟':Math.floor(n/60)+'分钟';};
@@ -19,8 +19,8 @@ async function load(){
  loading.value=true;
  try{
   const [list,count,unc,funds]=await Promise.all([
-   requestClient.get<FinanceException[]>('/finance/exceptions',{params:{status:statusFilter.value,limit:200}}),
-   requestClient.get<{openCount:number}>('/finance/exceptions/count'),
+   requestClient.get<FinanceException[]>('/system/exceptions',{params:{status:statusFilter.value,category:categoryFilter.value,from:fromDate.value,to:toDate.value,limit:200}}),
+   requestClient.get<{openCount:number}>('/system/exceptions/count'),
    requestClient.get<UncertainOrder[]>('/upstream/procurements/uncertain',{params:{limit:200}}),
    requestClient.get<FundCheck[]>('/upstream/fund-checks',{params:{limit:200}}),
   ]);
@@ -29,11 +29,12 @@ async function load(){
  finally{loading.value=false;}
 }
 function openException(item:FinanceException,status='resolved'){selected.value=item;note.value='';actionStatus.value=status;modalOpen.value=true;}
+function resetFilters(){statusFilter.value='open';categoryFilter.value='';fromDate.value='';toDate.value='';load();}
 async function saveException(){
  if(!selected.value)return;
  if(actionStatus.value==='resolved'&&!note.value.trim()){message.warning('请填写核实结论');return;}
  saving.value=true;
- try{await requestClient.put('/finance/exceptions/'+selected.value.id,{status:actionStatus.value,note:note.value.trim()});message.success('异常处理状态已更新');modalOpen.value=false;await load();}
+ try{await requestClient.put('/system/exceptions/'+selected.value.id,{status:actionStatus.value,note:note.value.trim()});message.success('异常处理状态已更新');modalOpen.value=false;await load();}
  catch(error:any){message.error(error?.response?.data?.message||'更新异常状态失败');}
  finally{saving.value=false;}
 }
@@ -59,7 +60,7 @@ onMounted(load);
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
-   <div><h1 class="m-0 text-xl font-semibold">资金异常中心</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一查看采购失败、悬空订单、供应商余额差异和退款账本异常。所有检查只读，不会自动修改余额或流水。</p></div>
+   <div><h1 class="m-0 text-xl font-semibold">全局异常中心</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一汇总交付不确定、退款冲突、上游采购/同步、Cap 验证和资金核对异常；处理结果写入管理员审计日志。</p></div>
    <div class="flex items-center gap-2"><a-badge :count="openBadge" :overflow-count="999"><a-tag color="error">待处理异常</a-tag></a-badge><a-button :loading="checking" @click="runRefundCheck">执行退款账本检查</a-button><a-button :loading="loading" @click="load">刷新</a-button></div>
   </div>
   <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -68,19 +69,21 @@ onMounted(load);
    <a-card :bordered="false"><div class="text-xs text-gray-500">供应商资金差异</div><div class="mt-2 text-2xl font-semibold">{{fundChecks.filter(x=>x.status==='mismatch').length}}</div></a-card>
    <a-card :bordered="false"><div class="text-xs text-gray-500">退款账本异常</div><div class="mt-2 text-2xl font-semibold">{{exceptions.filter(x=>x.category==='refund_ledger').length}}</div></a-card>
   </div>
-  <a-card :bordered="false" title="统一异常列表" :loading="loading">
-   <template #extra><a-select v-model:value="statusFilter" class="w-32" @change="load"><a-select-option value="open">待处理</a-select-option><a-select-option value="processing">处理中</a-select-option><a-select-option value="resolved">已解决</a-select-option><a-select-option value="ignored">已忽略</a-select-option></a-select></template>
-   <a-table :data-source="exceptions" row-key="id" :pagination="{pageSize:10}" :scroll="{x:1100}">
+  <a-card :bordered="false" title="全局异常列表" :loading="loading">
+   <template #extra><div class="flex flex-wrap items-center gap-2"><a-select v-model:value="statusFilter" class="w-28" @change="load"><a-select-option value="open">待处理</a-select-option><a-select-option value="processing">处理中</a-select-option><a-select-option value="resolved">已解决</a-select-option><a-select-option value="ignored">已忽略</a-select-option></a-select><a-select v-model:value="categoryFilter" class="w-44" allow-clear placeholder="全部异常类型"><a-select-option value="delivery_uncertain">交付结果不确定</a-select-option><a-select-option value="refund_conflict">退款冲突</a-select-option><a-select-option value="procurement_failed">上游采购失败</a-select-option><a-select-option value="procurement_uncertain">上游采购不确定</a-select-option><a-select-option value="upstream_sync_failed">上游同步失败</a-select-option><a-select-option value="cap_verification_failed">Cap 验证失败</a-select-option><a-select-option value="supplier_balance">供应商余额差异</a-select-option><a-select-option value="refund_ledger">退款账本异常</a-select-option></a-select><a-date-picker v-model:value="fromDate" value-format="YYYY-MM-DD" placeholder="开始日期"/><a-date-picker v-model:value="toDate" value-format="YYYY-MM-DD" placeholder="结束日期"/><a-button type="primary" @click="load">筛选</a-button><a-button @click="resetFilters">重置</a-button></div></template>
+   <a-table :data-source="exceptions" row-key="id" :pagination="{pageSize:10}" :scroll="{x:1320}">
     <a-table-column title="级别" key="severity" :width="90"><template #default="{record}"><a-tag :color="severityColor(record.severity)">{{record.severity}}</a-tag></template></a-table-column>
     <a-table-column title="分类" key="category" :width="140"><template #default="{record}">{{categoryLabel(record.category)}}</template></a-table-column>
     <a-table-column title="异常事项" data-index="title" :width="220"/>
     <a-table-column title="关联对象" key="entity" :width="180"><template #default="{record}">{{record.entityType}} · {{record.entityId}}</template></a-table-column>
     <a-table-column title="详情" data-index="detail" :ellipsis="true" :width="320"/>
     <a-table-column title="状态" key="status" :width="110"><template #default="{record}"><a-tag>{{statusLabel(record.status)}}</a-tag></template></a-table-column>
-    <a-table-column title="发现时间" data-index="createdAt" :width="190"/>
+    <a-table-column title="出现次数" data-index="occurrenceCount" :width="90"/>
+    <a-table-column title="首次发现" data-index="createdAt" :width="190"/>
+    <a-table-column title="最近出现" data-index="lastSeenAt" :width="190"/>
     <a-table-column title="处理" key="actions" :fixed="'right'" :width="170"><template #default="{record}"><div class="flex gap-1"><a-button size="small" @click="openException(record,'processing')">处理中</a-button><a-button size="small" type="primary" @click="openException(record,'resolved')">完成</a-button></div></template></a-table-column>
    </a-table>
-   <a-empty v-if="!loading&&!exceptions.length" description="当前筛选下没有异常"/>
+   <a-empty v-if="!loading&&!exceptions.length" description="当前筛选条件下没有异常"/>
   </a-card>
   <a-card :bordered="false" title="悬空订单（uncertain）" :loading="loading">
    <a-alert class="mb-3" type="warning" show-icon message="悬空订单表示采购请求已发出但无法确认供应商是否受理。必须先在供应商后台按本地订单号核实；确认已受理后录入上游订单 ID 恢复查单，确认未受理后才可使用原幂等号重试或退款。"/>
