@@ -1,10 +1,18 @@
-## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81，开发中）
+## 2026-11-21 — Cap 登录验证框布局与中文文案修复（PR #82，开发中）
 
-- 状态：PR #81 开发中，未合并；本次仅修正前端 Widget 加载与配置说明，CI 和真实 Cap 浏览器联调待验证。
-- 基线：PR #81 基于 main@7c4e8cf61630c297ea1115add229ef729740a573；不修改后端 `/siteverify`、数据库迁移或 Secret Key 加密逻辑。
-- 修复：登录页默认加载固定版本 `cap-widget@0.1.63` 的 jsDelivr CDN，不再先请求 Cap 服务 `/assets/widget.js`，不再依赖「Widget files」开关；等待自定义元素注册，加载失败/超时 fail-closed；配置尚未加载完成时阻止提前提交登录。
-- 管理后台与专项文档同步说明：浏览器访问 jsDelivr 与 Cap 站点挑战接口；TG-Card 后端访问 Cap `/{site-key}/siteverify`；Secret Key 仅在服务端使用。
-- 验证状态：尚未运行本次修复后的 Admin CI；PR head 旧检查成功记录不作为本次代码验证。真实 Cap 服务端到端验收待完成。
+- 状态：独立分支开发中，尚未合并；等待 PR CI。真实 Cap 挑战与管理员登录 E2E 仍需项目所有者部署验收。
+- 基线：`main@791f3d43a623fdb3e59ba378626890083bf5aebd`（PR #81 已合并）。
+- 登录页：Cap 验证字段作为密码字段后的表单项渲染，宽度跟随表单全宽；Widget 初始文案、验证中、成功、失败及无障碍提示均显式设置为中文，初始提示为“点击进行安全验证”。
+- 网站设置：删除 Cap 设置页中两条重复的说明 Alert，不改动 Cap 开关、域名、Site Key、Secret Key 加密保存及后端校验逻辑。
+- 验证：待 Admin CI、Go CI、安全扫描及 Docker Publish；不把 CI 结果视为真实 Cap E2E 通过。
+- 数据库迁移：无；API、后端 Token 校验及 Secret Key 存储逻辑不变。
+
+## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81 已合并）
+
+- 状态：PR #81 已 Squash Merge 至 main，merge commit `791f3d43a623fdb3e59ba378626890083bf5aebd`。
+- 登录页默认加载固定版本 `cap-widget@0.1.63` 的 jsDelivr CDN，不再依赖 Cap 服务的 `/assets/widget.js` 或「Widget files」开关；保留后端 `/{site-key}/siteverify` 一次性 Token 校验与 fail-closed 行为。
+- 合并后 Admin Frontend CI（run `44833799359`）与 Docker Build and Publish（run `44833799370`）均成功。Docker job 的 Build and push 步骤成功；本记录不填写未经核验的 manifest digest。
+- 真实 Cap 服务端到端验收待项目所有者执行。
 
 ## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并并发布，文档版本 2.2.35）
 
@@ -201,9 +209,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.36
-> - 源码核对基线：`main@7c4e8cf61630c297ea1115add229ef729740a573`；PR #81 Cap Widget CDN 兼容修复开发中
-> - 本次文档更新：记录 PR #81 Cap Widget CDN 加载兼容修复；按第 12 节同步专项文档与变更日志
+> - 文档版本：2.2.37
+> - 源码核对基线：`main@791f3d43a623fdb3e59ba378626890083bf5aebd`；PR #81 已合并，PR #82 Cap 登录验证框布局修复开发中
+> - 本次文档更新：记录 PR #81 合并与 PR #82 Cap 登录验证框布局修复；按第 12 节同步专项文档与变更日志
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card

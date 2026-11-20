@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
 
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, markRaw, onMounted, ref } from 'vue';
 
 import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
@@ -9,6 +9,7 @@ import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
 
 import { useAuthStore } from '#/store';
+import CapWidgetField from './cap-widget-field.vue';
 
 defineOptions({ name: 'Login' });
 const authStore = useAuthStore();
@@ -17,8 +18,9 @@ const capDomain = ref('');
 const capSiteKey = ref('');
 const capToken = ref('');
 const capError = ref('');
-const capWidgetContainer = ref<HTMLElement>();
 const capConfigLoaded = ref(false);
+const capWidgetReady = ref(false);
+const capWidgetNonce = ref(0);
 const CAP_WIDGET_VERSION = '0.1.63';
 let capScriptPromise: Promise<void> | undefined;
 
@@ -80,23 +82,6 @@ async function loadCapWidgetScript() {
   return capScriptPromise;
 }
 
-function mountCapWidget() {
-  if (!capEnabled.value || !capWidgetContainer.value) return;
-  const widget = document.createElement('cap-widget') as HTMLElement & { reset?: () => void };
-  widget.setAttribute('data-cap-api-endpoint', new URL(capDomain.value).origin + '/' + encodeURIComponent(capSiteKey.value) + '/');
-  widget.setAttribute('data-cap-lang', 'zh');
-  widget.addEventListener('solve', (event) => {
-    capToken.value = (event as CustomEvent<{ token: string }>).detail?.token || '';
-    capError.value = '';
-  });
-  widget.addEventListener('error', (event) => {
-    capToken.value = '';
-    const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail;
-    capError.value = detail?.message ? `人机验证失败（${detail.code || 'unknown'}）：${detail.message}` : '人机验证加载失败，请刷新页面重试';
-  });
-  capWidgetContainer.value.replaceChildren(widget);
-}
-
 async function loadCapConfig() {
   try {
     const config = await requestClient.get<{ enabled: boolean; domain: string; siteKey: string }>('/auth/cap-config');
@@ -106,8 +91,7 @@ async function loadCapConfig() {
     if (capEnabled.value) {
       if (!capDomain.value || !capSiteKey.value) throw new Error('Cap configuration is incomplete');
       await loadCapWidgetScript();
-      await nextTick();
-      mountCapWidget();
+      capWidgetReady.value = true;
     }
   } catch (error) {
     // Fail closed: the backend may still require a token even when the
@@ -134,8 +118,7 @@ async function handleLogin(data: Record<string, any>) {
   } finally {
     if (capEnabled.value) {
       capToken.value = '';
-      capWidgetContainer.value?.replaceChildren();
-      mountCapWidget();
+      capWidgetNonce.value += 1;
     }
   }
 }
@@ -157,23 +140,40 @@ const formSchema = computed((): VbenFormSchema[] => [
     label: $t('authentication.password'),
     rules: z.string().min(1, { message: $t('authentication.passwordTip') }),
   },
+  ...(capEnabled.value
+    ? [{
+        component: markRaw(CapWidgetField),
+        componentProps: {
+          apiEndpoint: `${capDomain.value.replace(/\/+$/, '')}/${encodeURIComponent(capSiteKey.value)}/`,
+          error: capError.value,
+          nonce: capWidgetNonce.value,
+          ready: capWidgetReady.value,
+          onTokenChange: (token: string) => {
+            capToken.value = token;
+            if (token) capError.value = '';
+          },
+          onWidgetError: (error: string) => {
+            capToken.value = '';
+            capError.value = error;
+          },
+        },
+        fieldName: 'capVerification',
+        label: '安全验证',
+        rules: z.boolean().optional().default(false),
+      }]
+    : []),
 ]);
 </script>
 
 <template>
   <div class="w-full">
-  <AuthenticationLogin
-    :form-schema="formSchema"
-    :loading="authStore.loginLoading"
-    :show-code-login="false"
-    :show-qrcode-login="false"
-    :show-third-party-login="false"
-    @submit="handleLogin"
-  />
-  <div v-if="capEnabled" class="mx-auto mt-4 flex w-full max-w-sm flex-col items-center gap-2">
-    <div ref="capWidgetContainer" class="min-h-10" />
-    <p v-if="capError" class="text-xs text-red-500">{{ capError }}</p>
-  </div>
-  <p v-else-if="capError" class="mx-auto mt-3 max-w-sm text-center text-xs text-amber-600">{{ capError }}</p>
+    <AuthenticationLogin
+      :form-schema="formSchema"
+      :loading="authStore.loginLoading"
+      :show-code-login="false"
+      :show-qrcode-login="false"
+      :show-third-party-login="false"
+      @submit="handleLogin"
+    />
   </div>
 </template>
