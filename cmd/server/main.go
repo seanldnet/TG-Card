@@ -688,13 +688,11 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 		},
 		{
 			"name": "FinanceExceptions", "path": "/finance-exceptions", "component": "/finance-exceptions/index",
+			"meta": map[string]any{"icon": "lucide:shield-alert", "order": 5, "title": "资金异常中心"},
 		},
 		{
 			"name": "SystemExceptions", "path": "/system-exceptions", "component": "/system-exceptions/index",
-			"meta": map[string]any{"icon": "lucide:triangle-alert", "order": 5, "title": "全局异常中心"},
-		{
-
-			"meta": map[string]any{"icon": "lucide:shield-alert", "order": 5, "title": "资金异常中心"},
+			"meta": map[string]any{"icon": "lucide:triangle-alert", "order": 6, "title": "全局异常中心"},
 		},
 		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
