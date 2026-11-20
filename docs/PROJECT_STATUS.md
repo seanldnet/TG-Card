@@ -11,7 +11,7 @@
 - PR #70 已 Squash Merge 至 main，merge commit `d7cf00e783c3e97b2ecee77d329488e3091a220c`。
 - Telegram `createChatInviteLink` 可能已创建有效链接但响应丢失或本地持久化失败；API 与 Manager 双重阻止 `delivery_uncertain` 的 `invite_link` 重试，管理员列表隐藏重试并显示“需人工核实”，API 拒绝操作写审计。
 - PR head Go CI、Admin CI、Security 通过；合并后 main Go CI #44804736581、Admin CI #44804736573、Security #44804736340、Docker Publish #44804736390 全部成功。
-- GHCR 多架构镜像已发布，manifest digest 待从本次 Docker Publish 作业核实；生产部署与 Telegram 真机验收仍需项目所有者确认。
+- GHCR 多架构镜像已发布，manifest digest：`sha256:1c2a7df3ace81cd4af6162ff2501892922508df611ad9e7699f2acf9318b059a`；生产部署与 Telegram 真机验收仍需项目所有者确认。
 
 ## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 已合并并发布）
 
