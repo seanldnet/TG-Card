@@ -61,9 +61,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.26
-> - 源码核对基线：main 分支，commit `1da40c6ced6bad1d9ca4435ad23d90af3653e6f4`；PR #69 分支 `fix/order-delivery-uncertain-outcomes-pr-69`
-> - 本次文档更新：记录 PR #69 Telegram 交付不确定结果隔离的实现范围与验收边界
+> - 文档版本：2.2.27
+> - 源码核对基线：main 分支，commit `1325e52443c0f06d52d21205c2e29af5fca39b70`；本轮 PR #70 基于该提交开发
+> - 本次文档更新：校准 PR #69 合并状态，并记录 PR #70 一次性邀请链接不确定结果保护
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
