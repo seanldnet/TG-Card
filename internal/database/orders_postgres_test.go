@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"tg-card/internal/config"
+	"github.com/seanldnet/TG-Card/internal/config"
 )
 
 func TestPostgresOrderDeliveryLeaseConcurrency(t *testing.T) {
