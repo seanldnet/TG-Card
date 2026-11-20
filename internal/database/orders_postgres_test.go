@@ -149,3 +149,54 @@ func TestPostgresOrderDeliveryLeaseConcurrency(t *testing.T) {
 		}
 	})
 }
+
+
+func TestPostgresFailedOrderDeliveryBackoffAndManualRetry(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" { t.Skip("TEST_POSTGRES_DSN is not configured") }
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	db, err := Open(ctx, config.Config{DBDriver: "postgres", DatabaseDSN: dsn})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "postgres"); err != nil { t.Fatal(err) }
+
+	suffix, err := randomID()
+	if err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, "postgres", Product{
+		Name: "Postgres delivery retry backoff " + suffix,
+		PriceMinor: 500,
+		Currency: "USDT",
+		DeliveryType: "fixed_text",
+		Status: 1,
+	})
+	if err != nil { t.Fatal(err) }
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM products WHERE id=$1", product.ID) }()
+
+	order, err := CreateOrder(ctx, db, "postgres", "pg-backoff-bot-"+suffix, "pg-backoff-user-"+suffix, "pg-backoff-chat-"+suffix, product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM orders WHERE id=$1", order.ID) }()
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='paid' WHERE id=$1", order.ID); err != nil { t.Fatal(err) }
+
+	claimed, err := ClaimOrderDelivery(ctx, db, "postgres", order.ID, time.Minute)
+	if err != nil || !claimed { t.Fatalf("initial delivery lease: claimed=%v err=%v", claimed, err) }
+	if err := MarkOrderDeliveryFailed(ctx, db, "postgres", order.ID, "temporary Telegram failure"); err != nil { t.Fatal(err) }
+
+	ids, err := ClaimOrderDeliveries(ctx, db, "postgres", 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(ids) != 0 { t.Fatalf("first automatic retry must wait 15 seconds, got %v", ids) }
+
+	claimed, err = ClaimOrderDelivery(ctx, db, "postgres", order.ID, time.Minute)
+	if err != nil || !claimed { t.Fatalf("manual retry must bypass backoff: claimed=%v err=%v", claimed, err) }
+	if err := MarkOrderDeliveryFailed(ctx, db, "postgres", order.ID, "second temporary Telegram failure"); err != nil { t.Fatal(err) }
+
+	ids, err = ClaimOrderDeliveries(ctx, db, "postgres", 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(ids) != 0 { t.Fatalf("second automatic retry must wait 30 seconds, got %v", ids) }
+
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET updated_at=$1 WHERE id=$2", time.Now().UTC().Add(-31*time.Second).Format(time.RFC3339Nano), order.ID); err != nil { t.Fatal(err) }
+	ids, err = ClaimOrderDeliveries(ctx, db, "postgres", 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(ids) != 1 || ids[0] != order.ID { t.Fatalf("second retry should become eligible after 30 seconds, got %v", ids) }
+}
