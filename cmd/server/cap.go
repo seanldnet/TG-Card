@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"database/sql"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -65,8 +66,12 @@ func capVerificationURL(domain, siteKey string) (string, error) {
 		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return "", fmt.Errorf("Cap domain must be an HTTPS origin without a path")
 	}
-	if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1" {
+	hostname := strings.Trim(parsed.Hostname(), "[]")
+	if strings.EqualFold(hostname, "localhost") {
 		return "", fmt.Errorf("Cap domain cannot target localhost")
+	}
+	if ip := net.ParseIP(hostname); ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || !ip.IsGlobalUnicast()) {
+		return "", fmt.Errorf("Cap domain cannot target a private or local IP address")
 	}
 	if strings.TrimSpace(siteKey) == "" || strings.Contains(siteKey, "/") {
 		return "", fmt.Errorf("Cap site key is invalid")
