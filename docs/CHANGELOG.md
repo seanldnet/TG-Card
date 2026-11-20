@@ -1,3 +1,12 @@
+## 2026-11-21 — PostgreSQL 订单交付租约并发测试（PR #64 开发中）
+
+- 新增 `internal/database/orders_postgres_test.go`，使用 Go CI 临时 PostgreSQL 16 服务验证同一订单的并发即时交付租约只能有一个 worker 获胜。
+- 增加批量领取并发测试，两个 worker 各领取一笔不同订单，不允许重复领取同一订单。
+- 本 PR 仅增加自动化集成测试，不改变业务逻辑、数据库迁移、订单状态机或生产环境变量。
+- PR #62 已合并并发布镜像，manifest digest：`sha256:282f6018e2d4d229e9fbf2e14755a9c946d1b947460981fa552cb817e654a302`；Docker Publish #44641444376 成功。
+- PR #63 文档校准已合并，merge commit `8180b4bb9d7f32954ca74250f5d8a4b8611cb52b`。
+- 本批次待 PR head Go/Admin/Security CI 验证；真实 Telegram 交付仍需项目所有者实测。
+
 ## 2026-11-20 — PR #61 购物车统一结算合并并发布
 
 - PR #61 已 Squash Merge 至 main，merge commit 59337349d36937a467e673e427f571ec276c17ce；旧 PR #59 已关闭并由该 PR 替代。
