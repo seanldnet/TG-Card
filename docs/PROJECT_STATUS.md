@@ -2,8 +2,8 @@
 
 - 审查基线：main@1da40c6ced6bad1d9ca4435ad23d90af3653e6f4（PR #68 文档校准已合并）。
 - 发现风险：Telegram sendMessage/sendDocument 等请求发生网络错误或响应丢失时，远端可能已接收消息；原流程将其作为普通 delivery_failed 并由后台自动重试，可能重复发送卡密/文件/上游交付内容。
-- 本 PR 将已尝试 Telegram 副作用后发生的交付错误标记为 `delivery_uncertain`，记录独立 `order_delivery_events` 事件；后台批量自动领取明确排除此状态。
-- 管理员订单页展示“发货结果待核实”，必须二次确认后才允许走现有单笔租约入口手动重试；手动领取后才恢复为 delivering。尚未发起外部发送的本地校验/解密错误仍走普通 `delivery_failed` 与指数退避。
+- 首次 Telegram 外部副作用发出前，先持久化 `delivery_uncertain` 与 `order_delivery_events` 事件；若进程在发送前/发送中/发送后、订单完成状态落库前崩溃，后台均不会自动重发。Telegram 明确返回错误或响应丢失时更新异常原因。成功后允许从该状态原子收敛到 `delivered`。
+- 管理员订单页展示“发货结果待核实”，必须二次确认后才允许走现有单笔租约入口手动重试；手动领取后恢复为 delivering。尚未进入 Telegram 外部副作用的本地校验/解密错误仍走普通 `delivery_failed` 与指数退避。
 - 新增 SQLite/PostgreSQL 数据库测试，验证 uncertain 不进入自动队列、管理员单笔领取可恢复；新增 Telegram 传输中断回归测试验证状态隔离。
 - 不新增迁移或生产环境变量；`orders.status` 为文本状态，无数据库 CHECK 枚举约束。CI 与发布结果待 PR head 验证。
 - 生产部署、用户是否实际收到消息的人工核实，以及 Telegram 真机测试仍需项目所有者确认。
