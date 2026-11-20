@@ -466,6 +466,7 @@ func MarkOrderDeliveryUncertain(ctx context.Context, db *sql.DB, driver, orderID
 	if err != nil { return err }
 	insert := "INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at) VALUES(" + placeholder(driver,1) + "," + placeholder(driver,2) + ",'delivery_uncertain'," + placeholder(driver,3) + "," + placeholder(driver,4) + ")"
 	if _, err := tx.ExecContext(ctx, insert, eventID, orderID, reason, now); err != nil { return err }
+	if err := upsertSystemExceptionTx(ctx, tx, driver, "delivery-uncertain:"+orderID, "delivery_uncertain", "error", "order", orderID, "订单交付结果不确定", reason); err != nil { return err }
 	return tx.Commit()
 }
 
