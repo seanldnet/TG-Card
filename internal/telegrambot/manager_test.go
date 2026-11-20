@@ -83,6 +83,14 @@ func TestRedeliverPaidOrderRejectsOneTimeInviteLinks(t *testing.T) {
 	}
 }
 
+func TestDeliverPaidOrderBlocksUncertainInviteLinkRetry(t *testing.T) {
+	m := &Manager{}
+	item := database.OrderDelivery{Order: database.Order{Status:"delivery_uncertain", DeliveryType:"invite_link"}}
+	if err := m.DeliverPaidOrder(context.Background(), item); err == nil || !strings.Contains(err.Error(), "outcome is uncertain") {
+		t.Fatalf("uncertain one-time invite links must require manual handling, got %v", err)
+	}
+}
+
 func TestRedeliverPaidOrderRequiresDeliveredOrder(t *testing.T) {
 	m := &Manager{}
 	item := database.OrderDelivery{Order: database.Order{Status:"delivery_failed", DeliveryType:"card"}}

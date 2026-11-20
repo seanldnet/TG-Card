@@ -1517,6 +1517,9 @@ func (m *Manager) RedeliverPaidOrder(ctx context.Context, item database.OrderDel
 
 func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDelivery, allowDelivered bool) error {
 	if item.Order.Status == "delivered" && !allowDelivered { return nil }
+	if item.Order.Status == "delivery_uncertain" && item.Order.DeliveryType == "invite_link" {
+		return fmt.Errorf("one-time invite link outcome is uncertain; automatic retry is blocked to avoid creating another active invite link; verify and handle manually")
+	}
 	m.mu.Lock()
 	current := m.workers[item.Order.BotID]
 	m.mu.Unlock()

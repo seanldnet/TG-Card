@@ -1057,6 +1057,7 @@ type supportTicketUpdateRequest struct {
 }
 
 type orderView struct {
+	DeliveryType string `json:"deliveryType"`
 	ID string `json:"id"`
 	OrderNo string `json:"orderNo"`
 	BotID string `json:"botId"`
@@ -1090,6 +1091,12 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 
 	// Delivered orders use a separate idempotent re-delivery lease. The normal
 	// delivery lease intentionally rejects delivered orders to prevent duplicate fulfillment.
+	if order.Status == "delivery_uncertain" && order.DeliveryType == "invite_link" {
+		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry.blocked", "order:"+orderID, a.clientIP(r), r.UserAgent(), "uncertain one-time invite link requires manual verification")
+		writeError(w, http.StatusConflict, "一次性邀请链接的创建或发送结果不确定。为避免生成多个有效邀请链接，系统已禁止自动重试，请人工核实并处理。")
+		return
+	}
+
 	if order.Status == "delivered" {
 		if order.DeliveryType == "invite_link" { writeError(w, http.StatusConflict, "一次性邀请链接不能自动重复发放，请人工核实"); return }
 		claimed, claimErr := database.ClaimOrderRedelivery(r.Context(), a.db, a.driver, orderID, 45*time.Second)
@@ -1328,7 +1335,7 @@ func (a *application) listOrders(w http.ResponseWriter, r *http.Request) {
 	result := make([]orderView, 0, len(items))
 	for _, item := range items {
 		result = append(result, orderView{
-			ID:item.ID, OrderNo:item.OrderNo, BotID:item.BotID,
+			ID:item.ID, DeliveryType:item.DeliveryType, OrderNo:item.OrderNo, BotID:item.BotID,
 			TelegramUserID:item.TelegramUserID, TelegramChatID:item.TelegramChatID,
 			ProductName:item.ProductName, UnitPriceMinor:item.UnitPriceMinor,
 			Quantity:item.Quantity, AmountMinor:item.AmountMinor, PaymentAmount:formatUSDTAtomic(item.PaymentAmountAtomic), Currency:item.Currency,

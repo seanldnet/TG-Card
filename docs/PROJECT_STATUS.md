@@ -1,12 +1,19 @@
-## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 开发中）
+## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 开发中）
 
-- 审查基线：main@1da40c6ced6bad1d9ca4435ad23d90af3653e6f4（PR #68 文档校准已合并）。
-- 发现风险：Telegram sendMessage/sendDocument 等请求发生网络错误或响应丢失时，远端可能已接收消息；原流程将其作为普通 delivery_failed 并由后台自动重试，可能重复发送卡密/文件/上游交付内容。
-- 首次 Telegram 外部副作用发出前，先持久化 `delivery_uncertain` 与 `order_delivery_events` 事件；若进程在发送前/发送中/发送后、订单完成状态落库前崩溃，后台均不会自动重发。Telegram 明确返回错误或响应丢失时更新异常原因。成功后允许从该状态原子收敛到 `delivered`。
-- 管理员订单页展示“发货结果待核实”，必须二次确认后才允许走现有单笔租约入口手动重试；手动领取后恢复为 delivering。尚未进入 Telegram 外部副作用的本地校验/解密错误仍走普通 `delivery_failed` 与指数退避。
-- 新增 SQLite/PostgreSQL 数据库测试，验证 uncertain 不进入自动队列、管理员单笔领取可恢复；新增 Telegram 传输中断回归测试验证状态隔离。
-- 不新增迁移或生产环境变量；`orders.status` 为文本状态，无数据库 CHECK 枚举约束。CI 与发布结果待 PR head 验证。
-- 生产部署、用户是否实际收到消息的人工核实，以及 Telegram 真机测试仍需项目所有者确认。
+- 审查基线：main@1325e52443c0f06d52d21205c2e29af5fca39b70（PR #69 已合并）。
+- 复核 PR #69 后发现一次性邀请链接有特殊副作用：Telegram createChatInviteLink 可能已创建有效链接，但响应丢失或链接持久化失败；若把该订单当普通 uncertain 订单手动重试，可能再次创建另一条有效邀请链接。
+- PR #70 在 API 和 Telegram 交付入口双重阻止 delivery_uncertain 的 invite_link 自动重试；管理员订单列表暴露交付类型，订单页对此类订单显示“需人工核实”而不显示重试按钮；被阻止的 API 操作写入管理员审计。
+- 新增 Telegram Manager 回归测试；未新增数据库迁移或生产环境变量。PR head CI 与发布待验证。
+- 此保护只针对一次性邀请链接；其他交付类型仍按 PR #69 的管理员核实后手动重试策略处理。生产部署和 Telegram 真机验收仍需项目所有者确认。
+
+## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 已合并并发布）
+
+- PR #69 已 Squash Merge 至 main，merge commit 1325e52443c0f06d52d21205c2e29af5fca39b70。
+- Telegram sendMessage/sendDocument 等外部请求前持久化 delivery_uncertain 和 order_delivery_events；网络响应不确定或进程在外部副作用窗口崩溃时，后台 worker 不自动重发。成功发送后订单可收敛为 delivered。
+- 管理员订单页显示“发货结果待核实”，确认后可通过单笔租约入口手动处理；纯本地校验/解密错误仍走 delivery_failed 指数退避。
+- PR head Go/Admin/Security 全部通过；合并后 main Go CI、Admin CI、Security、Docker Publish 全部成功。
+- GHCR latest 与提交标签 1325e52443c0f06d52d21205c2e29af5fca39b70 已发布；manifest digest：sha256:48e900b0a06a4e346eb36a5fc9cd51834041df0a8abb4442908d962e1a947a6f。
+- 生产部署及 Telegram 真机验收仍需项目所有者确认。
 ## 2026-11-21 — 订单交付失败指数退避（PR #67 已合并并发布）
 
 - PR #67 已 Squash Merge 至 main，merge commit `c460706a1cc7675cfbd9f274a9311f3f2654f468`。
@@ -54,9 +61,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.26
-> - 源码核对基线：main 分支，commit `1da40c6ced6bad1d9ca4435ad23d90af3653e6f4`；PR #69 分支 `fix/order-delivery-uncertain-outcomes-pr-69`
-> - 本次文档更新：记录 PR #69 Telegram 交付不确定结果隔离的实现范围与验收边界
+> - 文档版本：2.2.27
+> - 源码核对基线：main 分支，commit `1325e52443c0f06d52d21205c2e29af5fca39b70`；本轮 PR #70 基于该提交开发
+> - 本次文档更新：校准 PR #69 合并状态，并记录 PR #70 一次性邀请链接不确定结果保护
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
@@ -136,10 +143,10 @@
 > 本文是项目当前实现状态的主文档。内容以 `main` 分支源码、数据库迁移、后台页面和现有技术文档为依据；产品规划不等于已交付功能。每次开发、修复、重构或发布都必须同步更新本文和 `docs/CHANGELOG.md`。
 
 > **文档元信息**
-> - 最后更新时间：2026-11-20
-> - 文档版本：2.2.19
-> - 源码核对基线：`main` 分支，commit `d988c6a554392af86ea03b9ba60297e1debab011`（PR #62 PostgreSQL 并发测试已合并）
-> - 本次文档更新：记录 PR #67 合并、主分支全部 CI 成功及 GHCR digest
+> - 最后更新时间：2026-11-21
+> - 文档版本：2.2.27
+> - 源码核对基线：`main` 分支，commit `1325e52443c0f06d52d21205c2e29af5fca39b70`；本轮 PR #70 基于该提交开发
+> - 本次文档更新：校准 PR #69 合并状态，并记录 PR #70 一次性邀请链接不确定结果保护
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
