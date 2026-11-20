@@ -80,8 +80,11 @@ func TestRetryOrderDeliveryBlocksUncertainExternalSideEffects(t *testing.T) {
    var envelope struct{Data map[string]string `json:"data"`}
    if err:=json.Unmarshal(loginResponse.Body.Bytes(),&envelope);err!=nil{t.Fatal(err)}
    token:=envelope.Data["accessToken"]
-   product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Uncertain delivery",PriceMinor:100,Currency:"USDT",DeliveryType:deliveryType,DeliveryConfigJSON:`{"chatId":"-100123"}`,Status:1})
+   product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Uncertain delivery",PriceMinor:100,Currency:"USDT",DeliveryType:deliveryType,DeliveryConfigJSON:`{"chatId":"-100123","fileId":"test-file-id"}`,Status:1})
    if err!=nil{t.Fatal(err)}
+   if deliveryType=="file_card" {
+    if _,err:=database.ImportProductKeys(ctx,db,"sqlite",product.ID,[]database.StockSecret{{Ciphertext:"test-ciphertext",Fingerprint:"test-fingerprint"}});err!=nil{t.Fatal(err)}
+   }
    order,err:=database.CreateOrder(ctx,db,"sqlite","bot-a","user-a","123456",product.ID,time.Minute)
    if err!=nil{t.Fatal(err)}
    if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='delivery_uncertain' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
