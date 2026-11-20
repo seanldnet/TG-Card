@@ -1,3 +1,10 @@
+## 2026-11-21 — 订单与资金补偿机制 P0-4（开发中）
+
+- 新增 `ReconcileMissingUpstreamProcurements`：只恢复已付款、状态仍为 `procurement_pending`、来源快照为 upstream 且缺少采购队列行的订单。
+- 恢复队列沿用本地订单号/订单 ID 幂等键，并以原始 `paid_at` 加采购超时配置计算 deadline；不会因恢复操作延长采购期限。
+- 调度器每轮领取采购任务前先执行缺失队列扫描；仅补建队列，不修改订单支付信息、钱包余额或资金账本。
+- 新增回归测试覆盖恢复、重复扫描幂等、支付信息不变和钱包账本不变。PR head CI 结果待验证。
+
 ## 2026-11-21 — 分步骤交付状态机 P0-3（开发中）
 
 - 状态：独立分支 `feat/stepwise-delivery-state-machine-p0-3`，基于 main@0a8895d54bbac02a78743b8692192c8ed66ea072。
