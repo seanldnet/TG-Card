@@ -439,6 +439,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if capConfig.Enabled && !capDisabledByEnvironment() {
 		if encryptedCapSecret == "" {
+			_ = database.CreateSystemException(r.Context(), a.db, a.driver, "cap-config:missing-secret", "cap_configuration", "critical", "admin_login", input.Username, "Cap Secret Key 未配置", "Cap 已启用，但数据库中没有已保存的 Secret Key")
 			writeError(w, http.StatusServiceUnavailable, "人机验证尚未完成配置")
 			return
 		}
