@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"database/sql"
 	"os"
 	"strings"
 	"time"
@@ -34,10 +35,8 @@ func capDisabledByEnvironment() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("DISABLE_CAP")), "true")
 }
 
-func loadCapConfiguration(ctx context.Context, db interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, driver string) (capConfiguration, string, error) {
-	enabled, err := database.GetSetting(ctx, db.(*sql.DB), driver, "cap_enabled")
+func loadCapConfiguration(ctx context.Context, db *sql.DB, driver string) (capConfiguration, string, error) {
+	enabled, err := database.GetSetting(ctx, db, driver, "cap_enabled")
 	if err != nil {
 		return capConfiguration{}, "", err
 	}
@@ -76,13 +75,17 @@ func capVerificationURL(domain, siteKey string) (string, error) {
 }
 
 func verifyCapToken(ctx context.Context, client *http.Client, domain, siteKey, secret, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" || secret == "" {
-		return fmt.Errorf("Cap token and secret are required")
-	}
 	endpoint, err := capVerificationURL(domain, siteKey)
 	if err != nil {
 		return err
+	}
+	return verifyCapTokenWithEndpoint(ctx, client, endpoint, secret, token)
+}
+
+func verifyCapTokenWithEndpoint(ctx context.Context, client *http.Client, endpoint, secret, token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" || secret == "" {
+		return fmt.Errorf("Cap token and secret are required")
 	}
 	payload, err := json.Marshal(capVerificationRequest{Secret: secret, Response: token})
 	if err != nil {
