@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 
 import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
@@ -84,11 +84,14 @@ async function handleLogin(data: Record<string, any>) {
     message.warning(capError.value || '请先完成人机验证');
     return;
   }
-  await authStore.authLogin({ ...data, ...(capEnabled.value ? { capToken: capToken.value } : {}) } as any);
-  if (capEnabled.value) {
-    capToken.value = '';
-    capWidgetContainer.value?.replaceChildren();
-    mountCapWidget();
+  try {
+    await authStore.authLogin({ ...data, ...(capEnabled.value ? { capToken: capToken.value } : {}) } as any);
+  } finally {
+    if (capEnabled.value) {
+      capToken.value = '';
+      capWidgetContainer.value?.replaceChildren();
+      mountCapWidget();
+    }
   }
 }
 
