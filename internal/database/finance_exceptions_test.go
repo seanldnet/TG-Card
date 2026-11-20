@@ -130,3 +130,21 @@ func TestSystemExceptionMigrationPreservesExistingFinanceExceptions(t *testing.T
 	if err:=db.QueryRowContext(ctx,"SELECT id,status,resolution_note FROM system_exceptions WHERE source_key='legacy-source'").Scan(&id,&status,&note);err!=nil{t.Fatal(err)}
 	if id!="legacy-id"||status!="resolved"||note!="checked"{t.Fatalf("migration did not preserve legacy exception: id=%s status=%s note=%s",id,status,note)}
 }
+
+
+func TestUpdateSystemExceptionWithAuditIsAtomic(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	if err:=CreateSystemException(ctx,db,"sqlite","audit-exception-1","delivery_uncertain","error","order","order-1","delivery uncertain","remote outcome unknown");err!=nil{t.Fatal(err)}
+	items,err:=ListSystemExceptions(ctx,db,"sqlite","open","delivery_uncertain","","","",10)
+	if err!=nil||len(items)!=1{t.Fatalf("load exception: items=%+v err=%v",items,err)}
+	if err:=UpdateSystemExceptionWithAudit(ctx,db,"sqlite",items[0].ID,"admin-1","resolved","已核对 Telegram 消息送达状态","127.0.0.1","test-agent");err!=nil{t.Fatal(err)}
+	var status,action,resource,details string
+	if err:=db.QueryRowContext(ctx,"SELECT status FROM system_exceptions WHERE id=?",items[0].ID).Scan(&status);err!=nil{t.Fatal(err)}
+	if err:=db.QueryRowContext(ctx,"SELECT action,resource,details FROM audit_logs WHERE action='system.exception.update' AND resource=?", "exception:"+items[0].ID).Scan(&action,&resource,&details);err!=nil{t.Fatal(err)}
+	if status!="resolved"||action!="system.exception.update"||resource!="exception:"+items[0].ID||details==""{t.Fatalf("resolution and audit were not persisted together: status=%s action=%s resource=%s details=%s",status,action,resource,details)}
+	if err:=UpdateSystemExceptionWithAudit(ctx,db,"sqlite","missing-id","admin-1","resolved","missing","127.0.0.1","test-agent");err==nil{t.Fatal("updating a missing exception must fail")}
+	var missingAudit int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM audit_logs WHERE resource='exception:missing-id'").Scan(&missingAudit);err!=nil{t.Fatal(err)}
+	if missingAudit!=0{t.Fatalf("failed update must not create audit row, got %d",missingAudit)}
+}
