@@ -297,7 +297,9 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 			status := "failed"
 			if strings.Contains(err.Error(), "同步已暂停") { status = "paused"; go a.notifySiteEvent(context.Background(), "upstream_sync_paused", err.Error(), "") }
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, status)
-			_ = database.CreateSystemException(context.Background(), a.db, a.driver, "upstream-sync:"+jobID, "upstream_sync", "error", "upstream_sync_job", jobID, "上游目录同步失败", err.Error())
+			if status == "failed" {
+				_ = database.CreateSystemException(context.Background(), a.db, a.driver, "upstream-sync:"+jobID, "upstream_sync", "error", "upstream_sync_job", jobID, "上游目录同步失败", err.Error())
+			}
 			log.Printf("upstream sync job failed: job_id=%s status=%s error=%v", jobID, status, err)
 		} else {
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "success")
