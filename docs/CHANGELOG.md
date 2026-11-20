@@ -2,7 +2,7 @@
 
 - 修复 `file_card` 多步骤交付的重复发送风险：文件与卡密消息分别调用 Telegram API；前一步已成功、后一步结果不确定时，整单重试会重复发送文件。
 - 管理 API 与 Telegram Manager 双重阻止 `delivery_uncertain` 的 `file_card` 整单重试；订单列表与移动端卡片显示“需人工核实”；保留 PR #70 的一次性邀请链接保护。
-- 新增 Manager 回归测试；无数据库迁移或生产环境变量变更。PR head Go/Admin/Security 与合并后构建待验证。
+- 新增 Manager 与管理员 API 回归测试，覆盖 invite_link/file_card 两种不确定结果的整单重试阻断；无数据库迁移或生产环境变量变更。新增 API 回归测试后，PR head Go/Admin/Security 需重新运行。
 
 ## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 已合并并发布）
 
