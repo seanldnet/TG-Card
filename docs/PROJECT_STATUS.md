@@ -1,11 +1,11 @@
-## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并，文档版本 2.2.35）
+## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并并发布，文档版本 2.2.35）
 
 - 状态：PR #78 已 Squash Merge 至 main，merge commit `8981fb887584979450f19b30648225ced113989d`；开发基线 main@a83f9bfa44989c55e4c6b9fd1aa4d4ed12ea1b81。
 - 本次变更：后台 Cap 域名/Site Key/Secret Key 配置；Secret Key 使用现有 AES-256-GCM 密钥加密保存并脱敏读取；登录页加载自托管 `/assets/widget.js` widget；登录接口服务端调用 `/{site-key}/siteverify`，仅 success=true 放行。
 - 数据库迁移：`0051_system_settings.sql` 创建兼容 PostgreSQL/SQLite 的 `settings(key,value,updated_at)` 表；Cap 配置保存在独立键值项，以支持终端 SQL 紧急关闭。
 - 紧急关闭：`docker compose exec db psql -U tgcard -d tgcard -c "UPDATE settings SET value='false' WHERE key='cap_enabled';"`，随后 `docker compose restart app`；另支持 `DISABLE_CAP=true`，需 `docker compose up -d --force-recreate app` 让环境变量生效。
 - 安全边界：后端 fail-closed；不向浏览器返回 Secret Key；验证请求 HTTPS、限制响应体和超时、禁止重定向，并拒绝 localhost/私有 IP 目标。当前仅覆盖管理员登录。
-- PR head Go/Admin/Security 检查全部成功；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部成功。Docker Publish 仍在运行，镜像 digest 待发布工作流完成后补录。
+- PR head Go/Admin/Security 检查全部成功；合并后 main Go Backend CI #44828737475、Admin Frontend CI #44828737466、Security Scan #44828737403、Docker Publish #44828737396 全部成功。GHCR 多架构 `latest` 与提交标签 `8981fb887584979450f19b30648225ced113989d` 已发布，manifest digest：`sha256:e062f1dd8f77c4e3b515ded826668ad5fc89e344da429d59e102d7803a3587dc`。
 - 真实 Cap 服务联调尚未执行；CI 通过不代表已在实际 Cap 域名完成浏览器挑战与登录验收。
 
 ## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
