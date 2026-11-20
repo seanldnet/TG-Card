@@ -67,3 +67,20 @@ func TestMigrationQuarantinesLegacyUncertainFileCardOrders(t *testing.T) {
   if step.Status!="uncertain"||step.Attempts!=2{t.Fatalf("legacy step must remain uncertain for manual verification: %+v",step)}
  }
 }
+
+
+func TestUncertainOrderCannotBeReclaimedWhileDeliveryLeaseIsActive(t *testing.T) {
+ ctx:=context.Background()
+ db:=reconciliationTestDB(t)
+ orderID:="delivery-steps-lease-order"
+ future:=time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)
+ if _,err:=db.ExecContext(ctx,"INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,delivery_lease_until,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'delivery_uncertain',?,'2099-01-01T00:00:00Z','2026-11-21T00:00:00Z','2026-11-21T00:00:00Z')",orderID,"DS-LEASE","u4","c4","lease test",100,1,100,"USDT",future);err!=nil{t.Fatal(err)}
+ active,err:=OrderDeliveryLeaseActive(ctx,db,"sqlite",orderID)
+ if err!=nil||!active{t.Fatalf("expected active lease, active=%v err=%v",active,err)}
+ claimed,err:=ClaimOrderDelivery(ctx,db,"sqlite",orderID,time.Minute)
+ if err!=nil||claimed{t.Fatalf("active delivery lease must prevent concurrent recovery, claimed=%v err=%v",claimed,err)}
+ past:=time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET delivery_lease_until=? WHERE id=?",past,orderID);err!=nil{t.Fatal(err)}
+ claimed,err=ClaimOrderDelivery(ctx,db,"sqlite",orderID,time.Minute)
+ if err!=nil||!claimed{t.Fatalf("expired lease should allow recovery, claimed=%v err=%v",claimed,err)}
+}
