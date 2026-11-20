@@ -18,31 +18,62 @@ const capSiteKey = ref('');
 const capToken = ref('');
 const capError = ref('');
 const capWidgetContainer = ref<HTMLElement>();
+const CAP_WIDGET_VERSION = '0.1.63';
 let capScriptPromise: Promise<void> | undefined;
 
+function waitForCapWidget(timeoutMs = 8000): Promise<void> {
+  const registry = (window as any).customElements as CustomElementRegistry | undefined;
+  if (!registry) return Promise.reject(new Error('Custom Elements are not supported by this browser'));
+  if (registry.get('cap-widget')) return Promise.resolve();
+  return Promise.race([
+    registry.whenDefined('cap-widget'),
+    new Promise<void>((_, reject) => window.setTimeout(() => reject(new Error('Cap widget registration timed out')), timeoutMs)),
+  ]);
+}
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.tgCardCapWidget = 'true';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Cap widget script failed to load: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
 async function loadCapWidgetScript(domain: string) {
-  const origin = new URL(domain).origin;
-  const src = origin + '/assets/widget.js';
   if ((window as any).customElements?.get('cap-widget')) return;
-  if (!capScriptPromise) {
-    capScriptPromise = new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>('script[data-tg-card-cap-widget]');
-      if (existing) {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Cap widget script failed to load')), { once: true });
-        return;
+  if (capScriptPromise) return capScriptPromise;
+
+  const origin = new URL(domain).origin;
+  capScriptPromise = (async () => {
+    // Prefer capd's own asset server. This requires Instance settings >
+    // Widget files > Serve widget files from this server to be enabled.
+    try {
+      (window as any).CAP_CUSTOM_WASM_URL = origin + '/assets/cap_wasm_bg.wasm';
+      (window as any).CAP_CUSTOM_HASHWX_URL = origin + '/assets/hashwx.wasm';
+      await loadScript(origin + '/assets/widget.js');
+      await waitForCapWidget();
+      return;
+    } catch (selfHostedError) {
+      // The asset server is optional in capd. Fall back to a pinned official
+      // widget release rather than leaving the login page with a broken widget.
+      delete (window as any).CAP_CUSTOM_WASM_URL;
+      delete (window as any).CAP_CUSTOM_HASHWX_URL;
+      try {
+        await loadScript(`https://cdn.jsdelivr.net/npm/cap-widget@${CAP_WIDGET_VERSION}`);
+        await waitForCapWidget();
+      } catch (cdnError) {
+        throw new Error(`Cap widget unavailable. Self-hosted asset error: ${String(selfHostedError)}. CDN error: ${String(cdnError)}`);
       }
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      script.dataset.tgCardCapWidget = 'true';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Cap widget script failed to load'));
-      document.head.appendChild(script);
-    });
-  }
-  await capScriptPromise;
-  await (window as any).customElements?.whenDefined('cap-widget');
+    }
+  })().catch((error) => {
+    capScriptPromise = undefined;
+    throw error;
+  });
+  return capScriptPromise;
 }
 
 function mountCapWidget() {
@@ -56,7 +87,8 @@ function mountCapWidget() {
   });
   widget.addEventListener('error', (event) => {
     capToken.value = '';
-    capError.value = (event as CustomEvent<{ message?: string }>).detail?.message || '人机验证加载失败，请刷新页面重试';
+    const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail;
+    capError.value = detail?.message ? `人机验证失败（${detail.code || 'unknown'}）：${detail.message}` : '人机验证加载失败，请刷新页面重试';
   });
   capWidgetContainer.value.replaceChildren(widget);
 }
@@ -74,8 +106,10 @@ async function loadCapConfig() {
       mountCapWidget();
     }
   } catch {
-    capEnabled.value = false;
-    capError.value = '人机验证配置暂时无法读取；如果登录被拒绝，请联系管理员检查 Cap 服务。';
+    // Fail closed: the backend may still require a token even when the
+    // public configuration or widget cannot be loaded.
+    capEnabled.value = true;
+    capError.value = `人机验证初始化失败：${error instanceof Error ? error.message : String(error)}。请联系管理员检查 Cap 服务及 Widget files 配置。`;
     message.error(capError.value);
   }
 }
