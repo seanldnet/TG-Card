@@ -1114,7 +1114,7 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 	if err != nil { log.Printf("load order delivery retry: order_id=%s error=%v", orderID, err); writeError(w, http.StatusInternalServerError, "Unable to load order delivery"); return }
 	if err := a.botManager.DeliverPaidOrder(r.Context(), item); err != nil {
 		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, a.clientIP(r), r.UserAgent(), "failed: "+err.Error())
-		writeError(w, http.StatusBadGateway, "Delivery failed; order remains retryable"); return
+		writeError(w, http.StatusBadGateway, "Delivery failed; inspect the order status before retrying because Telegram may already have received it"); return
 	}
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry", "order:"+orderID, a.clientIP(r), r.UserAgent(), "delivered")
 	writeSuccess(w, http.StatusOK, map[string]bool{"delivered": true})
