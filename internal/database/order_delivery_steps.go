@@ -25,6 +25,15 @@ type OrderDeliveryStep struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+func OrderDeliveryLeaseActive(ctx context.Context, db *sql.DB, driver, orderID string) (bool,error) {
+	var lease string
+	if err:=db.QueryRowContext(ctx,"SELECT COALESCE(delivery_lease_until,'') FROM orders WHERE id="+placeholder(driver,1),orderID).Scan(&lease);err!=nil{return false,err}
+	if lease=="" { return false,nil }
+	parsed,err:=time.Parse(time.RFC3339Nano,lease)
+	if err!=nil{return false,fmt.Errorf("parse order delivery lease: %w",err)}
+	return time.Now().UTC().Before(parsed),nil
+}
+
 func ListOrderDeliverySteps(ctx context.Context, db *sql.DB, driver, orderID string) ([]OrderDeliveryStep, error) {
 	rows, err := db.QueryContext(ctx, "SELECT id,order_id,step_key,step_order,status,attempts,telegram_message_id,last_error,started_at,completed_at,created_at,updated_at FROM order_delivery_steps WHERE order_id="+placeholder(driver,1)+" ORDER BY step_order,step_key", orderID)
 	if err != nil { return nil, err }
