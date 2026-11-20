@@ -1138,6 +1138,35 @@ type orderView struct {
 	StockReserved bool `json:"stockReserved"`
 }
 
+type resolveOrderDeliveryStepRequest struct {
+	Status string `json:"status"`
+	MessageID string `json:"messageId"`
+	Note string `json:"note"`
+}
+
+func (a *application) resolveOrderDeliveryStep(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w,r)
+	if !ok { return }
+	orderID := strings.TrimSpace(r.PathValue("id"))
+	stepKey := strings.TrimSpace(r.PathValue("step"))
+	if stepKey!="file" && stepKey!="card_message" { writeError(w,http.StatusBadRequest,"无效的交付步骤"); return }
+	order,err:=database.GetOrderByID(r.Context(),a.db,a.driver,orderID)
+	if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"订单不存在"); return }
+	if err!=nil { writeError(w,http.StatusInternalServerError,"读取订单失败"); return }
+	if order.DeliveryType!="file_card" || order.Status!="delivery_uncertain" { writeError(w,http.StatusConflict,"仅支持处理发货结果待核实的文件+卡密订单"); return }
+	var input resolveOrderDeliveryStepRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<16)).Decode(&input);err!=nil { writeError(w,http.StatusBadRequest,"处理参数无效"); return }
+	input.Status=strings.TrimSpace(input.Status)
+	input.MessageID=strings.TrimSpace(input.MessageID)
+	input.Note=strings.TrimSpace(input.Note)
+	if len(input.Note)>2000 || len(input.MessageID)>64 { writeError(w,http.StatusBadRequest,"处理说明或消息 ID 超出长度限制"); return }
+	if err:=database.ResolveUncertainOrderDeliveryStep(r.Context(),a.db,a.driver,orderID,stepKey,claims.AdminID,input.Status,input.MessageID,input.Note,a.clientIP(r),r.UserAgent());err!=nil {
+		if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusConflict,"该步骤当前不是待核实状态"); return }
+		writeError(w,http.StatusConflict,err.Error()); return
+	}
+	writeSuccess(w,http.StatusOK,map[string]bool{"updated":true})
+}
+
 func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
