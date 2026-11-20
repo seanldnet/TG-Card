@@ -694,11 +694,19 @@ func SaveOrderDeliveryPayload(ctx context.Context, db *sql.DB, driver, orderID, 
 func ClaimOrderRedelivery(ctx context.Context, db *sql.DB, driver, orderID string, lease time.Duration) (bool, error) {
 	if orderID == "" { return false, fmt.Errorf("order ID is required") }
 	if lease <= 0 { lease = 45 * time.Second }
-	var status string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id="+placeholder(driver, 1), orderID).Scan(&status); err != nil {
-		return false, err
-	}
-	if status != "delivered" { return false, fmt.Errorf("order is not delivered") }
+
+	// Lock the order row before claiming the lease. RefundOrderToWallet takes
+	// the same lock, so a refund cannot commit while a re-delivery is active.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return false, err }
+	defer tx.Rollback()
+
+	lockQuery := "UPDATE orders SET updated_at=updated_at WHERE id=" + placeholder(driver, 1) + " AND status='delivered'"
+	result, err := tx.ExecContext(ctx, lockQuery, orderID)
+	if err != nil { return false, err }
+	affected, err := result.RowsAffected()
+	if err != nil { return false, err }
+	if affected != 1 { return false, fmt.Errorf("order is not delivered") }
 
 	now := time.Now().UTC()
 	nowText := now.Format(time.RFC3339Nano)
@@ -713,24 +721,40 @@ func ClaimOrderRedelivery(ctx context.Context, db *sql.DB, driver, orderID strin
 			") ON CONFLICT(order_id) DO UPDATE SET lease_until=EXCLUDED.lease_until,updated_at=EXCLUDED.updated_at " +
 			"WHERE CAST(order_redelivery_leases.lease_until AS TIMESTAMPTZ)<=CAST(EXCLUDED.updated_at AS TIMESTAMPTZ)"
 	}
-	result, err := db.ExecContext(ctx, query, orderID, leaseText, nowText)
+	result, err = tx.ExecContext(ctx, query, orderID, leaseText, nowText)
 	if err != nil { return false, err }
-	affected, err := result.RowsAffected()
+	affected, err = result.RowsAffected()
 	if err != nil { return false, err }
+	if err := tx.Commit(); err != nil { return false, err }
 	return affected == 1, nil
 }
-
 
 // RefundOrderToWallet atomically credits the buyer's internal balance, marks
 // the order refunded, and revokes reserved card-key records to prevent reuse.
 func RefundOrderToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,note string)(int64,error){
 	note=strings.TrimSpace(note);if len(note)>500{note=note[:500]}
 	tx,err:=db.BeginTx(ctx,&sql.TxOptions{Isolation:sql.LevelSerializable});if err!=nil{return 0,err};defer tx.Rollback()
+	// Acquire the same order-row lock used by ClaimOrderRedelivery before
+	// inspecting the status or lease. This serializes refund vs re-delivery.
+	lockQuery := "UPDATE orders SET updated_at=updated_at WHERE id=" + placeholder(driver,1)
+	lockResult, lockErr := tx.ExecContext(ctx, lockQuery, orderID)
+	if lockErr != nil { return 0, lockErr }
+	lockCount, lockErr := lockResult.RowsAffected()
+	if lockErr != nil { return 0, lockErr }
+	if lockCount != 1 { return 0, sql.ErrNoRows }
 	query:="SELECT status,telegram_user_id,amount_minor,order_no,currency FROM orders WHERE id="+placeholder(driver,1)
 	if driver=="postgres"{query+=" FOR UPDATE"}
 	var status,userID,orderNo,currency string;var amountMinor int64
 	if err:=tx.QueryRowContext(ctx,query,orderID).Scan(&status,&userID,&amountMinor,&orderNo,&currency);err!=nil{return 0,err}
-	if status=="refunded"{return 0,fmt.Errorf("order has already been refunded")}
+\tif status=="refunded"{return 0,fmt.Errorf("order has already been refunded")}
+	leaseNow := time.Now().UTC().Format(time.RFC3339Nano)
+	leaseQuery := "SELECT COUNT(1) FROM order_redelivery_leases WHERE order_id=" + placeholder(driver,1) + " AND julianday(lease_until)>julianday(" + placeholder(driver,2) + ")"
+	if driver == "postgres" {
+		leaseQuery = "SELECT COUNT(1) FROM order_redelivery_leases WHERE order_id=" + placeholder(driver,1) + " AND CAST(lease_until AS TIMESTAMPTZ)>CAST(" + placeholder(driver,2) + " AS TIMESTAMPTZ)"
+	}
+	var activeRedeliveryLeases int
+	if err := tx.QueryRowContext(ctx, leaseQuery, orderID, leaseNow).Scan(&activeRedeliveryLeases); err != nil { return 0, err }
+	if activeRedeliveryLeases > 0 { return 0, fmt.Errorf("order re-delivery is in progress; refund is blocked until the re-delivery lease expires") }
 	switch status{case "paid","delivering","delivery_failed","delivered":default:return 0,fmt.Errorf("order status %s cannot be refunded",status)}
 	if !strings.EqualFold(currency,"USDT"){ return 0,fmt.Errorf("仅支持 USDT 订单退款，当前订单币种为 %s",currency) }
 	if amountMinor<=0||amountMinor>922337203685477{ return 0,fmt.Errorf("order refund amount is invalid") }
