@@ -53,7 +53,7 @@
 - 专项文档边界保持：PR E 真实商户联调未执行；Owner C1–C4、生产部署和真实 Telegram 验收分别跟踪，不以 CI 或镜像发布代替。
 
 > **文档元信息**
-> - 最后更新时间：2026-11-20
+> - 最后更新时间：2026-11-21
 > - 文档版本：2.2.26
 > - 源码核对基线：main 分支，commit `1da40c6ced6bad1d9ca4435ad23d90af3653e6f4`；PR #69 分支 `fix/order-delivery-uncertain-outcomes-pr-69`
 > - 本次文档更新：记录 PR #69 Telegram 交付不确定结果隔离的实现范围与验收边界
