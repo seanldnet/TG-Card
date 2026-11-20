@@ -1,9 +1,9 @@
-## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 开发中）
+## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
-- 审查基线：main@9abf51599e1c93d28c8cac30546e8ef5976bd653（PR #74 已合并并发布）。
+- PR #75 已 Squash Merge 至 main，merge commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；审查基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653（PR #74 已合并并发布）。
 - PR #74 已让退款与再次获取租约互斥；本轮补齐售后 API 行为：活动再次获取租约导致的退款拒绝返回 HTTP 409，并写入 `support.refund.blocked` 审计事件；其他退款失败记录 `support.refund.failed`。
 - 使用数据库 sentinel error 区分可重试的租约冲突与其他退款失败，避免依赖错误文案字符串判断。
-- 新增售后 API 回归测试，验证 HTTP 409、审计事件及订单/余额不变。无数据库迁移或生产环境变量变更。PR head Go/Admin/Security 待验证。
+- 新增售后 API 回归测试，验证 HTTP 409、审计事件及订单/余额不变。PR head Go/Admin/Security 均成功；合并后 main Go #44814346690、Admin #44814346681、Security #44814346722、Docker Publish #44814346693 全部成功。GHCR 多架构 `latest` 与提交标签 `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9` 已发布，manifest digest：`sha256:902cfecbc14e8d2d6eaed5c05ff1b01019343b4d456e1b24e17224e06b5a4dd8`。无数据库迁移或生产环境变量变更。
 - 生产部署及真实售后退款验收仍需项目所有者确认。
 
 ## 2026-11-21 — 退款与订单再次获取租约互斥（PR #74 已合并并发布）
@@ -100,9 +100,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.32
-> - 源码核对基线：main 分支，commit `9abf51599e1c93d28c8cac30546e8ef5976bd653`；本轮 PR #75 基于该提交开发
-> - 本次文档更新：记录 PR #74 合并与发布状态，并跟踪 PR #75 退款冲突审计
+> - 文档版本：2.2.33
+> - 源码核对基线：main 分支，commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；本轮文档 PR #76 基于该提交开发
+> - 本次文档更新：记录 PR #75 合并、CI 与 GHCR 发布结果
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。

@@ -1,12 +1,12 @@
-## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 开发中）
+## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
-- 状态：独立分支开发中，基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653。
+- 状态：已 Squash Merge 至 main，merge commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；开发基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653。
 - 影响模块：售后退款 API、管理员审计日志、订单再次获取租约冲突。
 - 变更内容：对活动再次获取租约导致的退款拒绝返回 HTTP 409，并写入 `support.refund.blocked` 审计事件；其他退款失败写入 `support.refund.failed`。使用数据库 sentinel error 做精确分类。
 - 数据库迁移：无；配置/部署影响：无新增环境变量。
 - 兼容性与已知限制：活动租约结束后管理员可重新发起退款；不改变钱包退款业务逻辑。
-- 验证：新增售后 API 回归测试，PR head Go/Admin/Security 待运行；生产售后验收待项目所有者执行。
-- 发布镜像：GHCR 多架构标签 `latest` 与提交标签 `9abf51599e1c93d28c8cac30546e8ef5976bd653` 已发布；manifest digest：`sha256:3392d6b4d4c2150bd95d06093082802865d02e86e017a060faa97bea46c1d0c0`。
+- 验证：PR head Go/Admin/Security 均成功；合并后 main Go #44814346690、Admin #44814346681、Security #44814346722、Docker Publish #44814346693 全部成功。生产售后验收待项目所有者执行。
+- 发布镜像：GHCR 多架构标签 `latest` 与提交标签 `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9` 已发布；manifest digest：`sha256:902cfecbc14e8d2d6eaed5c05ff1b01019343b4d456e1b24e17224e06b5a4dd8`。
 
 ## 2026-11-21 — 退款与订单再次获取租约互斥（PR #74 已合并并发布）
 
