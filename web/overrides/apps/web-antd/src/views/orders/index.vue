@@ -13,7 +13,8 @@ interface Order {
   status: string; expiresAt: string; createdAt: string; paidAt?: string; deliveredAt?: string;
   deliveryAttempts: number; deliveryError?: string; stockReserved: boolean; deliveryType?: string;
 }
-interface OrderDetail { order: Order; paymentFromAddress:string; paymentToAddress:string; paymentTransactionId:string; paymentBlockTimestampMs:number; }
+interface DeliveryStep { id:string; orderId:string; stepKey:string; stepOrder:number; status:string; attempts:number; telegramMessageId:string; lastError:string; startedAt:string; completedAt:string; createdAt:string; updatedAt:string; }
+interface OrderDetail { order: Order; deliverySteps:DeliveryStep[]; paymentFromAddress:string; paymentToAddress:string; paymentTransactionId:string; paymentBlockTimestampMs:number; }
 const loading=ref(false), orders=ref<Order[]>([]), retryingId=ref(''), detailLoading=ref(false), detailOpen=ref(false), selectedDetail=ref<OrderDetail|null>(null);
 const cleanupOpen=ref(false),cleanupPhrase=ref(''),cleanupLoading=ref(false);
 const {width}=useWindowSize();
@@ -31,7 +32,31 @@ function formatTime(value:string|number){if(!value)return '-';const d=new Date(v
 function copy(value:string){if(!value)return;navigator.clipboard?.writeText(value).then(()=>message.success('已复制')).catch(()=>message.error('复制失败'))}
 async function loadOrders(){loading.value=true;try{orders.value=await requestClient.get<Order[]>('/orders');mobilePage.value=1}catch{message.error('订单列表加载失败')}finally{loading.value=false}}
 async function openOrderDetail(order:Order){detailOpen.value=true;detailLoading.value=true;selectedDetail.value=null;try{selectedDetail.value=await requestClient.get<OrderDetail>('/orders/'+order.id)}catch{message.error('订单详情加载失败')}finally{detailLoading.value=false}}
-async function retryDelivery(order:Order){if(order.status==='delivery_uncertain'&&!window.confirm('该订单上一次发送结果不确定，Telegram 可能已经收到商品。请先核实用户是否收到；仍要重新发送吗？'))return;retryingId.value=order.id;try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货重试');await loadOrders()}catch{message.error('发货重试失败，请检查机器人状态及错误信息');await loadOrders()}finally{retryingId.value=''}}
+async function retryDelivery(order:Order){
+ if(order.status==='delivery_uncertain'){
+  const prompt=order.deliveryType==='file_card'
+   ? '系统会跳过已成功步骤，只重发明确失败的步骤。若某一步仍为“结果不确定”，必须先在订单详情中人工核实并标记该步骤。确认继续？'
+   : '该订单上一次发送结果不确定，Telegram 可能已经收到商品。请先核实用户是否收到；仍要重新发送吗？';
+  if(!window.confirm(prompt))return;
+ }
+ retryingId.value=order.id;
+ try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货恢复');await loadOrders();if(selectedDetail.value?.order.id===order.id)await openOrderDetail(order)}
+ catch(error:any){message.error(error?.response?.data?.message||'发货恢复失败，请检查步骤状态及机器人状态');await loadOrders();if(selectedDetail.value?.order.id===order.id)await openOrderDetail(order)}
+ finally{retryingId.value=''}
+}
+function deliveryStepLabel(key:string){return ({file:'商品文件发送',card_message:'配套卡密消息发送'} as Record<string,string>)[key]||key}
+function deliveryStepStatusLabel(status:string){return ({pending:'待执行',sending:'发送中',succeeded:'已成功',failed:'明确失败',uncertain:'结果不确定'} as Record<string,string>)[status]||status}
+function deliveryStepStatusColor(status:string){return ({succeeded:'success',failed:'error',uncertain:'warning',sending:'processing',pending:'default'} as Record<string,string>)[status]||'default'}
+async function resolveDeliveryStep(step:DeliveryStep,status:'succeeded'|'failed'){
+ const note=window.prompt(status==='succeeded'?'请填写已核实该步骤成功的依据':'请填写已核实该步骤未送达的依据');
+ if(!note?.trim())return;
+ let messageId='';
+ if(status==='succeeded')messageId=window.prompt('Telegram message_id（如已知可填写；未知可留空）')?.trim()||'';
+ try{
+  await requestClient.put('/orders/'+step.orderId+'/delivery-steps/'+encodeURIComponent(step.stepKey),{status,messageId,note:note.trim()});
+  message.success('交付步骤核实结果已记录');if(selectedDetail.value)await openOrderDetail(selectedDetail.value.order);await loadOrders();
+ }catch(error:any){message.error(error?.response?.data?.message||'记录步骤核实结果失败')}
+}
 async function clearAllOrderData(){if(cleanupPhrase.value.trim()!=='清空全部订单数据'){message.warning('请完整输入“清空全部订单数据”以确认');return;}cleanupLoading.value=true;try{const result=await requestClient.post<{orders:number;paymentTransactions:number;supportTickets:number;walletTransactions:number;walletRecharges:number}>('/orders/cleanup',{confirmation:'CLEAR_ALL_ORDERS'});message.success('清理完成：订单 '+result.orders+' 笔，支付流水 '+result.paymentTransactions+' 笔，充值 '+result.walletRecharges+' 笔');cleanupOpen.value=false;cleanupPhrase.value='';await loadOrders();}catch(error:any){message.error(error?.response?.data?.message||'清理失败');}finally{cleanupLoading.value=false;}}
 onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo||'');if(orderNo){const target=orders.value.find(item=>item.orderNo===orderNo);if(target)await openOrderDetail(target);}});
 </script>
@@ -98,7 +123,26 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
   <a-modal v-model:open="detailOpen" title="订单详情" :footer="null" width="min(720px, 94vw)">
    <a-spin :spinning="detailLoading">
     <template v-if="selectedDetail">
-     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+     <div v-if="selectedDetail.deliverySteps?.length" class="mb-4 rounded-lg border border-gray-100 p-3 sm:col-span-2">
+       <div class="mb-3 font-semibold">分步骤交付记录</div>
+       <div v-for="step in selectedDetail.deliverySteps" :key="step.id" class="mb-3 last:mb-0 rounded-md border border-gray-100 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+         <span class="font-medium">{{deliveryStepLabel(step.stepKey)}}</span>
+         <a-tag :color="deliveryStepStatusColor(step.status)">{{deliveryStepStatusLabel(step.status)}}</a-tag>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
+         <div>尝试次数：{{step.attempts}}</div>
+         <div>Telegram message_id：{{step.telegramMessageId||'-'}}</div>
+         <div class="col-span-2 break-words" v-if="step.lastError">最近错误：{{step.lastError}}</div>
+         <div class="col-span-2">最近开始：{{formatTime(step.startedAt||'')}}</div>
+        </div>
+        <div v-if="step.status==='uncertain' && selectedDetail.order.status==='delivery_uncertain'" class="mt-3 flex flex-wrap gap-2">
+         <a-button size="small" type="primary" @click="resolveDeliveryStep(step,'succeeded')">核实该步骤已成功</a-button>
+         <a-button size="small" danger @click="resolveDeliveryStep(step,'failed')">核实该步骤未送达</a-button>
+        </div>
+       </div>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">订单编号</div><div class="mt-1 break-all font-semibold">{{selectedDetail.order.orderNo}}</div></div>
       <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">订单状态</div><div class="mt-1"><a-tag :color="statusColor(selectedDetail.order.status)">{{statusLabel(selectedDetail.order.status)}}</a-tag></div></div>
       <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">Telegram 用户 ID</div><div class="mt-1 break-all">{{selectedDetail.order.telegramUserId}}</div></div>
