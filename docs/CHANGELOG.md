@@ -1,3 +1,10 @@
+## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 开发中）
+
+- 修复目标：Telegram 发送请求可能已被远端接受但客户端因网络中断/响应丢失而报错，不能将这种结果当作可安全自动重试的普通失败。
+- 新增 `delivery_uncertain` 状态与 `order_delivery_events` 事件；已开始外部 Telegram 发送后发生错误即隔离，自动 worker 不再领取。
+- 管理员订单页新增待核实状态和二次确认；确认后仅由管理员通过现有单笔租约手动重试。纯本地校验/解密失败仍保留 `delivery_failed` 指数退避。
+- 增加 SQLite/PostgreSQL 队列隔离测试与 Telegram transport failure 回归测试；无数据库迁移或新增生产环境变量。
+- PR head CI 与 GHCR 发布待完成；生产部署和 Telegram 真机验收不在本 PR 自动化证明范围内。
 ## 2026-11-21 — 订单交付失败指数退避（PR #67 已合并并发布）
 
 - PR #67 已 Squash Merge 至 main，merge commit `c460706a1cc7675cfbd9f274a9311f3f2654f468`。
