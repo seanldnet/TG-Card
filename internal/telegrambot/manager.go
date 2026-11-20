@@ -1593,9 +1593,15 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	var deliveryErr error
 	// Telegram may accept a request even when the response is lost; quarantine attempted sends.
 	deliveryAttempted := false
-	sendDeliveryMessage := func(text string) error { deliveryAttempted = true; return m.sendMessage(ctx, current.config.Token, chatID, text) }
-	sendDeliveryDocument := func(fileID, caption string) error { deliveryAttempted = true; return m.sendDocument(ctx, current.config.Token, chatID, fileID, caption) }
-	createDeliveryInvite := func(target string, expires time.Time) (string, error) { deliveryAttempted = true; return m.createOneTimeInviteLink(ctx, current.config.Token, target, expires) }
+	beginDeliveryAttempt := func() error {
+		if deliveryAttempted { return nil }
+		if err := database.MarkOrderDeliveryUncertain(ctx, m.db, m.driver, item.Order.ID, "Telegram delivery request started; remote acceptance is not yet confirmed"); err != nil { return fmt.Errorf("persist uncertain delivery state before Telegram send: %w", err) }
+		deliveryAttempted = true
+		return nil
+	}
+	sendDeliveryMessage := func(text string) error { if err := beginDeliveryAttempt(); err != nil { return err }; return m.sendMessage(ctx, current.config.Token, chatID, text) }
+	sendDeliveryDocument := func(fileID, caption string) error { if err := beginDeliveryAttempt(); err != nil { return err }; return m.sendDocument(ctx, current.config.Token, chatID, fileID, caption) }
+	createDeliveryInvite := func(target string, expires time.Time) (string, error) { if err := beginDeliveryAttempt(); err != nil { return "", err }; return m.createOneTimeInviteLink(ctx, current.config.Token, target, expires) }
 	switch mode {
 	case "card":
 		message := "订单：" + item.Order.OrderNo + "\n" + cardDeliveryText + "\n请妥善保存，不要转发给他人。"
@@ -1644,7 +1650,7 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	}
 	if deliveryErr != nil {
 		if item.Order.Status != "delivered" {
-			if deliveryAttempted { _ = database.MarkOrderDeliveryUncertain(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) } else { _ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) }
+			if deliveryAttempted { if err := database.UpdateOrderDeliveryUncertainError(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()); err != nil { log.Printf("update uncertain Telegram delivery error failed: order_id=%s error=%v", item.Order.ID, err) } } else { _ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) }
 		}
 		return fmt.Errorf("send paid order delivery: %w",deliveryErr)
 	}
