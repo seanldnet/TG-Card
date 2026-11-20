@@ -70,6 +70,7 @@ async function loadCapConfig() {
     if (capEnabled.value) {
       if (!capDomain.value || !capSiteKey.value) throw new Error('Cap configuration is incomplete');
       await loadCapWidgetScript(capDomain.value);
+      await nextTick();
       mountCapWidget();
     }
   } catch {
