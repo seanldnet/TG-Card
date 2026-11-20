@@ -24,6 +24,8 @@ type FinanceException struct {
  CreatedAt string `json:"createdAt"`
  UpdatedAt string `json:"updatedAt"`
  ResolvedAt string `json:"resolvedAt"`
+ OccurrenceCount int `json:"occurrenceCount"`
+ LastSeenAt string `json:"lastSeenAt"`
 }
 
 type SupplierFundCheck struct {
@@ -41,43 +43,136 @@ type SupplierFundCheck struct {
  CheckedAt string `json:"checkedAt"`
 }
 
+func upsertSystemExceptionTx(ctx context.Context, tx *sql.Tx, driver, sourceKey, category, severity, entityType, entityID, title, detail string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	id, err := randomID()
+	if err != nil {
+		return err
+	}
+	q := "INSERT INTO system_exceptions(id,source_key,category,severity,entity_type,entity_id,title,detail,status,created_at,updated_at,occurrence_count,last_seen_at) VALUES(" +
+		placeholder(driver, 1) + "," + placeholder(driver, 2) + "," + placeholder(driver, 3) + "," + placeholder(driver, 4) + "," +
+		placeholder(driver, 5) + "," + placeholder(driver, 6) + "," + placeholder(driver, 7) + "," + placeholder(driver, 8) +
+		",'open'," + placeholder(driver, 9) + "," + placeholder(driver, 10) + ",1," + placeholder(driver, 11) +
+		") ON CONFLICT(source_key) DO UPDATE SET category=excluded.category,severity=excluded.severity,entity_type=excluded.entity_type,entity_id=excluded.entity_id,title=excluded.title,detail=excluded.detail," +
+		"status=CASE WHEN system_exceptions.status IN ('resolved','ignored') THEN 'open' ELSE system_exceptions.status END," +
+		"resolution_note=CASE WHEN system_exceptions.status IN ('resolved','ignored') THEN '' ELSE system_exceptions.resolution_note END," +
+		"resolved_by=CASE WHEN system_exceptions.status IN ('resolved','ignored') THEN '' ELSE system_exceptions.resolved_by END," +
+		"resolved_at=CASE WHEN system_exceptions.status IN ('resolved','ignored') THEN '' ELSE system_exceptions.resolved_at END," +
+		"updated_at=excluded.updated_at,occurrence_count=system_exceptions.occurrence_count+1,last_seen_at=excluded.last_seen_at"
+	_, err = tx.ExecContext(ctx, q, id, sourceKey, category, severity, entityType, entityID, title, detail, now, now, now)
+	return err
+}
+
+// Compatibility wrapper retained for existing procurement and finance call sites.
 func upsertFinanceExceptionTx(ctx context.Context, tx *sql.Tx, driver, sourceKey, category, severity, entityType, entityID, title, detail string) error {
- now:=time.Now().UTC().Format(time.RFC3339Nano)
- id,err:=randomID();if err!=nil{return err}
- q:="INSERT INTO finance_exceptions(id,source_key,category,severity,entity_type,entity_id,title,detail,status,created_at,updated_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+",'open',"+placeholder(driver,9)+","+placeholder(driver,10)+") ON CONFLICT(source_key) DO UPDATE SET category=excluded.category,severity=excluded.severity,title=excluded.title,detail=excluded.detail,status=CASE WHEN finance_exceptions.status='resolved' THEN 'open' ELSE finance_exceptions.status END,updated_at=excluded.updated_at,resolved_at=CASE WHEN finance_exceptions.status='resolved' THEN '' ELSE finance_exceptions.resolved_at END"
- _,err=tx.ExecContext(ctx,q,id,sourceKey,category,severity,entityType,entityID,title,detail,now,now);return err
+	return upsertSystemExceptionTx(ctx, tx, driver, sourceKey, category, severity, entityType, entityID, title, detail)
 }
 
-func CreateFinanceException(ctx context.Context,db *sql.DB,driver,sourceKey,category,severity,entityType,entityID,title,detail string) error {
- tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
- if err:=upsertFinanceExceptionTx(ctx,tx,driver,sourceKey,category,severity,entityType,entityID,title,detail);err!=nil{return err}
- return tx.Commit()
+func CreateSystemException(ctx context.Context, db *sql.DB, driver, sourceKey, category, severity, entityType, entityID, title, detail string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := upsertSystemExceptionTx(ctx, tx, driver, sourceKey, category, severity, entityType, entityID, title, detail); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func ListFinanceExceptions(ctx context.Context,db *sql.DB,driver,status,category string,limit int)([]FinanceException,error){
- if limit<1||limit>500{limit=100}
- q:="SELECT id,source_key,category,severity,entity_type,entity_id,title,detail,status,resolution_note,resolved_by,created_at,updated_at,resolved_at FROM finance_exceptions WHERE 1=1"
- args:=[]any{}
- if status!=""{q+=" AND status="+placeholder(driver,len(args)+1);args=append(args,status)}
- if category!=""{q+=" AND category="+placeholder(driver,len(args)+1);args=append(args,category)}
- q+=" ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'error' THEN 1 ELSE 2 END,created_at DESC LIMIT "+fmt.Sprint(limit)
- rows,err:=db.QueryContext(ctx,q,args...);if err!=nil{return nil,err};defer rows.Close()
- out:=make([]FinanceException,0)
- for rows.Next(){var x FinanceException;if err:=rows.Scan(&x.ID,&x.SourceKey,&x.Category,&x.Severity,&x.EntityType,&x.EntityID,&x.Title,&x.Detail,&x.Status,&x.ResolutionNote,&x.ResolvedBy,&x.CreatedAt,&x.UpdatedAt,&x.ResolvedAt);err!=nil{return nil,err};out=append(out,x)}
- return out,rows.Err()
+// CreateFinanceException remains as a source-compatible alias; records are stored globally.
+func CreateFinanceException(ctx context.Context, db *sql.DB, driver, sourceKey, category, severity, entityType, entityID, title, detail string) error {
+	return CreateSystemException(ctx, db, driver, sourceKey, category, severity, entityType, entityID, title, detail)
 }
 
-func CountOpenFinanceExceptions(ctx context.Context,db *sql.DB)(int64,error){
- var n int64;err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM finance_exceptions WHERE status IN ('open','processing')").Scan(&n);return n,err
+func ResolveSystemExceptionBySourceKey(ctx context.Context, db *sql.DB, driver, sourceKey, note string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	q := "UPDATE system_exceptions SET status='resolved',resolution_note=" + placeholder(driver, 1) +
+		",resolved_by='system',updated_at=" + placeholder(driver, 2) + ",resolved_at=" + placeholder(driver, 3) +
+		" WHERE source_key=" + placeholder(driver, 4) + " AND status IN ('open','processing')"
+	_, err := db.ExecContext(ctx, q, note, now, now, sourceKey)
+	return err
 }
 
-func UpdateFinanceException(ctx context.Context,db *sql.DB,driver,id,adminID,status,note string)error{
- if status!="processing"&&status!="resolved"&&status!="ignored"{return fmt.Errorf("invalid finance exception status")}
- if status=="resolved"&&strings.TrimSpace(note)==""{return fmt.Errorf("处理完成时必须填写核实结论")}
- now:=time.Now().UTC().Format(time.RFC3339Nano)
- resolvedAt:="";if status=="resolved"||status=="ignored"{resolvedAt=now}
- res,err:=db.ExecContext(ctx,"UPDATE finance_exceptions SET status="+placeholder(driver,1)+",resolution_note="+placeholder(driver,2)+",resolved_by="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+",resolved_at="+placeholder(driver,5)+" WHERE id="+placeholder(driver,6),status,note,adminID,now,resolvedAt,id)
- if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
+func ListSystemExceptions(ctx context.Context, db *sql.DB, driver, status, category, from, to string, limit int) ([]FinanceException, error) {
+	if limit < 1 || limit > 500 {
+		limit = 100
+	}
+	q := "SELECT id,source_key,category,severity,entity_type,entity_id,title,detail,status,resolution_note,resolved_by,created_at,updated_at,resolved_at,occurrence_count,last_seen_at FROM system_exceptions WHERE 1=1"
+	args := []any{}
+	add := func(clause, value string) {
+		if value == "" {
+			return
+		}
+		q += clause + placeholder(driver, len(args)+1)
+		args = append(args, value)
+	}
+	add(" AND status=", status)
+	add(" AND category=", category)
+	add(" AND created_at>=", from)
+	add(" AND created_at<", to)
+	q += " ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'error' THEN 1 ELSE 2 END,created_at DESC LIMIT " + fmt.Sprint(limit)
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]FinanceException, 0)
+	for rows.Next() {
+		var x FinanceException
+		if err := rows.Scan(&x.ID, &x.SourceKey, &x.Category, &x.Severity, &x.EntityType, &x.EntityID, &x.Title, &x.Detail, &x.Status, &x.ResolutionNote, &x.ResolvedBy, &x.CreatedAt, &x.UpdatedAt, &x.ResolvedAt, &x.OccurrenceCount, &x.LastSeenAt); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+func ListFinanceExceptions(ctx context.Context, db *sql.DB, driver, status, category string, limit int) ([]FinanceException, error) {
+	return ListSystemExceptions(ctx, db, driver, status, category, "", "", limit)
+}
+
+func CountOpenSystemExceptions(ctx context.Context, db *sql.DB) (int64, error) {
+	var n int64
+	err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM system_exceptions WHERE status IN ('open','processing')").Scan(&n)
+	return n, err
+}
+
+func CountOpenFinanceExceptions(ctx context.Context, db *sql.DB) (int64, error) {
+	return CountOpenSystemExceptions(ctx, db)
+}
+
+func UpdateSystemException(ctx context.Context, db *sql.DB, driver, id, adminID, status, note string) error {
+	if status != "processing" && status != "resolved" && status != "ignored" {
+		return fmt.Errorf("invalid system exception status")
+	}
+	if status == "resolved" && strings.TrimSpace(note) == "" {
+		return fmt.Errorf("处理完成时必须填写核实结论")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	resolvedAt := ""
+	if status == "resolved" || status == "ignored" {
+		resolvedAt = now
+	}
+	q := "UPDATE system_exceptions SET status=" + placeholder(driver, 1) + ",resolution_note=" + placeholder(driver, 2) +
+		",resolved_by=" + placeholder(driver, 3) + ",updated_at=" + placeholder(driver, 4) +
+		",resolved_at=" + placeholder(driver, 5) + " WHERE id=" + placeholder(driver, 6)
+	res, err := db.ExecContext(ctx, q, status, note, adminID, now, resolvedAt, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func UpdateFinanceException(ctx context.Context, db *sql.DB, driver, id, adminID, status, note string) error {
+	return UpdateSystemException(ctx, db, driver, id, adminID, status, note)
 }
 
 func parseFinanceMinor(s string)(int64,error){
@@ -189,7 +284,7 @@ func ResolveUncertainProcurement(ctx context.Context,db *sql.DB,driver,orderID,a
  id,e:=randomID();if e!=nil{return e}
  if _,err:=tx.ExecContext(ctx,"INSERT INTO upstream_procurement_events(id,local_order_id,event_type,detail,actor,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'owner_resolution',"+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+")",id,orderID,resolution+": "+note,adminID,now);err!=nil{return err}
  if resolution=="not_accepted"{if err:=upsertFinanceExceptionTx(ctx,tx,driver,"procurement-failed:"+orderID,"procurement_failed","error","order",orderID,"上游采购失败",note);err!=nil{return err}}
- if _,err:=tx.ExecContext(ctx,"UPDATE finance_exceptions SET status='resolved',resolution_note="+placeholder(driver,1)+",resolved_by="+placeholder(driver,2)+",resolved_at="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+" WHERE source_key="+placeholder(driver,5),note,adminID,now,now,"procurement-uncertain:"+orderID);err!=nil{return err}
+ if _,err:=tx.ExecContext(ctx,"UPDATE system_exceptions SET status='resolved',resolution_note="+placeholder(driver,1)+",resolved_by="+placeholder(driver,2)+",resolved_at="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+" WHERE source_key="+placeholder(driver,5),note,adminID,now,now,"procurement-uncertain:"+orderID);err!=nil{return err}
  return tx.Commit()
 }
 
