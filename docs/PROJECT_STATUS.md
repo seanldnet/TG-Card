@@ -1,3 +1,13 @@
+## 2026-11-21 — Cap 自托管人机验证接入（PR 开发中，文档版本 2.2.34）
+
+- 开发基线：main@a83f9bfa44989c55e4c6b9fd1aa4d4ed12ea1b81；独立分支 `feat/cap-human-verification-pr-p0-1`。
+- 本 PR 范围：后台 Cap 域名/Site Key/Secret Key 配置；Secret Key 使用现有 AES-256-GCM 密钥加密保存并脱敏读取；登录页加载自托管 `/assets/widget.js` widget；登录接口服务端调用 `/{site-key}/siteverify`，仅 success=true 放行。
+- 数据库迁移：新增 `0051_system_settings.sql`，创建兼容 PostgreSQL/SQLite 的 `settings(key,value,updated_at)` 表；Cap 配置保存在独立键值项，以支持终端 SQL 紧急关闭。
+- 紧急关闭：`docker compose exec db psql -U tgcard -d tgcard -c "UPDATE settings SET value='false' WHERE key='cap_enabled';"`，随后 `docker compose restart app`；另支持 `DISABLE_CAP=true`，需 `docker compose up -d --force-recreate app` 让环境变量生效。
+- 安全边界：后端 fail-closed；不向浏览器返回 Secret Key；验证请求 HTTPS、限制响应体和超时、禁止重定向，并拒绝 localhost/私有 IP 目标。当前仅覆盖管理员登录。
+- 文档：新增 `docs/cap-human-verification.md`，说明 Cap 静态资源要求、启用步骤、数据库密钥依赖和应急恢复。
+- 状态：代码与自动化测试开发中；CI、PR 合并、镜像发布和真实 Cap 联调尚未完成，不将其标记为已验收。
+
 ## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
 - PR #75 已 Squash Merge 至 main，merge commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；审查基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653（PR #74 已合并并发布）。
@@ -100,8 +110,8 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.33
-> - 源码核对基线：main 分支，commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；本轮文档 PR #76 基于该提交开发
+> - 文档版本：2.2.34
+> - 源码核对基线：main 分支，commit `a83f9bfa44989c55e4c6b9fd1aa4d4ed12ea1b81`；本轮 Cap PR 基于该提交开发
 > - 本次文档更新：记录 PR #75 合并、CI 与 GHCR 发布结果
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
@@ -499,7 +509,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 - `docs/PROJECT_STATUS.md`：当前功能总览、实现状态与强制文档规范（本文）。
 - `docs/CHANGELOG.md`：按时间倒序记录每次开发、修复和发布。
 - `docs/product-scope.md`：产品目标、范围和规划基线；其中规划内容不代表已实现。
-- `docs/payment-delivery.md`：支付验证、订单状态、库存和发货恢复机制。
+- `docs/payment-delivery.md`：支付验证、订单状态、库存和发货恢复机制。\n- `docs/cap-human-verification.md`：Cap 自托管人机验证配置、验收与紧急关闭。
 - `docs/commerce-expansion.md`：补货通知、数量折扣、充值奖励、交付类型等实现约定。
 - `docs/support-tickets.md`：售后工单规则与当前限制。
 
@@ -521,7 +531,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | ADMIN_PASSWORD | 空值时生成一次性随机密码并在首次启动日志显示 | 首次初始化时可选；显式提供则至少 12 字符 | 首次初始化管理员密码；已有管理员时不会重置密码。 |
 | TRONGRID_API_KEY | 空字符串 | 否 | 旧配置/首次启动导入；需同时提供收款地址且数据库尚无支付设置，导入后加密保存。 |
 | TRON_RECEIVE_ADDRESS | 空字符串 | 否 | 旧配置/首次启动 TRON 收款地址导入；运行期配置以数据库为准。 |
-| TRON_USDT_CONTRACT | TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t | 否 | 首次导入时的 TRON USDT 合约默认值；后台保存后数据库配置为准。 |
+| TRON_USDT_CONTRACT | TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t | 否 | 首次导入时的 TRON USDT 合约默认值；后台保存后数据库配置为准。 |\n| DISABLE_CAP | false | 否 | 紧急禁用 Cap 人机验证；true 覆盖数据库 cap_enabled，Compose 需重建 app 容器加载新值。 |
 | POSTGRES_PASSWORD | 无默认值；Compose 要求在环境或 .env 中提供 | **是（Compose 部署）** | PostgreSQL 密码，并用于拼接应用 DATABASE_URL。 |
 | POSTGRES_DB | Compose 固定 tgcard | 否（Compose 已设置） | PostgreSQL 初始化数据库名。 |
 | POSTGRES_USER | Compose 固定 tgcard | 否（Compose 已设置） | PostgreSQL 初始化用户名。 |
@@ -862,8 +872,8 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 管理员 Bearer Token 使用 HS256，签发有效期 24 小时；认证检查签名、过期时间、管理员状态和 Token Version。
 - 登录按经过可信代理校验的客户端 IP 限制尝试频率；敏感写接口另有按 IP + 路由独立滑动窗口限流，超限返回 429：密码修改 5 次/5 分钟；支付人工核对、支付设置和余额调整各 10 次/5 分钟；群发创建、上游采购重试/退款/核实各 5 次/5 分钟。限流状态当前为进程内存储，进程重启会重置；多实例部署需改为共享限流存储。
 - 修改管理员密码会递增 Token Version，使已有会话失效。
-- Bot Token、支付 API Key、SMTP 密码通过持久化 AES-256-GCM 密钥加密保存；密钥文件创建权限为 0600。
-- JWT Secret 未显式设置时保存在 DATA_DIR/jwt-secret；Bot/支付/SMTP 加密密钥位于 DATA_DIR/bot-token.key，均依赖持久化数据卷。
+- Bot Token、支付 API Key、SMTP 密码、Cap Secret Key 通过持久化 AES-256-GCM 密钥加密保存；密钥文件创建权限为 0600。
+- JWT Secret 未显式设置时保存在 DATA_DIR/jwt-secret；Bot/支付/SMTP/Cap 加密密钥位于 DATA_DIR/bot-token.key，均依赖持久化数据卷。
 - Docker 镜像以非 root 的 tgcard 用户运行；应用数据目录由镜像构建步骤设置权限。
 - HTTP 响应设置 X-Content-Type-Options、Referrer-Policy 和 X-Frame-Options 安全头。
 - HTTP Server 设置 ReadHeaderTimeout=5s、IdleTimeout=60s；应用自身未配置 TLS listener。新增需管理员认证的 GET /api/health/detailed，返回数据库、Bot 运行状态、支付监听器、上游同步与迁移版本，不返回凭证、Token 或 DSN。Bot 缺失/断开、Polling 冲突或连续 3 次轮询错误会通知 Owner。
@@ -875,12 +885,12 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 不要将 JWT_SECRET、POSTGRES_PASSWORD、TronGrid API Key、Bot Token、SMTP 密码提交到 Git、前端代码或公开日志。
 - 限制应用数据目录、备份文件和日志的访问；备份应加密并限制权限。
 - 当前普通管理员 API 主要采用统一 Bearer 认证；支付人工补单额外要求 super。敏感写接口限流覆盖管理员密码修改、支付人工核对、支付设置、余额调整、群发创建、上游采购重试/退款/核实。可信代理仅通过 TRUSTED_PROXY_CIDRS 显式 CIDR 白名单启用；未列入白名单的来源一律忽略 XFF/X-Real-IP。细粒度 RBAC、CSRF/CORS 专项策略仍待单独评估。
-- PR #53 已实现服务端会话撤销：数据库仅保存 Token SHA-256 摘要，每个 JWT 有独立 JTI；登出撤销当前设备 Token，密码修改通过 TokenVersion 撤销全部旧会话。旧未登记 Token 在迁移后失效，管理员需重新登录。
+- PR #53 已实现服务端会话撤销：数据库仅保存 Token SHA-256 摘要，每个 JWT 有独立 JTI；登出撤销当前设备 Token，密码修改通过 TokenVersion 撤销全部旧会话。旧未登记 Token 在迁移后失效，管理员需重新登录。\n- Cap 人机验证开发中：新增键值设置表 0051，后台密钥加密存储；登录接口服务端验证 Cap token；数据库 SQL 开关和 DISABLE_CAP 环境变量均可紧急禁用。详见 docs/cap-human-verification.md。
 - PR S #57 已合并，merge commit `41389825d6edef83330c4e28c7b5662e23f932a7`；main Go CI #44603593840、Admin CI #44603593868、Security #44603593955 与 Docker Publish #44603594008 全部成功。GHCR 多架构 latest digest：`sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署及 Compose 备份/恢复实操演练尚未完成。
 
 ## 21. 本次核对的代码位置
 
-- 环境变量：internal/config/config.go、docker-compose.yml、cmd/server/main.go。
+- 环境变量：internal/config/config.go、docker-compose.yml、cmd/server/main.go（含 DISABLE_CAP）。
 - JWT：internal/auth/token.go、cmd/server/main.go。
 - 加密密钥：internal/secret/secret.go。
 - 数据库迁移：internal/database/database.go、internal/database/migrations/*.sql。
