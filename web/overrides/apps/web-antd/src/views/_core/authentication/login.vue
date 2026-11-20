@@ -26,10 +26,19 @@ function waitForCapWidget(timeoutMs = 8000): Promise<void> {
   const registry = (window as any).customElements as CustomElementRegistry | undefined;
   if (!registry) return Promise.reject(new Error('Custom Elements are not supported by this browser'));
   if (registry.get('cap-widget')) return Promise.resolve();
-  return Promise.race([
-    registry.whenDefined('cap-widget'),
-    new Promise<void>((_, reject) => window.setTimeout(() => reject(new Error('Cap widget registration timed out')), timeoutMs)),
-  ]);
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('Cap widget registration timed out')), timeoutMs);
+    registry.whenDefined('cap-widget').then(
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      (error) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 }
 
 function loadScript(src: string): Promise<void> {
@@ -106,6 +115,8 @@ async function loadCapConfig() {
     capEnabled.value = true;
     capError.value = `人机验证初始化失败：${error instanceof Error ? error.message : String(error)}。请检查浏览器能否访问 cdn.jsdelivr.net，以及 Cap 服务地址和 Site Key 是否正确。`;
     message.error(capError.value);
+  } finally {
+    capConfigLoaded.value = true;
   }
 }
 
