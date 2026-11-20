@@ -375,7 +375,7 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 	leaseText := now.Add(lease).Format(time.RFC3339Nano)
 	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
 	if driver == "postgres" { dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
-	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed','delivery_uncertain') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
+	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivery_uncertain' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
 	result, err := db.ExecContext(ctx, query, leaseText, nowText, orderID, nowText)
 	if err != nil { return false, err }
 	affected, err := result.RowsAffected()
@@ -442,7 +442,7 @@ func MarkOrderDeliveryFailed(ctx context.Context, db *sql.DB, driver, orderID, r
 func UpdateOrderDeliveryUncertainError(ctx context.Context, db *sql.DB, driver, orderID, reason string) error {
 	if len(reason) > 1000 { reason = reason[:1000] }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE orders SET delivery_error=" + placeholder(driver,1) + ", updated_at=" + placeholder(driver,2) + " WHERE id=" + placeholder(driver,3) + " AND status='delivery_uncertain'"
+	query := "UPDATE orders SET delivery_error=" + placeholder(driver,1) + ", delivery_lease_until=NULL, updated_at=" + placeholder(driver,2) + " WHERE id=" + placeholder(driver,3) + " AND status='delivery_uncertain'"
 	result, err := db.ExecContext(ctx, query, reason, now, orderID)
 	if err != nil { return err }
 	count, err := result.RowsAffected()
@@ -459,7 +459,7 @@ func MarkOrderDeliveryUncertain(ctx context.Context, db *sql.DB, driver, orderID
 	if err != nil { return err }
 	defer tx.Rollback()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE orders SET status='delivery_uncertain', delivery_attempts=delivery_attempts+1, delivery_error=" + placeholder(driver, 1) + ", delivery_lease_until=NULL, updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed')"
+	query := "UPDATE orders SET status='delivery_uncertain', delivery_attempts=delivery_attempts+1, delivery_error=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed')"
 	result, err := tx.ExecContext(ctx, query, reason, now, orderID)
 	if err != nil { return err }
 	count, err := result.RowsAffected()
