@@ -147,4 +147,14 @@ func TestUpdateSystemExceptionWithAuditIsAtomic(t *testing.T) {
 	var missingAudit int
 	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM audit_logs WHERE resource='exception:missing-id'").Scan(&missingAudit);err!=nil{t.Fatal(err)}
 	if missingAudit!=0{t.Fatalf("failed update must not create audit row, got %d",missingAudit)}
+	if err:=CreateSystemException(ctx,db,"sqlite","audit-failure-1","refund_conflict","warning","ticket","ticket-1","refund conflict","lease conflict");err!=nil{t.Fatal(err)}
+	failedItems,err:=ListSystemExceptions(ctx,db,"sqlite","open","refund_conflict","","","",10)
+	if err!=nil||len(failedItems)!=1{t.Fatalf("load exception for audit failure case: items=%+v err=%v",failedItems,err)}
+	if _,err:=db.ExecContext(ctx,`CREATE TRIGGER reject_system_exception_audit BEFORE INSERT ON audit_logs WHEN NEW.action='system.exception.update' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END`);err!=nil{t.Fatal(err)}
+	err=UpdateSystemExceptionWithAudit(ctx,db,"sqlite",failedItems[0].ID,"admin-1","resolved","must rollback","127.0.0.1","test-agent")
+	if err==nil{t.Fatal("audit insert failure must abort exception update")}
+	if _,err:=db.ExecContext(ctx,"DROP TRIGGER reject_system_exception_audit");err!=nil{t.Fatal(err)}
+	var afterFailure string
+	if err:=db.QueryRowContext(ctx,"SELECT status FROM system_exceptions WHERE id=?",failedItems[0].ID).Scan(&afterFailure);err!=nil{t.Fatal(err)}
+	if afterFailure!="open"{t.Fatalf("exception state must roll back when audit insert fails, got %s",afterFailure)}
 }
