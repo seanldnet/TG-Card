@@ -1184,6 +1184,19 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if order.Status == "delivery_uncertain" && order.DeliveryType == "file_card" {
+		steps, stepErr := database.ListOrderDeliverySteps(r.Context(),a.db,a.driver,orderID)
+		if stepErr != nil { writeError(w,http.StatusInternalServerError,"读取分步骤发货状态失败"); return }
+		blocked := len(steps)==0
+		for _,step := range steps { if step.Status=="uncertain" || step.Status=="sending" { blocked=true; break } }
+		if blocked {
+			reason := "file_card delivery contains an unresolved or missing step record"
+			database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"order.delivery.retry.blocked","order:"+orderID,a.clientIP(r),r.UserAgent(),reason)
+			writeError(w,http.StatusConflict,"文件或卡密消息步骤仍有结果待核实，请先在订单详情中逐项核实并记录处理结果，再恢复失败步骤。")
+			return
+		}
+	}
+
 	if order.Status == "delivered" {
 		if order.DeliveryType == "invite_link" || order.DeliveryType == "file_card" {
 			reason := "delivered order re-delivery requires manual verification: " + order.DeliveryType
