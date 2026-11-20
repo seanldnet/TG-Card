@@ -196,3 +196,39 @@ func TestAdminSiteSettingsRedactsCapSecret(t *testing.T) {
 		t.Fatalf("site settings response omitted Cap state: %s", body)
 	}
 }
+
+func TestCapEnvironmentOverrideHidesWidgetWithoutChangingStoredSetting(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := database.Migrate(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSettings(ctx, db, "sqlite", map[string]string{
+		"cap_enabled": "true",
+		"cap_domain": "https://cap.example.com",
+		"cap_site_key": "public-site-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DISABLE_CAP", "true")
+	stored, _, err := loadCapConfiguration(ctx, db, "sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.Enabled {
+		t.Fatal("environment override must not rewrite the stored database setting")
+	}
+	app := &application{db: db, driver: "sqlite"}
+	response := httptest.NewRecorder()
+	app.getCapConfig(response, httptest.NewRequest(http.MethodGet, "/api/auth/cap-config", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("public Cap config status=%d body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), `"enabled":true`) {
+		t.Fatalf("DISABLE_CAP should hide the widget from login: %s", response.Body.String())
+	}
+}
