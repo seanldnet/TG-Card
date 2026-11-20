@@ -146,6 +146,9 @@ func (a *application) refundSupportTicket(w http.ResponseWriter,r *http.Request)
 		if errors.Is(err, database.ErrOrderRedeliveryInProgress) {
 			action = "support.refund.blocked"
 			status = http.StatusConflict
+			if exceptionErr := database.CreateSystemException(r.Context(), a.db, a.driver, "refund-conflict:"+ticket.OrderID, "refund_conflict", "warning", "order", ticket.OrderID, "退款与交付租约冲突", err.Error()); exceptionErr != nil {
+				log.Printf("record refund conflict exception failed: order_id=%s error=%v", ticket.OrderID, exceptionErr)
+			}
 		}
 		database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,action,"ticket:"+ticket.TicketNo,a.clientIP(r),r.UserAgent(),"order_id="+ticket.OrderID+"; reason="+err.Error())
 		writeError(w,status,err.Error());return
