@@ -1,9 +1,11 @@
-## 2026-11-21 — 订单交付失败指数退避（PR #67 开发中）
+## 2026-11-21 — 订单交付失败指数退避（PR #67 已合并并发布）
 
-- 后台自动交付 worker 对 `delivery_failed` 订单增加指数退避：失败后等待依次为 15、30、60、120、240、480 秒，之后封顶 900 秒。
-- 初次付款交付和租约过期恢复不受影响；管理员手动补发继续立即执行，不受后台自动重试退避限制。
-- 新增 SQLite 与 PostgreSQL 16 集成测试覆盖退避时序及手动补发旁路；不新增迁移或生产环境变量。
-- PR #67 待最新 head Go/Admin/Security CI 验证。
+- PR #67 已 Squash Merge 至 main，merge commit `c460706a1cc7675cfbd9f274a9311f3f2654f468`。
+- 后台自动交付 worker 对 `delivery_failed` 订单增加指数退避：15、30、60、120、240、480 秒，之后封顶 900 秒；首次付款交付与过期租约恢复不受影响，管理员手动补发仍立即执行。
+- SQLite 与 PostgreSQL 16 集成测试覆盖退避时序和手动补发旁路；PR head Go/Admin/Security 全部成功。
+- main Go CI #44784753138、Admin CI #44784752882、Security #44784753131、Docker Publish #44784753246 全部成功。
+- GHCR 多架构 `latest` 与提交标签 `c460706a1cc7675cfbd9f274a9311f3f2654f468` 已推送；manifest digest：`sha256:7c5710db0edf473ca828022030f9b3904ad871e32316cb728ae15222648443eb`。
+- 无数据库迁移或新增生产环境变量；生产部署状态需项目所有者确认。
 
 ## 2026-11-21 — PostgreSQL 订单退款并发幂等测试（PR #65 已合并）
 
