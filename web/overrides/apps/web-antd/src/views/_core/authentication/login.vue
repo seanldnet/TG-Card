@@ -144,7 +144,7 @@ const formSchema = computed((): VbenFormSchema[] => [
     ? [{
         component: CapWidgetField,
         componentProps: {
-          apiEndpoint: `${capDomain.value.replace(/\\/$/, '')}/${encodeURIComponent(capSiteKey.value)}/`,
+          apiEndpoint: `${capDomain.value.replace(/\/+$/, '')}/${encodeURIComponent(capSiteKey.value)}/`,
           error: capError.value,
           nonce: capWidgetNonce.value,
           ready: capWidgetReady.value,
