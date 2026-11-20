@@ -449,6 +449,10 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		if verifyErr != nil {
 			log.Printf("Cap verification rejected login: %v", verifyErr)
+			sourceKey := "cap-verification:" + time.Now().UTC().Format("2006-01-02")
+			if exceptionErr := database.CreateSystemException(r.Context(), a.db, a.driver, sourceKey, "cap_verification_failed", "warning", "security", "admin-login", "Cap 人机验证失败", verifyErr.Error()); exceptionErr != nil {
+				log.Printf("record Cap verification exception failed: %v", exceptionErr)
+			}
 			writeError(w, http.StatusForbidden, "人机验证失败或已过期，请重新验证")
 			return
 		}
