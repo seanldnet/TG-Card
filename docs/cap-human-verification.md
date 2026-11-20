@@ -77,3 +77,11 @@ Compose 会将 `DISABLE_CAP` 注入 app 容器。环境变量方式需要重建�
 - 登录验证失败采用 fail-closed：Cap 已启用但验证服务异常时不会放行登录。
 - 当前保护范围是管理员登录接口；其他敏感表单可在后续阶段复用同一 token 验证器。
 - `DISABLE_CAP=true` 是最高优先级紧急覆盖，不会改写数据库中保存的启用状态。
+
+
+## 全局异常中心联动
+
+- Cap 配置读取失败、Secret Key 解密失败会分别记录为 `cap_configuration`；验证失败记录为 `cap_verification`。
+- 配置类故障使用稳定来源键聚合；验证失败按管理员用户名聚合。异常详情不保存 Secret Key、密文或一次性 Widget Token。
+- 管理员应先修复 Cap 服务/配置，再在“全局异常中心”记录处理结论；异常中心不会自动关闭 Cap，也不会绕过 fail-closed 验证。
+- 详见 `docs/system-exceptions.md`。

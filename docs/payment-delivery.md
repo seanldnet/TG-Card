@@ -122,3 +122,8 @@ Refunding an already delivered order must not race with a customer/admin re-deli
 ## Auditing refund attempts blocked by re-delivery
 
 When a refund is blocked because an active re-delivery lease exists, the support refund API returns HTTP 409 and records a `support.refund.blocked` admin audit event with the order and reason. Other refund failures are also recorded as `support.refund.failed`. The database exposes a typed conflict error so the API does not classify this condition by matching error-message text.
+
+
+## 全局异常中心联动
+
+当 Telegram 交付进入 `delivery_uncertain` 时，同一数据库事务创建或刷新 `system_exceptions` 记录，来源键为 `delivery-uncertain:<order-id>`。订单与交付事件仍是事实来源；全局异常中心仅提供聚合视图。标记解决不会重发 Telegram 消息、改变订单状态，也不能证明远端已送达。必须先核实真实 Telegram 结果，再记录处理结论。详见 `docs/system-exceptions.md`。
