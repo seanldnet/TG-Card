@@ -83,6 +83,14 @@ func TestRedeliverPaidOrderRejectsOneTimeInviteLinks(t *testing.T) {
 	}
 }
 
+func TestRedeliverPaidOrderRejectsMultiStepFileCards(t *testing.T) {
+	m := &Manager{}
+	item := database.OrderDelivery{Order: database.Order{Status:"delivered", DeliveryType:"file_card"}}
+	if err := m.RedeliverPaidOrder(context.Background(), item); err == nil || !strings.Contains(err.Error(), "manual verification") {
+		t.Fatalf("multi-step file-card redelivery must require manual verification, got %v", err)
+	}
+}
+
 func TestDeliverPaidOrderBlocksUncertainInviteLinkRetry(t *testing.T) {
 	m := &Manager{}
 	item := database.OrderDelivery{Order: database.Order{Status:"delivery_uncertain", DeliveryType:"invite_link"}}

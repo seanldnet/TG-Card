@@ -1391,7 +1391,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		b.WriteString("\n金额：" + formatPrice(order.AmountMinor, order.Currency))
 		b.WriteString("\n状态：" + orderStatusLabel(order.Status))
 		buttons := []map[string]string{{"text":"查看详情","callback_data":"order:detail:"+order.ID}}
-		if order.Status == "delivered" && order.DeliveryType == "invite_link" {
+		if order.Status == "delivered" && (order.DeliveryType == "invite_link" || order.DeliveryType == "file_card") {
 			buttons = append(buttons, map[string]string{"text":"联系客服核实","callback_data":"support:order:"+order.OrderNo})
 		} else if order.Status == "delivered" {
 			buttons = append(buttons, map[string]string{"text":"📥 再次获取","callback_data":"order:redeliver:"+order.ID})
@@ -1437,6 +1437,9 @@ func (m *Manager) showOrderDetail(ctx context.Context, cfg Config, chatID int64,
 		if order.DeliveryType == "invite_link" {
 			text += "\n\n该商品使用一次性邀请链接交付。为避免重复发放入群名额，请联系客服核实后处理。"
 			buttons = append(buttons, []map[string]string{{"text":"🧾 联系客服申请核实","callback_data":"support:order:"+order.OrderNo}})
+		} else if order.DeliveryType == "file_card" {
+			text += "\n\n该商品包含文件与卡密两个交付步骤。为避免重复发送文件，请联系客服核实后处理。"
+			buttons = append(buttons, []map[string]string{{"text":"🧾 联系客服申请核实","callback_data":"support:order:"+order.OrderNo}})
 		} else {
 			buttons = append(buttons, []map[string]string{{"text":"📥 再次获取商品","callback_data":"order:redeliver:"+order.ID}})
 		}
@@ -1480,6 +1483,11 @@ func (m *Manager) redeliverOrder(ctx context.Context, cfg Config, query Callback
 		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "该商品为一次性入群邀请链接。为避免重复发放入群名额，请联系客服核实后处理。", supportBackKeyboard())
 		return
 	}
+	if order.DeliveryType == "file_card" {
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, "该商品包含多步骤交付，请联系客服核实")
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "该商品由文件和卡密两部分组成。为避免部分发送成功后重复发送文件，请联系客服核实后处理。", supportBackKeyboard())
+		return
+	}
 	claimed, err := database.ClaimOrderRedelivery(ctx, m.db, m.driver, order.ID, 45*time.Second)
 	if err != nil || !claimed {
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请勿重复点击，稍后再试")
@@ -1512,6 +1520,7 @@ func (m *Manager) DeliverPaidOrder(ctx context.Context, item database.OrderDeliv
 func (m *Manager) RedeliverPaidOrder(ctx context.Context, item database.OrderDelivery) error {
 	if item.Order.Status != "delivered" { return fmt.Errorf("order is not delivered") }
 	if item.Order.DeliveryType == "invite_link" { return fmt.Errorf("one-time invite links cannot be reissued automatically") }
+	if item.Order.DeliveryType == "file_card" { return fmt.Errorf("multi-step file-card orders require manual verification and cannot be automatically re-delivered") }
 	return m.deliverPaidOrder(ctx, item, true)
 }
 
