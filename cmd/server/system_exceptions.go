@@ -54,12 +54,8 @@ func (a *application) updateSystemException(w http.ResponseWriter, r *http.Reque
 	}
 	id, note := strings.TrimSpace(r.PathValue("id")), strings.TrimSpace(input.Note)
 	if len(note) > 2000 { writeError(w, http.StatusBadRequest, "处理说明不能超过 2000 个字符"); return }
-	if err := database.UpdateFinanceException(r.Context(), a.db, a.driver, id, claims.AdminID, input.Status, note); err != nil {
+	if err := database.UpdateSystemExceptionWithAudit(r.Context(), a.db, a.driver, id, claims.AdminID, input.Status, note, a.clientIP(r), r.UserAgent()); err != nil {
 		writeError(w, http.StatusConflict, err.Error()); return
-	}
-	if err := database.RecordAdminAuditChecked(r.Context(), a.db, a.driver, claims.AdminID,
-		"system.exception.update", "exception:"+id, a.clientIP(r), r.UserAgent(), input.Status+": "+note); err != nil {
-		writeError(w, http.StatusInternalServerError, "异常已更新，但审计日志写入失败，请联系管理员核查"); return
 	}
 	writeSuccess(w, http.StatusOK, map[string]any{"updated": true})
 }
