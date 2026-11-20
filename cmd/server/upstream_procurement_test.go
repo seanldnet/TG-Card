@@ -212,3 +212,13 @@ func TestReconcileMissingPaidProcurementQueueIsIdempotentAndPreservesPayment(t *
 	if err:=f.db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE telegram_user_id='tg-user-1'").Scan(&walletRows);err!=nil{t.Fatal(err)}
 	if walletRows!=0{t.Fatalf("queue reconciliation must not mutate wallet ledger, rows=%d",walletRows)}
 }
+
+func TestReconcileMissingProcurementDoesNotRequeueFailedOrder(t *testing.T) {
+	f:=newProcurementFixture(t,&fakeProcurementAPI{})
+	ctx:=context.Background()
+	if _,err:=f.db.ExecContext(ctx,"DELETE FROM upstream_procurements WHERE local_order_id=?",f.orderID);err!=nil{t.Fatal(err)}
+	if _,err:=f.db.ExecContext(ctx,"UPDATE orders SET status='procurement_failed' WHERE id=?",f.orderID);err!=nil{t.Fatal(err)}
+	created,err:=database.ReconcileMissingUpstreamProcurements(ctx,f.db,"sqlite",20)
+	if err!=nil||created!=0{t.Fatalf("failed orders must stay in manual review, created=%d err=%v",created,err)}
+	if _,err:=database.GetUpstreamProcurement(ctx,f.db,"sqlite",f.orderID);!errors.Is(err,sql.ErrNoRows){t.Fatalf("failed order must not receive a new procurement row, err=%v",err)}
+}
