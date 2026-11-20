@@ -72,8 +72,8 @@ async function loadCapConfig() {
       mountCapWidget();
     }
   } catch {
-    capEnabled.value = true;
-    capError.value = '人机验证服务加载失败，暂时无法登录。请联系管理员检查 Cap 服务配置。';
+    capEnabled.value = false;
+    capError.value = '人机验证配置暂时无法读取；如果登录被拒绝，请联系管理员检查 Cap 服务。';
     message.error(capError.value);
   }
 }
