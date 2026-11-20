@@ -694,6 +694,10 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"meta": map[string]any{"icon": "lucide:shield-alert", "order": 5, "title": "资金异常中心"},
 		},
 		{
+			"name": "SystemExceptions", "path": "/system-exceptions", "component": "/system-exceptions/index",
+			"meta": map[string]any{"icon": "lucide:triangle-alert", "order": 5, "title": "全局异常中心"},
+		},
+		{
 			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
 			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
 		},
