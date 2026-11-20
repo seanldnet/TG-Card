@@ -117,3 +117,8 @@ Customer/admin re-delivery is protected by a per-order database lease. The Postg
 ## Refund and customer re-delivery mutual exclusion
 
 Refunding an already delivered order must not race with a customer/admin re-delivery request. Both operations serialize on the order row: claiming a re-delivery lease locks the delivered order before writing the lease, and the wallet-refund transaction checks for an unexpired re-delivery lease while holding that same row lock. Refund is rejected while a re-delivery lease is active; after the lease expires, refund may proceed. Once refunded, the order cannot acquire another re-delivery lease. This uses the existing `order_redelivery_leases` table and adds no schema migration.
+
+
+## Auditing refund attempts blocked by re-delivery
+
+When a refund is blocked because an active re-delivery lease exists, the support refund API returns HTTP 409 and records a `support.refund.blocked` admin audit event with the order and reason. Other refund failures are also recorded as `support.refund.failed`. The database exposes a typed conflict error so the API does not classify this condition by matching error-message text.
