@@ -27,4 +27,5 @@ SELECT
   id,source_key,category,severity,entity_type,entity_id,title,detail,status,
   resolution_note,resolved_by,created_at,updated_at,resolved_at
 FROM finance_exceptions
+WHERE 1=1
 ON CONFLICT(source_key) DO NOTHING;
