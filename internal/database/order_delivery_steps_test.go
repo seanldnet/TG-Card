@@ -51,3 +51,19 @@ func TestMarkOrderDeliveredRejectsUnfinishedDeliverySteps(t *testing.T) {
 	if _,err:=BeginOrderDeliveryStep(ctx,db,"sqlite",orderID,"file",1);err!=nil{t.Fatal(err)}
 	if err:=MarkOrderDelivered(ctx,db,"sqlite",orderID);err==nil{t.Fatal("must not mark order delivered while a step is sending")}
 }
+
+
+func TestMigrationQuarantinesLegacyUncertainFileCardOrders(t *testing.T) {
+ ctx:=context.Background()
+ db:=reconciliationTestDB(t)
+ if _,err:=db.ExecContext(ctx,"DELETE FROM schema_migrations WHERE version=53");err!=nil{t.Fatal(err)}
+ orderID:="legacy-file-card-order"
+ if _,err:=db.ExecContext(ctx,"INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,delivery_type,delivery_attempts,delivery_error,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'delivery_uncertain','file_card',2,'old ambiguous send','2099-01-01T00:00:00Z','2026-11-20T00:00:00Z','2026-11-20T00:01:00Z')",orderID,"LEGACY-1","legacy-user","123456","legacy file card",100,1,100,"USDT");err!=nil{t.Fatal(err)}
+ if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+ steps,err:=ListOrderDeliverySteps(ctx,db,"sqlite",orderID)
+ if err!=nil{t.Fatal(err)}
+ if len(steps)!=2{t.Fatalf("legacy uncertain file-card order must get two quarantined steps, got %+v",steps)}
+ for _,step:=range steps{
+  if step.Status!="uncertain"||step.Attempts!=2{t.Fatalf("legacy step must remain uncertain for manual verification: %+v",step)}
+ }
+}
