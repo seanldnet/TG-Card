@@ -9,6 +9,7 @@ services:
       APP_ENV: production
       # Only set this when requests arrive through these trusted reverse-proxy CIDRs.
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      DISABLE_CAP: ${DISABLE_CAP:-false}
       PORT: "38647"
       DB_DRIVER: postgres
       DATABASE_URL: postgres://tgcard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/tgcard?sslmode=disable

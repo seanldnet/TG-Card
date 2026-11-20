@@ -8,13 +8,14 @@ interface SiteSettings {
  siteName:string;siteLogo:string;contactEmail:string;smtpHost:string;smtpPort:number;smtpUsername:string;smtpPassword:string;smtpFromName:string;smtpFromEmail:string;smtpUseTLS:boolean;
  emailOrderCreated:boolean;emailPaymentSuccess:boolean;emailDeliverySuccess:boolean;emailSupportCreated:boolean;
  telegramAdminChatId:string;telegramGroupChatId:string;telegramNotifyOrderCreated:boolean;telegramNotifyPaymentSuccess:boolean;telegramNotifyDeliverySuccess:boolean;telegramNotifySupportCreated:boolean;telegramNotifyStockLow:boolean;telegramNotifyDailyReport:boolean;telegramNotifyRiskAlert:boolean;stockAutoUnlistOnZero:boolean;stockAutoRelistOnRestock:boolean;
+ capEnabled:boolean;capDomain:string;capSiteKey:string;capSecret:string;
 }
-const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),activeTab=ref('basic');
+const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),capSecretConfigured=ref(false),activeTab=ref('basic');
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
-const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false});
-async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;form.smtpPassword='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
-async function save(){saving.value=true;try{const data=await requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean}>('/settings/site',form);Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
+const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false,capEnabled:false,capDomain:'',capSiteKey:'',capSecret:''});
+async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.smtpPassword='';form.capSecret='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
+async function save(){saving.value=true;try{const data=await requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site',form);Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.capSecret='';message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
 async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error('无法读取图标文件');return false;}if(image.size>20*1024*1024){message.warning('网站图标不能超过 20 MB');return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body,{headers:{'Content-Type':'multipart/form-data'}});form.siteLogo=result.siteLogo;message.success('网站图标上传成功，请保存设置');}catch(error:any){message.error(error?.response?.data?.message||'网站图标上传失败');}finally{logoUploading.value=false;}return false;}
 async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success('测试邮件已发送，请检查收件箱');}catch(error:any){message.error(error?.response?.data?.message||'测试邮件发送失败');}finally{testing.value=false;}}
 async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success('Telegram 测试通知已发送');}catch(error:any){message.error(error?.response?.data?.message||'Telegram 测试通知失败');}finally{testing.value=false;}}
@@ -100,6 +101,26 @@ onMounted(load);
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">支付风险提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyRiskAlert" /></div></a-col>
       </a-row>
       <a-button class="mt-4" size="small" :loading="testing" @click="testTelegram">发送 Telegram 测试通知</a-button>
+     </div>
+    </a-tab-pane>
+    <a-tab-pane key="cap">
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:shield-check-outline" />人机验证</span></template>
+     <div class="max-w-3xl">
+      <div class="mb-3 text-sm font-semibold">Cap 人机验证</div>
+      <a-alert class="mb-4" type="warning" show-icon message="启用后，管理员登录必须先完成 Cap 验证。请先确认 Cap 服务与 /assets/widget.js 可从浏览器访问，再开启验证。" />
+      <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
+       <div class="pr-4"><div class="text-sm font-medium">启用登录人机验证</div><div class="mt-1 text-xs text-gray-500">关闭后不再要求登录验证；服务器 DISABLE_CAP=true 可作为紧急总开关。</div></div>
+       <a-switch v-model:checked="form.capEnabled" />
+      </div>
+      <a-form layout="vertical">
+       <a-form-item label="服务域名"><a-input v-model:value="form.capDomain" placeholder="https://cap.example.com" /></a-form-item>
+       <a-form-item label="Site Key"><a-input v-model:value="form.capSiteKey" autocomplete="off" /></a-form-item>
+       <a-form-item label="Secret Key">
+        <a-input-password v-model:value="form.capSecret" autocomplete="new-password" :placeholder="capSecretConfigured?'已加密保存，留空保持不变':'请输入 Cap Secret Key'" />
+        <div class="mt-1 text-xs text-gray-500">Secret Key 使用服务端密钥加密后保存在 PostgreSQL；读取时不会返回明文。</div>
+       </a-form-item>
+      </a-form>
+      <a-alert class="mt-2" type="info" show-icon message="Cap 自托管服务需启用静态资源服务并提供 /assets/widget.js。验证接口由后端调用，不会把 Secret Key 暴露给浏览器。" />
      </div>
     </a-tab-pane>
    </a-tabs>

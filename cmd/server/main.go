@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -102,10 +103,18 @@ type siteSettings struct {
  TelegramNotifyRiskAlert bool `json:"telegramNotifyRiskAlert"`
  StockAutoUnlistOnZero bool `json:"stockAutoUnlistOnZero"`
  StockAutoRelistOnRestock bool `json:"stockAutoRelistOnRestock"`
+ CapEnabled bool `json:"capEnabled,omitempty"`
+ CapDomain string `json:"capDomain,omitempty"`
+ CapSiteKey string `json:"capSiteKey,omitempty"`
+ CapSecret string `json:"capSecret,omitempty"`
 }
 type siteSettingsView struct {
  siteSettings
  SMTPPasswordConfigured bool `json:"smtpPasswordConfigured"`
+ CapSecretConfigured bool `json:"capSecretConfigured"`
+ CapEnabled bool `json:"capEnabled"`
+ CapDomain string `json:"capDomain"`
+ CapSiteKey string `json:"capSiteKey"`
 }
 type paymentSettingsRequest struct {
 	APIKey string `json:"apiKey"`
@@ -118,6 +127,7 @@ type paymentSettingsRequest struct {
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	CapToken string `json:"capToken"`
 }
 
 type userInfo struct {
@@ -204,6 +214,7 @@ func main() {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
 	api.HandleFunc("GET /api/health/detailed", app.detailedHealth)
+	api.HandleFunc("GET /api/auth/cap-config", app.getCapConfig)
 	api.HandleFunc("POST /api/auth/login", app.login)
 	api.HandleFunc("POST /api/auth/logout", app.logout)
 	api.HandleFunc("POST /api/admin/password", app.sensitiveRateLimit("admin-password", 5, 5*time.Minute, app.changePassword))
@@ -395,6 +406,13 @@ func (a *application) health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *application) getCapConfig(w http.ResponseWriter, r *http.Request) {
+ cfg, _, err := loadCapConfiguration(r.Context(), a.db, a.driver)
+ if err != nil { log.Printf("load public Cap config: %v",err); writeError(w,http.StatusServiceUnavailable,"人机验证配置暂不可用"); return }
+ if !cfg.Enabled || capDisabledByEnvironment() { cfg = capConfiguration{} }
+ writeSuccess(w,http.StatusOK,cfg)
+}
+
 func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	ip := a.clientIP(r)
 	if !a.allowLoginAttempt(ip) { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
@@ -407,6 +425,33 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	if input.Username == "" || input.Password == "" || len(input.Username) > 64 || len(input.Password) > 256 {
 		writeError(w, http.StatusBadRequest, "Username and password are required")
 		return
+	}
+
+	capConfig, encryptedCapSecret, capErr := loadCapConfiguration(r.Context(), a.db, a.driver)
+	if capErr != nil {
+		log.Printf("load Cap configuration: %v", capErr)
+		writeError(w, http.StatusServiceUnavailable, "人机验证配置暂不可用，请稍后重试")
+		return
+	}
+	if capConfig.Enabled && !capDisabledByEnvironment() {
+		if encryptedCapSecret == "" {
+			writeError(w, http.StatusServiceUnavailable, "人机验证尚未完成配置")
+			return
+		}
+		capSecret, decryptErr := a.secrets.Decrypt(encryptedCapSecret)
+		if decryptErr != nil {
+			log.Printf("decrypt Cap secret: %v", decryptErr)
+			writeError(w, http.StatusServiceUnavailable, "人机验证配置暂不可用，请联系管理员")
+			return
+		}
+		verifyCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		verifyErr := verifyCapToken(verifyCtx, nil, capConfig.Domain, capConfig.SiteKey, capSecret, input.CapToken)
+		cancel()
+		if verifyErr != nil {
+			log.Printf("Cap verification rejected login: %v", verifyErr)
+			writeError(w, http.StatusForbidden, "人机验证失败或已过期，请重新验证")
+			return
+		}
 	}
 
 	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
@@ -1375,7 +1420,11 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  configured := settings.SMTPPasswordCiphertext != ""
  settings.SMTPPassword = ""
  settings.SMTPPasswordCiphertext = ""
- writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured})
+ capConfig, capSecret, capErr := loadCapConfiguration(r.Context(), a.db, a.driver)
+ if capErr != nil { log.Printf("load Cap settings: %v", capErr); writeError(w,http.StatusInternalServerError,"无法读取人机验证设置"); return }
+ settings.CapEnabled, settings.CapDomain, settings.CapSiteKey = capConfig.Enabled, capConfig.Domain, capConfig.SiteKey
+ settings.CapSecret = ""
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured,CapSecretConfigured:capSecret!="",CapEnabled:settings.CapEnabled,CapDomain:settings.CapDomain,CapSiteKey:settings.CapSiteKey})
 }
 func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
  claims, ok := a.authenticate(w,r); if !ok { return }
@@ -1386,10 +1435,16 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  input.SMTPHost=strings.TrimSpace(input.SMTPHost); input.SMTPUsername=strings.TrimSpace(input.SMTPUsername)
  input.SMTPFromEmail=strings.TrimSpace(input.SMTPFromEmail); input.SMTPFromName=strings.TrimSpace(input.SMTPFromName)
  input.TelegramAdminChatID=strings.TrimSpace(input.TelegramAdminChatID); input.TelegramGroupChatID=strings.TrimSpace(input.TelegramGroupChatID)
+ input.CapDomain = strings.TrimRight(strings.TrimSpace(input.CapDomain), "/")
+ input.CapSiteKey = strings.TrimSpace(input.CapSiteKey)
+ input.CapSecret = strings.TrimSpace(input.CapSecret)
  if input.SiteName=="" || len(input.SiteName)>100 || len(input.ContactEmail)>254 || len(input.TelegramCustomerServiceURL)>2048 || len(input.TelegramCommunityURL)>2048 || len(input.TelegramSupportGroupURL)>2048 || len(input.TelegramOwnerID)>32 || len(input.SiteLogo)>2048 || len(input.SMTPHost)>255 || len(input.SMTPUsername)>254 || len(input.SMTPFromEmail)>254 || len(input.SMTPPassword)>512 {
   writeError(w,http.StatusBadRequest,"Invalid site settings fields"); return
  }
  if input.SiteLogo!="" && (!strings.HasPrefix(input.SiteLogo,"/uploads/site/") || strings.Contains(input.SiteLogo,"..")) { writeError(w,http.StatusBadRequest,"网站图标地址无效，请重新上传"); return }
+ if len(input.CapDomain)>255 || len(input.CapSiteKey)>200 || len(input.CapSecret)>1024 { writeError(w,http.StatusBadRequest,"Cap 配置字段长度无效"); return }
+ if input.CapDomain!="" { if _, err := capVerificationURL(input.CapDomain,input.CapSiteKey); err != nil { writeError(w,http.StatusBadRequest,"Cap 服务域名或 Site Key 无效："+err.Error()); return } }
+
  if input.TelegramOwnerID!="" { for _, digit := range input.TelegramOwnerID { if digit<'0'||digit>'9' { writeError(w,http.StatusBadRequest,"Telegram 主人 ID 只能填写数字"); return } } }
  if input.TelegramCustomerServiceURL!="" && !strings.HasPrefix(input.TelegramCustomerServiceURL,"https://t.me/") && !strings.HasPrefix(input.TelegramCustomerServiceURL,"https://telegram.me/") { writeError(w,http.StatusBadRequest,"Telegram 客服链接请使用 https://t.me/ 开头"); return }
  for _, link := range []string{input.TelegramCommunityURL,input.TelegramSupportGroupURL} { if link!="" && !strings.HasPrefix(link,"https://t.me/") && !strings.HasPrefix(link,"https://telegram.me/") { writeError(w,http.StatusBadRequest,"Telegram 群组链接请使用 https://t.me/ 开头"); return } }
@@ -1400,6 +1455,29 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
   input.SMTPPasswordCiphertext,err=a.secrets.Encrypt(input.SMTPPassword); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encrypt SMTP password"); return }
  }
  input.SMTPPassword=""
+ oldCapConfig, oldCapSecret, capErr := loadCapConfiguration(r.Context(), a.db, a.driver)
+ if capErr != nil { writeError(w,http.StatusInternalServerError,"无法读取当前 Cap 配置"); return }
+ encryptedCapSecret := oldCapSecret
+ if input.CapSecret != "" {
+  encryptedCapSecret, err = a.secrets.Encrypt(input.CapSecret)
+  if err != nil { writeError(w,http.StatusInternalServerError,"无法加密 Cap Secret Key"); return }
+ }
+ if input.CapEnabled && (input.CapDomain == "" || input.CapSiteKey == "" || encryptedCapSecret == "") {
+  writeError(w,http.StatusBadRequest,"启用 Cap 前必须填写服务域名、Site Key 和 Secret Key"); return
+ }
+ if input.CapDomain == "" { input.CapDomain = oldCapConfig.Domain }
+ if input.CapSiteKey == "" { input.CapSiteKey = oldCapConfig.SiteKey }
+ if input.CapEnabled { if _, err := capVerificationURL(input.CapDomain,input.CapSiteKey); err != nil { writeError(w,http.StatusBadRequest,"Cap 服务域名或 Site Key 无效"); return } }
+ capValues := map[string]string{
+  "cap_enabled": strconv.FormatBool(input.CapEnabled),
+  "cap_domain": input.CapDomain,
+  "cap_site_key": input.CapSiteKey,
+  "cap_secret_ciphertext": encryptedCapSecret,
+ }
+ if err := database.SaveSettings(r.Context(),a.db,a.driver,capValues); err != nil { log.Printf("save Cap settings: %v",err); writeError(w,http.StatusInternalServerError,"无法保存 Cap 配置"); return }
+ input.CapSecret = ""
+ capEnabledForResponse := input.CapEnabled
+ input.CapEnabled, input.CapDomain, input.CapSiteKey = false, "", ""
  raw,err:=json.Marshal(input); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encode site settings"); return }
  if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(raw)); err!=nil { log.Printf("save site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to save site settings"); return }
  a.botManager.SetOwnerID(input.TelegramOwnerID)
@@ -1408,7 +1486,10 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",a.clientIP(r),r.UserAgent(),"updated")
  configured:=input.SMTPPasswordCiphertext!=""
  input.SMTPPasswordCiphertext=""
- writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured})
+ input.CapEnabled = capEnabledForResponse
+ input.CapDomain = capValues["cap_domain"]
+ input.CapSiteKey = capValues["cap_site_key"]
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured,CapSecretConfigured:encryptedCapSecret!="",CapEnabled:input.CapEnabled,CapDomain:input.CapDomain,CapSiteKey:input.CapSiteKey})
 }
 func (a *application) testSiteEmail(w http.ResponseWriter, r *http.Request) {
  if _,ok:=a.authenticate(w,r); !ok { return }
