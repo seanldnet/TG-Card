@@ -1,10 +1,17 @@
-## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 开发中）
+## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 开发中）
 
-- 修复目标：Telegram 发送请求可能已被远端接受但客户端因网络中断/响应丢失而报错，不能将这种结果当作可安全自动重试的普通失败。
-- 新增 `delivery_uncertain` 状态与 `order_delivery_events` 事件；首次外部 Telegram 副作用前先持久化隔离状态，覆盖发送前/中/后进程崩溃及发送成功但完成状态落库失败的窗口；自动 worker 不再领取。发送成功后可从 uncertain 收敛到 delivered。
-- 管理员订单页新增待核实状态和二次确认；确认后仅由管理员通过现有单笔租约手动重试。纯本地校验/解密失败仍保留 `delivery_failed` 指数退避。
-- 增加 SQLite/PostgreSQL 队列隔离测试与 Telegram transport failure 回归测试；无数据库迁移或新增生产环境变量。
-- PR head CI 与 GHCR 发布待完成；生产部署和 Telegram 真机验收不在本 PR 自动化证明范围内。
+- 修复 PR #69 的特殊边界：createChatInviteLink 可能已在 Telegram 侧创建链接，但响应丢失或本地加密/持久化失败；普通手动重试可能再次创建另一条有效邀请链接。
+- 管理 API 与 Telegram Manager 双重拒绝对 delivery_uncertain 的 invite_link 订单执行自动重试，并记录被阻止的管理员操作审计。
+- 管理订单列表新增交付类型字段；一次性邀请链接处于结果待核实时显示“需人工核实”，不显示重试按钮。
+- 新增 Manager 回归测试；无数据库迁移或生产环境变量变更。PR head CI 待验证。
+
+## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 已合并并发布）
+
+- PR #69 已 Squash Merge，merge commit 1325e52443c0f06d52d21205c2e29af5fca39b70。
+- 首次 Telegram 外部交付副作用前持久化 delivery_uncertain，自动 worker 排除该状态；发送成功后可收敛为 delivered。管理员核实后可手动处理，普通本地错误保留指数退避。
+- PR head Go/Admin/Security 通过；合并后 main Go/Admin/Security/Docker Publish 全部成功。
+- GHCR manifest digest：sha256:48e900b0a06a4e346eb36a5fc9cd51834041df0a8abb4442908d962e1a947a6f。
+- 生产部署与 Telegram 真机验收仍待项目所有者确认。
 ## 2026-11-21 — 订单交付失败指数退避（PR #67 已合并并发布）
 
 - PR #67 已 Squash Merge 至 main，merge commit `c460706a1cc7675cfbd9f274a9311f3f2654f468`。
