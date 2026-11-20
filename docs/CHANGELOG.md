@@ -4,6 +4,7 @@
 - 背景：PR #71 已阻止不确定 file_card 整单重试，防止重复发送已成功文件，但也导致前一步成功、后一步明确失败时只能整单人工介入。
 - 变更：新增 `order_delivery_steps` 与迁移 0053；分别持久化文件发送和卡密消息发送状态、尝试次数、Telegram message_id、错误和时间。
 - 恢复：仅对明确失败步骤重试，已成功步骤跳过；传输/响应不确定或崩溃遗留 sending 的步骤必须先人工核实并写入审计；只有所有步骤成功才允许订单完成。
+- 并发保护：发送期间保留订单租约，阻止并发 claim/人工核实；租约过期后的遗留 sending 状态先转 uncertain，再人工核实。
 - 后台：订单详情显示每个步骤的状态、attempts、message_id 和错误；支持对不确定步骤进行有审计的人工成功/失败判定。
 - 安全边界：不改变已交付 file_card 再次获取限制；不声称 Telegram exactly-once。
 - 验证：Go/Admin/Security CI 待本 PR 检查；真实 Telegram 多步骤恢复待真机验收。
