@@ -6,12 +6,12 @@
 - PR #72 已阻止已交付 `file_card` 的自动再次获取，相关 CI 与 main 镜像发布证据记录在下方。
 - 生产部署与 Telegram 真机验收仍需项目所有者确认。
 
-## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并，镜像构建中）
+## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并并发布）
 
 - PR #72 已 Squash Merge 至 main，merge commit `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b`。
 - 已交付 `file_card` 的 Telegram sendDocument 与 sendMessage 是两个独立副作用；第二步失败后订单仍保持 delivered，整单再次获取可能重复发送文件。PR #72 在 Telegram 用户入口、Manager 与管理员 API 三层阻止此类自动重发，并引导联系客服人工核实；单步骤 card/file/fixed_text/upstream 保持既有再次获取行为。
-- PR head `5c738a2977761c88e1b24aed28f3aa70406446a8` 的 Go CI #44810969393、Admin CI #44810969458、Security #44810969354 全部成功。
-- 合并后 main Go CI #44811290066、Admin CI #44811290206、Security #44811290095 与 Docker Publish #44811290150 正在运行；镜像 digest 待发布成功后补录。
+- PR head `5c738a2977761c88e1b24aed28f3aa70406446a8` 的 Go CI [#44810969393](https://github.com/seanldnet/TG-Card/actions/runs/44810969393)、Admin CI [#44810969458](https://github.com/seanldnet/TG-Card/actions/runs/44810969458)、Security [#44810969354](https://github.com/seanldnet/TG-Card/actions/runs/44810969354) 全部成功。
+- 合并后 main Go CI [#44811290066](https://github.com/seanldnet/TG-Card/actions/runs/44811290066)、Admin CI [#44811290206](https://github.com/seanldnet/TG-Card/actions/runs/44811290206)、Security [#44811290095](https://github.com/seanldnet/TG-Card/actions/runs/44811290095) 与 Docker Publish [#44811290150](https://github.com/seanldnet/TG-Card/actions/runs/44811290150) 全部成功。GHCR 多架构标签 `latest` 与提交标签 `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b` 已发布，manifest digest：`sha256:e4bcea3b8d21090ce5d976368bd2996129ad36c50d02edcfc0771d78f09038ba`。
 - 无数据库迁移或生产环境变量变更。此保护为保守的整单隔离，不提供分步骤续发；生产部署与 Telegram 真机验收仍需项目所有者确认。
 
 ## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 已合并并发布）
