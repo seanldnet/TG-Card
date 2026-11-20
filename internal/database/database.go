@@ -242,18 +242,12 @@ func RevokeAdminTokenSession(ctx context.Context, db *sql.DB, driver, adminID, t
 }
 
 func RecordAdminAudit(ctx context.Context, db *sql.DB, driver, adminID, action, resource, ip, userAgent, details string) {
-	_ = RecordAdminAuditChecked(ctx, db, driver, adminID, action, resource, ip, userAgent, details)
-}
-
-// RecordAdminAuditChecked is used by workflows that must surface audit persistence failures.
-func RecordAdminAuditChecked(ctx context.Context, db *sql.DB, driver, adminID, action, resource, ip, userAgent, details string) error {
 	id, err := randomID()
-	if err != nil { return err }
+	if err != nil { return }
 	query := "INSERT INTO audit_logs(id, admin_id, action, resource, ip_address, user_agent, details, created_at) VALUES ("+
 		placeholder(driver,1)+", "+placeholder(driver,2)+", "+placeholder(driver,3)+", "+placeholder(driver,4)+", "+
 		placeholder(driver,5)+", "+placeholder(driver,6)+", "+placeholder(driver,7)+", "+placeholder(driver,8)+")"
-	_, err = db.ExecContext(ctx, query, id, adminID, action, resource, ip, userAgent, details, time.Now().UTC().Format(time.RFC3339Nano))
-	return err
+	_, _ = db.ExecContext(ctx, query, id, adminID, action, resource, ip, userAgent, details, time.Now().UTC().Format(time.RFC3339Nano))
 }
 
 type Bot struct {
