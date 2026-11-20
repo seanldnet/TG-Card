@@ -4,6 +4,14 @@
 - 管理 API 与 Telegram Manager 双重阻止 `delivery_uncertain` 的 `file_card` 整单重试；订单列表与移动端卡片显示“需人工核实”；保留 PR #70 的一次性邀请链接保护。
 - 新增 Manager 回归测试；无数据库迁移或生产环境变量变更。PR head Go/Admin/Security 与合并后构建待验证。
 
+## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 已合并并发布）
+
+- PR #70 已 Squash Merge 至 main，merge commit `d7cf00e783c3e97b2ecee77d329488e3091a220c`。
+- Telegram `createChatInviteLink` 可能已创建有效链接但响应丢失或本地持久化失败；API 与 Manager 双重阻止 `delivery_uncertain` 的 `invite_link` 重试，管理员列表隐藏重试并显示“需人工核实”，API 拒绝操作写审计。
+- 合并后 main Go CI #44804736581、Admin CI #44804736573、Security #44804736340、Docker Publish #44804736390 全部成功。
+- GHCR 多架构镜像标签 `latest` 与提交标签 `d7cf00e783c3e97b2ecee77d329488e3091a220c` 已发布；manifest digest：`sha256:1c2a7df3ace81cd4af6162ff2501892922508df611ad9e7699f2acf9318b059a`。
+- 生产部署与 Telegram 真机验收仍需项目所有者确认。
+
 ## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 已合并并发布）
 
 - PR #69 已 Squash Merge，merge commit 1325e52443c0f06d52d21205c2e29af5fca39b70。
