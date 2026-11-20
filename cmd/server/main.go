@@ -112,6 +112,9 @@ type siteSettingsView struct {
  siteSettings
  SMTPPasswordConfigured bool `json:"smtpPasswordConfigured"`
  CapSecretConfigured bool `json:"capSecretConfigured"`
+ CapEnabled bool `json:"capEnabled"`
+ CapDomain string `json:"capDomain"`
+ CapSiteKey string `json:"capSiteKey"`
 }
 type paymentSettingsRequest struct {
 	APIKey string `json:"apiKey"`
@@ -1421,7 +1424,7 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if capErr != nil { log.Printf("load Cap settings: %v", capErr); writeError(w,http.StatusInternalServerError,"无法读取人机验证设置"); return }
  settings.CapEnabled, settings.CapDomain, settings.CapSiteKey = capConfig.Enabled, capConfig.Domain, capConfig.SiteKey
  settings.CapSecret = ""
- writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured,CapSecretConfigured:capSecret!=""})
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured,CapSecretConfigured:capSecret!="",CapEnabled:settings.CapEnabled,CapDomain:settings.CapDomain,CapSiteKey:settings.CapSiteKey})
 }
 func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
  claims, ok := a.authenticate(w,r); if !ok { return }
@@ -1486,7 +1489,7 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  input.CapEnabled = capEnabledForResponse
  input.CapDomain = capValues["cap_domain"]
  input.CapSiteKey = capValues["cap_site_key"]
- writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured,CapSecretConfigured:encryptedCapSecret!=""})
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured,CapSecretConfigured:encryptedCapSecret!="",CapEnabled:input.CapEnabled,CapDomain:input.CapDomain,CapSiteKey:input.CapSiteKey})
 }
 func (a *application) testSiteEmail(w http.ResponseWriter, r *http.Request) {
  if _,ok:=a.authenticate(w,r); !ok { return }
