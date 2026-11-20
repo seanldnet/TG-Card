@@ -1,10 +1,18 @@
-## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 开发中）
+## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 开发中）
 
-- 审查基线：main@cdb30cef99f27e3021de35fe1717937becc116c5（PR #71 已合并）。
-- 发现已交付的 `file_card` 订单通过用户“再次获取”或管理员重发时，仍会依次调用 Telegram sendDocument 与 sendMessage；若文件成功而卡密消息失败，订单保持 delivered，再次重发可能重复发送文件。
-- PR #72 在 Telegram 用户入口、Manager 和管理员 API 三层阻止已交付 file_card 自动再次获取；订单列表/详情引导联系客服人工核实。单步骤 card/file/fixed_text/upstream 交付的既有再次获取路径保持不变。
-- 新增 Manager 与管理员 API 回归测试，覆盖已交付 file_card 再次获取阻断及订单状态保持；不新增数据库迁移或生产环境变量。PR head Go/Admin/Security 待验证。
-- 此保护为保守的整单隔离，不提供分步骤续发；需人工核实用户收到的文件与卡密后处理。生产部署与 Telegram 真机验收仍需项目所有者确认。
+- 审查基线：main@5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b（PR #72 已合并）。
+- 现有 `ClaimOrderRedelivery` 使用数据库唯一订单租约和原子 upsert 防止多实例并发重复重发；本轮补充 PostgreSQL 16 并发集成验证，确保 8 个并发 worker 只有一个获得 delivered 订单再次获取租约，活动租约不能二次领取，过期租约可恢复。
+- PR #73 仅增加 PostgreSQL 集成测试与文档，不修改运行时业务逻辑、数据库迁移或生产配置。Go/Admin/Security CI 待验证。
+- PR #72 已阻止已交付 `file_card` 的自动再次获取，相关 CI 与 main 镜像发布证据记录在下方。
+- 生产部署与 Telegram 真机验收仍需项目所有者确认。
+
+## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并并发布）
+
+- PR #72 已 Squash Merge 至 main，merge commit `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b`。
+- 已交付 `file_card` 的 Telegram sendDocument 与 sendMessage 是两个独立副作用；第二步失败后订单仍保持 delivered，整单再次获取可能重复发送文件。PR #72 在 Telegram 用户入口、Manager 与管理员 API 三层阻止此类自动重发，并引导联系客服人工核实；单步骤 card/file/fixed_text/upstream 保持既有再次获取行为。
+- PR head `5c738a2977761c88e1b24aed28f3aa70406446a8` 的 Go CI [#44810969393](https://github.com/seanldnet/TG-Card/actions/runs/44810969393)、Admin CI [#44810969458](https://github.com/seanldnet/TG-Card/actions/runs/44810969458)、Security [#44810969354](https://github.com/seanldnet/TG-Card/actions/runs/44810969354) 全部成功。
+- 合并后 main Go CI [#44811290066](https://github.com/seanldnet/TG-Card/actions/runs/44811290066)、Admin CI [#44811290206](https://github.com/seanldnet/TG-Card/actions/runs/44811290206)、Security [#44811290095](https://github.com/seanldnet/TG-Card/actions/runs/44811290095) 与 Docker Publish [#44811290150](https://github.com/seanldnet/TG-Card/actions/runs/44811290150) 全部成功。GHCR 多架构标签 `latest` 与提交标签 `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b` 已发布，manifest digest：`sha256:e4bcea3b8d21090ce5d976368bd2996129ad36c50d02edcfc0771d78f09038ba`。
+- 无数据库迁移或生产环境变量变更。此保护为保守的整单隔离，不提供分步骤续发；生产部署与 Telegram 真机验收仍需项目所有者确认。
 
 ## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 已合并并发布）
 
@@ -76,9 +84,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.29
-> - 源码核对基线：main 分支，commit `cdb30cef99f27e3021de35fe1717937becc116c5`；本轮 PR #72 基于该提交开发
-> - 本次文档更新：记录 PR #71 合并与 main CI 状态，并跟踪 PR #72 已交付 file_card 再次获取保护
+> - 文档版本：2.2.30
+> - 源码核对基线：main 分支，commit `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b`；本轮 PR #73 基于该提交开发
+> - 本次文档更新：记录 PR #72 合并状态，并跟踪 PR #73 PostgreSQL 再次获取租约并发回归
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
@@ -230,7 +238,7 @@ flowchart LR
 | 机器人管理 | 已实现 | 添加/编辑/删除 Bot、Token 验证与加密保存、启停、欢迎内容、购买须知、介绍、Owner ID、客服/群组链接、运行状态、单 Bot 重启。 |
 | 商品与分类 | 已实现 | 分类管理、商品增删改、上下架、商品信息、价格及交付配置、库存卡密导入。 |
 | 购物车与多商品统一结算 | 已实现（PR #61 已合并，真机待验收） | main 已包含迁移 0049/0050、按 Bot/用户隔离的购物车、单笔多商品订单、库存事务预留、余额/TRC20 付款复用和逐商品卡密交付；仅本地 USDT card/file_card 商品可统一结算。Telegram 真机验收待项目所有者执行。 |
-| 订单管理 | 已实现（交付安全持续加固） | 订单列表、订单详情、支付状态与交付状态查看、清理入口、管理员重试发货；列表分页。PR #71 已阻止不确定 file_card 整单重试；PR #72 正在补充已交付 file_card 再次获取防重复发送保护。 |
+| 订单管理 | 已实现（交付安全持续加固） | 订单列表、订单详情、支付状态与交付状态查看、清理入口、管理员重试发货；列表分页。PR #71 已阻止不确定 file_card 整单重试；PR #72 已阻止已交付 file_card 自动再次获取。 |
 | 支付流水 | 已实现 | 链上交易列表、状态筛选/搜索、已匹配/未匹配/需人工核对状态、人工匹配订单及备注。 |
 | 支付设置 | 已实现 | 后台设置 TRON 收款地址、TronGrid API Key、USDT 合约及启停；API Key 加密存储、脱敏显示，保存后更新运行配置。 |
 | 优惠券/促销 | 已实现 | 促销规则的查询、创建/更新、删除；具体类型与适用规则以当前页面/API为准。 |

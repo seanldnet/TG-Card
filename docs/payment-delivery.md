@@ -107,3 +107,8 @@ Failures detected before any Telegram send is attempted (for example, invalid lo
 ## Customer re-delivery safety
 
 Customer and administrator re-delivery of an already delivered `file_card` order is not safe to automate: the flow sends a document and a separate card-key message. If the first step succeeds and the second fails, the order remains delivered; retrying the whole pair can send the document again. PR #72 blocks this re-delivery path in the Telegram user interface, Manager, and admin API, and directs the customer/operator to manual verification. This is a conservative whole-order restriction, not stage-level resume. Single-step delivery types retain their existing re-delivery behavior; one-time invite links remain non-reissuable.
+
+
+## PostgreSQL re-delivery lease concurrency
+
+Customer/admin re-delivery is protected by a per-order database lease. The PostgreSQL implementation uses an atomic upsert against the unique `order_redelivery_leases.order_id` key; only one concurrent worker should acquire an active lease, and an expired lease may be reclaimed. PR #73 adds PostgreSQL 16 integration coverage for concurrent claimants, active-lease exclusion, and expired-lease recovery. The test does not change the runtime algorithm or schema.
