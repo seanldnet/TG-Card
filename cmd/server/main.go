@@ -293,6 +293,7 @@ func main() {
 	api.HandleFunc("PUT /api/support/tickets/{id}/assign", app.assignSupportTicket)
 	api.HandleFunc("POST /api/support/tickets/{id}/refund", app.refundSupportTicket)
 	api.HandleFunc("POST /api/orders/{id}/retry-delivery", app.retryOrderDelivery)
+	api.HandleFunc("PUT /api/orders/{id}/delivery-steps/{step}", app.resolveOrderDeliveryStep)
 	api.HandleFunc("GET /api/auth/codes", app.accessCodes)
 	api.HandleFunc("GET /api/user/info", app.userInfo)
 	api.HandleFunc("PUT /api/user/profile", app.updateUserProfile)
@@ -1137,6 +1138,38 @@ type orderView struct {
 	StockReserved bool `json:"stockReserved"`
 }
 
+type resolveOrderDeliveryStepRequest struct {
+	Status string `json:"status"`
+	MessageID string `json:"messageId"`
+	Note string `json:"note"`
+}
+
+func (a *application) resolveOrderDeliveryStep(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w,r)
+	if !ok { return }
+	orderID := strings.TrimSpace(r.PathValue("id"))
+	stepKey := strings.TrimSpace(r.PathValue("step"))
+	if stepKey!="file" && stepKey!="card_message" { writeError(w,http.StatusBadRequest,"无效的交付步骤"); return }
+	order,err:=database.GetOrderByID(r.Context(),a.db,a.driver,orderID)
+	if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusNotFound,"订单不存在"); return }
+	if err!=nil { writeError(w,http.StatusInternalServerError,"读取订单失败"); return }
+	if order.DeliveryType!="file_card" || order.Status!="delivery_uncertain" { writeError(w,http.StatusConflict,"仅支持处理发货结果待核实的文件+卡密订单"); return }
+	leaseActive,leaseErr:=database.OrderDeliveryLeaseActive(r.Context(),a.db,a.driver,orderID)
+	if leaseErr!=nil { writeError(w,http.StatusInternalServerError,"检查发货任务状态失败"); return }
+	if leaseActive { writeError(w,http.StatusConflict,"发货任务仍在执行，请等待当前发送请求结束后再核实步骤"); return }
+	var input resolveOrderDeliveryStepRequest
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,1<<16)).Decode(&input);err!=nil { writeError(w,http.StatusBadRequest,"处理参数无效"); return }
+	input.Status=strings.TrimSpace(input.Status)
+	input.MessageID=strings.TrimSpace(input.MessageID)
+	input.Note=strings.TrimSpace(input.Note)
+	if len(input.Note)>2000 || len(input.MessageID)>64 { writeError(w,http.StatusBadRequest,"处理说明或消息 ID 超出长度限制"); return }
+	if err:=database.ResolveUncertainOrderDeliveryStep(r.Context(),a.db,a.driver,orderID,stepKey,claims.AdminID,input.Status,input.MessageID,input.Note,a.clientIP(r),r.UserAgent());err!=nil {
+		if errors.Is(err,sql.ErrNoRows) { writeError(w,http.StatusConflict,"该步骤当前不是待核实状态"); return }
+		writeError(w,http.StatusConflict,err.Error()); return
+	}
+	writeSuccess(w,http.StatusOK,map[string]bool{"updated":true})
+}
+
 func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
@@ -1147,11 +1180,26 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 
 	// Delivered orders use a separate idempotent re-delivery lease. The normal
 	// delivery lease intentionally rejects delivered orders to prevent duplicate fulfillment.
-	if order.Status == "delivery_uncertain" && (order.DeliveryType == "invite_link" || order.DeliveryType == "file_card") {
+	if order.Status == "delivery_uncertain" && order.DeliveryType == "invite_link" {
 		reason := "uncertain delivery requires manual verification: " + order.DeliveryType
 		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry.blocked", "order:"+orderID, a.clientIP(r), r.UserAgent(), reason)
 		writeError(w, http.StatusConflict, "该订单包含可能已成功执行的外部交付步骤，当前结果不确定。为避免重复发送，系统已禁止整单重试，请人工核实并处理。")
 		return
+	}
+
+	if order.Status == "delivery_uncertain" && order.DeliveryType == "file_card" {
+		steps, stepErr := database.ListOrderDeliverySteps(r.Context(),a.db,a.driver,orderID)
+		if stepErr != nil { writeError(w,http.StatusInternalServerError,"读取分步骤发货状态失败"); return }
+		blocked := len(steps)==0
+		for _,step := range steps {
+			if step.Status=="uncertain" { blocked=true }
+		}
+		if blocked {
+			reason := "file_card delivery contains an unresolved or missing step record"
+			database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"order.delivery.retry.blocked","order:"+orderID,a.clientIP(r),r.UserAgent(),reason)
+			writeError(w,http.StatusConflict,"文件或卡密消息步骤仍有结果待核实，请先在订单详情中逐项核实并记录处理结果，再恢复失败步骤。")
+			return
+		}
 	}
 
 	if order.Status == "delivered" {
@@ -1312,6 +1360,7 @@ func (a *application) listPaymentTransactions(w http.ResponseWriter, r *http.Req
 
 type orderDetailView struct {
 	Order orderView `json:"order"`
+	DeliverySteps []database.OrderDeliveryStep `json:"deliverySteps"`
 	PaymentFromAddress string `json:"paymentFromAddress"`
 	PaymentToAddress string `json:"paymentToAddress"`
 	PaymentTransactionID string `json:"paymentTransactionId"`
@@ -1361,6 +1410,9 @@ func (a *application) getOrderDetail(w http.ResponseWriter, r *http.Request) {
 	item := selected
 	view := orderView{ID:item.ID,OrderNo:item.OrderNo,BotID:item.BotID,TelegramUserID:item.TelegramUserID,TelegramChatID:item.TelegramChatID,ProductName:item.ProductName,UnitPriceMinor:item.UnitPriceMinor,Quantity:item.Quantity,AmountMinor:item.AmountMinor,PaymentAmount:formatUSDTAtomic(item.PaymentAmountAtomic),Currency:item.Currency,Status:item.Status,ExpiresAt:item.ExpiresAt,CreatedAt:item.CreatedAt,PaidAt:item.PaidAt,DeliveredAt:item.DeliveredAt,PaymentMethod:item.PaymentMethod,PaymentReference:item.PaymentReference,DeliveryAttempts:item.DeliveryAttempts,DeliveryError:item.DeliveryError,StockReserved:item.StockReserved}
 	detail := orderDetailView{Order:view}
+	steps, stepErr := database.ListOrderDeliverySteps(r.Context(), a.db, a.driver, id)
+	if stepErr != nil { log.Printf("load order delivery steps: order_id=%s error=%v",id,stepErr); writeError(w,http.StatusInternalServerError,"Unable to load delivery steps"); return }
+	detail.DeliverySteps = steps
 	query := "SELECT from_address,to_address,transaction_id,block_timestamp_ms FROM payment_transactions WHERE order_id="+database.PlaceholderForAPI(a.driver)+" ORDER BY block_timestamp_ms DESC LIMIT 1"
 	var from,to,txid string
 	var blockTime int64

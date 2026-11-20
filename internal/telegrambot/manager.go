@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -134,6 +135,7 @@ type TelegramUser struct {
 type apiResult struct {
 	OK bool `json:"ok"`
 	Description string `json:"description"`
+	Result struct { MessageID int64 `json:"message_id"` } `json:"result"`
 }
 
 func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error), paymentAddress string, paymentEnabled bool) *Manager {
@@ -1526,7 +1528,7 @@ func (m *Manager) RedeliverPaidOrder(ctx context.Context, item database.OrderDel
 
 func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDelivery, allowDelivered bool) error {
 	if item.Order.Status == "delivered" && !allowDelivered { return nil }
-	if item.Order.Status == "delivery_uncertain" && (item.Order.DeliveryType == "invite_link" || item.Order.DeliveryType == "file_card") {
+	if item.Order.Status == "delivery_uncertain" && item.Order.DeliveryType == "invite_link" {
 		return fmt.Errorf("%s delivery outcome is uncertain; automatic retry is blocked because the previous attempt may have completed one of multiple external delivery steps; verify and handle manually", item.Order.DeliveryType)
 	}
 	m.mu.Lock()
@@ -1651,11 +1653,43 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
 		deliveryErr = sendDeliveryMessage("订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
 	case "file_card":
-		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
-			deliveryErr=sendDeliveryDocument(config.FileID,"订单："+item.Order.OrderNo)
-			if deliveryErr==nil {
-				deliveryErr=sendDeliveryMessage("配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+		if strings.TrimSpace(config.FileID)=="" {
+			deliveryErr=fmt.Errorf("Telegram file_id is not configured")
+			break
+		}
+		processStep := func(stepKey string, stepOrder int, send func()(string,bool,error)) error {
+			step, stepErr := database.BeginOrderDeliveryStep(ctx,m.db,m.driver,item.Order.ID,stepKey,stepOrder)
+			if stepErr != nil {
+				if errors.Is(stepErr,database.ErrOrderDeliveryStepUncertain) {
+					if !deliveryAttempted {
+						if stateErr:=beginDeliveryAttempt();stateErr!=nil{return stateErr}
+					}
+				}
+				return stepErr
 			}
+			if step.Status=="succeeded" { return nil }
+			if err:=beginDeliveryAttempt();err!=nil{return err}
+			messageID,uncertain,sendErr:=send()
+			if sendErr!=nil {
+				if uncertain {
+					_ = database.MarkOrderDeliveryStepUncertain(ctx,m.db,m.driver,item.Order.ID,stepKey,sendErr.Error())
+				} else {
+					_ = database.FailOrderDeliveryStep(ctx,m.db,m.driver,item.Order.ID,stepKey,sendErr.Error())
+				}
+				return sendErr
+			}
+			if err:=database.FinishOrderDeliveryStep(ctx,m.db,m.driver,item.Order.ID,stepKey,messageID);err!=nil {
+				return fmt.Errorf("persist successful Telegram delivery step %s: %w",stepKey,err)
+			}
+			return nil
+		}
+		deliveryErr=processStep("file",1,func()(string,bool,error){
+			return m.sendDeliveryDocumentWithID(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+		})
+		if deliveryErr==nil {
+			deliveryErr=processStep("card_message",2,func()(string,bool,error){
+				return m.sendDeliveryMessageWithID(ctx,current.config.Token,chatID,"配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+			})
 		}
 	default:
 		deliveryErr=fmt.Errorf("unsupported delivery mode: %s",mode)
@@ -1824,6 +1858,47 @@ func (m *Manager) processBroadcastTask(ctx context.Context, taskID string) {
 	status:="completed";if failed>0&&sent>0{status="completed_with_errors"}else if failed>0{status="failed"}
 	if err:=database.FinishBroadcastTask(ctx,m.db,m.driver,taskID,status,sent,failed);err!=nil{log.Printf("finish broadcast task failed: task_id=%s error=%v",taskID,err)}
 	log.Printf("telegram broadcast completed: task_id=%s bot_id=%s sent=%d failed=%d",taskID,task.BotID,sent,failed)
+}
+
+// sendDeliveryMessageWithID distinguishes a definitive Telegram rejection from an
+// ambiguous transport/server outcome so a failed step can be retried without replaying
+// already completed steps.
+func (m *Manager) sendDeliveryMessageWithID(ctx context.Context, token string, chatID int64, text string) (string, bool, error) {
+	payload, err := json.Marshal(map[string]any{"chat_id":chatID,"text":text})
+	if err != nil { return "",false,err }
+	req, err := http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendMessage",bytes.NewReader(payload))
+	if err != nil { return "",false,err }
+	req.Header.Set("Content-Type","application/json")
+	response, err := m.client.Do(req)
+	if err != nil { return "",true,err }
+	defer response.Body.Close()
+	var result apiResult
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return "",true,fmt.Errorf("decode Telegram sendMessage response: %w",err) }
+	if response.StatusCode != http.StatusOK || !result.OK {
+		err := fmt.Errorf("Telegram sendMessage HTTP %d: %s",response.StatusCode,result.Description)
+		return "",response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout,err
+	}
+	if result.Result.MessageID <= 0 { return "",true,fmt.Errorf("Telegram sendMessage response omitted message_id") }
+	return strconv.FormatInt(result.Result.MessageID,10),false,nil
+}
+
+func (m *Manager) sendDeliveryDocumentWithID(ctx context.Context, token string, chatID int64, fileID, caption string) (string, bool, error) {
+	payload, err := json.Marshal(map[string]any{"chat_id":chatID,"document":fileID,"caption":caption})
+	if err != nil { return "",false,err }
+	req, err := http.NewRequestWithContext(ctx,http.MethodPost,"https://api.telegram.org/bot"+token+"/sendDocument",bytes.NewReader(payload))
+	if err != nil { return "",false,err }
+	req.Header.Set("Content-Type","application/json")
+	response, err := m.client.Do(req)
+	if err != nil { return "",true,err }
+	defer response.Body.Close()
+	var result apiResult
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return "",true,fmt.Errorf("decode Telegram sendDocument response: %w",err) }
+	if response.StatusCode != http.StatusOK || !result.OK {
+		err := fmt.Errorf("Telegram sendDocument HTTP %d: %s",response.StatusCode,result.Description)
+		return "",response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout,err
+	}
+	if result.Result.MessageID <= 0 { return "",true,fmt.Errorf("Telegram sendDocument response omitted message_id") }
+	return strconv.FormatInt(result.Result.MessageID,10),false,nil
 }
 
 func (m *Manager) sendMessage(ctx context.Context, token string, chatID int64, text string) error {

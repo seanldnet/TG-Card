@@ -1,11 +1,22 @@
-## 2026-11-21 — 全局异常中心 P0-2 移植整合（开发中）
+## 2026-11-21 — 分步骤交付状态机 P0-3（开发中）
 
-- 状态：基于最新 `main@d083aafe2cf63017f5583f3c702defc1c3774032` 新建独立分支 `feat/system-exceptions-rebase-pr80`；原 PR #80 因基线过旧存在合并冲突，暂不合并。
-- 目标：沿用 PR #80 已完成实现，整合统一 `system_exceptions` 登记、后台筛选与状态处理、历史资金异常迁移和原子审计。
-- 已移植：迁移 0052、管理员异常 API/页面、Cap 配置与验证异常登记、上游同步失败、退款冲突、订单交付不确定、采购异常统一表读写、对应回归测试。
-- 安全边界：异常详情不记录 Secret Key 或一次性验证 Token；解决/忽略仅更新异常记录及审计，不触发业务补偿或自动改账。
-- 验证：当前分支尚未完成；Go/Admin/Security CI 待运行，Docker 发布待合并后执行。
-- 数据库：新增 PostgreSQL/SQLite 兼容迁移；上线前必须验证迁移保留历史资金异常记录与处理元数据。
+- 状态：独立分支 `feat/stepwise-delivery-state-machine-p0-3`，基于 main@0a8895d54bbac02a78743b8692192c8ed66ea072。
+- 背景：PR #71 已阻止不确定 file_card 整单重试，防止重复发送已成功文件，但也导致前一步成功、后一步明确失败时只能整单人工介入。
+- 变更：新增 `order_delivery_steps` 与迁移 0053；分别持久化文件发送和卡密消息发送状态、尝试次数、Telegram message_id、错误和时间。
+- 恢复：仅对明确失败步骤重试，已成功步骤跳过；传输/响应不确定或崩溃遗留 sending 的步骤必须先人工核实并写入审计；只有所有步骤成功才允许订单完成。
+- 并发保护：发送期间保留订单租约，阻止并发 claim/人工核实；租约过期后的遗留 sending 状态先转 uncertain，再人工核实。
+- 后台：订单详情显示每个步骤的状态、attempts、message_id 和错误；支持对不确定步骤进行有审计的人工成功/失败判定。
+- 安全边界：不改变已交付 file_card 再次获取限制；不声称 Telegram exactly-once。
+- 验证：Go/Admin/Security CI 待本 PR 检查；真实 Telegram 多步骤恢复待真机验收。
+
+## 2026-11-21 — 全局异常中心 P0-2（PR #83 已合并并发布）
+
+- 状态：PR #83 已 Squash Merge 至 main，merge commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；原冲突 PR #80 已关闭，由 PR #83 基于最新 main 重整。
+- 统一 `system_exceptions` 表及迁移 0052；迁移历史 `finance_exceptions` 并保留旧表；统一采购、供应商资金差异、退款账本、交付不确定、退款冲突、上游同步失败和 Cap 异常登记。
+- 新增后台全局异常中心、按状态/类型/级别/时间筛选、处理中/解决/忽略操作；状态更新与 `system.exception.update` 审计在同一事务提交。
+- PR head Go CI #44836448199、Admin CI #44836448185、安全扫描 #44836448125 全部成功；合并后 Go CI #44836648477、Admin CI #44836648431、安全扫描 #44836648441、Docker Publish #44836648433 全部成功。
+- GHCR `latest` 与提交标签 `0a8895d54bbac02a78743b8692192c8ed66ea072` 已发布，manifest digest：`sha256:9792e121f9447fc450921910d3bafab545119ea8d67de1702ee8cc49c3d1a06d`。
+- 安全边界：异常详情不记录 Cap Secret Key 或一次性 Token；标记解决/忽略只更新异常登记状态和审计，不自动修改订单、钱包、库存或供应商余额。真实生产 PostgreSQL 历史迁移和异常处理流程仍待部署验收。
 
 ## 2026-11-21 — Cap 登录验证框布局与中文文案修复（PR #82 已合并）
 
