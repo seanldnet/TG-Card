@@ -3,7 +3,7 @@
 - 审查基线：main@d7cf00e783c3e97b2ecee77d329488e3091a220c（PR #70 已合并并发布）。
 - 新发现 `file_card` 由 Telegram sendDocument 与 sendMessage 两个独立外部副作用组成；若文件已发送而卡密消息结果不确定，整单重试会再次发送文件，造成重复交付。
 - PR #71 在 Telegram Manager 与管理员 API 双重阻止 `delivery_uncertain` 的 `file_card` 整单重试；邀请链接保护继续保留；管理后台列表和移动端卡片均显示“需人工核实”。
-- 增加 Manager 回归测试；不新增数据库迁移或生产环境变量。PR head Go/Admin/Security 与合并后构建待验证。
+- 增加 Manager 与管理员 API 回归测试，覆盖 invite_link/file_card 两种不确定结果的整单重试阻断；不新增数据库迁移或生产环境变量。新增 API 回归测试后，PR head Go/Admin/Security 需重新运行。
 - 此保护是保守的整单隔离，不提供分段自动续发；需管理员核对用户实际收到的文件/卡密后处理。生产部署和 Telegram 真机验收仍需项目所有者确认。
 
 ## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 已合并并发布）
