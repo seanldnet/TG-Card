@@ -8,7 +8,7 @@
 - Site Key：Cap 站点公钥。
 - Secret Key：Cap 站点私钥。后端使用现有 AES-256-GCM 密钥加密后写入 PostgreSQL 的 `settings` 表；读取接口只返回是否已配置，不返回密文或明文。
 
-启用后，管理员登录页从 Cap 服务的 `/assets/widget.js` 加载 `<cap-widget>`，widget 完成挑战后把一次性 token 随登录请求提交给后端。后端调用：
+启用后，管理员登录页从固定版本的 jsDelivr CDN 加载 `<cap-widget>`（当前固定 `cap-widget@0.1.63`），并通过 `data-cap-api-endpoint` 指向 Cap 服务的 `https://<instance>/<site-key>/`。Widget 完成挑战后把一次性 token 随登录请求提交给后端。后端调用：
 
 ```text
 POST {CapDomain}/{SiteKey}/siteverify
@@ -21,14 +21,11 @@ Content-Type: application/json
 
 ## Cap 服务端准备
 
-Cap 自托管实例需要提供站点挑战 API，并启用静态资源服务，使浏览器可访问：
+Cap 服务端只需提供站点挑战 API 与 `/siteverify` 验证接口；当前集成默认由 jsDelivr 提供 Widget 脚本及其 WASM 资源，不依赖 capd 的「Widget files」开关，也不要求 Cap 服务端提供 `/assets/widget.js`。
 
-- `https://cap.example.com/assets/widget.js`
-- `https://cap.example.com/{site-key}/`
+浏览器必须能够访问 `https://cdn.jsdelivr.net/npm/cap-widget@0.1.63` 及其后续 WASM 资源请求。若部署地区屏蔽 jsDelivr，应按 Cap 官方自托管指引将 Widget 与 WASM 文件作为一组资源自行托管，并在加载 Widget 前配置 `CAP_CUSTOM_WASM_URL` 与 `CAP_CUSTOM_HASHWX_URL`；这属于独立自托管部署方式，不应要求开启新版 Cap 已移除的「Widget files」开关。
 
-若 Cap 服务没有启用 assets server，前端 widget 无法加载；请先在 Cap 服务配置中启用静态资源服务，或将官方 widget 资源部署到该域名的 `/assets/widget.js`。
-
-浏览器必须能访问 Cap 域名；TG-Card 应用容器也必须能通过 HTTPS 访问同一域名的 `/{site-key}/siteverify`。请在开启验证前完成两侧连通性检查。
+浏览器必须能访问 jsDelivr 与 Cap 域名；TG-Card 应用容器也必须能通过 HTTPS 访问同一 Cap 域名的 `/{site-key}/siteverify`。请在开启验证前完成两侧连通性检查。
 
 ## 开启步骤
 
