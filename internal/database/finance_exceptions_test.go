@@ -100,3 +100,33 @@ func TestClaimFinanceExceptionAlertIsDailyIdempotent(t *testing.T){
  nextDay,err:=ClaimFinanceExceptionAlert(ctx,db,"sqlite","supplier-fund:order-1","2026-11-20");if err!=nil{t.Fatal(err)}
  if !first||second||!nextDay{t.Fatalf("daily alert dedupe mismatch: first=%v second=%v nextDay=%v",first,second,nextDay)}
 }
+
+
+func TestSystemExceptionRegistryFiltersResolvesAndReopens(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	if err:=CreateSystemException(ctx,db,"sqlite","cap-test-1","cap_verification","warning","admin_login","admin","Cap 验证失败","token rejected");err!=nil{t.Fatal(err)}
+	items,err:=ListSystemExceptions(ctx,db,"sqlite","open","cap_verification","warning",now[:19],time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano),20)
+	if err!=nil||len(items)!=1||items[0].SourceKey!="cap-test-1"{t.Fatalf("expected filtered system exception, items=%+v err=%v",items,err)}
+	if err:=UpdateFinanceException(ctx,db,"sqlite",items[0].ID,"admin-1","resolved","已检查 Cap 服务状态并恢复");err!=nil{t.Fatal(err)}
+	count,err:=CountOpenFinanceExceptions(ctx,db)
+	if err!=nil||count!=0{t.Fatalf("resolved exception must not count as open: count=%d err=%v",count,err)}
+	if err:=CreateSystemException(ctx,db,"sqlite","cap-test-1","cap_verification","error","admin_login","admin","Cap 验证持续失败","provider timeout");err!=nil{t.Fatal(err)}
+	reopened,err:=ListSystemExceptions(ctx,db,"sqlite","open","cap_verification","error","", "",20)
+	if err!=nil||len(reopened)!=1||reopened[0].Status!="open"||reopened[0].ResolutionNote!=""||reopened[0].ResolvedAt!=""{t.Fatalf("repeated source event should reopen and refresh exception: %+v err=%v",reopened,err)}
+}
+
+func TestSystemExceptionMigrationPreservesExistingFinanceExceptions(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	if _,err:=db.ExecContext(ctx,"DELETE FROM schema_migrations WHERE version=52");err!=nil{t.Fatal(err)}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	_,err:=db.ExecContext(ctx,`INSERT INTO finance_exceptions(id,source_key,category,severity,entity_type,entity_id,title,detail,status,resolution_note,resolved_by,created_at,updated_at,resolved_at)
+		VALUES('legacy-id','legacy-source','supplier_balance','error','procurement','order-1','legacy exception','legacy detail','resolved','checked','admin-1',?,?,?)`,now,now,now)
+	if err!=nil{t.Fatal(err)}
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	var id,status,note string
+	if err:=db.QueryRowContext(ctx,"SELECT id,status,resolution_note FROM system_exceptions WHERE source_key='legacy-source'").Scan(&id,&status,&note);err!=nil{t.Fatal(err)}
+	if id!="legacy-id"||status!="resolved"||note!="checked"{t.Fatalf("migration did not preserve legacy exception: id=%s status=%s note=%s",id,status,note)}
+}
