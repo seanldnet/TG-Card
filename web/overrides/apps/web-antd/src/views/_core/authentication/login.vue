@@ -105,7 +105,7 @@ async function loadCapConfig() {
       await nextTick();
       mountCapWidget();
     }
-  } catch {
+  } catch (error) {
     // Fail closed: the backend may still require a token even when the
     // public configuration or widget cannot be loaded.
     capEnabled.value = true;
