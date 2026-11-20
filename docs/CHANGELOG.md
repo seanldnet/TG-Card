@@ -7,13 +7,15 @@
 - 验证：PR #61 head Go/Admin/Security 全部成功；main Go CI #44636933083、Admin CI #44636932944、Security #44636932940、Docker Publish #44636932941 全部成功。
 - 镜像：GHCR 多架构 latest 与提交标签均已推送；digest sha256:09f9b2c7ee23037ad9c03e26d1b490bdb853988958e6e7804e224bc855039f7d。生产部署与 Telegram 真机验收未确认。
 
-## 2026-11-20 — PostgreSQL 购物车并发集成测试（PR #62 Open）
+## 2026-11-20 — PostgreSQL 购物车并发集成测试（PR #62 已合并）
 
-- 为补足 SQLite 无法验证 PostgreSQL 行锁语义的缺口，Go CI 增加临时 PostgreSQL 16 服务。
-- 新增并发集成测试：两个独立 Bot/Telegram 用户同时竞争同一件卡密库存，必须且仅有一个订单成功预留；失败方购物车保留，不能重复占用库存。
-- 代码提交 49d6ef3e27ea28af1e5a8ee6bdd36c2eaf486deb 的 Go vet、全量 go test（含 PostgreSQL 并发测试）、CGO_ENABLED=0 build、Admin build 与 Security 均成功；最新 head d3323142ea77fe97cbd3887ab8570122151ced98 追加文档基线校准后，CI 正在重新运行。
-- 不修改运行时业务逻辑、数据库迁移或生产环境配置；TEST_POSTGRES_DSN 仅由 CI job 注入。
+- PR #62 已 Squash Merge 至 main，merge commit `d988c6a554392af86ea03b9ba60297e1debab011`。
+- Go CI 使用临时 PostgreSQL 16 service；并发集成测试让两个独立 Bot/Telegram 用户同时竞争最后一张卡密，验证且仅有一个 checkout 成功、成功方只预留一张卡密、失败方购物车保留。
+- 最新 PR head `50e2136884fdb5bffe0f0e989762f8c973a6c9b9` 的 Go CI、Admin CI、Security 全部成功。
+- 不修改运行时业务逻辑、数据库迁移或生产环境配置；`TEST_POSTGRES_DSN` 仅由 CI job 注入临时数据库服务。
+- main 合并后 Go CI #44641444572、Admin CI #44641444462、Security #44641444408、Docker Publish #44641444376 已触发；文档提交时 Security 成功，其余仍在运行，镜像 digest 待发布完成后补录。
 - Telegram 真机支付/交付验收仍独立待执行；自动化并发测试不替代真实付款、库存和 Bot 交付验收。
+
 ## 2026-11-20 — PR E Dujiao-Next 真实商户联调操作手册（PR #58 已合并）
 
 - PR #58 已 Squash Merge 至 main，merge commit 9a4faafd11eaaee0a3d82feb9161ee63d424ad25；独立分支 docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。
