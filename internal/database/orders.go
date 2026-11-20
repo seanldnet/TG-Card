@@ -329,7 +329,13 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 	}
 	query := "SELECT id FROM orders WHERE status='paid' OR (status='delivery_failed' AND " + retryDueExpr + ") OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) ORDER BY created_at LIMIT " + fmt.Sprint(limit)
 	if driver == "postgres" { query += " FOR UPDATE SKIP LOCKED" }
-	rows, err := tx.QueryContext(ctx, query, nowText)
+	queryArgs := []any{nowText}
+	// SQLite uses positional question-mark placeholders, so the two time
+	// predicates need two arguments even though PostgreSQL reuses $1.
+	if driver != "postgres" {
+		queryArgs = append(queryArgs, nowText)
+	}
+	rows, err := tx.QueryContext(ctx, query, queryArgs...)
 	if err != nil { return nil, err }
 	ids := make([]string, 0, limit)
 	for rows.Next() {
