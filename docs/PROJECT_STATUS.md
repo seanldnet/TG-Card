@@ -1,12 +1,13 @@
-## 2026-11-21 — Cap 登录验证框布局与中文文案修复（PR #82，开发中）
+## 2026-11-21 — 全局异常中心 P0-2 整合开发（PR #80 旧分支冲突，当前分支重整中）
 
-- 状态：独立分支开发中，尚未合并；等待 PR CI。真实 Cap 挑战与管理员登录 E2E 仍需项目所有者部署验收。
-- 基线：`main@791f3d43a623fdb3e59ba378626890083bf5aebd`（PR #81 已合并）。
-- 登录页：Cap 验证字段作为密码字段后的表单项渲染，宽度跟随表单全宽；Widget 初始文案、验证中、成功、失败及无障碍提示均显式设置为中文，初始提示为“点击进行安全验证”。
-- 网站设置：删除 Cap 设置页中两条重复的说明 Alert，不改动 Cap 开关、域名、Site Key、Secret Key 加密保存及后端校验逻辑。
-- 验证：待 Admin CI、Go CI、安全扫描及 Docker Publish；不把 CI 结果视为真实 Cap E2E 通过。
-- 数据库迁移：无；API、后端 Token 校验及 Secret Key 存储逻辑不变。
-
+- 当前基线：`main@d083aafe2cf63017f5583f3c702defc1c3774032`（PR #82 已合并）；当前独立开发分支 `feat/system-exceptions-rebase-pr80`。
+- 历史 PR #80 基于旧 main `7c4e8cf61630c297ea1115add229ef729740a573`，GitHub 检测到合并冲突；不直接合并旧 PR，也不重复新建另一套功能。本分支从最新 main 起步，逐项移植并核对其实现。
+- 本轮已移植：统一 `system_exceptions` 表及迁移 0052；全局异常查询/状态更新 API、后台菜单与页面；Cap 配置/验证异常、上游目录同步失败、退款冲突、订单交付不确定登记；采购异常处理迁移至统一表；状态变更与管理员审计原子提交。
+- 兼容边界：历史 `finance_exceptions` 通过迁移复制到统一表，旧资金异常 API 继续作为兼容入口；标记解决只更新异常状态和审计，不自动更改订单、钱包、库存或供应商余额。
+- PR #82 Cap 登录框布局与中文文案修复已于提交 `d083aafe2cf63017f5583f3c702defc1c3774032` 合并；真实 Cap 浏览器 E2E 仍待项目所有者部署验收。
+- 验证：当前分支移植与回归测试尚未完成；待完成后运行 Go Backend CI、Admin Frontend CI、安全扫描。Docker 发布仅在合并后执行。
+- 数据库迁移：新增 `0052_system_exceptions.sql`，兼容 PostgreSQL/SQLite；需验证已有 PostgreSQL 数据库迁移和历史资金异常完整性。
+ 
 ## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81 已合并）
 
 - 状态：PR #81 已 Squash Merge 至 main，merge commit `791f3d43a623fdb3e59ba378626890083bf5aebd`。
@@ -127,8 +128,8 @@
 > **文档元信息**
 > - 最后更新时间：2026-11-21
 > - 文档版本：2.2.35
-> - 源码核对基线：main 分支，commit `8981fb887584979450f19b30648225ced113989d`；PR #78 已合并
-> - 本次文档更新：记录 PR #78 合并、主分支 CI 通过和 Docker 镜像发布状态
+> - 源码核对基线：main 分支，commit `d083aafe2cf63017f5583f3c702defc1c3774032`；PR #81/#82 已合并
+> - 本次文档更新：校准 PR #81/#82 合并状态，并记录 P0-2 全局异常中心整合开发进度
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
