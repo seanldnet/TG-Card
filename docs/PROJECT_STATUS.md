@@ -6,12 +6,12 @@
 - 新增 Manager 与管理员 API 回归测试，覆盖已交付 file_card 再次获取阻断及订单状态保持；不新增数据库迁移或生产环境变量。PR head Go/Admin/Security 待验证。
 - 此保护为保守的整单隔离，不提供分步骤续发；需人工核实用户收到的文件与卡密后处理。生产部署与 Telegram 真机验收仍需项目所有者确认。
 
-## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 已合并，镜像构建中）
+## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 已合并并发布）
 
 - PR #71 已 Squash Merge 至 main，merge commit `cdb30cef99f27e3021de35fe1717937becc116c5`；main 当前基线已更新。
 - 修复 `file_card` 首次交付多步骤风险：文件与卡密消息分别调用 Telegram API；前一步已成功、后一步结果不确定时，禁止对 `delivery_uncertain` 订单整单重试；保留 `invite_link` 一次性邀请链接保护。
 - PR head `4d19643f369566397375682cca7cc747e47aacc7` 的 Go CI #44809724292、Admin CI #44809724257、Security #44809724481 全部成功。
-- 合并后 main Go CI #44810140754、Admin CI #44810140828、Security #44810140787 全部成功；Docker Publish #44810140725 正在构建/推送，镜像 digest 待记录。
+- 合并后 main Go CI [#44810140754](https://github.com/seanldnet/TG-Card/actions/runs/44810140754)、Admin CI [#44810140828](https://github.com/seanldnet/TG-Card/actions/runs/44810140828)、Security [#44810140787](https://github.com/seanldnet/TG-Card/actions/runs/44810140787) 与 Docker Publish [#44810140725](https://github.com/seanldnet/TG-Card/actions/runs/44810140725) 全部成功。GHCR 多架构镜像标签 `latest` 与提交标签 `cdb30cef99f27e3021de35fe1717937becc116c5` 已发布，manifest digest：`sha256:926ee2f545d6c26580a0d453eefdb0df3ba97a4271b09c5505eb078603f0b63d`。
 - 无数据库迁移或生产环境变量变更。保守隔离不提供分段自动续发；生产部署与 Telegram 真机验收仍需项目所有者确认。
 
 ## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 已合并并发布）
