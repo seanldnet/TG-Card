@@ -127,3 +127,13 @@ When a refund is blocked because an active re-delivery lease exists, the support
 ## 全局异常中心联动
 
 当 Telegram 交付进入 `delivery_uncertain` 时，同一数据库事务创建或刷新 `system_exceptions` 记录，来源键为 `delivery-uncertain:<order-id>`。订单与交付事件仍是事实来源；全局异常中心仅提供聚合视图。标记解决不会重发 Telegram 消息、改变订单状态，也不能证明远端已送达。必须先核实真实 Telegram 结果，再记录处理结论。详见 `docs/system-exceptions.md`。
+
+## File-card step-level delivery state machine (P0-3)
+
+`file_card` consists of two independent Telegram side effects: `file` (sendDocument) and `card_message` (sendMessage). Each step is persisted in `order_delivery_steps` with its own attempt count, status, last error, timestamps, and Telegram `message_id` when the API returns one.
+
+- A definitive Telegram rejection marks only that step `failed`; an explicit admin retry skips every `succeeded` step and retries only `failed` steps.
+- A transport timeout, malformed response, HTTP 5xx, missing `message_id`, or process crash while a step is `sending` is treated as `uncertain`. Such a step is never resent until an administrator verifies whether Telegram accepted it and records `succeeded` or `failed` with an audit note.
+- A step manually marked `succeeded` is skipped on retry; a step manually marked `failed` becomes eligible for the next explicit retry. Resolution and audit are committed in one transaction.
+- The order can become `delivered` only after all persisted steps are `succeeded`. Re-delivery of an already delivered `file_card` remains blocked; this state machine is for completing the original paid delivery, not duplicating a delivered entitlement.
+- This improves stage-level recovery but does not provide Telegram exactly-once semantics. A step with an ambiguous remote outcome still requires human verification.
