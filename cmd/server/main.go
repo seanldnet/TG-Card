@@ -1192,11 +1192,6 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 		if stepErr != nil { writeError(w,http.StatusInternalServerError,"读取分步骤发货状态失败"); return }
 		blocked := len(steps)==0
 		for _,step := range steps {
-			if step.Status=="sending" {
-				_,_ = database.BeginOrderDeliveryStep(r.Context(),a.db,a.driver,orderID,step.StepKey,step.StepOrder)
-				blocked=true
-				continue
-			}
 			if step.Status=="uncertain" { blocked=true }
 		}
 		if blocked {
