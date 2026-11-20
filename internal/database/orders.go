@@ -404,6 +404,9 @@ func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (
 
 // MarkOrderDelivered finalizes a successful Telegram delivery.
 func MarkOrderDelivered(ctx context.Context, db *sql.DB, driver, orderID string) error {
+	var unfinished int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM order_delivery_steps WHERE order_id="+placeholder(driver,1)+" AND status<>'succeeded'", orderID).Scan(&unfinished); err != nil { return err }
+	if unfinished > 0 { return fmt.Errorf("order delivery still has unfinished steps") }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	query := "UPDATE orders SET status='delivered', delivered_at=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + ", delivery_error='', delivery_lease_until=NULL WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed','delivery_uncertain')"
 	result, err := db.ExecContext(ctx, query, now, now, orderID)
