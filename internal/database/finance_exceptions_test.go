@@ -100,3 +100,61 @@ func TestClaimFinanceExceptionAlertIsDailyIdempotent(t *testing.T){
  nextDay,err:=ClaimFinanceExceptionAlert(ctx,db,"sqlite","supplier-fund:order-1","2026-11-20");if err!=nil{t.Fatal(err)}
  if !first||second||!nextDay{t.Fatalf("daily alert dedupe mismatch: first=%v second=%v nextDay=%v",first,second,nextDay)}
 }
+
+
+func TestSystemExceptionRegistryFiltersResolvesAndReopens(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	if err:=CreateSystemException(ctx,db,"sqlite","cap-test-1","cap_verification","warning","admin_login","admin","Cap 验证失败","token rejected");err!=nil{t.Fatal(err)}
+	items,err:=ListSystemExceptions(ctx,db,"sqlite","open","cap_verification","warning",now[:19],time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano),20)
+	if err!=nil||len(items)!=1||items[0].SourceKey!="cap-test-1"{t.Fatalf("expected filtered system exception, items=%+v err=%v",items,err)}
+	if err:=UpdateFinanceException(ctx,db,"sqlite",items[0].ID,"admin-1","resolved","已检查 Cap 服务状态并恢复");err!=nil{t.Fatal(err)}
+	count,err:=CountOpenFinanceExceptions(ctx,db)
+	if err!=nil||count!=0{t.Fatalf("resolved exception must not count as open: count=%d err=%v",count,err)}
+	if err:=CreateSystemException(ctx,db,"sqlite","cap-test-1","cap_verification","error","admin_login","admin","Cap 验证持续失败","provider timeout");err!=nil{t.Fatal(err)}
+	reopened,err:=ListSystemExceptions(ctx,db,"sqlite","open","cap_verification","error","", "",20)
+	if err!=nil||len(reopened)!=1||reopened[0].Status!="open"||reopened[0].ResolutionNote!=""||reopened[0].ResolvedAt!=""{t.Fatalf("repeated source event should reopen and refresh exception: %+v err=%v",reopened,err)}
+}
+
+func TestSystemExceptionMigrationPreservesExistingFinanceExceptions(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	if _,err:=db.ExecContext(ctx,"DELETE FROM schema_migrations WHERE version=52");err!=nil{t.Fatal(err)}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	_,err:=db.ExecContext(ctx,`INSERT INTO finance_exceptions(id,source_key,category,severity,entity_type,entity_id,title,detail,status,resolution_note,resolved_by,created_at,updated_at,resolved_at)
+		VALUES('legacy-id','legacy-source','supplier_balance','error','procurement','order-1','legacy exception','legacy detail','resolved','checked','admin-1',?,?,?)`,now,now,now)
+	if err!=nil{t.Fatal(err)}
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	var id,status,note string
+	if err:=db.QueryRowContext(ctx,"SELECT id,status,resolution_note FROM system_exceptions WHERE source_key='legacy-source'").Scan(&id,&status,&note);err!=nil{t.Fatal(err)}
+	if id!="legacy-id"||status!="resolved"||note!="checked"{t.Fatalf("migration did not preserve legacy exception: id=%s status=%s note=%s",id,status,note)}
+}
+
+
+func TestUpdateSystemExceptionWithAuditIsAtomic(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	if err:=CreateSystemException(ctx,db,"sqlite","audit-exception-1","delivery_uncertain","error","order","order-1","delivery uncertain","remote outcome unknown");err!=nil{t.Fatal(err)}
+	items,err:=ListSystemExceptions(ctx,db,"sqlite","open","delivery_uncertain","","","",10)
+	if err!=nil||len(items)!=1{t.Fatalf("load exception: items=%+v err=%v",items,err)}
+	if err:=UpdateSystemExceptionWithAudit(ctx,db,"sqlite",items[0].ID,"admin-1","resolved","已核对 Telegram 消息送达状态","127.0.0.1","test-agent");err!=nil{t.Fatal(err)}
+	var status,action,resource,details string
+	if err:=db.QueryRowContext(ctx,"SELECT status FROM system_exceptions WHERE id=?",items[0].ID).Scan(&status);err!=nil{t.Fatal(err)}
+	if err:=db.QueryRowContext(ctx,"SELECT action,resource,details FROM audit_logs WHERE action='system.exception.update' AND resource=?", "exception:"+items[0].ID).Scan(&action,&resource,&details);err!=nil{t.Fatal(err)}
+	if status!="resolved"||action!="system.exception.update"||resource!="exception:"+items[0].ID||details==""{t.Fatalf("resolution and audit were not persisted together: status=%s action=%s resource=%s details=%s",status,action,resource,details)}
+	if err:=UpdateSystemExceptionWithAudit(ctx,db,"sqlite","missing-id","admin-1","resolved","missing","127.0.0.1","test-agent");err==nil{t.Fatal("updating a missing exception must fail")}
+	var missingAudit int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM audit_logs WHERE resource='exception:missing-id'").Scan(&missingAudit);err!=nil{t.Fatal(err)}
+	if missingAudit!=0{t.Fatalf("failed update must not create audit row, got %d",missingAudit)}
+	if err:=CreateSystemException(ctx,db,"sqlite","audit-failure-1","refund_conflict","warning","ticket","ticket-1","refund conflict","lease conflict");err!=nil{t.Fatal(err)}
+	failedItems,err:=ListSystemExceptions(ctx,db,"sqlite","open","refund_conflict","","","",10)
+	if err!=nil||len(failedItems)!=1{t.Fatalf("load exception for audit failure case: items=%+v err=%v",failedItems,err)}
+	if _,err:=db.ExecContext(ctx,`CREATE TRIGGER reject_system_exception_audit BEFORE INSERT ON audit_logs WHEN NEW.action='system.exception.update' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END`);err!=nil{t.Fatal(err)}
+	err=UpdateSystemExceptionWithAudit(ctx,db,"sqlite",failedItems[0].ID,"admin-1","resolved","must rollback","127.0.0.1","test-agent")
+	if err==nil{t.Fatal("audit insert failure must abort exception update")}
+	if _,err:=db.ExecContext(ctx,"DROP TRIGGER reject_system_exception_audit");err!=nil{t.Fatal(err)}
+	var afterFailure string
+	if err:=db.QueryRowContext(ctx,"SELECT status FROM system_exceptions WHERE id=?",failedItems[0].ID).Scan(&afterFailure);err!=nil{t.Fatal(err)}
+	if afterFailure!="open"{t.Fatalf("exception state must roll back when audit insert fails, got %s",afterFailure)}
+}
