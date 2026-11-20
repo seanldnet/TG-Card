@@ -44,6 +44,9 @@ func TestDeliveryUncertainIsExcludedFromAutomaticRetryButAllowsManualClaim(t *te
 	var status string
 	if err := db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id="+placeholder(driver,1), order.ID).Scan(&status); err != nil { t.Fatal(err) }
 	if status != "delivery_uncertain" { t.Fatalf("expected delivery_uncertain, got %q", status) }
+	var exceptionCount int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM system_exceptions WHERE source_key="+placeholder(driver,1)+" AND category='delivery_uncertain' AND status='open'", "delivery-uncertain:"+order.ID).Scan(&exceptionCount); err != nil { t.Fatal(err) }
+	if exceptionCount != 1 { t.Fatalf("delivery uncertainty must create one global exception, got %d", exceptionCount) }
 
 	automatic, err := ClaimOrderDeliveries(ctx, db, driver, 10, time.Minute)
 	if err != nil { t.Fatal(err) }
