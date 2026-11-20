@@ -57,7 +57,7 @@ func (a *application) updateSystemException(w http.ResponseWriter, r *http.Reque
 	if err := database.UpdateFinanceException(r.Context(), a.db, a.driver, id, claims.AdminID, input.Status, note); err != nil {
 		writeError(w, http.StatusConflict, err.Error()); return
 	}
-	if err := database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID,
+	if err := database.RecordAdminAuditChecked(r.Context(), a.db, a.driver, claims.AdminID,
 		"system.exception.update", "exception:"+id, a.clientIP(r), r.UserAgent(), input.Status+": "+note); err != nil {
 		writeError(w, http.StatusInternalServerError, "异常已更新，但审计日志写入失败，请联系管理员核查"); return
 	}
