@@ -321,11 +321,13 @@ func ClaimOrderDeliveries(ctx context.Context, db *sql.DB, driver string, limit 
 	nowText := now.Format(time.RFC3339Nano)
 	leaseText := now.Add(lease).Format(time.RFC3339Nano)
 	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 1) + ")"
-	orderExpr := "created_at"
+	retryDelaySeconds := "CASE WHEN delivery_attempts <= 1 THEN 15 WHEN delivery_attempts = 2 THEN 30 WHEN delivery_attempts = 3 THEN 60 WHEN delivery_attempts = 4 THEN 120 WHEN delivery_attempts = 5 THEN 240 WHEN delivery_attempts = 6 THEN 480 ELSE 900 END"
+	retryDueExpr := "julianday(updated_at) <= julianday(" + placeholder(driver, 1) + ") - (" + retryDelaySeconds + " / 86400.0)"
 	if driver == "postgres" {
 		dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 1) + " AS TIMESTAMPTZ)"
+		retryDueExpr = "CAST(updated_at AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 1) + " AS TIMESTAMPTZ) - (CASE WHEN delivery_attempts <= 1 THEN INTERVAL '15 seconds' WHEN delivery_attempts = 2 THEN INTERVAL '30 seconds' WHEN delivery_attempts = 3 THEN INTERVAL '60 seconds' WHEN delivery_attempts = 4 THEN INTERVAL '120 seconds' WHEN delivery_attempts = 5 THEN INTERVAL '240 seconds' WHEN delivery_attempts = 6 THEN INTERVAL '480 seconds' ELSE INTERVAL '900 seconds' END)"
 	}
-	query := "SELECT id FROM orders WHERE status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) ORDER BY " + orderExpr + " LIMIT " + fmt.Sprint(limit)
+	query := "SELECT id FROM orders WHERE status='paid' OR (status='delivery_failed' AND " + retryDueExpr + ") OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) ORDER BY created_at LIMIT " + fmt.Sprint(limit)
 	if driver == "postgres" { query += " FOR UPDATE SKIP LOCKED" }
 	rows, err := tx.QueryContext(ctx, query, nowText)
 	if err != nil { return nil, err }
