@@ -1591,13 +1591,18 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	cardDeliveryText:=strings.Join(deliveredKeys,"\n")
 	if groupedKeysMessage!="" { cardDeliveryText=groupedKeysMessage }
 	var deliveryErr error
+	// Telegram may accept a request even when the response is lost; quarantine attempted sends.
+	deliveryAttempted := false
+	sendDeliveryMessage := func(text string) error { deliveryAttempted = true; return m.sendMessage(ctx, current.config.Token, chatID, text) }
+	sendDeliveryDocument := func(fileID, caption string) error { deliveryAttempted = true; return m.sendDocument(ctx, current.config.Token, chatID, fileID, caption) }
+	createDeliveryInvite := func(target string, expires time.Time) (string, error) { deliveryAttempted = true; return m.createOneTimeInviteLink(ctx, current.config.Token, target, expires) }
 	switch mode {
 	case "card":
 		message := "订单：" + item.Order.OrderNo + "\n" + cardDeliveryText + "\n请妥善保存，不要转发给他人。"
-		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,message)
+		deliveryErr = sendDeliveryMessage(message)
 	case "fixed_text":
 		if strings.TrimSpace(config.Text)=="" { deliveryErr=fmt.Errorf("fixed text delivery is not configured") } else {
-			deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n"+config.Text)
+			deliveryErr=sendDeliveryMessage("订单："+item.Order.OrderNo+"\n"+config.Text)
 		}
 	case "invite_link":
 		if strings.TrimSpace(config.ChatID)=="" { deliveryErr=fmt.Errorf("invite link target chat is not configured"); break }
@@ -1609,29 +1614,29 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		}
 		if payload.InviteLink=="" {
 			minutes:=config.ExpireMinutes;if minutes<5||minutes>10080{minutes=60}
-			payload.InviteLink,deliveryErr=m.createOneTimeInviteLink(ctx,current.config.Token,config.ChatID,time.Now().Add(time.Duration(minutes)*time.Minute))
+			payload.InviteLink,deliveryErr=createDeliveryInvite(config.ChatID,time.Now().Add(time.Duration(minutes)*time.Minute))
 			if deliveryErr!=nil { break }
 			encoded,_:=json.Marshal(payload)
 			if m.encrypt==nil { deliveryErr=fmt.Errorf("delivery payload encryptor is not configured");break }
 			encrypted,encryptErr:=m.encrypt(string(encoded));if encryptErr!=nil{deliveryErr=encryptErr;break}
 			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,encrypted);deliveryErr!=nil { break }
 		}
-		deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
+		deliveryErr=sendDeliveryMessage("订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
 	case "file":
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
-			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+			deliveryErr=sendDeliveryDocument(config.FileID,"订单："+item.Order.OrderNo)
 		}
 	case "upstream":
 		if item.Order.DeliveryPayloadJSON == "" || item.Order.DeliveryPayloadJSON == "{}" { deliveryErr = fmt.Errorf("upstream fulfillment payload is missing"); break }
 		if m.decrypt == nil { deliveryErr = fmt.Errorf("upstream fulfillment decryptor is not configured"); break }
 		payload, decryptErr := m.decrypt(item.Order.DeliveryPayloadJSON)
 		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
-		deliveryErr = m.sendMessage(ctx,current.config.Token,chatID,"订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
+		deliveryErr = sendDeliveryMessage("订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
 	case "file_card":
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
-			deliveryErr=m.sendDocument(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+			deliveryErr=sendDeliveryDocument(config.FileID,"订单："+item.Order.OrderNo)
 			if deliveryErr==nil {
-				deliveryErr=m.sendMessage(ctx,current.config.Token,chatID,"配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+				deliveryErr=sendDeliveryMessage("配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
 			}
 		}
 	default:
@@ -1639,7 +1644,7 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	}
 	if deliveryErr != nil {
 		if item.Order.Status != "delivered" {
-			_ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error())
+			if deliveryAttempted { _ = database.MarkOrderDeliveryUncertain(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) } else { _ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) }
 		}
 		return fmt.Errorf("send paid order delivery: %w",deliveryErr)
 	}
