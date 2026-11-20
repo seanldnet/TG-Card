@@ -1,3 +1,12 @@
+## 2026-11-21 — 订单交付失败指数退避（PR #67 开发中）
+
+- 后台自动交付 worker 对 `delivery_failed` 订单增加指数退避：第 1–6 次失败后的等待依次为 15、30、60、120、240、480 秒，之后封顶 900 秒；避免每 15 秒固定重试造成 Telegram API 无效请求与日志噪声。
+- 首次已付款订单仍立即进入交付队列；租约过期的 `delivering` 订单仍可恢复。
+- 管理员手动补发使用单笔租约入口，保持立即执行，不受后台自动重试退避限制。
+- SQLite 与 PostgreSQL 16 均新增测试覆盖退避时序和手动补发旁路；不新增数据库迁移或生产环境变量。
+- PR #65 已合并（`7e2d1f843bbe77bad92252d61b77b6716393dd2f`），其 PostgreSQL 并发退款测试及 main Go/Admin/Security/Publish 均通过；GHCR digest `sha256:56c907d244a0fc854b5016843d870291246d14b24ef0c849f384e26b2fa9cf57`。
+- PR #66 文档校准已合并（`bb2d9b9831ab054210b9aa7d7a971266d1e17a03`）；本批次待 PR head Go/Admin/Security 检查。
+
 ## 2026-11-21 — PostgreSQL 订单退款并发幂等验证（PR #65 已合并）
 
 - PR #65 已 Squash Merge 至 main，merge commit `7e2d1f843bbe77bad92252d61b77b6716393dd2f`。
@@ -35,7 +44,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.23
+> - 文档版本：2.2.24
 > - 源码核对基线：main 分支，commit `59337349d36937a467e673e427f571ec276c17ce`
 > - 本次文档更新：记录 PR #61 合并与 GHCR digest，并跟踪 PR #62 PostgreSQL 并发测试
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
@@ -120,7 +129,7 @@
 > - 最后更新时间：2026-11-20
 > - 文档版本：2.2.19
 > - 源码核对基线：`main` 分支，commit `d988c6a554392af86ea03b9ba60297e1debab011`（PR #62 PostgreSQL 并发测试已合并）
-> - 本次文档更新：记录 PR #64 镜像 digest、PR #65 合并与主分支 CI 状态
+> - 本次文档更新：记录 PR #65 镜像发布与 PR #67 交付重试退避开发状态
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card

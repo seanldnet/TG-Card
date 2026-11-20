@@ -674,3 +674,42 @@ func mustFindAdminID(t *testing.T,ctx context.Context,db *sql.DB,username string
  if err!=nil{t.Fatal(err)}
  return admin.ID
 }
+
+
+func TestFailedOrderDeliveryUsesExponentialBackoffButManualRetryBypassesIt(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "Delivery retry backoff", PriceMinor: 500, Currency: "USDT", DeliveryType: "fixed_text", Status: 1})
+	if err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "bot-backoff", "user-backoff", "chat-backoff", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='paid' WHERE id=?", order.ID); err != nil { t.Fatal(err) }
+
+	claimed, err := ClaimOrderDelivery(ctx, db, cfg.DBDriver, order.ID, time.Minute)
+	if err != nil || !claimed { t.Fatalf("initial delivery lease: claimed=%v err=%v", claimed, err) }
+	if err := MarkOrderDeliveryFailed(ctx, db, cfg.DBDriver, order.ID, "temporary Telegram failure"); err != nil { t.Fatal(err) }
+
+	ids, err := ClaimOrderDeliveries(ctx, db, cfg.DBDriver, 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(ids) != 0 { t.Fatalf("first automatic retry must wait 15 seconds, got %v", ids) }
+
+	// An authenticated admin retry remains immediate and is not throttled by
+	// the background worker's exponential backoff.
+	claimed, err = ClaimOrderDelivery(ctx, db, cfg.DBDriver, order.ID, time.Minute)
+	if err != nil || !claimed { t.Fatalf("manual retry must bypass backoff: claimed=%v err=%v", claimed, err) }
+	if err := MarkOrderDeliveryFailed(ctx, db, cfg.DBDriver, order.ID, "second temporary Telegram failure"); err != nil { t.Fatal(err) }
+
+	ids, err = ClaimOrderDeliveries(ctx, db, cfg.DBDriver, 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(ids) != 0 { t.Fatalf("second automatic retry must wait 30 seconds, got %v", ids) }
+
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET updated_at=? WHERE id=?", time.Now().UTC().Add(-31*time.Second).Format(time.RFC3339Nano), order.ID); err != nil { t.Fatal(err) }
+	ids, err = ClaimOrderDeliveries(ctx, db, cfg.DBDriver, 10, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if len(ids) != 1 || ids[0] != order.ID { t.Fatalf("second retry should become eligible after 30 seconds, got %v", ids) }
+}
