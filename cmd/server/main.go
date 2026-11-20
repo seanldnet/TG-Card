@@ -406,7 +406,7 @@ func (a *application) health(w http.ResponseWriter, r *http.Request) {
 func (a *application) getCapConfig(w http.ResponseWriter, r *http.Request) {
  cfg, _, err := loadCapConfiguration(r.Context(), a.db, a.driver)
  if err != nil { log.Printf("load public Cap config: %v",err); writeError(w,http.StatusServiceUnavailable,"人机验证配置暂不可用"); return }
- if !cfg.Enabled { cfg = capConfiguration{} }
+ if !cfg.Enabled || capDisabledByEnvironment() { cfg = capConfiguration{} }
  writeSuccess(w,http.StatusOK,cfg)
 }
 
