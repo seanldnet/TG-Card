@@ -193,3 +193,22 @@ func TestProcurementQueueSkipsOrderNoLongerPending(t *testing.T){
 	if len(api.createCalls)!=0{t.Fatalf("cancelled/refunded order must never trigger procurement")}
 	assertProcurementLedger(t,f,"refunded",1)
 }
+
+func TestReconcileMissingPaidProcurementQueueIsIdempotentAndPreservesPayment(t *testing.T) {
+	api:=&fakeProcurementAPI{}
+	f:=newProcurementFixture(t,api)
+	ctx:=context.Background()
+	if _,err:=f.db.ExecContext(ctx,"DELETE FROM upstream_procurements WHERE local_order_id=?",f.orderID);err!=nil{t.Fatal(err)}
+	created,err:=database.ReconcileMissingUpstreamProcurements(ctx,f.db,"sqlite",20)
+	if err!=nil||created!=1{t.Fatalf("expected one restored queue row, created=%d err=%v",created,err)}
+	item,err:=database.GetUpstreamProcurement(ctx,f.db,"sqlite",f.orderID)
+	if err!=nil||item.Status!="queued"||item.LocalOrderNo!=f.orderNo{t.Fatalf("unexpected restored procurement: %+v err=%v",item,err)}
+	created,err=database.ReconcileMissingUpstreamProcurements(ctx,f.db,"sqlite",20)
+	if err!=nil||created!=0{t.Fatalf("reconciliation must be idempotent, created=%d err=%v",created,err)}
+	var status,method,reference string
+	if err:=f.db.QueryRowContext(ctx,"SELECT status,payment_method,payment_reference FROM orders WHERE id=?",f.orderID).Scan(&status,&method,&reference);err!=nil{t.Fatal(err)}
+	if status!="procurement_pending"||method!="trc20-usdt"||reference!="tx-original-1"{t.Fatalf("reconciliation changed payment state: status=%s method=%s reference=%s",status,method,reference)}
+	var walletRows int
+	if err:=f.db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE telegram_user_id='tg-user-1'").Scan(&walletRows);err!=nil{t.Fatal(err)}
+	if walletRows!=0{t.Fatalf("queue reconciliation must not mutate wallet ledger, rows=%d",walletRows)}
+}
