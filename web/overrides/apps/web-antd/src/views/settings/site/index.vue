@@ -107,7 +107,7 @@ onMounted(load);
      <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:shield-check-outline" />人机验证</span></template>
      <div class="max-w-3xl">
       <div class="mb-3 text-sm font-semibold">Cap 人机验证</div>
-      <a-alert class="mb-4" type="warning" show-icon message="启用后，管理员登录必须先完成 Cap 验证。请先确认 Cap 服务与 /assets/widget.js 可从浏览器访问，再开启验证。" />
+      <a-alert class="mb-4" type="warning" show-icon message="启用后，管理员登录必须先完成 Cap 验证。当前版本默认从固定版本的 jsDelivr CDN 加载 Widget，浏览器需能访问 cdn.jsdelivr.net；Cap 服务只需提供站点挑战接口和 /siteverify 校验接口，无需开启 Widget files。" />
       <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
        <div class="pr-4"><div class="text-sm font-medium">启用登录人机验证</div><div class="mt-1 text-xs text-gray-500">关闭后不再要求登录验证；服务器 DISABLE_CAP=true 可作为紧急总开关。</div></div>
        <a-switch v-model:checked="form.capEnabled" />
@@ -120,7 +120,7 @@ onMounted(load);
         <div class="mt-1 text-xs text-gray-500">Secret Key 使用服务端密钥加密后保存在 PostgreSQL；读取时不会返回明文。</div>
        </a-form-item>
       </a-form>
-      <a-alert class="mt-2" type="info" show-icon message="Cap 自托管 Widget 优先从服务端 /assets/widget.js 加载：请在 Cap 控制台 Instance settings → Widget files 中开启 Serve widget files from this server，并确保 Widget/WASM 资源版本与 capd 兼容。若未开启或资源加载失败，登录页会回退到固定版本的 jsDelivr CDN（cap-widget@0.1.63）；CDN 不可访问时请启用 Cap 自托管资源。验证接口由后端调用，Secret Key 不会暴露给浏览器。" />
+      <a-alert class="mt-2" type="info" show-icon message="Widget 默认由 jsDelivr 加载（固定版本 cap-widget@0.1.63）；浏览器必须能访问 cdn.jsdelivr.net。Cap 服务端负责站点挑战接口与 /siteverify 校验，不需要启用已移除的 Widget files 开关。Secret Key 仅由后端调用验证接口，不会暴露给浏览器。若访问区域屏蔽 jsDelivr，需按 Cap 官方方式自行托管 Widget 与 WASM 资源。" />
      </div>
     </a-tab-pane>
    </a-tabs>
