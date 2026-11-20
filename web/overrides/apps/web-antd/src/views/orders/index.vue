@@ -24,14 +24,14 @@ const mobileOrders=computed(()=>orders.value.slice((mobilePage.value-1)*mobilePa
 const isMobile=computed(()=>width.value<768);
 const pendingCount=computed(()=>orders.value.filter(x=>x.status==='pending_payment').length);
 const reservedCount=computed(()=>orders.value.filter(x=>x.stockReserved).length);
-const failedCount=computed(()=>orders.value.filter(x=>x.status==='delivery_failed').length);
-function statusLabel(status:string){const labels:Record<string,string>={pending_payment:'待付款',paid:'已付款',delivered:'已发货',delivering:'发货中',delivery_failed:'发货失败',procurement_pending:'采购处理中',procurement_failed:'采购失败',expired:'已过期',cancelled:'已取消',failed:'异常'};return labels[status]??status}
-function statusColor(status:string){if(status==='delivered')return 'success';if(status==='paid'||status==='delivering'||status==='procurement_pending')return 'processing';if(status==='delivery_failed'||status==='procurement_failed')return 'error';if(status==='pending_payment')return 'warning';return 'default'}
+const failedCount=computed(()=>orders.value.filter(x=>x.status==='delivery_failed'||x.status==='delivery_uncertain').length);
+function statusLabel(status:string){const labels:Record<string,string>={pending_payment:'待付款',paid:'已付款',delivered:'已发货',delivering:'发货中',delivery_failed:'发货失败',delivery_uncertain:'发货结果待核实',procurement_pending:'采购处理中',procurement_failed:'采购失败',expired:'已过期',cancelled:'已取消',failed:'异常'};return labels[status]??status}
+function statusColor(status:string){if(status==='delivered')return 'success';if(status==='paid'||status==='delivering'||status==='procurement_pending')return 'processing';if(status==='delivery_failed'||status==='delivery_uncertain'||status==='procurement_failed')return 'error';if(status==='pending_payment')return 'warning';return 'default'}
 function formatTime(value:string|number){if(!value)return '-';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString()}
 function copy(value:string){if(!value)return;navigator.clipboard?.writeText(value).then(()=>message.success('已复制')).catch(()=>message.error('复制失败'))}
 async function loadOrders(){loading.value=true;try{orders.value=await requestClient.get<Order[]>('/orders');mobilePage.value=1}catch{message.error('订单列表加载失败')}finally{loading.value=false}}
 async function openOrderDetail(order:Order){detailOpen.value=true;detailLoading.value=true;selectedDetail.value=null;try{selectedDetail.value=await requestClient.get<OrderDetail>('/orders/'+order.id)}catch{message.error('订单详情加载失败')}finally{detailLoading.value=false}}
-async function retryDelivery(order:Order){retryingId.value=order.id;try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货重试');await loadOrders()}catch{message.error('发货重试失败，请检查机器人状态及错误信息');await loadOrders()}finally{retryingId.value=''}}
+async function retryDelivery(order:Order){if(order.status==='delivery_uncertain'&&!window.confirm('该订单上一次发送结果不确定，Telegram 可能已经收到商品。请先核实用户是否收到；仍要重新发送吗？'))return;retryingId.value=order.id;try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货重试');await loadOrders()}catch{message.error('发货重试失败，请检查机器人状态及错误信息');await loadOrders()}finally{retryingId.value=''}}
 async function clearAllOrderData(){if(cleanupPhrase.value.trim()!=='清空全部订单数据'){message.warning('请完整输入“清空全部订单数据”以确认');return;}cleanupLoading.value=true;try{const result=await requestClient.post<{orders:number;paymentTransactions:number;supportTickets:number;walletTransactions:number;walletRecharges:number}>('/orders/cleanup',{confirmation:'CLEAR_ALL_ORDERS'});message.success('清理完成：订单 '+result.orders+' 笔，支付流水 '+result.paymentTransactions+' 笔，充值 '+result.walletRecharges+' 笔');cleanupOpen.value=false;cleanupPhrase.value='';await loadOrders();}catch(error:any){message.error(error?.response?.data?.message||'清理失败');}finally{cleanupLoading.value=false;}}
 onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo||'');if(orderNo){const target=orders.value.find(item=>item.orderNo===orderNo);if(target)await openOrderDetail(target);}});
 </script>
@@ -65,7 +65,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
       <a-button size="small" @click="openOrderDetail(item)">查看详情</a-button>
       <a-tag :color="item.stockReserved?'processing':'default'">{{item.stockReserved?'已预留库存':'未预留库存'}}</a-tag>
-      <a-button v-if="item.status==='paid'||item.status==='delivery_failed'" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">重试发货</a-button>
+      <a-button v-if="item.status==='paid'||item.status==='delivery_failed'||item.status==='delivery_uncertain'" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">重试发货</a-button>
      </div>
      <div v-if="item.paymentReference" class="mt-2 truncate text-xs text-gray-500"><a :href="`https://tronscan.org/#/transaction/${item.paymentReference}`" target="_blank" rel="noreferrer">查看链上交易</a></div>
     </a-card>
@@ -82,7 +82,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
     <a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="150"/>
     <a-table-column title="订单状态" key="status" :width="110"><template #default="{record}"><a-tag :color="statusColor(record.status)">{{statusLabel(record.status)}}</a-tag></template></a-table-column>
     <a-table-column title="库存预留" key="stockReserved" :width="100"><template #default="{record}"><a-tag :color="record.stockReserved?'processing':'default'">{{record.stockReserved?'已预留':'未预留'}}</a-tag></template></a-table-column>
-    <a-table-column title="发货重试" key="delivery" :width="120"><template #default="{record}"><a-button v-if="record.status==='paid'||record.status==='delivery_failed'" type="link" size="small" :loading="retryingId===record.id" @click="retryDelivery(record)">重试发货</a-button><span v-else>-</span></template></a-table-column>
+    <a-table-column title="发货重试" key="delivery" :width="120"><template #default="{record}"><a-button v-if="record.status==='paid'||record.status==='delivery_failed'||record.status==='delivery_uncertain'" type="link" size="small" :loading="retryingId===record.id" @click="retryDelivery(record)">重试发货</a-button><span v-else>-</span></template></a-table-column>
     <a-table-column title="发货尝试次数" data-index="deliveryAttempts" key="deliveryAttempts" :width="120"/>
     <a-table-column title="最近发货错误" data-index="deliveryError" key="deliveryError" :width="220" ellipsis/>
     <a-table-column title="创建时间" key="createdAt" :width="190"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
