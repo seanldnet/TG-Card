@@ -42,6 +42,46 @@ func enqueueUpstreamProcurementTx(ctx context.Context, tx *sql.Tx, driver, order
 	return nil
 }
 
+// ReconcileMissingUpstreamProcurements recreates only missing queue rows for
+// paid orders that are still explicitly in procurement_pending. It never
+// changes order/payment/wallet state and is idempotent by local_order_id.
+func ReconcileMissingUpstreamProcurements(ctx context.Context, db *sql.DB, driver string, limit int) (int, error) {
+	if limit < 1 || limit > 100 { limit = 20 }
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return 0, err }
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	nowText := now.Format(time.RFC3339Nano)
+	query := "SELECT o.id,o.order_no,o.paid_at,COALESCE(s.procurement_timeout_minutes,30) FROM orders o LEFT JOIN upstream_settings s ON s.id=1 WHERE o.status='procurement_pending' AND COALESCE(o.paid_at,'')<>'' AND (COALESCE(o.upstream_source_snapshot,'')='upstream' OR COALESCE(o.delivery_type,'')='upstream') AND NOT EXISTS (SELECT 1 FROM upstream_procurements p WHERE p.local_order_id=o.id) ORDER BY o.paid_at LIMIT " + fmt.Sprint(limit)
+	if driver == "postgres" { query += " FOR UPDATE OF o SKIP LOCKED" }
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil { return 0, err }
+	type missingOrder struct { id, orderNo, paidAt string; timeoutMinutes int }
+	items := make([]missingOrder, 0, limit)
+	for rows.Next() {
+		var item missingOrder
+		if err := rows.Scan(&item.id,&item.orderNo,&item.paidAt,&item.timeoutMinutes); err != nil { rows.Close(); return 0, err }
+		items = append(items,item)
+	}
+	if err := rows.Err(); err != nil { rows.Close(); return 0, err }
+	if err := rows.Close(); err != nil { return 0, err }
+	created := 0
+	for _, item := range items {
+		paidAt, parseErr := time.Parse(time.RFC3339Nano,item.paidAt)
+		if parseErr != nil { return 0, fmt.Errorf("cannot reconcile procurement queue for order %s: invalid paid_at",item.orderNo) }
+		if item.timeoutMinutes < 1 || item.timeoutMinutes > 1440 { item.timeoutMinutes = 30 }
+		deadline := paidAt.Add(time.Duration(item.timeoutMinutes)*time.Minute).Format(time.RFC3339Nano)
+		q := "INSERT INTO upstream_procurements(local_order_id,local_order_no,status,request_attempts,next_poll_at,deadline_at,created_at,updated_at) VALUES(" + placeholder(driver,1) + "," + placeholder(driver,2) + ",'queued',0," + placeholder(driver,3) + "," + placeholder(driver,4) + "," + placeholder(driver,5) + "," + placeholder(driver,6) + ") ON CONFLICT(local_order_id) DO NOTHING"
+		res, err := tx.ExecContext(ctx,q,item.id,item.orderNo,nowText,deadline,nowText,nowText)
+		if err != nil { return 0, fmt.Errorf("reconcile procurement queue for order %s: %w",item.orderNo,err) }
+		n, err := res.RowsAffected()
+		if err != nil { return 0, err }
+		created += int(n)
+	}
+	if err := tx.Commit(); err != nil { return 0, err }
+	return created, nil
+}
+
 func GetUpstreamProcurement(ctx context.Context, db *sql.DB, driver, orderID string) (UpstreamProcurement,error) {
 	var item UpstreamProcurement
 	q := "SELECT local_order_id,local_order_no,external_order_id,external_order_no,status,request_attempts,COALESCE(next_poll_at,''),deadline_at,last_error,created_at,updated_at FROM upstream_procurements WHERE local_order_id="+placeholder(driver,1)
