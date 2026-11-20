@@ -12,20 +12,14 @@
 - 验证：等待 PR Admin CI、Go CI、安全扫描与 Docker Publish；真实 Cap 浏览器挑战/登录仍待项目所有者验收。
 - 发布镜像：PR 尚未合并，无新镜像。
 
-## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81，开发中）
+## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81 已合并）
 
-- 状态：开发中；PR #81 尚未合并。
-- PR / Commit：PR #81，基于 main@7c4e8cf61630c297ea1115add229ef729740a573。
-- 影响模块：管理员登录页、网站设置中的 Cap 配置说明、Cap 专项运维文档。
-- 变更内容：
-  - 登录页改为默认加载固定版本 jsDelivr `cap-widget@0.1.63`，不再将 Cap 服务的 `/assets/widget.js` 作为首选或前置依赖。
-  - 移除后台提示中对「Widget files」开关的要求；明确新版 Cap 服务端负责挑战 API 与 `/siteverify`。
-  - Widget 脚本加载失败/超时、组件注册超时或 Cap 配置异常时保持 fail-closed；阻止 Cap 配置尚未加载完成时提前提交登录。
-- 数据库迁移：无；后端 API 与 Secret Key 加密逻辑不变。
-- 配置/部署影响：浏览器需能访问 jsDelivr 与 Cap 域名；TG-Card 后端需能访问 Cap `/{site-key}/siteverify`。不需要启用「Widget files」。
-- 兼容性与已知限制：当前 CDN 版本固定为 `0.1.63`；如 jsDelivr 在部署地区不可访问，需要按官方方式自行托管 Widget/WASM 资源。真实 Cap 端到端验收尚未完成。
-- 验证：本次修复后的 Admin CI 待运行；旧 PR 检查结果不作为本次修改的验证依据。Go CI/Security 是否需要执行以 PR 实际检查结果为准。
-- 发布镜像：尚未合并，无新镜像。
+- 状态：PR #81 已 Squash Merge 至 main，merge commit `791f3d43a623fdb3e59ba378626890083bf5aebd`。
+- 影响模块：管理员登录页、网站设置 Cap 配置说明、Cap 专项运维文档。
+- 变更内容：登录页默认加载固定版本 jsDelivr `cap-widget@0.1.63`；不再依赖 Cap 服务的 `/assets/widget.js` 或「Widget files」开关；保留服务端 `/{site-key}/siteverify` 校验与 fail-closed 行为。
+- 验证：合并后 Admin Frontend CI run `44833799359` 与 Docker Build and Publish run `44833799370` 均成功；Docker Build and push 步骤成功。真实 Cap E2E 尚未验收。
+- 发布镜像：workflow 已成功推送；manifest digest 尚未在本次记录中核实，不作猜测。
+
 
 ## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并）
 
