@@ -1876,7 +1876,7 @@ func (m *Manager) sendDeliveryMessageWithID(ctx context.Context, token string, c
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return "",true,fmt.Errorf("decode Telegram sendMessage response: %w",err) }
 	if response.StatusCode != http.StatusOK || !result.OK {
 		err := fmt.Errorf("Telegram sendMessage HTTP %d: %s",response.StatusCode,result.Description)
-		return "",response.StatusCode >= 500,err
+		return "",response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout,err
 	}
 	if result.Result.MessageID <= 0 { return "",true,fmt.Errorf("Telegram sendMessage response omitted message_id") }
 	return strconv.FormatInt(result.Result.MessageID,10),false,nil
@@ -1895,7 +1895,7 @@ func (m *Manager) sendDeliveryDocumentWithID(ctx context.Context, token string, 
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil { return "",true,fmt.Errorf("decode Telegram sendDocument response: %w",err) }
 	if response.StatusCode != http.StatusOK || !result.OK {
 		err := fmt.Errorf("Telegram sendDocument HTTP %d: %s",response.StatusCode,result.Description)
-		return "",response.StatusCode >= 500,err
+		return "",response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout,err
 	}
 	if result.Result.MessageID <= 0 { return "",true,fmt.Errorf("Telegram sendDocument response omitted message_id") }
 	return strconv.FormatInt(result.Result.MessageID,10),false,nil
