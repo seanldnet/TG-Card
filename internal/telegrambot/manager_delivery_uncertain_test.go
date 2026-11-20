@@ -82,6 +82,7 @@ func TestFileCardRetryResumesOnlyFailedStep(t *testing.T) {
  order,err:=database.CreateOrder(ctx,db,"sqlite","file-card-bot","file-card-user","123456",product.ID,time.Minute)
  if err!=nil { t.Fatal(err) }
  if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='paid' WHERE id=?",order.ID);err!=nil { t.Fatal(err) }
+ if _,err:=db.ExecContext(ctx,"UPDATE product_keys SET status=2 WHERE order_id=?",order.ID);err!=nil { t.Fatal(err) }
  claimed,err:=database.ClaimOrderDelivery(ctx,db,"sqlite",order.ID,time.Minute)
  if err!=nil||!claimed { t.Fatalf("claim delivery: %v %v",claimed,err) }
  item,err:=database.GetOrderDelivery(ctx,db,"sqlite",order.ID)
