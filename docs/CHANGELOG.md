@@ -10,7 +10,7 @@
 - 数据库迁移：新增 `0051_system_settings.sql`，兼容 PostgreSQL/SQLite；Cap Secret 密文依赖持久化 `DATA_DIR/bot-token.key`。
 - 配置/部署影响：Cap 服务需启用静态资源并提供 `/assets/widget.js`；浏览器与 app 容器均需访问 Cap HTTPS 域名。紧急 SQL 命令和环境变量重建方式见 `docs/cap-human-verification.md`。
 - 兼容性与已知限制：未配置时默认关闭，不影响现有登录；当前保护管理员登录，其他敏感表单后续复用验证器。拒绝 HTTP、localhost 和私有 IP Cap 目标。
-- 验证：PR head Go/Admin/Security 全部成功；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部成功。Docker Publish 正在运行，manifest digest 待发布后补录。
+- 验证：PR head Go/Admin/Security 全部成功；合并后 main Go Backend CI #44828737475、Admin Frontend CI #44828737466、Security Scan #44828737403、Docker Publish #44828737396 全部成功。GHCR 多架构 `latest` 与提交标签 `8981fb887584979450f19b30648225ced113989d` 已发布，manifest digest：`sha256:e062f1dd8f77c4e3b515ded826668ad5fc89e344da429d59e102d7803a3587dc`。
 - 真实 Cap 服务联调尚未执行；CI 通过不代表真实域名上的浏览器挑战与登录验收完成。
 - 文档：PROJECT_STATUS 文档版本更新至 2.2.35；新增 `docs/cap-human-verification.md`。
 
