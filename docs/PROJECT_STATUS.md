@@ -1,13 +1,13 @@
-## 2026-11-21 — 全局异常中心 P0-2 整合开发（PR #80 旧分支冲突，当前分支重整中）
+## 2026-11-21 — 分步骤交付状态机 P0-3（开发中）
 
-- 当前基线：`main@d083aafe2cf63017f5583f3c702defc1c3774032`（PR #82 已合并）；当前独立开发分支 `feat/system-exceptions-rebase-pr80`。
-- 历史 PR #80 基于旧 main `7c4e8cf61630c297ea1115add229ef729740a573`，GitHub 检测到合并冲突；不直接合并旧 PR，也不重复新建另一套功能。本分支从最新 main 起步，逐项移植并核对其实现。
-- 本轮已移植：统一 `system_exceptions` 表及迁移 0052；全局异常查询/状态更新 API、后台菜单与页面；Cap 配置/验证异常、上游目录同步失败、退款冲突、订单交付不确定登记；采购异常处理迁移至统一表；状态变更与管理员审计原子提交。
-- 兼容边界：历史 `finance_exceptions` 通过迁移复制到统一表，旧资金异常 API 继续作为兼容入口；标记解决只更新异常状态和审计，不自动更改订单、钱包、库存或供应商余额。
-- PR #82 Cap 登录框布局与中文文案修复已于提交 `d083aafe2cf63017f5583f3c702defc1c3774032` 合并；真实 Cap 浏览器 E2E 仍待项目所有者部署验收。
-- 验证：当前分支移植与回归测试尚未完成；待完成后运行 Go Backend CI、Admin Frontend CI、安全扫描。Docker 发布仅在合并后执行。
-- 数据库迁移：新增 `0052_system_exceptions.sql`，兼容 PostgreSQL/SQLite；需验证已有 PostgreSQL 数据库迁移和历史资金异常完整性。
- 
+- 当前基线：`main@0a8895d54bbac02a78743b8692192c8ed66ea072`（P0-2 全局异常中心 PR #83 已合并）；独立分支 `feat/stepwise-delivery-state-machine-p0-3`。
+- 现有 PR #69–#72 已完成交付不确定隔离、一次性邀请链接保护、file_card 整单盲重试阻断和已交付 file_card 再次获取防重发；这些保护不能替代子步骤状态机。
+- 本轮目标：为 `file_card` 的文件发送与卡密消息分别记录 attempts、status、last_error、Telegram message_id 和时间；管理员恢复时跳过已成功步骤，只重试明确失败步骤。
+- 结果不确定或进程崩溃留下的 `sending` 步骤必须先人工核实，原子记录审计后才能标记成功/失败；禁止盲目重发。已交付订单的 file_card 再次获取仍保持禁止。
+- 已实现初版：迁移 0053、步骤持久化 API/数据库方法、Telegram message_id 采集、file_card 分步恢复、后台订单详情步骤记录与人工核实操作、回归测试。
+- 验证：待 Go/Admin/Security CI；真实 Telegram sendDocument/sendMessage 分步骤恢复仍需真机验收。P0-2 合并后的 Docker 发布正在运行。
+- 数据库迁移：新增 `0053_order_delivery_steps.sql`，兼容 PostgreSQL/SQLite；应用启动自动迁移。
+
 ## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81 已合并）
 
 - 状态：PR #81 已 Squash Merge 至 main，merge commit `791f3d43a623fdb3e59ba378626890083bf5aebd`。
@@ -127,9 +127,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.38
-> - 源码核对基线：main 分支，commit `d083aafe2cf63017f5583f3c702defc1c3774032`；PR #81/#82 已合并
-> - 本次文档更新：校准 PR #81/#82 合并状态，并记录 P0-2 全局异常中心整合开发进度
+> - 文档版本：2.2.39
+> - 源码核对基线：main 分支，commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；PR #83 已合并
+> - 本次文档更新：记录 P0-2 全局异常中心合并与 P0-3 分步骤交付状态机开发进度
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
