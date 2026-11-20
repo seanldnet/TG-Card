@@ -1,3 +1,18 @@
+## 2026-11-21 — Cap 自托管人机验证接入（PR 开发中）
+
+- 状态：独立分支开发中；PR/Commit 待创建。
+- 影响模块：管理员登录、网站设置、服务端密钥管理、数据库迁移、Docker Compose 运维配置。
+- 变更内容：
+  - 新增 Cap 设置：服务域名、Site Key、Secret Key；Secret Key 使用 AES-256-GCM 加密，后台只返回 configured 状态。
+  - 登录页动态加载 Cap 自托管 `/assets/widget.js` widget，获取一次性 token 后随登录请求提交。
+  - 后端 POST `/{site-key}/siteverify`，发送 `secret` 与 `response`，只有 `success=true` 放行；验证服务异常时 fail-closed。
+  - 新增数据库 `settings` 键值表，支持指定 SQL 紧急关闭；Compose 增加 `DISABLE_CAP` 环境变量覆盖开关。
+- 数据库迁移：新增 `0051_system_settings.sql`，兼容 PostgreSQL/SQLite；Cap Secret 密文依赖持久化 `DATA_DIR/bot-token.key`。
+- 配置/部署影响：Cap 服务需启用静态资源并提供 `/assets/widget.js`；浏览器与 app 容器均需访问 Cap HTTPS 域名。紧急 SQL 命令和环境变量重建方式见 `docs/cap-human-verification.md`。
+- 兼容性与已知限制：未配置时默认关闭，不影响现有登录；当前保护管理员登录，其他敏感表单后续复用验证器。拒绝 HTTP、localhost 和私有 IP Cap 目标。
+- 验证：新增 Cap 验证协议、设置存储、登录 fail-closed/紧急绕过与密钥脱敏测试；Go/Admin/Security CI 尚待 PR 创建后运行。
+- 文档：PROJECT_STATUS 文档版本更新至 2.2.34；新增 `docs/cap-human-verification.md`。
+
 ## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
 - 状态：已 Squash Merge 至 main，merge commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；开发基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653。
