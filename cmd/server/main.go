@@ -1091,9 +1091,10 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 
 	// Delivered orders use a separate idempotent re-delivery lease. The normal
 	// delivery lease intentionally rejects delivered orders to prevent duplicate fulfillment.
-	if order.Status == "delivery_uncertain" && order.DeliveryType == "invite_link" {
-		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry.blocked", "order:"+orderID, a.clientIP(r), r.UserAgent(), "uncertain one-time invite link requires manual verification")
-		writeError(w, http.StatusConflict, "一次性邀请链接的创建或发送结果不确定。为避免生成多个有效邀请链接，系统已禁止自动重试，请人工核实并处理。")
+	if order.Status == "delivery_uncertain" && (order.DeliveryType == "invite_link" || order.DeliveryType == "file_card") {
+		reason := "uncertain delivery requires manual verification: " + order.DeliveryType
+		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry.blocked", "order:"+orderID, a.clientIP(r), r.UserAgent(), reason)
+		writeError(w, http.StatusConflict, "该订单包含可能已成功执行的外部交付步骤，当前结果不确定。为避免重复发送，系统已禁止整单重试，请人工核实并处理。")
 		return
 	}
 
