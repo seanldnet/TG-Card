@@ -48,3 +48,15 @@ func TestDeliveryTransportFailureIsQuarantinedAsUncertain(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	for _, id := range automatic { if id == order.ID { t.Fatal("uncertain order must not be automatically resent") } }
 }
+
+func TestDeliverPaidOrderBlocksUncertainMultiStepDeliveryRetry(t *testing.T) {
+	for _, deliveryType := range []string{"invite_link", "file_card"} {
+		t.Run(deliveryType, func(t *testing.T) {
+			m := &Manager{}
+			item := database.OrderDelivery{Order: database.Order{Status: "delivery_uncertain", DeliveryType: deliveryType}}
+			if err := m.DeliverPaidOrder(context.Background(), item); err == nil {
+				t.Fatalf("uncertain %s delivery must require manual handling", deliveryType)
+			}
+		})
+	}
+}

@@ -65,7 +65,8 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
       <a-button size="small" @click="openOrderDetail(item)">查看详情</a-button>
       <a-tag :color="item.stockReserved?'processing':'default'">{{item.stockReserved?'已预留库存':'未预留库存'}}</a-tag>
-      <a-button v-if="item.status==='paid'||item.status==='delivery_failed'||item.status==='delivery_uncertain'" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">重试发货</a-button>
+      <a-button v-if="item.status==='paid'||item.status==='delivery_failed'||(item.status==='delivery_uncertain'&&!['invite_link','file_card'].includes(item.deliveryType||''))" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">重试发货</a-button>
+      <a-tooltip v-else-if="item.status==='delivery_uncertain'&&['invite_link','file_card'].includes(item.deliveryType||'')" title="该交付包含可能已成功的外部步骤，禁止整单重试；请人工核实并处理。"><span class="text-xs text-orange-600">需人工核实</span></a-tooltip>
      </div>
      <div v-if="item.paymentReference" class="mt-2 truncate text-xs text-gray-500"><a :href="`https://tronscan.org/#/transaction/${item.paymentReference}`" target="_blank" rel="noreferrer">查看链上交易</a></div>
     </a-card>
@@ -82,7 +83,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
     <a-table-column title="Telegram 用户" data-index="telegramUserId" key="telegramUserId" :width="150"/>
     <a-table-column title="订单状态" key="status" :width="110"><template #default="{record}"><a-tag :color="statusColor(record.status)">{{statusLabel(record.status)}}</a-tag></template></a-table-column>
     <a-table-column title="库存预留" key="stockReserved" :width="100"><template #default="{record}"><a-tag :color="record.stockReserved?'processing':'default'">{{record.stockReserved?'已预留':'未预留'}}</a-tag></template></a-table-column>
-    <a-table-column title="发货重试" key="delivery" :width="120"><template #default="{record}"><a-button v-if="record.status==='paid'||record.status==='delivery_failed'||(record.status==='delivery_uncertain'&&record.deliveryType!=='invite_link')" type="link" size="small" :loading="retryingId===record.id" @click="retryDelivery(record)">重试发货</a-button><a-tooltip v-else-if="record.status==='delivery_uncertain'&&record.deliveryType==='invite_link'" title="一次性邀请链接结果不确定，禁止自动重试；请人工核实并处理。"><span class="text-xs text-orange-600">需人工核实</span></a-tooltip><span v-else>-</span></template></a-table-column>
+    <a-table-column title="发货重试" key="delivery" :width="120"><template #default="{record}"><a-button v-if="record.status==='paid'||record.status==='delivery_failed'||(record.status==='delivery_uncertain'&&!['invite_link','file_card'].includes(record.deliveryType||''))" type="link" size="small" :loading="retryingId===record.id" @click="retryDelivery(record)">重试发货</a-button><a-tooltip v-else-if="record.status==='delivery_uncertain'&&['invite_link','file_card'].includes(record.deliveryType||'')" title="该交付包含可能已成功的外部步骤，禁止整单重试；请人工核实并处理。"><span class="text-xs text-orange-600">需人工核实</span></a-tooltip><span v-else>-</span></template></a-table-column>
     <a-table-column title="发货尝试次数" data-index="deliveryAttempts" key="deliveryAttempts" :width="120"/>
     <a-table-column title="最近发货错误" data-index="deliveryError" key="deliveryError" :width="220" ellipsis/>
     <a-table-column title="创建时间" key="createdAt" :width="190"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>

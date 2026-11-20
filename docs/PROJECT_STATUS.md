@@ -1,10 +1,17 @@
-## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 开发中）
+## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 开发中）
 
-- 审查基线：main@1325e52443c0f06d52d21205c2e29af5fca39b70（PR #69 已合并）。
-- 复核 PR #69 后发现一次性邀请链接有特殊副作用：Telegram createChatInviteLink 可能已创建有效链接，但响应丢失或链接持久化失败；若把该订单当普通 uncertain 订单手动重试，可能再次创建另一条有效邀请链接。
-- PR #70 在 API 和 Telegram 交付入口双重阻止 delivery_uncertain 的 invite_link 自动重试；管理员订单列表暴露交付类型，订单页对此类订单显示“需人工核实”而不显示重试按钮；被阻止的 API 操作写入管理员审计。
-- 新增 Telegram Manager 回归测试；未新增数据库迁移或生产环境变量。PR head CI 与发布待验证。
-- 此保护只针对一次性邀请链接；其他交付类型仍按 PR #69 的管理员核实后手动重试策略处理。生产部署和 Telegram 真机验收仍需项目所有者确认。
+- 审查基线：main@d7cf00e783c3e97b2ecee77d329488e3091a220c（PR #70 已合并并发布）。
+- 新发现 `file_card` 由 Telegram sendDocument 与 sendMessage 两个独立外部副作用组成；若文件已发送而卡密消息结果不确定，整单重试会再次发送文件，造成重复交付。
+- PR #71 在 Telegram Manager 与管理员 API 双重阻止 `delivery_uncertain` 的 `file_card` 整单重试；邀请链接保护继续保留；管理后台列表和移动端卡片均显示“需人工核实”。
+- 增加 Manager 与管理员 API 回归测试，覆盖 invite_link/file_card 两种不确定结果的整单重试阻断；不新增数据库迁移或生产环境变量。新增 API 回归测试后，PR head Go/Admin/Security 需重新运行。
+- 此保护是保守的整单隔离，不提供分段自动续发；需管理员核对用户实际收到的文件/卡密后处理。生产部署和 Telegram 真机验收仍需项目所有者确认。
+
+## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 已合并并发布）
+
+- PR #70 已 Squash Merge 至 main，merge commit `d7cf00e783c3e97b2ecee77d329488e3091a220c`。
+- Telegram `createChatInviteLink` 可能已创建有效链接但响应丢失或本地持久化失败；API 与 Manager 双重阻止 `delivery_uncertain` 的 `invite_link` 重试，管理员列表隐藏重试并显示“需人工核实”，API 拒绝操作写审计。
+- PR head Go CI、Admin CI、Security 通过；合并后 main Go CI #44804736581、Admin CI #44804736573、Security #44804736340、Docker Publish #44804736390 全部成功。
+- GHCR 多架构镜像已发布，manifest digest：`sha256:1c2a7df3ace81cd4af6162ff2501892922508df611ad9e7699f2acf9318b059a`；生产部署与 Telegram 真机验收仍需项目所有者确认。
 
 ## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 已合并并发布）
 
@@ -61,9 +68,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.27
-> - 源码核对基线：main 分支，commit `1325e52443c0f06d52d21205c2e29af5fca39b70`；本轮 PR #70 基于该提交开发
-> - 本次文档更新：校准 PR #69 合并状态，并记录 PR #70 一次性邀请链接不确定结果保护
+> - 文档版本：2.2.28
+> - 源码核对基线：main 分支，commit `d7cf00e783c3e97b2ecee77d329488e3091a220c`；本轮 PR #71 基于该提交开发
+> - 本次文档更新：记录 PR #70 合并与构建状态，并跟踪 PR #71 多步骤交付不确定结果保护
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。

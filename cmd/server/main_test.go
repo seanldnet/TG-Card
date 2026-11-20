@@ -59,39 +59,45 @@ func TestLogoutRevokesOnlyCurrentAdminBearerSession(t *testing.T) {
  if !authenticate(tokenB){t.Fatal("logging out one device must not revoke the other active session")}
 }
 
-
-func TestRetryOrderDeliveryBlocksUncertainInviteLink(t *testing.T) {
- ctx:=context.Background()
- db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
- if err!=nil{t.Fatal(err)}
- defer db.Close()
- if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
- if _,err:=database.EnsureAdmin(ctx,db,"sqlite","admin","a-strong-test-password");err!=nil{t.Fatal(err)}
- tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir())
- if err!=nil{t.Fatal(err)}
- app:=&application{db:db,driver:"sqlite",tokens:tokens,loginFailures:make(map[string][]time.Time)}
- body,_:=json.Marshal(loginRequest{Username:"admin",Password:"a-strong-test-password"})
- loginReq:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body))
- loginReq.RemoteAddr="192.0.2.10:12345"
- loginResponse:=httptest.NewRecorder()
- app.login(loginResponse,loginReq)
- if loginResponse.Code!=http.StatusOK{t.Fatalf("login failed: status=%d body=%s",loginResponse.Code,loginResponse.Body.String())}
- var envelope struct{Data map[string]string `json:"data"`}
- if err:=json.Unmarshal(loginResponse.Body.Bytes(),&envelope);err!=nil{t.Fatal(err)}
- token:=envelope.Data["accessToken"]
- product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Invite link",PriceMinor:100,Currency:"USDT",DeliveryType:"invite_link",DeliveryConfigJSON:`{"chatId":"-100123"}`,Status:1})
- if err!=nil{t.Fatal(err)}
- order,err:=database.CreateOrder(ctx,db,"sqlite","bot-a","user-a","123456",product.ID,time.Minute)
- if err!=nil{t.Fatal(err)}
- if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='delivery_uncertain' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
- req:=httptest.NewRequest(http.MethodPost,"/api/orders/"+order.ID+"/retry-delivery",nil)
- req.SetPathValue("id",order.ID)
- req.Header.Set("Authorization","Bearer "+token)
- req.RemoteAddr="192.0.2.10:12345"
- response:=httptest.NewRecorder()
- app.retryOrderDelivery(response,req)
- if response.Code!=http.StatusConflict{t.Fatalf("retry should be blocked: status=%d body=%s",response.Code,response.Body.String())}
- saved,err:=database.GetOrderByID(ctx,db,"sqlite",order.ID)
- if err!=nil{t.Fatal(err)}
- if saved.Status!="delivery_uncertain"{t.Fatalf("blocked retry changed order state to %q",saved.Status)}
+func TestRetryOrderDeliveryBlocksUncertainExternalSideEffects(t *testing.T) {
+ for _, deliveryType := range []string{"invite_link", "file_card"} {
+  t.Run(deliveryType, func(t *testing.T) {
+   ctx:=context.Background()
+   db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+   if err!=nil{t.Fatal(err)}
+   defer db.Close()
+   if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+   if _,err:=database.EnsureAdmin(ctx,db,"sqlite","admin","a-strong-test-password");err!=nil{t.Fatal(err)}
+   tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir())
+   if err!=nil{t.Fatal(err)}
+   app:=&application{db:db,driver:"sqlite",tokens:tokens,loginFailures:make(map[string][]time.Time)}
+   body,_:=json.Marshal(loginRequest{Username:"admin",Password:"a-strong-test-password"})
+   loginReq:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body))
+   loginReq.RemoteAddr="192.0.2.10:12345"
+   loginResponse:=httptest.NewRecorder()
+   app.login(loginResponse,loginReq)
+   if loginResponse.Code!=http.StatusOK{t.Fatalf("login failed: status=%d body=%s",loginResponse.Code,loginResponse.Body.String())}
+   var envelope struct{Data map[string]string `json:"data"`}
+   if err:=json.Unmarshal(loginResponse.Body.Bytes(),&envelope);err!=nil{t.Fatal(err)}
+   token:=envelope.Data["accessToken"]
+   product,err:=database.CreateProduct(ctx,db,"sqlite",database.Product{Name:"Uncertain delivery",PriceMinor:100,Currency:"USDT",DeliveryType:deliveryType,DeliveryConfigJSON:`{"chatId":"-100123","fileId":"test-file-id"}`,Status:1})
+   if err!=nil{t.Fatal(err)}
+   if deliveryType=="file_card" {
+    if _,err:=database.ImportProductKeys(ctx,db,"sqlite",product.ID,[]database.StockSecret{{Ciphertext:"test-ciphertext",Fingerprint:"test-fingerprint"}});err!=nil{t.Fatal(err)}
+   }
+   order,err:=database.CreateOrder(ctx,db,"sqlite","bot-a","user-a","123456",product.ID,time.Minute)
+   if err!=nil{t.Fatal(err)}
+   if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='delivery_uncertain' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+   req:=httptest.NewRequest(http.MethodPost,"/api/orders/"+order.ID+"/retry-delivery",nil)
+   req.SetPathValue("id",order.ID)
+   req.Header.Set("Authorization","Bearer "+token)
+   req.RemoteAddr="192.0.2.10:12345"
+   response:=httptest.NewRecorder()
+   app.retryOrderDelivery(response,req)
+   if response.Code!=http.StatusConflict{t.Fatalf("retry should be blocked: status=%d body=%s",response.Code,response.Body.String())}
+   saved,err:=database.GetOrderByID(ctx,db,"sqlite",order.ID)
+   if err!=nil{t.Fatal(err)}
+   if saved.Status!="delivery_uncertain"{t.Fatalf("blocked retry changed order state to %q",saved.Status)}
+  })
+ }
 }
