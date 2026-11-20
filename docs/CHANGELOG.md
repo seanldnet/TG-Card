@@ -1,3 +1,12 @@
+## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #77 开发中）
+
+- 状态：独立分支开发中，基线 main@a83f9bfa44989c55e4c8cac30546e8ef5976bd653。
+- 影响模块：Owner Bot 售后媒体回复。
+- 变更内容：媒体 caption 超过 900 字符时，在调用 Telegram API 前拒绝；不再拆分为“发送媒体 + 发送剩余文本”两次外部副作用。
+- 数据库迁移：无；配置/部署影响：无新增环境变量。
+- 验证：新增回归测试检查超长 caption 不触发 sendDocument/sendPhoto，且不写入已送达的 admin 时间线；PR head Go/Admin/Security 待运行。
+- 发布镜像：待合并后构建。生产 Telegram 验收待项目所有者执行。
+
 ## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
 - 状态：已 Squash Merge 至 main，merge commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；开发基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653。

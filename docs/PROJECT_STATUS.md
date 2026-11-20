@@ -1,3 +1,11 @@
+## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #77 开发中）
+
+- 审查基线：main@a83f9bfa44989c55e4c6b9fd1aa4d4ed12ea1b81（PR #76 文档校准已合并）。
+- 发现 Owner 媒体回复在说明文字超过 900 字符时，会先发送媒体、再发送剩余文字；若第二次调用结果不确定，工单时间线不会写入成功回复，Owner 重试可能重复发送媒体。
+- 将媒体回复改为单次 Telegram API 调用；超出 900 字符的 caption 在任何外部发送前拒绝，并提示 Owner 缩短内容。新增回归测试验证不会调用 sendDocument/sendPhoto，也不会把未发送内容写入客服回复时间线。
+- 无数据库迁移、无新增环境变量；不改变普通文本回复或用户提交媒体流程。Go/Admin/Security 待 PR head 验证。
+- 生产部署与真实 Telegram Owner 回复验收仍待项目所有者确认。
+
 ## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
 - PR #75 已 Squash Merge 至 main，merge commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；审查基线 main@9abf51599e1c93d28c8cac30546e8ef5976bd653（PR #74 已合并并发布）。
@@ -100,9 +108,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.33
-> - 源码核对基线：main 分支，commit `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9`；本轮文档 PR #76 基于该提交开发
-> - 本次文档更新：记录 PR #75 合并、CI 与 GHCR 发布结果
+> - 文档版本：2.2.34
+> - 源码核对基线：main 分支，commit `a83f9bfa44989c55e4c8cac30546e8ef5976bd653`；本轮 PR #77 基于该提交开发
+> - 本次文档更新：记录 PR #76 文档校准合并，并跟踪 PR #77 Owner 媒体回复单次副作用保护
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
