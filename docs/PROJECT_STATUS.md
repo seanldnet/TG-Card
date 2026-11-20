@@ -1,3 +1,12 @@
+## 2026-11-21 — PostgreSQL 订单交付租约并发验证（PR #64 开发中）
+
+- 新增 PostgreSQL 16 集成测试，覆盖同一已付款订单的多个 worker 并发争抢：必须且仅有一个 worker 获得即时交付租约。
+- 同时覆盖批量后台 worker 并发领取不同订单，验证不会重复领取同一订单；测试通过 CI 的临时 PostgreSQL 服务运行，未配置 `TEST_POSTGRES_DSN` 的本地环境自动跳过。
+- 本批次只增加测试，不修改订单状态机、租约算法、数据库迁移或生产配置；以 PR 最新 head 的 Go/Admin/Security 检查结果为准。
+- PR #62 已完成 main 镜像发布：GHCR `latest` 与提交标签 `d988c6a554392af86ea03b9ba60297e1debab011`，manifest digest `sha256:282f6018e2d4d229e9fbf2e14755a9c946d1b947460981fa552cb817e654a302`。Docker Publish #44641444376 成功。
+- PR #63 文档校准已合并（merge commit `8180b4bb9d7f32954ca74250f5d8a4b8611cb52b`）；该 docs-only 合并后的 Admin CI #44780323851 成功。
+- 生产服务器是否已拉取部署 PR #62 镜像、Telegram 真机付款与交付验收仍需项目所有者确认。
+
 ## 2026-11-20 — PostgreSQL 购物车并发验收补强（PR #62 已合并）
 
 - PR #62 已 Squash Merge 至 main，merge commit `d988c6a554392af86ea03b9ba60297e1debab011`。
@@ -18,7 +27,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.20
+> - 文档版本：2.2.21
 > - 源码核对基线：main 分支，commit `59337349d36937a467e673e427f571ec276c17ce`
 > - 本次文档更新：记录 PR #61 合并与 GHCR digest，并跟踪 PR #62 PostgreSQL 并发测试
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
@@ -103,7 +112,7 @@
 > - 最后更新时间：2026-11-20
 > - 文档版本：2.2.19
 > - 源码核对基线：`main` 分支，commit `d988c6a554392af86ea03b9ba60297e1debab011`（PR #62 PostgreSQL 并发测试已合并）
-> - 本次文档更新：记录 PR #62 PostgreSQL 并发集成测试合并；main CI 与镜像发布状态按 Actions 最终结果补录
+> - 本次文档更新：记录 PR #62 镜像 digest、PR #63 合并，并跟踪 PR #64 PostgreSQL 订单交付租约并发测试
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
