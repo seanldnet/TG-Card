@@ -1527,7 +1527,7 @@ func (m *Manager) RedeliverPaidOrder(ctx context.Context, item database.OrderDel
 
 func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDelivery, allowDelivered bool) error {
 	if item.Order.Status == "delivered" && !allowDelivered { return nil }
-	if item.Order.Status == "delivery_uncertain" && (item.Order.DeliveryType == "invite_link" || item.Order.DeliveryType == "file_card") {
+	if item.Order.Status == "delivery_uncertain" && item.Order.DeliveryType == "invite_link" {
 		return fmt.Errorf("%s delivery outcome is uncertain; automatic retry is blocked because the previous attempt may have completed one of multiple external delivery steps; verify and handle manually", item.Order.DeliveryType)
 	}
 	m.mu.Lock()
@@ -1652,11 +1652,43 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
 		deliveryErr = sendDeliveryMessage("订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
 	case "file_card":
-		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
-			deliveryErr=sendDeliveryDocument(config.FileID,"订单："+item.Order.OrderNo)
-			if deliveryErr==nil {
-				deliveryErr=sendDeliveryMessage("配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+		if strings.TrimSpace(config.FileID)=="" {
+			deliveryErr=fmt.Errorf("Telegram file_id is not configured")
+			break
+		}
+		processStep := func(stepKey string, stepOrder int, send func()(string,bool,error)) error {
+			step, stepErr := database.BeginOrderDeliveryStep(ctx,m.db,m.driver,item.Order.ID,stepKey,stepOrder)
+			if stepErr != nil {
+				if errors.Is(stepErr,database.ErrOrderDeliveryStepUncertain) {
+					if !deliveryAttempted {
+						if stateErr:=beginDeliveryAttempt();stateErr!=nil{return stateErr}
+					}
+				}
+				return stepErr
 			}
+			if step.Status=="succeeded" { return nil }
+			if err:=beginDeliveryAttempt();err!=nil{return err}
+			messageID,uncertain,sendErr:=send()
+			if sendErr!=nil {
+				if uncertain {
+					_ = database.MarkOrderDeliveryStepUncertain(ctx,m.db,m.driver,item.Order.ID,stepKey,sendErr.Error())
+				} else {
+					_ = database.FailOrderDeliveryStep(ctx,m.db,m.driver,item.Order.ID,stepKey,sendErr.Error())
+				}
+				return sendErr
+			}
+			if err:=database.FinishOrderDeliveryStep(ctx,m.db,m.driver,item.Order.ID,stepKey,messageID);err!=nil {
+				return fmt.Errorf("persist successful Telegram delivery step %s: %w",stepKey,err)
+			}
+			return nil
+		}
+		deliveryErr=processStep("file",1,func()(string,bool,error){
+			return m.sendDeliveryDocumentWithID(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+		})
+		if deliveryErr==nil {
+			deliveryErr=processStep("card_message",2,func()(string,bool,error){
+				return m.sendDeliveryMessageWithID(ctx,current.config.Token,chatID,"配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+			})
 		}
 	default:
 		deliveryErr=fmt.Errorf("unsupported delivery mode: %s",mode)
