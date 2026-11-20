@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -1472,6 +1473,7 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  }
  if err := database.SaveSettings(r.Context(),a.db,a.driver,capValues); err != nil { log.Printf("save Cap settings: %v",err); writeError(w,http.StatusInternalServerError,"无法保存 Cap 配置"); return }
  input.CapSecret = ""
+ capEnabledForResponse := input.CapEnabled
  input.CapEnabled, input.CapDomain, input.CapSiteKey = false, "", ""
  raw,err:=json.Marshal(input); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encode site settings"); return }
  if err:=database.SaveSiteSettings(r.Context(),a.db,a.driver,string(raw)); err!=nil { log.Printf("save site settings: %v",err); writeError(w,http.StatusInternalServerError,"Unable to save site settings"); return }
@@ -1481,7 +1483,7 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",a.clientIP(r),r.UserAgent(),"updated")
  configured:=input.SMTPPasswordCiphertext!=""
  input.SMTPPasswordCiphertext=""
- input.CapEnabled = input.CapEnabled
+ input.CapEnabled = capEnabledForResponse
  input.CapDomain = capValues["cap_domain"]
  input.CapSiteKey = capValues["cap_site_key"]
  writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured,CapSecretConfigured:encryptedCapSecret!=""})
