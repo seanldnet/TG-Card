@@ -40,20 +40,20 @@ func loadCapConfiguration(ctx context.Context, db *sql.DB, driver string) (capCo
 	if err != nil {
 		return capConfiguration{}, "", err
 	}
-	domain, err := database.GetSetting(ctx, db.(*sql.DB), driver, "cap_domain")
+	domain, err := database.GetSetting(ctx, db, driver, "cap_domain")
 	if err != nil {
 		return capConfiguration{}, "", err
 	}
-	siteKey, err := database.GetSetting(ctx, db.(*sql.DB), driver, "cap_site_key")
+	siteKey, err := database.GetSetting(ctx, db, driver, "cap_site_key")
 	if err != nil {
 		return capConfiguration{}, "", err
 	}
-	secret, err := database.GetSetting(ctx, db.(*sql.DB), driver, "cap_secret_ciphertext")
+	secret, err := database.GetSetting(ctx, db, driver, "cap_secret_ciphertext")
 	if err != nil {
 		return capConfiguration{}, "", err
 	}
 	return capConfiguration{
-		Enabled: strings.EqualFold(enabled, "true") && !capDisabledByEnvironment(),
+		Enabled: strings.EqualFold(enabled, "true"),
 		Domain:  domain,
 		SiteKey: siteKey,
 	}, secret, nil
