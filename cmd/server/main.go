@@ -430,7 +430,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "人机验证配置暂不可用，请稍后重试")
 		return
 	}
-	if capConfig.Enabled {
+	if capConfig.Enabled && !capDisabledByEnvironment() {
 		if encryptedCapSecret == "" {
 			writeError(w, http.StatusServiceUnavailable, "人机验证尚未完成配置")
 			return
