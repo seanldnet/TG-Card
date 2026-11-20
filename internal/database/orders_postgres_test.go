@@ -200,3 +200,101 @@ func TestPostgresFailedOrderDeliveryBackoffAndManualRetry(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if len(ids) != 1 || ids[0] != order.ID { t.Fatalf("second retry should become eligible after 30 seconds, got %v", ids) }
 }
+
+
+func TestPostgresOrderRedeliveryLeaseConcurrency(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	db, err := Open(ctx, config.Config{DBDriver: "postgres", DatabaseDSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(ctx, db, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+
+	suffix, err := randomID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	product, err := CreateProduct(ctx, db, "postgres", Product{
+		Name: "Postgres order re-delivery lease " + suffix,
+		PriceMinor: 100,
+		Currency: "USDT",
+		DeliveryType: "fixed_text",
+		DeliveryConfigJSON: `{"text":"test entitlement"}`,
+		Status: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = db.ExecContext(context.Background(), "DELETE FROM products WHERE id=$1", product.ID)
+	}()
+
+	order, err := CreateOrder(ctx, db, "postgres", "pg-redelivery-bot-"+suffix, "pg-redelivery-user-"+suffix, "pg-redelivery-chat-"+suffix, product.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM orders WHERE id=$1", order.ID) }()
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='delivered' WHERE id=$1", order.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	const workers = 8
+	start := make(chan struct{})
+	type result struct {
+		claimed bool
+		err error
+	}
+	results := make(chan result, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			claimed, err := ClaimOrderRedelivery(ctx, db, "postgres", order.ID, time.Minute)
+			results <- result{claimed: claimed, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	winners := 0
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("claim re-delivery lease: %v", result.err)
+		}
+		if result.claimed {
+			winners++
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("exactly one worker must claim a delivered order for re-delivery, got %d winners", winners)
+	}
+
+	claimed, err := ClaimOrderRedelivery(ctx, db, "postgres", order.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed {
+		t.Fatal("a second worker must not claim the active re-delivery lease")
+	}
+
+	if _, err := db.ExecContext(ctx, "UPDATE order_redelivery_leases SET lease_until=$1 WHERE order_id=$2", time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano), order.ID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = ClaimOrderRedelivery(ctx, db, "postgres", order.ID, time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("an expired re-delivery lease should be reclaimable: claimed=%v err=%v", claimed, err)
+	}
+}

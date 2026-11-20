@@ -1,13 +1,22 @@
-## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 开发中）
+## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 开发中）
 
-- 状态：独立分支开发中，基线 main@cdb30cef99f27e3021de35fe1717937becc116c5。
+- 状态：独立分支开发中，基线 main@5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b。
+- 影响模块：订单再次获取数据库租约、PostgreSQL 并发集成测试。
+- 变更内容：为 `ClaimOrderRedelivery` 增加 PostgreSQL 16 并发回归测试，验证 8 个 worker 争抢同一已交付订单时只有一个获胜；活动租约拒绝再次领取，过期租约允许恢复。
+- 数据库迁移：无；仅测试与文档变更。
+- 配置/部署影响：无生产配置变化；复用 Go CI 的临时 PostgreSQL 16 服务。
+- 兼容性与已知限制：不改变再次获取租约算法或业务行为。
+- 验证：PR head Go/Admin/Security 待运行；真实生产并发与 Telegram 再次获取仍需项目所有者验收。
+- 发布镜像：测试/文档 PR，不改变运行时镜像内容。
+
+## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并，镜像构建中）
+
+- 状态：已合并至 main；merge commit `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b`。
 - 影响模块：Telegram 用户订单再次获取、Telegram Manager、管理员订单重发 API。
-- 变更内容：已交付 `file_card` 由 sendDocument 与 sendMessage 两个外部步骤组成；若第二步失败，订单仍保持 delivered，重复再次获取会重复发送文件。PR #72 在用户入口、Manager 和管理员 API 阻止此类自动重发，并引导人工核实；其他单步骤交付类型保持原路径。
-- 数据库迁移：无。
-- 配置/部署影响：无新增环境变量；无需手工 SQL。
-- 兼容性与已知限制：保守禁止 file_card 自动再次获取，不支持阶段级续发；人工核实后处理。
-- 验证：新增 Manager 与管理员 API 回归测试；PR head Go/Admin/Security 待运行。生产部署与 Telegram 真机验收待项目所有者执行。
-- 发布镜像：待 PR 合并后构建。
+- 变更内容：阻止已交付 `file_card` 订单自动再次获取，用户订单列表/详情引导联系客服核实；管理员 API 返回 HTTP 409 并写入审计；单步骤交付类型保持既有行为。
+- 数据库迁移：无；配置/部署影响：无新增生产环境变量。
+- 验证：PR head Go [#44810969393](https://github.com/seanldnet/TG-Card/actions/runs/44810969393)、Admin [#44810969458](https://github.com/seanldnet/TG-Card/actions/runs/44810969458)、Security [#44810969354](https://github.com/seanldnet/TG-Card/actions/runs/44810969354) 全部成功；合并后 main Go #44811290066、Admin #44811290206、Security #44811290095、Docker Publish #44811290150 正在运行。
+- 发布镜像：Docker Publish 成功后补录 GHCR 标签与 manifest digest；生产部署和 Telegram 真机验收未确认。
 
 ## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 已合并并发布）
 
