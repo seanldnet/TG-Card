@@ -1,8 +1,22 @@
-## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 开发中）
+## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 开发中）
 
-- 修复 `file_card` 多步骤交付的重复发送风险：文件与卡密消息分别调用 Telegram API；前一步已成功、后一步结果不确定时，整单重试会重复发送文件。
-- 管理 API 与 Telegram Manager 双重阻止 `delivery_uncertain` 的 `file_card` 整单重试；订单列表与移动端卡片显示“需人工核实”；保留 PR #70 的一次性邀请链接保护。
-- 新增 Manager 与管理员 API 回归测试，覆盖 invite_link/file_card 两种不确定结果的整单重试阻断；无数据库迁移或生产环境变量变更。新增 API 回归测试后，PR head Go/Admin/Security 需重新运行。
+- 状态：独立分支开发中，基线 main@cdb30cef99f27e3021de35fe1717937becc116c5。
+- 影响模块：Telegram 用户订单再次获取、Telegram Manager、管理员订单重发 API。
+- 变更内容：已交付 `file_card` 由 sendDocument 与 sendMessage 两个外部步骤组成；若第二步失败，订单仍保持 delivered，重复再次获取会重复发送文件。PR #72 在用户入口、Manager 和管理员 API 阻止此类自动重发，并引导人工核实；其他单步骤交付类型保持原路径。
+- 数据库迁移：无。
+- 配置/部署影响：无新增环境变量；无需手工 SQL。
+- 兼容性与已知限制：保守禁止 file_card 自动再次获取，不支持阶段级续发；人工核实后处理。
+- 验证：新增 Manager 与管理员 API 回归测试；PR head Go/Admin/Security 待运行。生产部署与 Telegram 真机验收待项目所有者执行。
+- 发布镜像：待 PR 合并后构建。
+
+## 2026-11-21 — 多步骤交付不确定结果禁止整单重试（PR #71 已合并，镜像构建中）
+
+- 状态：已合并至 main；merge commit `cdb30cef99f27e3021de35fe1717937becc116c5`。
+- 影响模块：Telegram 订单交付、管理员订单重试、订单列表/移动端卡片。
+- 变更内容：阻止 `delivery_uncertain` 的 `file_card` 整单重试，保留一次性 `invite_link` 防护；增加 Manager 与管理员 API 回归覆盖。
+- 数据库迁移：无；配置/部署影响：无新增生产环境变量。
+- 验证：PR head Go #44809724292、Admin #44809724257、Security #44809724481 成功；合并后 main Go #44810140754、Admin #44810140828、Security #44810140787 成功；Docker Publish #44810140725 构建中。
+- 发布镜像：Docker Publish 成功后补录 GHCR 标签与 manifest digest；生产部署和 Telegram 真机验收未确认。
 
 ## 2026-11-21 — 一次性邀请链接不确定结果禁止自动重试（PR #70 已合并并发布）
 
