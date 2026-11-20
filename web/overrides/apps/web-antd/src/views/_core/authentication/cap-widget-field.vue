@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = withDefaults(defineProps<{
   apiEndpoint: string;
+  modelValue?: boolean;
   error?: string;
   nonce: number;
   ready: boolean;
