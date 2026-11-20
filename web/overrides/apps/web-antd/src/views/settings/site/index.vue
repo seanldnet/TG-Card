@@ -120,7 +120,7 @@ onMounted(load);
         <div class="mt-1 text-xs text-gray-500">Secret Key 使用服务端密钥加密后保存在 PostgreSQL；读取时不会返回明文。</div>
        </a-form-item>
       </a-form>
-      <a-alert class="mt-2" type="info" show-icon message="Cap 自托管服务需启用静态资源服务并提供 /assets/widget.js。验证接口由后端调用，不会把 Secret Key 暴露给浏览器。" />
+      <a-alert class="mt-2" type="info" show-icon message="Cap 自托管 Widget 优先从服务端 /assets/widget.js 加载：请在 Cap 控制台 Instance settings → Widget files 中开启 Serve widget files from this server，并确保 Widget/WASM 资源版本与 capd 兼容。若未开启或资源加载失败，登录页会回退到固定版本的 jsDelivr CDN（cap-widget@0.1.63）；CDN 不可访问时请启用 Cap 自托管资源。验证接口由后端调用，Secret Key 不会暴露给浏览器。" />
      </div>
     </a-tab-pane>
    </a-tabs>
