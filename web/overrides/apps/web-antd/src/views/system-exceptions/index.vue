@@ -48,7 +48,7 @@ async function load(){
   finally{loading.value=false;}
 }
 function openAction(item:SystemException,target:string){
-  selected.value=item;nextStatus.value=target;note.value=target==='resolved'?'已核实并完成处理：':'';
+  selected.value=item;nextStatus.value=target;note.value='';
   modalOpen.value=true;
 }
 async function save(){
