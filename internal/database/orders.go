@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
 	"time"
 )
+
+var ErrOrderRedeliveryInProgress = errors.New("order re-delivery is in progress; refund is blocked until the re-delivery lease expires")
 
 type Order struct {
 	ID string `json:"id"`
@@ -754,7 +757,7 @@ func RefundOrderToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,n
 	}
 	var activeRedeliveryLeases int
 	if err := tx.QueryRowContext(ctx, leaseQuery, orderID, leaseNow).Scan(&activeRedeliveryLeases); err != nil { return 0, err }
-	if activeRedeliveryLeases > 0 { return 0, fmt.Errorf("order re-delivery is in progress; refund is blocked until the re-delivery lease expires") }
+	if activeRedeliveryLeases > 0 { return 0, ErrOrderRedeliveryInProgress }
 	switch status{case "paid","delivering","delivery_failed","delivered":default:return 0,fmt.Errorf("order status %s cannot be refunded",status)}
 	if !strings.EqualFold(currency,"USDT"){ return 0,fmt.Errorf("仅支持 USDT 订单退款，当前订单币种为 %s",currency) }
 	if amountMinor<=0||amountMinor>922337203685477{ return 0,fmt.Errorf("order refund amount is invalid") }

@@ -140,7 +140,16 @@ func (a *application) refundSupportTicket(w http.ResponseWriter,r *http.Request)
 	ticket,err:=database.GetSupportTicket(r.Context(),a.db,a.driver,ticketID)
 	if err!=nil{writeError(w,http.StatusNotFound,"售后工单不存在");return}
 	balance,err:=database.RefundOrderToWallet(r.Context(),a.db,a.driver,ticket.OrderID,claims.AdminID,"售后工单 "+ticket.TicketNo)
-	if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	if err!=nil{
+		action := "support.refund.failed"
+		status := http.StatusBadRequest
+		if errors.Is(err, database.ErrOrderRedeliveryInProgress) {
+			action = "support.refund.blocked"
+			status = http.StatusConflict
+		}
+		database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,action,"ticket:"+ticket.TicketNo,a.clientIP(r),r.UserAgent(),"order_id="+ticket.OrderID+"; reason="+err.Error())
+		writeError(w,status,err.Error());return
+	}
 	reply:="售后处理完成：订单 "+ticket.OrderNo+" 已退款至站内余额，当前余额 "+formatUSDTAtomic(balance)+" USDT。已交付卡密记录已撤销，请勿继续使用原凭证。"
 	updated,updateErr:=database.UpdateSupportTicket(r.Context(),a.db,a.driver,ticketID,"resolved",reply)
 	if updateErr==nil{ticket=updated}
