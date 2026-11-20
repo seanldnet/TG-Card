@@ -1,6 +1,6 @@
 ## 2026-11-21 — 全局异常中心（P0-2 开发中）
 
-- 状态：独立开发分支 `feat/global-exception-center-pr-p0-2`，基线 main@`7c4e8cf61630c297ea1115add229ef729740a573`；PR 尚未创建。
+- 状态：独立开发分支 `feat/global-exception-center-pr-p0-2`，PR [#80](https://github.com/seanldnet/TG-Card/pull/80)，基线 main@`7c4e8cf61630c297ea1115add229ef729740a573`。
 - 影响模块：数据库迁移、资金异常、订单交付、退款、上游同步、Cap 登录验证、管理员菜单/API。
 - 变更内容：
   - 新增统一 `system_exceptions` 表；迁移 0052 将历史 `finance_exceptions` 数据复制并保留旧表，避免丢失已解决记录与处理信息。
