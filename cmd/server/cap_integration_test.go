@@ -126,3 +126,73 @@ func TestPublicCapConfigDoesNotExposeSecret(t *testing.T) {
 		t.Fatalf("unexpected public Cap config: %+v", envelope.Data)
 	}
 }
+
+func TestAdminSiteSettingsRedactsCapSecret(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := database.Migrate(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.EnsureAdmin(ctx, db, "sqlite", "admin", "a-strong-test-password"); err != nil {
+		t.Fatal(err)
+	}
+	secrets, err := secret.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := secrets.Encrypt("do-not-return-this-cap-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSettings(ctx, db, "sqlite", map[string]string{
+		"cap_enabled": "true",
+		"cap_domain": "https://cap.example.com",
+		"cap_site_key": "public-site-key",
+		"cap_secret_ciphertext": encrypted,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := auth.NewManager("01234567890123456789012345678901", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &application{db: db, driver: "sqlite", tokens: tokens, secrets: secrets}
+	t.Setenv("DISABLE_CAP", "true")
+	loginBody := strings.NewReader(`{"username":"admin","password":"a-strong-test-password"}`)
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", loginBody)
+	loginReq.RemoteAddr = "192.0.2.10:12345"
+	loginResponse := httptest.NewRecorder()
+	app.login(loginResponse, loginReq)
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("login failed: status=%d body=%s", loginResponse.Code, loginResponse.Body.String())
+	}
+	var loginEnvelope struct {
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(loginResponse.Body.Bytes(), &loginEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	token := loginEnvelope.Data["accessToken"]
+	if token == "" {
+		t.Fatal("login did not return an access token")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/site", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	app.getSiteSettings(response, req)
+	if response.Code != http.StatusOK {
+		t.Fatalf("site settings status=%d body=%s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if strings.Contains(body, encrypted) || strings.Contains(body, "do-not-return-this-cap-secret") || strings.Contains(body, "capSecret\":") {
+		t.Fatal("site settings response leaked the Cap secret")
+	}
+	if !strings.Contains(body, `"capSecretConfigured":true`) || !strings.Contains(body, `"capEnabled":true`) {
+		t.Fatalf("site settings response omitted Cap state: %s", body)
+	}
+}
