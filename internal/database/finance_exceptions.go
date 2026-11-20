@@ -128,6 +128,21 @@ func UpdateFinanceException(ctx context.Context,db *sql.DB,driver,id,adminID,sta
  if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return sql.ErrNoRows};return nil
 }
 
+// UpdateSystemExceptionWithAudit commits the exception state and its admin audit row atomically.
+func UpdateSystemExceptionWithAudit(ctx context.Context, db *sql.DB, driver, id, adminID, status, note, ip, userAgent string) error {
+	if status!="processing" && status!="resolved" && status!="ignored" { return fmt.Errorf("invalid system exception status") }
+	if status=="resolved" && strings.TrimSpace(note)=="" { return fmt.Errorf("处理完成时必须填写核实结论") }
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	resolvedAt:="";if status=="resolved"||status=="ignored"{resolvedAt=now}
+	res,err:=tx.ExecContext(ctx,"UPDATE system_exceptions SET status="+placeholder(driver,1)+",resolution_note="+placeholder(driver,2)+",resolved_by="+placeholder(driver,3)+",updated_at="+placeholder(driver,4)+",resolved_at="+placeholder(driver,5)+" WHERE id="+placeholder(driver,6),status,note,adminID,now,resolvedAt,id)
+	if err!=nil{return err};affected,err:=res.RowsAffected();if err!=nil{return err};if affected!=1{return sql.ErrNoRows}
+	auditID,err:=randomID();if err!=nil{return err}
+	audit:="INSERT INTO audit_logs(id,admin_id,action,resource,ip_address,user_agent,details,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+")"
+	if _,err:=tx.ExecContext(ctx,audit,auditID,adminID,"system.exception.update","exception:"+id,ip,userAgent,status+": "+note,now);err!=nil{return err}
+	return tx.Commit()
+}
+
 func parseFinanceMinor(s string)(int64,error){
  s=strings.TrimSpace(s);if s==""{return 0,fmt.Errorf("empty amount")}
  neg:=strings.HasPrefix(s,"-");s=strings.TrimPrefix(strings.TrimPrefix(s,"-"),"+")
