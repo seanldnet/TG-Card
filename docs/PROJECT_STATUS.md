@@ -1,4 +1,14 @@
-## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并并发布，文档版本 2.2.35）
+## 2026-11-21 — 全局异常中心（P0-2 开发中，文档版本 2.2.36）
+
+- 开发基线：main@7c4e8cf61630c297ea1115add229ef729740a573；独立分支 \`feat/global-exception-center-pr-p0-2\`。
+- 新增统一 \`system_exceptions\` 表，迁移 0052 将历史 \`finance_exceptions\` 记录完整复制，保留旧表用于兼容/回滚；采购失败、采购受理不确定、供应商余额差异和退款账本异常改为写入统一表。
+- 已接入订单交付不确定、售后退款冲突、上游目录同步失败、Cap 验证/配置异常的异常登记入口；异常来源使用 \`source_key\` 幂等合并。
+- 新增后台“全局异常中心”页面与查询/解决 API，支持状态、类型、级别、日期筛选；解决/忽略只改变异常状态，不修改订单、库存、资金或采购数据。
+- 异常状态更新与管理员审计日志在同一数据库事务提交；审计写入失败时状态更新回滚。
+- 数据库迁移：\`0052_system_exceptions.sql\`，兼容 PostgreSQL/SQLite，应用启动自动执行；无新增环境变量或手工 SQL。
+- 当前状态：代码与回归测试开发中，PR 尚未创建；CI 和 Docker 发布结果待 PR 检查。
+
+## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并并发布）
 
 - 状态：PR #78 已 Squash Merge 至 main，merge commit `8981fb887584979450f19b30648225ced113989d`；开发基线 main@a83f9bfa44989c55e4c6b9fd1aa4d4ed12ea1b81。
 - 本次变更：后台 Cap 域名/Site Key/Secret Key 配置；Secret Key 使用现有 AES-256-GCM 密钥加密保存并脱敏读取；登录页加载自托管 `/assets/widget.js` widget；登录接口服务端调用 `/{site-key}/siteverify`，仅 success=true 放行。
@@ -193,7 +203,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.27
+> - 文档版本：2.2.36
 > - 源码核对基线：`main` 分支，commit `1325e52443c0f06d52d21205c2e29af5fca39b70`；本轮 PR #70 基于该提交开发
 > - 本次文档更新：校准 PR #69 合并状态，并记录 PR #70 一次性邀请链接不确定结果保护
 
@@ -270,6 +280,7 @@ flowchart LR
 | 优惠券/促销 | 已实现 | 促销规则的查询、创建/更新、删除；具体类型与适用规则以当前页面/API为准。 |
 | 兑换码 | 已实现 | 兑换码规则的创建/更新/删除及用户兑换处理；以当前后台页面和数据库实现为准。 |
 | 对账与余额校验 | 已实现（PR2 生产验收通过） | 每日 UTC 对账日报、日报历史、余额流水一致性只读校验与异常明细；PR2 镜像已部署，2026-11-19 验收通过。 |
+| 全局异常中心 | 开发中（P0-2） | 新增 \`system_exceptions\` 统一索引、历史资金异常迁移、交付不确定/退款冲突/上游同步/Cap 异常登记；后台支持类型、级别、状态、日期筛选与处理审计。 |
 | 售后工单 | 已实现（生产验收待执行） | Owner Bot 转发媒体、交互式回复/结单、结单通知、用户确认/重开、终态消息守卫及 10 分钟自动新工单限流均已合并；真实 Telegram/SMTP 验收待项目所有者执行。 |
 | 用户管理 | 已实现 | Telegram 用户列表、余额调整、余额流水查询。 |
 | 群发通知 | 已实现 | 创建/查看群发任务，Bot 后台处理定时任务及发送结果；具体目标筛选与失败恢复能力按实现为准。 |
@@ -606,6 +617,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 优惠券/促销 | GET /api/promotions、POST /api/promotions、PUT /api/promotions/{id}、DELETE /api/promotions/{id} | 管理员 Bearer |
 | 兑换码 | GET /api/redemption-codes、POST /api/redemption-codes、PUT /api/redemption-codes/{id}、DELETE /api/redemption-codes/{id} | 管理员 Bearer |
 | 群发 | GET /api/broadcasts、POST /api/broadcasts | 管理员 Bearer |
+| 全局异常中心 | GET /api/system/exceptions、GET /api/system/exceptions/count、PUT /api/system/exceptions/{id} | 管理员 Bearer；解决状态与审计日志原子提交 |
 | 售后工单 | GET /api/support/tickets、PUT /api/support/tickets/{id}、GET /api/support/tickets/{id}/messages、POST /api/support/tickets/{id}/messages、PUT /api/support/tickets/{id}/assign、POST /api/support/tickets/{id}/refund | 管理员 Bearer |
 
 路由注册和权限实现位置：cmd/server/main.go。API handler 通常自行调用 authenticate；health、login 和当前 logout 不执行该认证。Telegram Bot 用户交互不属于后台 REST API。
@@ -878,7 +890,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - JWT Secret 未显式设置时保存在 DATA_DIR/jwt-secret；Bot/支付/SMTP/Cap 加密密钥位于 DATA_DIR/bot-token.key，均依赖持久化数据卷。
 - Docker 镜像以非 root 的 tgcard 用户运行；应用数据目录由镜像构建步骤设置权限。
 - HTTP 响应设置 X-Content-Type-Options、Referrer-Policy 和 X-Frame-Options 安全头。
-- Cap 人机验证（PR #78 开发中）：管理员登录在密码校验前调用 Cap `siteverify`；只有 `success=true` 放行，验证失败/服务不可用 fail-closed。Secret Key 通过 AES-256-GCM 加密存储，读取接口只返回 configured 状态；数据库 `cap_enabled=false` 或 `DISABLE_CAP=true` 可紧急关闭。
+- Cap 人机验证（PR #78 已合并并发布）：管理员登录在密码校验前调用 Cap `siteverify`；只有 `success=true` 放行，验证失败/服务不可用 fail-closed。Secret Key 通过 AES-256-GCM 加密存储，读取接口只返回 configured 状态；数据库 `cap_enabled=false` 或 `DISABLE_CAP=true` 可紧急关闭。
 - HTTP Server 设置 ReadHeaderTimeout=5s、IdleTimeout=60s；应用自身未配置 TLS listener。新增需管理员认证的 GET /api/health/detailed，返回数据库、Bot 运行状态、支付监听器、上游同步与迁移版本，不返回凭证、Token 或 DSN。Bot 缺失/断开、Polling 冲突或连续 3 次轮询错误会通知 Owner。
 
 ### 20.2 部署建议与待确认项
@@ -889,7 +901,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 限制应用数据目录、备份文件和日志的访问；备份应加密并限制权限。
 - 当前普通管理员 API 主要采用统一 Bearer 认证；支付人工补单额外要求 super。敏感写接口限流覆盖管理员密码修改、支付人工核对、支付设置、余额调整、群发创建、上游采购重试/退款/核实。可信代理仅通过 TRUSTED_PROXY_CIDRS 显式 CIDR 白名单启用；未列入白名单的来源一律忽略 XFF/X-Real-IP。细粒度 RBAC、CSRF/CORS 专项策略仍待单独评估。
 - PR #53 已实现服务端会话撤销：数据库仅保存 Token SHA-256 摘要，每个 JWT 有独立 JTI；登出撤销当前设备 Token，密码修改通过 TokenVersion 撤销全部旧会话。旧未登记 Token 在迁移后失效，管理员需重新登录。
-- Cap 人机验证开发中：新增键值设置表 0051，后台密钥加密存储；登录接口服务端验证 Cap token；数据库 SQL 开关和 DISABLE_CAP 环境变量均可紧急禁用。详见 docs/cap-human-verification.md。
+- Cap 人机验证已合并：新增键值设置表 0051，后台密钥加密存储；登录接口服务端验证 Cap token；数据库 SQL 开关和 DISABLE_CAP 环境变量均可紧急禁用。详见 docs/cap-human-verification.md。
 - PR S #57 已合并，merge commit `41389825d6edef83330c4e28c7b5662e23f932a7`；main Go CI #44603593840、Admin CI #44603593868、Security #44603593955 与 Docker Publish #44603594008 全部成功。GHCR 多架构 latest digest：`sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署及 Compose 备份/恢复实操演练尚未完成。
 
 ## 21. 本次核对的代码位置
@@ -907,6 +919,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - Compose 备份/恢复：scripts/backup.sh、scripts/restore.sh、docs/operations-backup-restore.md。
 - Dujiao-Next 真实商户联调：docs/dujiao-live-integration-runbook.md（待项目所有者执行）。
 - Dujiao-Next 上游配置：internal/upstream/dujiao.go、internal/database/upstream.go、internal/database/migrations/0029_upstream_settings.sql、cmd/server/upstream.go、web/overrides/apps/web-antd/src/views/upstream/index.vue。
+- 全局异常中心：internal/database/finance_exceptions.go、internal/database/migrations/0052_system_exceptions.sql、cmd/server/system_exceptions.go、web/overrides/apps/web-antd/src/views/system-exceptions/index.vue、docs/system-exceptions.md。
 - Dujiao-Next 目录同步：internal/upstream/catalog.go、internal/database/upstream_catalog.go、internal/database/migrations/0030–0034、cmd/server/upstream_sync.go、internal/telegrambot/manager.go、web/overrides/apps/web-antd/src/views/catalog/index.vue。
 
 如果未来代码与本文冲突，应以当前代码和数据库迁移为准，并在同一 PR 中修订本文和 docs/CHANGELOG.md。
