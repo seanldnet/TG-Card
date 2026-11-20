@@ -1,10 +1,18 @@
-## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 开发中）
+## 2026-11-21 — 退款与订单再次获取租约互斥（PR #74 开发中）
 
-- 审查基线：main@5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b（PR #72 已合并）。
-- 现有 `ClaimOrderRedelivery` 使用数据库唯一订单租约和原子 upsert 防止多实例并发重复重发；本轮补充 PostgreSQL 16 并发集成验证，确保 8 个并发 worker 只有一个获得 delivered 订单再次获取租约，活动租约不能二次领取，过期租约可恢复。
-- PR #73 仅增加 PostgreSQL 集成测试与文档，不修改运行时业务逻辑、数据库迁移或生产配置。Go/Admin/Security CI 待验证。
-- PR #72 已阻止已交付 `file_card` 的自动再次获取，相关 CI 与 main 镜像发布证据记录在下方。
-- 生产部署与 Telegram 真机验收仍需项目所有者确认。
+- 审查基线：main@21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca（PR #73 已合并）。
+- 发现管理员退款可与已交付订单的再次获取同时执行：退款事务锁定订单行，但再次获取租约原先在独立查询后写入另一张表；退款未检查活动再次获取租约，可能出现退款成功后仍继续发送商品的窗口。
+- PR #74 让退款与再次获取在同一订单行锁上串行化；活动再次获取租约期间拒绝退款，租约过期后可正常退款；退款完成后不再允许获取再次发送租约。
+- 新增 SQLite/PostgreSQL 共用回归测试，验证活动租约阻止退款、租约过期后退款成功、退款订单不能重新获取租约。无数据库迁移或生产环境变量变更。PR head Go/Admin/Security 待验证。
+- 生产部署及真实退款/Telegram 再次获取验收仍需项目所有者执行。
+
+## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 已合并，镜像构建中）
+
+- PR #73 已 Squash Merge 至 main，merge commit `21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca`。
+- 新增 PostgreSQL 16 集成测试：8 个 worker 并发争抢同一 delivered 订单的再次获取租约时只能有一个成功；活动租约拒绝二次领取，过期租约可恢复。
+- PR head Go #44811797126、Admin #44811797029、Security #44811796942 全部成功。
+- 合并后 main Go #44812154123、Admin #44812154882、Security #44812154255 全部成功；Docker Publish #44812154449 正在运行，镜像 digest 待记录。
+- 仅增加测试与文档，无运行时业务逻辑、数据库迁移或生产配置变化。
 
 ## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并并发布）
 
@@ -84,9 +92,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.30
-> - 源码核对基线：main 分支，commit `5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b`；本轮 PR #73 基于该提交开发
-> - 本次文档更新：记录 PR #72 合并状态，并跟踪 PR #73 PostgreSQL 再次获取租约并发回归
+> - 文档版本：2.2.31
+> - 源码核对基线：main 分支，commit `21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca`；本轮 PR #74 基于该提交开发
+> - 本次文档更新：记录 PR #73 合并状态，并跟踪 PR #74 退款与再次获取租约互斥保护
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。

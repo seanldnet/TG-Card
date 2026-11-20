@@ -1,12 +1,23 @@
-## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 开发中）
+## 2026-11-21 — 退款与订单再次获取租约互斥（PR #74 开发中）
 
-- 状态：独立分支开发中，基线 main@5d56777a3d24d5ff3e4afb0cfa746c3ac9ffea3b。
+- 状态：独立分支开发中，基线 main@21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca。
+- 影响模块：钱包退款、已交付订单再次获取、数据库订单租约。
+- 变更内容：修复退款与再次获取并发窗口。再次获取领取租约前锁定订单行；退款在同一订单行锁下检查活动再次获取租约，活动期间拒绝退款；租约过期后退款可继续，退款完成后再次获取拒绝。
+- 数据库迁移：无，复用现有 `order_redelivery_leases` 表。
+- 配置/部署影响：无新增环境变量；无需手工 SQL。
+- 兼容性与已知限制：活动再次获取租约期间管理员退款会返回错误，需要等待租约结束后重新操作；不改变钱包退款金额和账本事务。
+- 验证：新增 SQLite/PostgreSQL 共用回归测试；PR head Go/Admin/Security 待运行。生产部署与真实退款/再次获取验收仍需项目所有者执行。
+- 发布镜像：待 PR 合并后构建。
+
+## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 已合并，镜像构建中）
+
+- 状态：已合并至 main；merge commit `21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca`。
 - 影响模块：订单再次获取数据库租约、PostgreSQL 并发集成测试。
 - 变更内容：为 `ClaimOrderRedelivery` 增加 PostgreSQL 16 并发回归测试，验证 8 个 worker 争抢同一已交付订单时只有一个获胜；活动租约拒绝再次领取，过期租约允许恢复。
 - 数据库迁移：无；仅测试与文档变更。
 - 配置/部署影响：无生产配置变化；复用 Go CI 的临时 PostgreSQL 16 服务。
 - 兼容性与已知限制：不改变再次获取租约算法或业务行为。
-- 验证：PR head Go/Admin/Security 待运行；真实生产并发与 Telegram 再次获取仍需项目所有者验收。
+- 验证：PR head Go [#44811797126](https://github.com/seanldnet/TG-Card/actions/runs/44811797126)、Admin [#44811797029](https://github.com/seanldnet/TG-Card/actions/runs/44811797029)、Security [#44811796942](https://github.com/seanldnet/TG-Card/actions/runs/44811796942) 全部成功；合并后 main Go #44812154123、Admin #44812154882、Security #44812154255 成功，Docker Publish #44812154449 构建中。
 - 发布镜像：测试/文档 PR，不改变运行时镜像内容。
 
 ## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并并发布）
