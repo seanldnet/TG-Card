@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, markRaw, onMounted, ref } from 'vue';
 
 import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
@@ -142,7 +142,7 @@ const formSchema = computed((): VbenFormSchema[] => [
   },
   ...(capEnabled.value
     ? [{
-        component: CapWidgetField,
+        component: markRaw(CapWidgetField),
         componentProps: {
           apiEndpoint: `${capDomain.value.replace(/\/+$/, '')}/${encodeURIComponent(capSiteKey.value)}/`,
           error: capError.value,
