@@ -4,6 +4,7 @@
 - 现有 PR #69–#72 已完成交付不确定隔离、一次性邀请链接保护、file_card 整单盲重试阻断和已交付 file_card 再次获取防重发；这些保护不能替代子步骤状态机。
 - 本轮目标：为 `file_card` 的文件发送与卡密消息分别记录 attempts、status、last_error、Telegram message_id 和时间；管理员恢复时跳过已成功步骤，只重试明确失败步骤。
 - 结果不确定或进程崩溃留下的 `sending` 步骤必须先人工核实，原子记录审计后才能标记成功/失败；禁止盲目重发。已交付订单的 file_card 再次获取仍保持禁止。
+- 外部 Telegram 请求执行期间保留订单租约；并发管理员不能重复 claim 或提前核实。租约过期后遗留的 sending 步骤先转为 uncertain，再允许人工判定。
 - 迁移 0053 会将升级前已处于 `delivery_uncertain` 的 file_card 订单回填为两个独立的 uncertain 步骤，要求管理员分别核实文件与卡密消息，避免升级后把旧订单误当成可安全重发。
 - 已实现初版：迁移 0053、步骤持久化 API/数据库方法、Telegram message_id 采集、file_card 分步恢复、后台订单详情步骤记录与人工核实操作、回归测试。
 - P0-2 发布：PR #83 已合并至 main，Go CI #44836648477、Admin CI #44836648431、安全扫描 #44836648441、Docker Publish #44836648433 全部成功；GHCR digest：`sha256:9792e121f9447fc450921910d3bafab545119ea8d67de1702ee8cc49c3d1a06d`。
