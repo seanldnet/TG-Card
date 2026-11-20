@@ -5,7 +5,8 @@
 - 本轮目标：为 `file_card` 的文件发送与卡密消息分别记录 attempts、status、last_error、Telegram message_id 和时间；管理员恢复时跳过已成功步骤，只重试明确失败步骤。
 - 结果不确定或进程崩溃留下的 `sending` 步骤必须先人工核实，原子记录审计后才能标记成功/失败；禁止盲目重发。已交付订单的 file_card 再次获取仍保持禁止。
 - 已实现初版：迁移 0053、步骤持久化 API/数据库方法、Telegram message_id 采集、file_card 分步恢复、后台订单详情步骤记录与人工核实操作、回归测试。
-- 验证：待 Go/Admin/Security CI；真实 Telegram sendDocument/sendMessage 分步骤恢复仍需真机验收。P0-2 合并后的 Docker 发布正在运行。
+- P0-2 发布：PR #83 已合并至 main，Go CI #44836648477、Admin CI #44836648431、安全扫描 #44836648441、Docker Publish #44836648433 全部成功；GHCR digest：`sha256:9792e121f9447fc450921910d3bafab545119ea8d67de1702ee8cc49c3d1a06d`。
+- P0-3 验证：当前分支待 Go/Admin/Security CI；真实 Telegram sendDocument/sendMessage 分步骤恢复仍需真机验收。
 - 数据库迁移：新增 `0053_order_delivery_steps.sql`，兼容 PostgreSQL/SQLite；应用启动自动迁移。
 
 ## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81 已合并）
