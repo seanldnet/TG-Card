@@ -1,3 +1,12 @@
+## 2026-11-21 — Telegram 订单交付不确定结果隔离（PR #69 开发中）
+
+- 审查基线：main@1da40c6ced6bad1d9ca4435ad23d90af3653e6f4（PR #68 文档校准已合并）。
+- 发现风险：Telegram sendMessage/sendDocument 等请求发生网络错误或响应丢失时，远端可能已接收消息；原流程将其作为普通 delivery_failed 并由后台自动重试，可能重复发送卡密/文件/上游交付内容。
+- 本 PR 将已尝试 Telegram 副作用后发生的交付错误标记为 `delivery_uncertain`，记录独立 `order_delivery_events` 事件；后台批量自动领取明确排除此状态。
+- 管理员订单页展示“发货结果待核实”，必须二次确认后才允许走现有单笔租约入口手动重试；手动领取后才恢复为 delivering。尚未发起外部发送的本地校验/解密错误仍走普通 `delivery_failed` 与指数退避。
+- 新增 SQLite/PostgreSQL 数据库测试，验证 uncertain 不进入自动队列、管理员单笔领取可恢复；新增 Telegram 传输中断回归测试验证状态隔离。
+- 不新增迁移或生产环境变量；`orders.status` 为文本状态，无数据库 CHECK 枚举约束。CI 与发布结果待 PR head 验证。
+- 生产部署、用户是否实际收到消息的人工核实，以及 Telegram 真机测试仍需项目所有者确认。
 ## 2026-11-21 — 订单交付失败指数退避（PR #67 已合并并发布）
 
 - PR #67 已 Squash Merge 至 main，merge commit `c460706a1cc7675cfbd9f274a9311f3f2654f468`。
@@ -45,9 +54,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-20
-> - 文档版本：2.2.25
-> - 源码核对基线：main 分支，commit `59337349d36937a467e673e427f571ec276c17ce`
-> - 本次文档更新：记录 PR #61 合并与 GHCR digest，并跟踪 PR #62 PostgreSQL 并发测试
+> - 文档版本：2.2.26
+> - 源码核对基线：main 分支，commit `1da40c6ced6bad1d9ca4435ad23d90af3653e6f4`；PR #69 分支 `fix/order-delivery-uncertain-outcomes-pr-69`
+> - 本次文档更新：记录 PR #69 Telegram 交付不确定结果隔离的实现范围与验收边界
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
