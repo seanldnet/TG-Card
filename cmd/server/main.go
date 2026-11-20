@@ -1188,7 +1188,14 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 		steps, stepErr := database.ListOrderDeliverySteps(r.Context(),a.db,a.driver,orderID)
 		if stepErr != nil { writeError(w,http.StatusInternalServerError,"读取分步骤发货状态失败"); return }
 		blocked := len(steps)==0
-		for _,step := range steps { if step.Status=="uncertain" || step.Status=="sending" { blocked=true; break } }
+		for _,step := range steps {
+			if step.Status=="sending" {
+				_,_ = database.BeginOrderDeliveryStep(r.Context(),a.db,a.driver,orderID,step.StepKey,step.StepOrder)
+				blocked=true
+				continue
+			}
+			if step.Status=="uncertain" { blocked=true }
+		}
 		if blocked {
 			reason := "file_card delivery contains an unresolved or missing step record"
 			database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"order.delivery.retry.blocked","order:"+orderID,a.clientIP(r),r.UserAgent(),reason)
