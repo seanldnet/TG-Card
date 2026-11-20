@@ -134,6 +134,7 @@ When a refund is blocked because an active re-delivery lease exists, the support
 
 - A definitive Telegram rejection marks only that step `failed`; an explicit admin retry skips every `succeeded` step and retries only `failed` steps.
 - A transport timeout, malformed response, HTTP 5xx, missing `message_id`, or process crash while a step is `sending` is treated as `uncertain`. Such a step is never resent until an administrator verifies whether Telegram accepted it and records `succeeded` or `failed` with an audit note.
+- The order delivery lease remains active while an external request is in flight. A second administrator cannot claim or resolve a step until the current request completes or the lease expires; after an expired lease, a leftover `sending` step is converted to `uncertain` before any retry.
 - A step manually marked `succeeded` is skipped on retry; a step manually marked `failed` becomes eligible for the next explicit retry. Resolution and audit are committed in one transaction.
 - Migration 0053 backfills pre-existing `delivery_uncertain` `file_card` orders as two `uncertain` steps; an operator must verify the file and card-message outcomes separately before either can be retried.
 - The order can become `delivered` only after all persisted steps are `succeeded`. Re-delivery of an already delivered `file_card` remains blocked; this state machine is for completing the original paid delivery, not duplicating a delivered entitlement.
