@@ -1,3 +1,11 @@
+## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81，开发中）
+
+- 状态：PR #81 开发中，未合并；本次仅修正前端 Widget 加载与配置说明，CI 和真实 Cap 浏览器联调待验证。
+- 基线：PR #81 基于 main@7c4e8cf61630c297ea1115add229ef729740a573；不修改后端 `/siteverify`、数据库迁移或 Secret Key 加密逻辑。
+- 修复：登录页默认加载固定版本 `cap-widget@0.1.63` 的 jsDelivr CDN，不再先请求 Cap 服务 `/assets/widget.js`，不再依赖「Widget files」开关；等待自定义元素注册，加载失败/超时 fail-closed；配置尚未加载完成时阻止提前提交登录。
+- 管理后台与专项文档同步说明：浏览器访问 jsDelivr 与 Cap 站点挑战接口；TG-Card 后端访问 Cap `/{site-key}/siteverify`；Secret Key 仅在服务端使用。
+- 验证状态：尚未运行本次修复后的 Admin CI；PR head 旧检查成功记录不作为本次代码验证。真实 Cap 服务端到端验收待完成。
+
 ## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并并发布，文档版本 2.2.35）
 
 - 状态：PR #78 已 Squash Merge 至 main，merge commit `8981fb887584979450f19b30648225ced113989d`；开发基线 main@a83f9bfa44989c55e4c6b9fd1aa4d4ed12ea1b81。
@@ -193,9 +201,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.27
-> - 源码核对基线：`main` 分支，commit `1325e52443c0f06d52d21205c2e29af5fca39b70`；本轮 PR #70 基于该提交开发
-> - 本次文档更新：校准 PR #69 合并状态，并记录 PR #70 一次性邀请链接不确定结果保护
+> - 文档版本：2.2.36
+> - 源码核对基线：`main@7c4e8cf61630c297ea1115add229ef729740a573`；PR #81 Cap Widget CDN 兼容修复开发中
+> - 本次文档更新：记录 PR #81 Cap Widget CDN 加载兼容修复；按第 12 节同步专项文档与变更日志
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card

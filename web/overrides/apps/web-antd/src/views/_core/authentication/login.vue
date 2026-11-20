@@ -18,31 +18,66 @@ const capSiteKey = ref('');
 const capToken = ref('');
 const capError = ref('');
 const capWidgetContainer = ref<HTMLElement>();
+const capConfigLoaded = ref(false);
+const CAP_WIDGET_VERSION = '0.1.63';
 let capScriptPromise: Promise<void> | undefined;
 
-async function loadCapWidgetScript(domain: string) {
-  const origin = new URL(domain).origin;
-  const src = origin + '/assets/widget.js';
+function waitForCapWidget(timeoutMs = 8000): Promise<void> {
+  const registry = (window as any).customElements as CustomElementRegistry | undefined;
+  if (!registry) return Promise.reject(new Error('Custom Elements are not supported by this browser'));
+  if (registry.get('cap-widget')) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('Cap widget registration timed out')), timeoutMs);
+    registry.whenDefined('cap-widget').then(
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      (error) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const timeout = window.setTimeout(() => {
+      script.remove();
+      reject(new Error('Cap Widget CDN script loading timed out'));
+    }, 12_000);
+    script.src = src;
+    script.async = true;
+    script.dataset.tgCardCapWidget = 'true';
+    script.onload = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      script.remove();
+      reject(new Error('Cap Widget CDN script failed to load'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+async function loadCapWidgetScript() {
   if ((window as any).customElements?.get('cap-widget')) return;
-  if (!capScriptPromise) {
-    capScriptPromise = new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>('script[data-tg-card-cap-widget]');
-      if (existing) {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Cap widget script failed to load')), { once: true });
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      script.dataset.tgCardCapWidget = 'true';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Cap widget script failed to load'));
-      document.head.appendChild(script);
-    });
-  }
-  await capScriptPromise;
-  await (window as any).customElements?.whenDefined('cap-widget');
+  if (capScriptPromise) return capScriptPromise;
+
+  capScriptPromise = (async () => {
+    // Current Cap versions serve the widget through jsDelivr by default.
+    // The capd instance remains the challenge/siteverify API endpoint.
+    await loadScript(`https://cdn.jsdelivr.net/npm/cap-widget@${CAP_WIDGET_VERSION}`);
+    await waitForCapWidget();
+  })().catch((error) => {
+    capScriptPromise = undefined;
+    throw error;
+  });
+  return capScriptPromise;
 }
 
 function mountCapWidget() {
@@ -56,7 +91,8 @@ function mountCapWidget() {
   });
   widget.addEventListener('error', (event) => {
     capToken.value = '';
-    capError.value = (event as CustomEvent<{ message?: string }>).detail?.message || '人机验证加载失败，请刷新页面重试';
+    const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail;
+    capError.value = detail?.message ? `人机验证失败（${detail.code || 'unknown'}）：${detail.message}` : '人机验证加载失败，请刷新页面重试';
   });
   capWidgetContainer.value.replaceChildren(widget);
 }
@@ -69,18 +105,26 @@ async function loadCapConfig() {
     capSiteKey.value = config.siteKey || '';
     if (capEnabled.value) {
       if (!capDomain.value || !capSiteKey.value) throw new Error('Cap configuration is incomplete');
-      await loadCapWidgetScript(capDomain.value);
+      await loadCapWidgetScript();
       await nextTick();
       mountCapWidget();
     }
-  } catch {
-    capEnabled.value = false;
-    capError.value = '人机验证配置暂时无法读取；如果登录被拒绝，请联系管理员检查 Cap 服务。';
+  } catch (error) {
+    // Fail closed: the backend may still require a token even when the
+    // public configuration or widget cannot be loaded.
+    capEnabled.value = true;
+    capError.value = `人机验证初始化失败：${error instanceof Error ? error.message : String(error)}。请检查浏览器能否访问 cdn.jsdelivr.net，以及 Cap 服务地址和 Site Key 是否正确。`;
     message.error(capError.value);
+  } finally {
+    capConfigLoaded.value = true;
   }
 }
 
 async function handleLogin(data: Record<string, any>) {
+  if (!capConfigLoaded.value) {
+    message.warning('人机验证配置仍在加载，请稍后重试');
+    return;
+  }
   if (capEnabled.value && !capToken.value) {
     message.warning(capError.value || '请先完成人机验证');
     return;
