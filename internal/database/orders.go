@@ -373,10 +373,14 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 	now := time.Now().UTC()
 	nowText := now.Format(time.RFC3339Nano)
 	leaseText := now.Add(lease).Format(time.RFC3339Nano)
-	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
-	if driver == "postgres" { dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
-	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivery_uncertain' AND (delivery_lease_until IS NULL OR " + dueExpr + ")) OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
-	result, err := db.ExecContext(ctx, query, leaseText, nowText, orderID, nowText)
+	dueExprUncertain := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
+	dueExprDelivering := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 5) + ")"
+	if driver == "postgres" {
+		dueExprUncertain = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)"
+		dueExprDelivering = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 5) + " AS TIMESTAMPTZ)"
+	}
+	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivery_uncertain' AND (delivery_lease_until IS NULL OR " + dueExprUncertain + ")) OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExprDelivering + ")))"
+	result, err := db.ExecContext(ctx, query, leaseText, nowText, orderID, nowText, nowText)
 	if err != nil { return false, err }
 	affected, err := result.RowsAffected()
 	if err != nil { return false, err }
