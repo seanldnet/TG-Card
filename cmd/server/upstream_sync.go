@@ -290,6 +290,9 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 			_ = database.SaveUpstreamSyncResult(context.Background(), a.db, a.driver, "cancelled", "同步已由管理员取消；已完成批次保留")
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "cancelled")
 		} else if err != nil {
+			if exceptionErr := database.CreateSystemException(context.Background(), a.db, a.driver, "upstream-sync:"+jobID, "upstream_sync_failed", "error", "upstream_sync_job", jobID, "上游目录同步失败", err.Error()); exceptionErr != nil {
+				log.Printf("record upstream sync exception failed: job_id=%s error=%v", jobID, exceptionErr)
+			}
 			_ = database.SaveUpstreamSyncResult(context.Background(), a.db, a.driver, "failed", err.Error())
 			if currentJob, jobErr := database.GetUpstreamSyncJob(context.Background(), a.db, a.driver, jobID); jobErr == nil {
 				_ = database.UpdateUpstreamSyncJobProgress(context.Background(), a.db, a.driver, jobID, currentJob.TotalItems, currentJob.ProcessedItems, currentJob.CurrentPage, currentJob.ErrorCount+1, currentJob.ConsecutiveFailures+1, err.Error())
@@ -300,6 +303,7 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 			log.Printf("upstream sync job failed: job_id=%s status=%s error=%v", jobID, status, err)
 		} else {
 			_ = database.SetUpstreamSyncJobStatus(context.Background(), a.db, a.driver, jobID, "success")
+			_ = database.ResolveSystemExceptionBySourceKey(context.Background(), a.db, a.driver, "upstream-sync:"+jobID, "后续同步已成功完成")
 		}
 		a.upstreamJobMu.Lock()
 		if a.upstreamJobID == jobID { a.upstreamJobID = ""; a.upstreamJobCancel = nil }
