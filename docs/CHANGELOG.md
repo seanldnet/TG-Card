@@ -1,3 +1,19 @@
+## 2026-11-21 — 全局异常中心（P0-2 开发中）
+
+- 状态：独立开发分支 `feat/global-exception-center-pr-p0-2`，基线 main@`7c4e8cf61630c297ea1115add229ef729740a573`；PR 尚未创建。
+- 影响模块：数据库迁移、资金异常、订单交付、退款、上游同步、Cap 登录验证、管理员菜单/API。
+- 变更内容：
+  - 新增统一 `system_exceptions` 表；迁移 0052 将历史 `finance_exceptions` 数据复制并保留旧表，避免丢失已解决记录与处理信息。
+  - 采购失败/不确定、供应商余额差异、退款账本异常、订单交付不确定、退款冲突、上游同步失败和 Cap 验证/配置异常统一登记。
+  - 新增全局异常中心后台页面，支持状态、异常类型、严重程度和日期筛选；提供处理中、标记解决和忽略操作。
+  - 异常状态与 `system.exception.update` 管理员审计记录在同一事务提交；处理操作不自动改变业务订单、资金或库存。
+- 数据库迁移：新增 `0052_system_exceptions.sql`，兼容 PostgreSQL/SQLite，随应用启动自动迁移；无新增环境变量或手工 SQL。
+- 配置/部署影响：无新增环境变量；旧 `finance_exceptions` 表保留为迁移来源/兼容表。
+- 兼容性与已知限制：异常中心是统一索引，不替代各业务原始事件表；标记解决不代表业务恢复，需先完成实际业务核查。Cap 登录失败事件可能包含管理员用户名和供应商错误详情，不记录 Secret Key 或一次性 token。
+- 验证：开发中；SQLite/PostgreSQL 迁移、Go 测试、Admin 构建和 Security 检查待 PR CI 确认。
+- 发布镜像：尚未发布。
+- 专项文档：新增 `docs/system-exceptions.md`。
+
 ## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并）
 
 - 状态：已 Squash Merge 至 main，merge commit `8981fb887584979450f19b30648225ced113989d`。
