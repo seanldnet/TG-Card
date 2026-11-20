@@ -21,7 +21,8 @@ const capWidgetContainer = ref<HTMLElement>();
 let capScriptPromise: Promise<void> | undefined;
 
 async function loadCapWidgetScript(domain: string) {
-  const src = domain.replace(/\\/+$/, '') + '/assets/widget.js';
+  const origin = new URL(domain).origin;
+  const src = origin + '/assets/widget.js';
   if ((window as any).customElements?.get('cap-widget')) return;
   if (!capScriptPromise) {
     capScriptPromise = new Promise<void>((resolve, reject) => {
@@ -47,7 +48,7 @@ async function loadCapWidgetScript(domain: string) {
 function mountCapWidget() {
   if (!capEnabled.value || !capWidgetContainer.value) return;
   const widget = document.createElement('cap-widget') as HTMLElement & { reset?: () => void };
-  widget.setAttribute('data-cap-api-endpoint', capDomain.value.replace(/\\/+$/, '') + '/' + encodeURIComponent(capSiteKey.value) + '/');
+  widget.setAttribute('data-cap-api-endpoint', new URL(capDomain.value).origin + '/' + encodeURIComponent(capSiteKey.value) + '/');
   widget.setAttribute('data-cap-lang', 'zh');
   widget.addEventListener('solve', (event) => {
     capToken.value = (event as CustomEvent<{ token: string }>).detail?.token || '';
@@ -112,6 +113,7 @@ const formSchema = computed((): VbenFormSchema[] => [
 </script>
 
 <template>
+  <div class="w-full">
   <AuthenticationLogin
     :form-schema="formSchema"
     :loading="authStore.loginLoading"
@@ -120,4 +122,10 @@ const formSchema = computed((): VbenFormSchema[] => [
     :show-third-party-login="false"
     @submit="handleLogin"
   />
+  <div v-if="capEnabled" class="mx-auto mt-4 flex w-full max-w-sm flex-col items-center gap-2">
+    <div ref="capWidgetContainer" class="min-h-10" />
+    <p v-if="capError" class="text-xs text-red-500">{{ capError }}</p>
+  </div>
+  <p v-else-if="capError" class="mx-auto mt-3 max-w-sm text-center text-xs text-amber-600">{{ capError }}</p>
+  </div>
 </template>
