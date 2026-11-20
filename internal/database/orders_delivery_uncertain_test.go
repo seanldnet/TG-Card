@@ -44,6 +44,8 @@ func TestDeliveryUncertainIsExcludedFromAutomaticRetryButAllowsManualClaim(t *te
 	var status string
 	if err := db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id="+placeholder(driver,1), order.ID).Scan(&status); err != nil { t.Fatal(err) }
 	if status != "delivery_uncertain" { t.Fatalf("expected delivery_uncertain, got %q", status) }
+	if claimed,err:=ClaimOrderDelivery(ctx,db,driver,order.ID,time.Minute);err!=nil||claimed { t.Fatalf("active delivery lease must block concurrent manual claim: claimed=%v err=%v",claimed,err) }
+	if err:=UpdateOrderDeliveryUncertainError(ctx,db,driver,order.ID,"simulated request completed with ambiguous outcome");err!=nil { t.Fatal(err) }
 	var exceptionCount int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM system_exceptions WHERE source_key="+placeholder(driver,1)+" AND category='delivery_uncertain' AND status='open'", "delivery-uncertain:"+order.ID).Scan(&exceptionCount); err != nil { t.Fatal(err) }
 	if exceptionCount != 1 { t.Fatalf("delivery uncertainty must create one global exception, got %d", exceptionCount) }
