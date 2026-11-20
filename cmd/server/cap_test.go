@@ -27,7 +27,7 @@ func TestVerifyCapTokenSendsExpectedPayloadAndRequiresSuccess(t *testing.T) {
 	// path by replacing the origin after URL construction.
 	client := server.Client()
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	if err := verifyCapTokenWithEndpoint(context.Background(), client, server.URL+"/public-site/siteverify", "public-site", "private-secret", "one-time-token"); err != nil {
+	if err := verifyCapTokenWithEndpoint(context.Background(), client, server.URL+"/public-site/siteverify", "private-secret", "one-time-token"); err != nil {
 		t.Fatalf("verifyCapTokenWithEndpoint: %v", err)
 	}
 	if gotPath != "/public-site/siteverify" {
@@ -43,7 +43,7 @@ func TestVerifyCapTokenRejectsUnsuccessfulResponse(t *testing.T) {
 		_, _ = w.Write([]byte(`{"success":false}`))
 	}))
 	defer server.Close()
-	if err := verifyCapTokenWithEndpoint(context.Background(), server.Client(), server.URL, "site", "secret", "token"); err == nil {
+	if err := verifyCapTokenWithEndpoint(context.Background(), server.Client(), server.URL, "secret", "token"); err == nil {
 		t.Fatal("expected unsuccessful Cap verification to be rejected")
 	}
 }
