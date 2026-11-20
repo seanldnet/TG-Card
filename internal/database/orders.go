@@ -402,7 +402,7 @@ func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (
 // MarkOrderDelivered finalizes a successful Telegram delivery.
 func MarkOrderDelivered(ctx context.Context, db *sql.DB, driver, orderID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	query := "UPDATE orders SET status='delivered', delivered_at=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + ", delivery_error='', delivery_lease_until=NULL WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed')"
+	query := "UPDATE orders SET status='delivered', delivered_at=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + ", delivery_error='', delivery_lease_until=NULL WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed','delivery_uncertain')"
 	result, err := db.ExecContext(ctx, query, now, now, orderID)
 	if err != nil { return err }
 	count, err := result.RowsAffected()
@@ -429,6 +429,20 @@ func MarkOrderDeliveryFailed(ctx context.Context, db *sql.DB, driver, orderID, r
 	insert:="INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'delivery_failed',"+placeholder(driver,3)+","+placeholder(driver,4)+")"
 	if _,err:=tx.ExecContext(ctx,insert,eventID,orderID,reason,now);err!=nil{return err}
 	return tx.Commit()
+}
+
+// UpdateOrderDeliveryUncertainError stores the final transport/API error without making
+// an uncertain delivery eligible for automatic retry or incrementing its attempt count.
+func UpdateOrderDeliveryUncertainError(ctx context.Context, db *sql.DB, driver, orderID, reason string) error {
+	if len(reason) > 1000 { reason = reason[:1000] }
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE orders SET delivery_error=" + placeholder(driver,1) + ", updated_at=" + placeholder(driver,2) + " WHERE id=" + placeholder(driver,3) + " AND status='delivery_uncertain'"
+	result, err := db.ExecContext(ctx, query, reason, now, orderID)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return fmt.Errorf("order is not awaiting delivery uncertainty review") }
+	return nil
 }
 
 // MarkOrderDeliveryUncertain quarantines a delivery whose remote outcome cannot be proven.
