@@ -9,7 +9,7 @@
 - 验证：新增 SQLite/PostgreSQL 共用回归测试；PR head Go/Admin/Security 待运行。生产部署与真实退款/再次获取验收仍需项目所有者执行。
 - 发布镜像：待 PR 合并后构建。
 
-## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 已合并，镜像构建中）
+## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 已合并并发布）
 
 - 状态：已合并至 main；merge commit `21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca`。
 - 影响模块：订单再次获取数据库租约、PostgreSQL 并发集成测试。
@@ -17,7 +17,7 @@
 - 数据库迁移：无；仅测试与文档变更。
 - 配置/部署影响：无生产配置变化；复用 Go CI 的临时 PostgreSQL 16 服务。
 - 兼容性与已知限制：不改变再次获取租约算法或业务行为。
-- 验证：PR head Go [#44811797126](https://github.com/seanldnet/TG-Card/actions/runs/44811797126)、Admin [#44811797029](https://github.com/seanldnet/TG-Card/actions/runs/44811797029)、Security [#44811796942](https://github.com/seanldnet/TG-Card/actions/runs/44811796942) 全部成功；合并后 main Go #44812154123、Admin #44812154882、Security #44812154255 成功，Docker Publish #44812154449 构建中。
+- 验证：PR head Go [#44811797126](https://github.com/seanldnet/TG-Card/actions/runs/44811797126)、Admin [#44811797029](https://github.com/seanldnet/TG-Card/actions/runs/44811797029)、Security [#44811796942](https://github.com/seanldnet/TG-Card/actions/runs/44811796942) 全部成功；合并后 main Go [#44812154123](https://github.com/seanldnet/TG-Card/actions/runs/44812154123)、Admin [#44812154882](https://github.com/seanldnet/TG-Card/actions/runs/44812154882)、Security [#44812154255](https://github.com/seanldnet/TG-Card/actions/runs/44812154255)、Docker Publish [#44812154449](https://github.com/seanldnet/TG-Card/actions/runs/44812154449) 全部成功。
 - 发布镜像：测试/文档 PR，不改变运行时镜像内容。
 
 ## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并并发布）

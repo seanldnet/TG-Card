@@ -6,12 +6,12 @@
 - 新增 SQLite/PostgreSQL 共用回归测试，验证活动租约阻止退款、租约过期后退款成功、退款订单不能重新获取租约。无数据库迁移或生产环境变量变更。PR head Go/Admin/Security 待验证。
 - 生产部署及真实退款/Telegram 再次获取验收仍需项目所有者执行。
 
-## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 已合并，镜像构建中）
+## 2026-11-21 — PostgreSQL 再次获取租约并发回归（PR #73 已合并并发布）
 
 - PR #73 已 Squash Merge 至 main，merge commit `21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca`。
 - 新增 PostgreSQL 16 集成测试：8 个 worker 并发争抢同一 delivered 订单的再次获取租约时只能有一个成功；活动租约拒绝二次领取，过期租约可恢复。
 - PR head Go #44811797126、Admin #44811797029、Security #44811796942 全部成功。
-- 合并后 main Go #44812154123、Admin #44812154882、Security #44812154255 全部成功；Docker Publish #44812154449 正在运行，镜像 digest 待记录。
+- 合并后 main Go [#44812154123](https://github.com/seanldnet/TG-Card/actions/runs/44812154123)、Admin [#44812154882](https://github.com/seanldnet/TG-Card/actions/runs/44812154882)、Security [#44812154255](https://github.com/seanldnet/TG-Card/actions/runs/44812154255) 与 Docker Publish [#44812154449](https://github.com/seanldnet/TG-Card/actions/runs/44812154449) 全部成功。GHCR 多架构标签 `latest` 与提交标签 `21cfd3ffc88606bc31ceb8c3a0bc3a77002cdbca` 已发布，manifest digest：`sha256:b52df6a6eff3b733f61501436cba25ea81ce083aa35561caca3d5fe586cc54b7`。
 - 仅增加测试与文档，无运行时业务逻辑、数据库迁移或生产配置变化。
 
 ## 2026-11-21 — 已交付 file_card 再次获取防重复发送（PR #72 已合并并发布）
