@@ -59,9 +59,15 @@ func TestLogoutRevokesOnlyCurrentAdminBearerSession(t *testing.T) {
  if !authenticate(tokenB){t.Fatal("logging out one device must not revoke the other active session")}
 }
 
-func TestRetryOrderDeliveryBlocksUncertainExternalSideEffects(t *testing.T) {
- for _, deliveryType := range []string{"invite_link", "file_card"} {
-  t.Run(deliveryType, func(t *testing.T) {
+func TestRetryOrderDeliveryBlocksUnsafeExternalSideEffectRetries(t *testing.T) {
+ cases := []struct{name, deliveryType, status string}{
+  {name:"uncertain invite link", deliveryType:"invite_link", status:"delivery_uncertain"},
+  {name:"uncertain file card", deliveryType:"file_card", status:"delivery_uncertain"},
+  {name:"delivered file card re-delivery", deliveryType:"file_card", status:"delivered"},
+ }
+ for _, tc := range cases {
+  t.Run(tc.name, func(t *testing.T) {
+   deliveryType := tc.deliveryType
    ctx:=context.Background()
    db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
    if err!=nil{t.Fatal(err)}
@@ -87,7 +93,7 @@ func TestRetryOrderDeliveryBlocksUncertainExternalSideEffects(t *testing.T) {
    }
    order,err:=database.CreateOrder(ctx,db,"sqlite","bot-a","user-a","123456",product.ID,time.Minute)
    if err!=nil{t.Fatal(err)}
-   if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='delivery_uncertain' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+   if _,err:=db.ExecContext(ctx,"UPDATE orders SET status=? WHERE id=?",tc.status,order.ID);err!=nil{t.Fatal(err)}
    req:=httptest.NewRequest(http.MethodPost,"/api/orders/"+order.ID+"/retry-delivery",nil)
    req.SetPathValue("id",order.ID)
    req.Header.Set("Authorization","Bearer "+token)
@@ -97,7 +103,7 @@ func TestRetryOrderDeliveryBlocksUncertainExternalSideEffects(t *testing.T) {
    if response.Code!=http.StatusConflict{t.Fatalf("retry should be blocked: status=%d body=%s",response.Code,response.Body.String())}
    saved,err:=database.GetOrderByID(ctx,db,"sqlite",order.ID)
    if err!=nil{t.Fatal(err)}
-   if saved.Status!="delivery_uncertain"{t.Fatalf("blocked retry changed order state to %q",saved.Status)}
+   if saved.Status!=tc.status{t.Fatalf("blocked retry changed order state to %q, want %q",saved.Status,tc.status)}
   })
  }
 }

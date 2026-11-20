@@ -1099,7 +1099,12 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 	}
 
 	if order.Status == "delivered" {
-		if order.DeliveryType == "invite_link" { writeError(w, http.StatusConflict, "一次性邀请链接不能自动重复发放，请人工核实"); return }
+		if order.DeliveryType == "invite_link" || order.DeliveryType == "file_card" {
+			reason := "delivered order re-delivery requires manual verification: " + order.DeliveryType
+			database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.redeliver.blocked", "order:"+orderID, a.clientIP(r), r.UserAgent(), reason)
+			writeError(w, http.StatusConflict, "该商品包含不可安全自动重发的交付步骤，请人工核实后处理")
+			return
+		}
 		claimed, claimErr := database.ClaimOrderRedelivery(r.Context(), a.db, a.driver, orderID, 45*time.Second)
 		if claimErr != nil { log.Printf("claim order re-delivery: order_id=%s error=%v", orderID, claimErr); writeError(w, http.StatusInternalServerError, "Unable to claim order re-delivery"); return }
 		if !claimed { writeError(w, http.StatusConflict, "订单正在重新发送，请稍后再试"); return }
