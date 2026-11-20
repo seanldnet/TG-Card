@@ -159,14 +159,14 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 
 func ListOrders(ctx context.Context, db *sql.DB) ([]OrderListItem, error) {
 	rows, err := db.QueryContext(ctx, `SELECT o.id,o.order_no,o.bot_id,o.telegram_user_id,o.telegram_chat_id,COALESCE(o.product_id,''),o.product_name,o.unit_price_minor,o.quantity,o.amount_minor,o.currency,o.status,o.expires_at,o.created_at,o.updated_at,COALESCE(o.paid_at,''),COALESCE(o.delivered_at,''),o.delivery_attempts,o.delivery_error,o.payment_amount_atomic,COALESCE(o.payment_method,''),COALESCE(o.payment_reference,''),
-	EXISTS(SELECT 1 FROM product_keys k WHERE k.order_id=o.id AND k.status=1)
+	EXISTS(SELECT 1 FROM product_keys k WHERE k.order_id=o.id AND k.status=1),COALESCE(o.delivery_type,'card')
 	FROM orders o ORDER BY o.created_at DESC LIMIT 500`)
 	if err != nil { return nil, err }
 	defer rows.Close()
 	items := make([]OrderListItem,0)
 	for rows.Next() {
 		var item OrderListItem
-		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.StockReserved); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.ProductID,&item.ProductName,&item.UnitPriceMinor,&item.Quantity,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpiresAt,&item.CreatedAt,&item.UpdatedAt,&item.PaidAt,&item.DeliveredAt,&item.DeliveryAttempts,&item.DeliveryError,&item.PaymentAmountAtomic,&item.PaymentMethod,&item.PaymentReference,&item.StockReserved,&item.DeliveryType); err != nil { return nil, err }
 		items = append(items,item)
 	}
 	return items, rows.Err()
