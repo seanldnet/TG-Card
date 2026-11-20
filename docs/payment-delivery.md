@@ -112,3 +112,8 @@ Customer and administrator re-delivery of an already delivered `file_card` order
 ## PostgreSQL re-delivery lease concurrency
 
 Customer/admin re-delivery is protected by a per-order database lease. The PostgreSQL implementation uses an atomic upsert against the unique `order_redelivery_leases.order_id` key; only one concurrent worker should acquire an active lease, and an expired lease may be reclaimed. PR #73 adds PostgreSQL 16 integration coverage for concurrent claimants, active-lease exclusion, and expired-lease recovery. The test does not change the runtime algorithm or schema.
+
+
+## Refund and customer re-delivery mutual exclusion
+
+Refunding an already delivered order must not race with a customer/admin re-delivery request. Both operations serialize on the order row: claiming a re-delivery lease locks the delivered order before writing the lease, and the wallet-refund transaction checks for an unexpired re-delivery lease while holding that same row lock. Refund is rejected while a re-delivery lease is active; after the lease expires, refund may proceed. Once refunded, the order cannot acquire another re-delivery lease. This uses the existing `order_redelivery_leases` table and adds no schema migration.
