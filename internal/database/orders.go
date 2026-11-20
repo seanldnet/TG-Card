@@ -372,7 +372,7 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 	leaseText := now.Add(lease).Format(time.RFC3339Nano)
 	dueExpr := "julianday(delivery_lease_until) <= julianday(" + placeholder(driver, 4) + ")"
 	if driver == "postgres" { dueExpr = "CAST(delivery_lease_until AS TIMESTAMPTZ) <= CAST(" + placeholder(driver, 4) + " AS TIMESTAMPTZ)" }
-	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
+	query := "UPDATE orders SET status='delivering', delivery_lease_until=" + placeholder(driver, 1) + ", updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND (status IN ('paid','delivery_failed','delivery_uncertain') OR (status='delivering' AND (delivery_lease_until IS NULL OR " + dueExpr + ")))"
 	result, err := db.ExecContext(ctx, query, leaseText, nowText, orderID, nowText)
 	if err != nil { return false, err }
 	affected, err := result.RowsAffected()
@@ -382,7 +382,7 @@ func ClaimOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string,
 // GetOrderDelivery recovers a paid card for retry after a process interruption.
 func GetOrderDelivery(ctx context.Context, db *sql.DB, driver, orderID string) (OrderDelivery, error) {
 	var item OrderDelivery
-	query := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(delivery_type,'card'),COALESCE(delivery_config_snapshot,'{}'),COALESCE(delivery_payload_json,'{}'),COALESCE(payment_method,''),COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver, 1) + " AND status IN ('paid','delivering','delivery_failed','delivered')"
+	query := "SELECT id,order_no,bot_id,telegram_user_id,telegram_chat_id,COALESCE(product_id,''),product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,COALESCE(paid_at,''),COALESCE(delivered_at,''),COALESCE(delivery_type,'card'),COALESCE(delivery_config_snapshot,'{}'),COALESCE(delivery_payload_json,'{}'),COALESCE(payment_method,''),COALESCE(payment_reference,'') FROM orders WHERE id=" + placeholder(driver, 1) + " AND status IN ('paid','delivering','delivery_failed','delivery_uncertain','delivered')"
 	err := db.QueryRowContext(ctx, query, orderID).Scan(&item.Order.ID,&item.Order.OrderNo,&item.Order.BotID,&item.Order.TelegramUserID,&item.Order.TelegramChatID,&item.Order.ProductID,&item.Order.ProductName,&item.Order.UnitPriceMinor,&item.Order.Quantity,&item.Order.AmountMinor,&item.Order.Currency,&item.Order.Status,&item.Order.ExpiresAt,&item.Order.CreatedAt,&item.Order.UpdatedAt,&item.Order.PaidAt,&item.Order.DeliveredAt,&item.Order.DeliveryType,&item.Order.DeliveryConfigSnapshot,&item.Order.DeliveryPayloadJSON,&item.PaymentMethod,&item.PaymentReference)
 	if err != nil { return item, err }
 	if item.Order.DeliveryType == "" { item.Order.DeliveryType = "card" }
@@ -428,6 +428,27 @@ func MarkOrderDeliveryFailed(ctx context.Context, db *sql.DB, driver, orderID, r
 	if err!=nil{return err}
 	insert:="INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+",'delivery_failed',"+placeholder(driver,3)+","+placeholder(driver,4)+")"
 	if _,err:=tx.ExecContext(ctx,insert,eventID,orderID,reason,now);err!=nil{return err}
+	return tx.Commit()
+}
+
+// MarkOrderDeliveryUncertain quarantines a delivery whose remote outcome cannot be proven.
+// It is deliberately excluded from automatic retry selection; only an explicit admin retry may resume it.
+func MarkOrderDeliveryUncertain(ctx context.Context, db *sql.DB, driver, orderID, reason string) error {
+	if len(reason) > 1000 { reason = reason[:1000] }
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "UPDATE orders SET status='delivery_uncertain', delivery_attempts=delivery_attempts+1, delivery_error=" + placeholder(driver, 1) + ", delivery_lease_until=NULL, updated_at=" + placeholder(driver, 2) + " WHERE id=" + placeholder(driver, 3) + " AND status IN ('paid','delivering','delivery_failed')"
+	result, err := tx.ExecContext(ctx, query, reason, now, orderID)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return fmt.Errorf("order is not in a deliverable state") }
+	eventID, err := randomID()
+	if err != nil { return err }
+	insert := "INSERT INTO order_delivery_events(id,order_id,event_type,reason,created_at) VALUES(" + placeholder(driver,1) + "," + placeholder(driver,2) + ",'delivery_uncertain'," + placeholder(driver,3) + "," + placeholder(driver,4) + ")"
+	if _, err := tx.ExecContext(ctx, insert, eventID, orderID, reason, now); err != nil { return err }
 	return tx.Commit()
 }
 
