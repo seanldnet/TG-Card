@@ -433,7 +433,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	capConfig, encryptedCapSecret, capErr := loadCapConfiguration(r.Context(), a.db, a.driver)
 	if capErr != nil {
 		log.Printf("load Cap configuration: %v", capErr)
-		_ = database.CreateSystemException(r.Context(), a.db, a.driver, "", "cap_configuration", "error", "admin_login", input.Username, "Cap 人机验证配置读取失败", capErr.Error())
+		_ = database.CreateSystemException(r.Context(), a.db, a.driver, "cap-config:load", "cap_configuration", "error", "admin_login", input.Username, "Cap 人机验证配置读取失败", capErr.Error())
 		writeError(w, http.StatusServiceUnavailable, "人机验证配置暂不可用，请稍后重试")
 		return
 	}
@@ -445,7 +445,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		capSecret, decryptErr := a.secrets.Decrypt(encryptedCapSecret)
 		if decryptErr != nil {
 			log.Printf("decrypt Cap secret: %v", decryptErr)
-			_ = database.CreateSystemException(r.Context(), a.db, a.driver, "", "cap_configuration", "critical", "admin_login", input.Username, "Cap Secret Key 解密失败", "服务端无法解密已保存的 Cap Secret Key")
+			_ = database.CreateSystemException(r.Context(), a.db, a.driver, "cap-config:decrypt", "cap_configuration", "critical", "admin_login", input.Username, "Cap Secret Key 解密失败", "服务端无法解密已保存的 Cap Secret Key")
 			writeError(w, http.StatusServiceUnavailable, "人机验证配置暂不可用，请联系管理员")
 			return
 		}
@@ -454,7 +454,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		if verifyErr != nil {
 			log.Printf("Cap verification rejected login: %v", verifyErr)
-			_ = database.CreateSystemException(r.Context(), a.db, a.driver, "", "cap_verification", "warning", "admin_login", input.Username, "管理员登录 Cap 验证失败", verifyErr.Error())
+			_ = database.CreateSystemException(r.Context(), a.db, a.driver, "cap-verification:"+input.Username, "cap_verification", "warning", "admin_login", input.Username, "管理员登录 Cap 验证失败", verifyErr.Error())
 			writeError(w, http.StatusForbidden, "人机验证失败或已过期，请重新验证")
 			return
 		}
