@@ -1,6 +1,6 @@
-## 2026-11-21 — Cap 自托管人机验证接入（PR 开发中）
+## 2026-11-21 — Cap 自托管人机验证接入（PR #78 已合并）
 
-- 状态：独立分支 `feat/cap-human-verification-pr-p0-1`；PR #78：https://github.com/seanldnet/TG-Card/pull/78。
+- 状态：已 Squash Merge 至 main，merge commit `8981fb887584979450f19b30648225ced113989d`。
 - 影响模块：管理员登录、网站设置、服务端密钥管理、数据库迁移、Docker Compose 运维配置。
 - 变更内容：
   - 新增 Cap 设置：服务域名、Site Key、Secret Key；Secret Key 使用 AES-256-GCM 加密，后台只返回 configured 状态。
@@ -10,8 +10,9 @@
 - 数据库迁移：新增 `0051_system_settings.sql`，兼容 PostgreSQL/SQLite；Cap Secret 密文依赖持久化 `DATA_DIR/bot-token.key`。
 - 配置/部署影响：Cap 服务需启用静态资源并提供 `/assets/widget.js`；浏览器与 app 容器均需访问 Cap HTTPS 域名。紧急 SQL 命令和环境变量重建方式见 `docs/cap-human-verification.md`。
 - 兼容性与已知限制：未配置时默认关闭，不影响现有登录；当前保护管理员登录，其他敏感表单后续复用验证器。拒绝 HTTP、localhost 和私有 IP Cap 目标。
-- 验证：新增 Cap 验证协议、设置存储、登录 fail-closed/紧急绕过与密钥脱敏测试；Go/Admin/Security CI 尚待 PR 创建后运行。
-- 文档：PROJECT_STATUS 文档版本更新至 2.2.34；新增 `docs/cap-human-verification.md`。
+- 验证：PR head Go/Admin/Security 全部成功；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部成功。Docker Publish 正在运行，manifest digest 待发布后补录。
+- 真实 Cap 服务联调尚未执行；CI 通过不代表真实域名上的浏览器挑战与登录验收完成。
+- 文档：PROJECT_STATUS 文档版本更新至 2.2.35；新增 `docs/cap-human-verification.md`。
 
 ## 2026-11-21 — 再次获取期间退款冲突审计与 HTTP 状态（PR #75 已合并并发布）
 
