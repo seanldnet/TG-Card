@@ -1,6 +1,6 @@
 ## 2026-11-21 — Cap 自托管人机验证接入（PR 开发中）
 
-- 状态：独立分支开发中；PR/Commit 待创建。
+- 状态：独立分支 `feat/cap-human-verification-pr-p0-1`；PR #78：https://github.com/seanldnet/TG-Card/pull/78。
 - 影响模块：管理员登录、网站设置、服务端密钥管理、数据库迁移、Docker Compose 运维配置。
 - 变更内容：
   - 新增 Cap 设置：服务域名、Site Key、Secret Key；Secret Key 使用 AES-256-GCM 加密，后台只返回 configured 状态。
