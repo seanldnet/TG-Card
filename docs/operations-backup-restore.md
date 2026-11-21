@@ -47,3 +47,11 @@ The database container remains online while the app is stopped. The script resto
 - A backup is not verified until a restore has been tested against an isolated deployment.
 - The scripts do not stop PostgreSQL during backup; `pg_dump` provides a transactionally consistent database snapshot. The application data volume is archived separately, so schedule backups during a quiet window for the strongest cross-component consistency.
 - The default Compose project volume name is managed by Docker Compose; the scripts access it through the `app` service mount rather than guessing the generated Docker volume name.
+
+## Automated isolated restore verification
+
+The Go backend CI runs `bash scripts/test-backup-restore.sh` on an isolated Docker Compose project with disposable PostgreSQL 16 and application-data volumes. The test calls the same production backup and restore scripts; it does not use the production Compose project, production database, or production Docker volumes.
+
+The test creates a synthetic database row plus representative persistent key files and an upload, creates a backup, mutates/deletes the originals, restores the backup, and asserts that the original database value and files return while post-backup mutations disappear. The test prints the time from restore invocation until the isolated app container is running. This is a test-container startup measurement only, not a production application readiness RTO.
+
+A successful CI test proves the script workflow against the isolated fixture. It does not establish production RPO/RTO, off-host backup integrity, encryption-at-rest, or a real production restore. For production acceptance, record the backup timestamp, restore start/end timestamps, application health, login, Bot/payment/upstream checks, recent order consistency, and the image digest used. RPO depends on the interval and success of backups; RTO must be measured through application readiness and operational smoke tests, not merely container startup.
