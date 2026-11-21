@@ -30,35 +30,44 @@ type gmpayCreateResponse struct {
 
 func (m *Manager) SetGatewayConfig(baseURL,pid,secret,notifyURL string,enabled bool) error {
 	var client *GatewayClient
-	if enabled {
-		if strings.TrimSpace(notifyURL)=="" || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(notifyURL)),"https://") {
-			return errors.New("Epusdt GMPay notify URL must be HTTPS")
-		}
+	configured := strings.TrimSpace(baseURL)!="" && strings.TrimSpace(pid)!="" && strings.TrimSpace(secret)!=""
+	if configured {
 		var err error
 		client,err=NewGatewayClient(baseURL,pid,secret,nil)
 		if err!=nil{return err}
 	}
+	if enabled && (!configured || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(notifyURL)),"https://")) {
+		return errors.New("Epusdt requires configured merchant credentials and an HTTPS notify URL")
+	}
 	m.mu.Lock()
 	m.gateway=client
 	m.gatewayNotifyURL=strings.TrimSpace(notifyURL)
+	m.gatewayEnabled=enabled && client!=nil && m.gatewayNotifyURL!=""
 	m.mu.Unlock()
 	return nil
 }
 
-// SetGMPayEdgeConfig applies the independent GMPay Edge merchant credentials.
+func (m *Manager) GatewayEnabled() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.gatewayEnabled && m.gateway!=nil && m.gatewayNotifyURL!=""
+}
+
 func (m *Manager) SetGMPayEdgeConfig(baseURL, pid, secret, notifyURL string, enabled bool) error {
 	var client *GatewayClient
-	if enabled {
-		if strings.TrimSpace(notifyURL) == "" || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(notifyURL)), "https://") {
-			return errors.New("GMPay Edge notify URL must be HTTPS")
-		}
+	configured := strings.TrimSpace(baseURL)!="" && strings.TrimSpace(pid)!="" && strings.TrimSpace(secret)!=""
+	if configured {
 		var err error
-		client, err = NewGatewayClient(baseURL, pid, secret, nil)
-		if err != nil { return err }
+		client,err=NewGatewayClient(baseURL,pid,secret,nil)
+		if err!=nil{return err}
+	}
+	if enabled && (!configured || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(notifyURL)),"https://")) {
+		return errors.New("GMPay Edge requires configured merchant credentials and an HTTPS notify URL")
 	}
 	m.mu.Lock()
-	m.gmpayEdge = client
-	m.gmpayEdgeNotifyURL = strings.TrimSpace(notifyURL)
+	m.gmpayEdge=client
+	m.gmpayEdgeNotifyURL=strings.TrimSpace(notifyURL)
+	m.gmpayEdgeEnabled=enabled && client!=nil && m.gmpayEdgeNotifyURL!=""
 	m.mu.Unlock()
 	return nil
 }
@@ -66,7 +75,7 @@ func (m *Manager) SetGMPayEdgeConfig(baseURL, pid, secret, notifyURL string, ena
 func (m *Manager) GMPayEdgeEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != ""
+	return m.gmpayEdgeEnabled && m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != ""
 }
 
 func (m *Manager) GatewayEnabled() bool {
