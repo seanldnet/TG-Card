@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"net/mail"
 	"encoding/base64"
 	"os"
@@ -396,6 +397,24 @@ func (a *application) updateRechargeBonusSettings(w http.ResponseWriter,r *http.
  writeSuccess(w,http.StatusOK,saved)
 }
 
+// paymentCallbackBaseURL derives provider callback URLs from the public application origin.
+// Forwarded protocol headers are honored only when the immediate peer is trusted.
+func (a *application) paymentCallbackBaseURL(r *http.Request) (string, error) {
+	proto := "http"
+	if r.TLS != nil { proto = "https" }
+	if peer := requestPeerIP(r); peer != nil && ipInNetworks(peer, a.trustedProxyCIDRs) {
+		forwardedProto := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0])
+		if forwardedProto != "" { proto = strings.ToLower(forwardedProto) }
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" || strings.ContainsAny(host, "/\\\\@?#,\\t\\r\\n") { return "", errors.New("无法确定系统公网域名") }
+	if proto != "https" { return "", errors.New("支付网关回调要求 HTTPS，请检查站点 TLS 或可信反向代理配置") }
+	origin := (&url.URL{Scheme: proto, Host: host}).String()
+	parsed, err := url.ParseRequestURI(origin)
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil { return "", errors.New("系统公网地址无效") }
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
 func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.authenticate(w, r); !ok { return }
 	s, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
@@ -436,9 +455,18 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	input.GMPayPID = strings.TrimSpace(input.GMPayPID)
 	input.GMPaySecret = strings.TrimSpace(input.GMPaySecret)
 	input.GMPayNotifyURL = strings.TrimSpace(input.GMPayNotifyURL)
+	callbackBaseURL, callbackErr := a.paymentCallbackBaseURL(r)
+	if callbackErr != nil && (input.EpusdtEnabled || input.GMPayEnabled) { writeError(w, http.StatusBadRequest, callbackErr.Error()); return }
 	if input.USDTContract == "" { input.USDTContract = tron.MainnetUSDTContract }
 	current, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
 	if err != nil { log.Printf("load existing payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load current payment settings"); return }
+	if callbackErr == nil {
+		input.EpusdtNotifyURL = callbackBaseURL + "/api/payment/epusdt/notify"
+		input.GMPayNotifyURL = callbackBaseURL + "/api/payment/gmpay/notify"
+	} else {
+		input.EpusdtNotifyURL = current.EpusdtNotifyURL
+		input.GMPayNotifyURL = current.GMPayNotifyURL
+	}
 	apiKeyCiphertext := current.TronAPIKeyCiphertext
 	if input.ClearAPIKey { apiKeyCiphertext = "" } else if input.APIKey != "" {
 		apiKeyCiphertext, err = a.secrets.Encrypt(input.APIKey)
@@ -622,7 +650,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Username = strings.TrimSpace(input.Username)
 	if input.Username == "" || input.Password == "" || len(input.Username) > 64 || len(input.Password) > 256 {
-		writeError(w, http.StatusBadRequest, "Username and password are required")
+		writeError(w, http.StatusBadRequest, "请输入用户名和密码")
 		return
 	}
 
@@ -663,7 +691,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	if err != nil || admin.Status != 1 || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.Password)) != nil {
 		a.recordLoginFailure(ip)
 		database.RecordLoginAudit(r.Context(), a.db, a.driver, "", input.Username, ip, r.UserAgent(), false)
-		writeError(w, http.StatusUnauthorized, "Username or password is incorrect")
+		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
 	if admin.TOTPEnabled {
