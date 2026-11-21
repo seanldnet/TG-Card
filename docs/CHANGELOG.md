@@ -1,11 +1,12 @@
-## 2026-11-22 — 后台菜单与支付通道整合及支付测试修正（PR #122 开发中；PROJECT_STATUS 2.2.74）
+## 2026-11-22 — 后台菜单与三支付通道整合（PR #122 已合并并发布；PROJECT_STATUS 2.2.75）
 
-- 分支/PR：`feat/admin-menu-payment-provider-ux` / #122；PR 仍开放，尚未合并或发布。
-- 菜单按仪表盘、运营管理、商品管理、财务管理、系统设置分组；支付设置增加三通道统一开关卡，Epusdt 与 GMPay Edge 凭证独立展示。
-- GMPay Edge 增加独立加密凭证、独立回调入口、签名查单和支付意图 provider 快照；托管通道按已启用 Epusdt/GMPay Edge 轮询。
-- Telegram 商城统一支付选择已接入 TRC20、Epusdt、GMPay Edge 三路轮询；订单支付意图固定 provider，链上监听拒绝与快照通道不一致的转账。
-- 修复 Go CI 暴露的支付测试夹具状态错位：测试必须先原子认领 `reserved` 意图进入 `creating`，再模拟网关响应；GMPay 生命周期测试统一遵循该状态流转。提交：`110444fb633363393d14ef1944f1b34b9be76059`、`4a64d7fa245156717e15b3ea6ec74b9caa9b394e`。
-- 修复提交的 Go CI `44950436477`、Admin CI `44950436480` 尚在运行；Security scan `44950436478` 已通过。未合并、未发布，等待 CI 完成。
+- 分支/PR：`feat/admin-menu-payment-provider-ux` / #122；已 Squash Merge，merge commit `0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`。
+- 后台侧边栏已按仪表盘、运营管理、商品管理、财务管理、系统设置分类；支付设置分别配置内置 TRC20 USDT、GMPay Edge、Epusdt，凭据相互独立。
+- GMPay Edge 支持独立加密凭证、独立回调入口、签名查单和支付意图 provider 快照；新订单按启用通道轮询，支付意图 provider 固定，拒绝跨通道链上付款。
+- Go CI run `44950987871`、Admin CI run `44950987936`、Security Scan run `44950987933`、Docker Publish run `44950987923` 均成功，均对应 main commit `0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`。
+- GHCR 标签：`ghcr.io/seanldnet/tg-card:latest` 和 commit SHA 标签；OCI digest：`sha256:89ba402c59ff45f4667ecd51d273507155fa814ece73e185e670065f0c03c551`。
+- Go CI 首轮发现的测试夹具状态错位已修正：测试显式执行 `reserved → creating` 原子认领后再模拟网关响应；最新 PR head Go/Admin/Security 检查全部成功。
+- 真实商户支付配置、回调可达性和完整交付仍待独立生产验收，不以 CI 或镜像发布代替。
 
 ## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；PROJECT_STATUS 2.2.72）
 
