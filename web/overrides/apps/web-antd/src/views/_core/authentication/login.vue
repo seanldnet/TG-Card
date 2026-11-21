@@ -21,6 +21,8 @@ const capError = ref('');
 const capConfigLoaded = ref(false);
 const capWidgetReady = ref(false);
 const capWidgetNonce = ref(0);
+const totpRequired = ref(false);
+const recoveryMode = ref(false);
 const CAP_WIDGET_VERSION = '0.1.63';
 let capScriptPromise: Promise<void> | undefined;
 
@@ -113,8 +115,36 @@ async function handleLogin(data: Record<string, any>) {
     message.warning(capError.value || '请先完成人机验证');
     return;
   }
+
+  // Only reveal the second-factor field after the username/password pair is
+  // verified. This avoids exposing a permanent TOTP field to accounts that
+  // have not enabled two-factor authentication.
+  let requirement: { enabled: boolean };
   try {
-    await authStore.authLogin({ ...data, ...(capEnabled.value ? { capToken: capToken.value } : {}) } as any);
+    requirement = await requestClient.post<{ enabled: boolean }>('/auth/totp-required', {
+      username: data.username,
+      password: data.password,
+    });
+  } catch {
+    return;
+  }
+  totpRequired.value = requirement.enabled;
+  if (!requirement.enabled) recoveryMode.value = false;
+
+  const secondFactor = recoveryMode.value ? data.totpRecoveryCode : data.totpCode;
+  if (requirement.enabled && !String(secondFactor || '').trim()) {
+    message.info('已开启双重验证，请输入 6 位动态验证码');
+    return;
+  }
+
+  try {
+    await authStore.authLogin({
+      ...data,
+      ...(capEnabled.value ? { capToken: capToken.value } : {}),
+      ...(recoveryMode.value
+        ? { totpCode: undefined, totpRecoveryCode: data.totpRecoveryCode }
+        : { totpRecoveryCode: undefined }),
+    } as any);
   } finally {
     if (capEnabled.value) {
       capToken.value = '';
@@ -140,20 +170,19 @@ const formSchema = computed((): VbenFormSchema[] => [
     label: $t('authentication.password'),
     rules: z.string().min(1, { message: $t('authentication.passwordTip') }),
   },
-  {
-    component: 'VbenInput',
-    componentProps: { placeholder: '已启用双重验证时，输入 6 位动态验证码' },
-    fieldName: 'totpCode',
-    label: '动态验证码（可选）',
-    rules: z.string().optional(),
-  },
-  {
-    component: 'VbenInput',
-    componentProps: { placeholder: '无法使用验证器时，可输入未使用的一次性恢复码' },
-    fieldName: 'totpRecoveryCode',
-    label: '一次性恢复码（备用）',
-    rules: z.string().optional(),
-  },
+  ...(totpRequired.value
+    ? [{
+        component: 'VbenInput',
+        componentProps: {
+          placeholder: recoveryMode.value
+            ? '请输入未使用的一次性恢复码'
+            : '已开启双重验证，请输入 6 位动态验证码',
+        },
+        fieldName: recoveryMode.value ? 'totpRecoveryCode' : 'totpCode',
+        label: recoveryMode.value ? '一次性恢复码' : '动态验证码',
+        rules: z.string().optional(),
+      }]
+    : []),
   ...(capEnabled.value
     ? [{
         component: markRaw(CapWidgetField),
@@ -189,5 +218,14 @@ const formSchema = computed((): VbenFormSchema[] => [
       :show-third-party-login="false"
       @submit="handleLogin"
     />
+    <div v-if="totpRequired" class="mt-3 text-center">
+      <button
+        type="button"
+        class="text-sm text-primary hover:underline"
+        @click="recoveryMode = !recoveryMode"
+      >
+        {{ recoveryMode ? '返回输入动态验证码' : '无法使用验证器？使用一次性恢复码' }}
+      </button>
+    </div>
   </div>
 </template>
