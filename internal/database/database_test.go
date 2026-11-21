@@ -734,3 +734,24 @@ func TestAdminTOTPEnrollmentPersistence(t *testing.T) {
 	if disabled.TOTPEnabled||disabled.TOTPSecretCiphertext!=""||disabled.TOTPPendingSecretCiphertext!=""{t.Fatalf("TOTP secrets were not cleared: %+v",disabled)}
 	if disabled.TokenVersion!=enabled.TokenVersion+1{t.Fatalf("disabling TOTP must revoke existing sessions: enabled version=%d disabled version=%d",enabled.TokenVersion,disabled.TokenVersion)}
 }
+
+
+func TestAdminTOTPRecoveryCodesAreSingleUse(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"recovery-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
+	if err:=SetAdminTOTPPendingSecret(ctx,db,cfg.DBDriver,admin.ID,"encrypted-pending-secret");err!=nil{t.Fatal(err)}
+	codes:=[]string{"JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP","MZXW6YTBOI======MZXW6YTBOI======"}
+	if err:=EnableAdminTOTPWithRecoveryCodes(ctx,db,cfg.DBDriver,admin.ID,codes);err!=nil{t.Fatal(err)}
+	loaded,err:=FindAdminByID(ctx,db,cfg.DBDriver,admin.ID);if err!=nil{t.Fatal(err)}
+	if loaded.TOTPRecoveryCodeHashes==""||loaded.TOTPRecoveryCodeHashes=="[]"{t.Fatal("recovery code hashes were not persisted")}
+	ok,err:=ConsumeAdminTOTPRecoveryCode(ctx,db,cfg.DBDriver,admin.ID,codes[0]);if err!=nil||!ok{t.Fatalf("first use should consume recovery code: ok=%v err=%v",ok,err)}
+	ok,err=ConsumeAdminTOTPRecoveryCode(ctx,db,cfg.DBDriver,admin.ID,codes[0]);if err!=nil||ok{t.Fatalf("recovery code must not be reusable: ok=%v err=%v",ok,err)}
+	ok,err=ConsumeAdminTOTPRecoveryCode(ctx,db,cfg.DBDriver,admin.ID,codes[1]);if err!=nil||!ok{t.Fatalf("second independent code should work: ok=%v err=%v",ok,err)}
+	if err:=DisableAdminTOTP(ctx,db,cfg.DBDriver,admin.ID);err!=nil{t.Fatal(err)}
+	loaded,err=FindAdminByID(ctx,db,cfg.DBDriver,admin.ID);if err!=nil{t.Fatal(err)}
+	if loaded.TOTPRecoveryCodeHashes!="[]"{t.Fatalf("disabling TOTP should clear recovery codes, got %s",loaded.TOTPRecoveryCodeHashes)}
+}
