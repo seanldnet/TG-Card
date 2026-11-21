@@ -27,6 +27,8 @@ const categoryOptions=[
   {value:'refund_ledger',label:'退款账本异常'},
 ];
 const categoryLabel=(v:string)=>categoryOptions.find(x=>x.value===v)?.label||v||'其他';
+const entityTypeLabel=(v:string)=>({order:'订单',admin:'管理员',supplier:'供应商',payment:'支付',wallet:'钱包',telegram_user:'Telegram 用户',admin_login:'管理员登录'} as Record<string,string>)[v]||v;
+const sourceLabel=(v:string)=>v.startsWith('manual-')?'人工记录 · '+v.slice(7):v;
 const severityLabel=(v:string)=>({critical:'严重',error:'错误',warning:'警告',info:'提示'} as Record<string,string>)[v]||v;
 const severityColor=(v:string)=>({critical:'red',error:'orange',warning:'gold',info:'blue'} as Record<string,string>)[v]||'default';
 const statusLabel=(v:string)=>({open:'待处理',processing:'处理中',resolved:'已解决',ignored:'已忽略'} as Record<string,string>)[v]||v;
@@ -86,7 +88,7 @@ onMounted(load);
     <a-table-column title="级别" key="severity" :width="90"><template #default="{record}"><a-tag :color="severityColor(record.severity)">{{severityLabel(record.severity)}}</a-tag></template></a-table-column>
     <a-table-column title="类型" key="category" :width="150"><template #default="{record}">{{categoryLabel(record.category)}}</template></a-table-column>
     <a-table-column title="异常事项" data-index="title" :width="230"/>
-    <a-table-column title="关联对象" key="entity" :width="190"><template #default="{record}">{{record.entityType}} · {{record.entityId}}</template></a-table-column>
+    <a-table-column title="关联对象" key="entity" :width="190"><template #default="{record}">{{entityTypeLabel(record.entityType)}} · {{record.entityId}}</template></a-table-column>
     <a-table-column title="错误详情" data-index="detail" :width="340" :ellipsis="true"/>
     <a-table-column title="状态" key="status" :width="100"><template #default="{record}"><a-tag>{{statusLabel(record.status)}}</a-tag></template></a-table-column>
     <a-table-column title="发生时间" data-index="createdAt" :width="190"/>
@@ -96,7 +98,7 @@ onMounted(load);
   </a-card>
   <a-modal v-model:open="modalOpen" title="处理异常记录" :confirm-loading="saving" @ok="save">
    <template v-if="selected">
-    <div class="mb-3 rounded-lg bg-gray-50 p-3"><div class="font-medium">{{selected.title}}</div><div class="mt-2 whitespace-pre-wrap break-words text-xs text-gray-600">{{selected.detail}}</div><div class="mt-2 text-xs text-gray-400">来源：{{selected.sourceKey}} · 发生时间：{{selected.createdAt}}</div></div>
+    <div class="mb-3 rounded-lg bg-gray-50 p-3"><div class="font-medium">{{selected.title}}</div><div class="mt-2 whitespace-pre-wrap break-words text-xs text-gray-600">{{selected.detail}}</div><div class="mt-2 text-xs text-gray-400">来源：{{sourceLabel(selected.sourceKey)}} · 发生时间：{{selected.createdAt}}</div></div>
     <a-form-item label="处理状态"><a-select v-model:value="nextStatus"><a-select-option value="processing">处理中</a-select-option><a-select-option value="resolved">已解决</a-select-option><a-select-option value="ignored">忽略</a-select-option></a-select></a-form-item>
     <a-form-item label="处理说明"><a-textarea v-model:value="note" :rows="4" :maxlength="2000" show-count placeholder="填写排查结论、处理措施或忽略原因"/></a-form-item>
    </template>

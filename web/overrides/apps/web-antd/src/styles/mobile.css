@@ -220,3 +220,32 @@ body {
     padding-bottom: calc(16px + var(--tg-safe-bottom));
   }
 }
+
+/* TG-Card admin action consistency: keep button sizing uniform across all pages. */
+[data-layout-region='content'] .ant-btn,
+.ant-modal .ant-btn,
+.ant-drawer .ant-btn {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding-inline: 7px !important;
+  font-size: 12px !important;
+  line-height: 22px !important;
+}
+[data-layout-region='content'] .ant-btn-circle,
+[data-layout-region='content'] .ant-btn-icon-only,
+.ant-modal .ant-btn-circle,
+.ant-modal .ant-btn-icon-only,
+.ant-drawer .ant-btn-circle,
+.ant-drawer .ant-btn-icon-only {
+  width: 24px !important;
+  min-width: 24px !important;
+  padding-inline: 0 !important;
+}
+[data-layout-region='content'] .ant-btn-link,
+[data-layout-region='content'] .ant-btn-text,
+.ant-modal .ant-btn-link,
+.ant-modal .ant-btn-text,
+.ant-drawer .ant-btn-link,
+.ant-drawer .ant-btn-text {
+  padding-inline: 4px !important;
+}
