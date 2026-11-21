@@ -6,9 +6,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
+BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_ENCRYPTION_PASSPHRASE:-}"
 case "$BACKUP_KEEP" in ''|*[!0-9]*) echo "BACKUP_KEEP must be a positive integer" >&2; exit 2;; esac
 if [ "$BACKUP_KEEP" -lt 1 ]; then echo "BACKUP_KEEP must be at least 1" >&2; exit 2; fi
-if [ "${#BACKUP_ENCRYPTION_PASSPHRASE:-0}" -lt 32 ]; then
+if [ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 32 ]; then
   echo "BACKUP_ENCRYPTION_PASSPHRASE must be configured with at least 32 characters; refusing plaintext backup" >&2
   exit 2
 fi
