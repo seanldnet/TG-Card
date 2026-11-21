@@ -1,10 +1,10 @@
-## Independent hosted payment providers (in progress)
+## Independent payment providers (implemented; live merchant acceptance tracked separately)
 
 - Epusdt and GMPay Edge are configured as separate merchant endpoints with independent PID, encrypted Secret, HTTPS notify URL, and enable flags. Do not reuse credentials across providers.
 - A local payment intent stores an immutable `provider` value (`epusdt` or `gmpay_edge`). Reopening checkout must resume through that recorded provider; a later settings change must not migrate the existing order.
 - Epusdt status checks use its public `/pay/check-status/{trade_id}` endpoint. GMPay Edge status checks use the authenticated, signed `GET /payments/gmpay/v1/order/query` endpoint with exactly one of `trade_id` or `order_id`.
 - GMPay Edge callbacks are received at `/api/payment/gmpay/notify`, authenticated with the GMPay Edge PID/Secret, and acknowledged with plain-text `ok` only after local processing succeeds.
-- Current implementation stage: Telegram checkout rotates among enabled TRC20, Epusdt, and GMPay Edge methods. The selected provider is stored on the order intent; TRC20 chain scanning rejects a transfer when the order intent belongs to a different provider. CI and runtime validation are still pending.
+- Implemented and released in PR #121/#122: Telegram checkout rotates among enabled TRC20, Epusdt, and GMPay Edge methods. The selected provider is stored on the order intent; TRC20 chain scanning rejects a transfer when the order intent belongs to a different provider. Checkout creation, callback signature verification, status query, atomic order payment confirmation, idempotent settlement, and delivery handoff are implemented. Real merchant collection, public callback reachability, and end-to-end delivery still require acceptance in the target deployment environment.
 ## P0-4 补充 — 不确定交付的手动重试边界
 
 - 普通单步骤交付（卡密、固定文本、上游内容等）进入 `delivery_uncertain` 后，后台不得直接重新发送；必须先人工核实 Telegram 是否已送达，避免同一权益/消息重复发送。
@@ -168,9 +168,9 @@ When a refund is blocked because an active re-delivery lease exists, the support
 
 The GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) are merged. Merchant credentials are managed in the existing administrator payment settings. The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
 
-Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. The next independent payment-lifecycle PR must implement Telegram storefront checkout, provider callback/query verification, atomic order payment confirmation, idempotent settlement, and delivery handoff, with security regression tests. Configuration alone does not mean the channel can accept payments.
+Historical phase boundary (PR #117): migration 0058 originally delivered merchant configuration only; it did not itself provide checkout or settlement. That limitation was subsequently closed by PR #121/#122, which implemented and released the complete checkout/payment lifecycle described below. Configuration alone must still not be treated as proof of successful live merchant collection.
 
-## Epusdt GMPay checkout lifecycle (PR #121 in progress)
+## Epusdt GMPay checkout lifecycle (PR #121/#122 merged and released)
 
 The existing GMPay client and merchant configuration are now wired into the Telegram storefront.
 
