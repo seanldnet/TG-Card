@@ -52,3 +52,23 @@ func TestQueryRequiresExactlyOneIdentity(t *testing.T) {
 		if _, err := client.QueryGMPayOrder(context.Background(), identity); err == nil { t.Fatal("expected identity validation error") }
 	}
 }
+
+func TestEPayOrderCapturesCheckoutRedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/payments/epay/v1/order/create-transaction/submit.php" { t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path) }
+		if err := r.ParseForm(); err != nil { t.Fatal(err) }
+		fields := map[string]string{}
+		for key := range r.Form { fields[key] = r.Form.Get(key) }
+		if fields["money"] != "12.50" || fields["pid"] != "1000" || !VerifyEPay(fields, "secret") { t.Fatalf("invalid EPay payload: %#v", fields) }
+		w.Header().Set("Location", "/pay/checkout-counter/trade-1")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+	client, err := NewGatewayClient(server.URL, "1000", "secret", server.Client())
+	if err != nil { t.Fatal(err) }
+	result, err := client.CreateEPayOrder(context.Background(), map[string]string{"out_trade_no":"ORD-1","money":"12.50","notify_url":"https://merchant.example/notify","type":"usdt.tron"})
+	if err != nil { t.Fatal(err) }
+	var paymentURL string
+	if err := json.Unmarshal(result["payment_url"], &paymentURL); err != nil { t.Fatal(err) }
+	if paymentURL != server.URL+"/pay/checkout-counter/trade-1" { t.Fatalf("unexpected checkout URL: %s", paymentURL) }
+}
