@@ -111,9 +111,9 @@ func (m *Manager) handleUpstreamManualFormInput(ctx context.Context,cfg Config,m
 		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"商品或表单信息已更新，请返回商品页重新开始购买。");return
 	}
 	settings,err:=database.GetUpstreamSettings(ctx,m.db,m.driver)
-	if err!=nil||!settings.Enabled||settings.CatalogStale||settings.CallbackURL==""{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"上游采购暂不可用，请稍后重试。");return}
+	if err!=nil||!settings.Enabled||settings.CatalogStale||settings.CallbackURL==""{_ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,chat,userID);_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"上游采购暂不可用，已取消本次表单，请稍后重新开始购买。");return}
 	order,err:=database.CreateManualUpstreamOrderWithPromotion(ctx,m.db,m.driver,cfg.ID,userID,chat,product.ID,session.PromotionCode,session.FormDataCiphertext,20*time.Minute)
-	if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订单创建失败："+err.Error()+"\n表单暂时保留，请稍后重试或发送 /cancel。");return}
+	if err!=nil{_ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,chat,userID);_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"订单创建失败："+err.Error()+"\n为避免提交过期资料，已清除本次表单，请重新开始购买。");return}
 	_ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,chat,userID)
 	balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,userID)
 	message:="订单已创建！\n订单号："+order.OrderNo+"\n商品："+order.ProductName+"\n数量：1\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
