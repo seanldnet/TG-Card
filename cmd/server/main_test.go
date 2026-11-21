@@ -13,6 +13,8 @@ import (
  "github.com/seanldnet/TG-Card/internal/config"
  "github.com/seanldnet/TG-Card/internal/database"
  "github.com/seanldnet/TG-Card/internal/secret"
+ "github.com/seanldnet/TG-Card/internal/payment"
+ "github.com/seanldnet/TG-Card/internal/telegrambot"
 )
 
 func TestLogoutRevokesOnlyCurrentAdminBearerSession(t *testing.T) {
@@ -224,4 +226,31 @@ func TestLogoutRevokesCurrentAccessSessionWhenBearerIsProvided(t *testing.T) {
 	protectedResp:=httptest.NewRecorder()
 	if _,ok:=app.authenticate(protectedResp,protectedReq);ok{t.Fatal("access session remained active after logout")}
 	if protectedResp.Code!=http.StatusUnauthorized{t.Fatalf("protected request status=%d want 401",protectedResp.Code)}
+}
+
+func TestEpusdtGMPayNotifyRejectsInvalidSignature(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	bots:=telegrambot.NewManager(db,"sqlite",nil,"",false)
+	defer bots.Stop()
+	payments,err:=payment.NewManager(config.Config{},db,"sqlite",bots)
+	if err!=nil{t.Fatal(err)}
+	if err:=payments.SetGatewayConfig("https://gateway.example","1000","merchant-secret","https://merchant.example/api/payment/epusdt/notify",true);err!=nil{t.Fatal(err)}
+	app:=&application{db:db,driver:"sqlite",paymentManager:payments}
+	body:=[]byte(`{"pid":"1000","order_id":"TC-1","trade_id":"TRADE-1","amount":12.50,"status":2,"signature":"00"}`)
+	req:=httptest.NewRequest(http.MethodPost,"/api/payment/epusdt/notify",bytes.NewReader(body))
+	response:=httptest.NewRecorder()
+	app.epusdtGMPayNotify(response,req)
+	if response.Code!=http.StatusUnauthorized{t.Fatalf("invalid signature status=%d body=%s",response.Code,response.Body.String())}
+}
+
+func TestEpusdtGMPayNotifyRejectsMalformedPayload(t *testing.T) {
+	app:=&application{}
+	req:=httptest.NewRequest(http.MethodPost,"/api/payment/epusdt/notify",strings.NewReader("{"))
+	response:=httptest.NewRecorder()
+	app.epusdtGMPayNotify(response,req)
+	if response.Code!=http.StatusBadRequest{t.Fatalf("malformed payload status=%d",response.Code)}
 }
