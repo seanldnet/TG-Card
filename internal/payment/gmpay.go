@@ -97,8 +97,8 @@ func (m *Manager) NextPaymentProviderForOrder(ctx context.Context, order databas
 	m.mu.Lock()
 	providers := make([]string,0,3)
 	if m.chain != nil { providers=append(providers,"trc20") }
-	if m.gateway != nil && m.gatewayNotifyURL != "" { providers=append(providers,"epusdt") }
-	if m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != "" { providers=append(providers,"gmpay_edge") }
+	if m.gatewayEnabled && m.gateway != nil && m.gatewayNotifyURL != "" { providers=append(providers,"epusdt") }
+	if m.gmpayEdgeEnabled && m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != "" { providers=append(providers,"gmpay_edge") }
 	if len(providers)==0 { m.mu.Unlock(); return "",ErrGatewayDisabled }
 	selected := providers[m.checkoutCursor%uint64(len(providers))]
 	m.checkoutCursor++
