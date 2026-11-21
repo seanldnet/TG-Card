@@ -749,7 +749,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 |---|---|---|
 | 健康检查 | GET /api/health | 公开 |
 | 登录/会话 | POST /api/auth/login | 公开；登录有 IP 频率限制 |
-| 登录/会话 | POST /api/auth/logout | 当前处理器公开且仅返回成功，不会在服务端撤销 Token |
+| 登录/会话 | POST /api/auth/logout | 携带当前 Bearer 与 HttpOnly Refresh Cookie；服务端即时撤销当前 Access Session 并撤销对应 Refresh Token family。 |
 | 管理员账户 | POST /api/admin/password | 管理员 Bearer |
 | 管理员资料 | GET /api/user/info、PUT /api/user/profile、POST /api/user/avatar | 管理员 Bearer |
 | 邮箱验证 | GET /api/auth/codes、POST /api/user/email/send-code、POST /api/user/email/verify | 管理员 Bearer |
@@ -1033,14 +1033,14 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 ### 20.1 代码中可确认的控制
 
 - 管理员密码使用 bcrypt；新密码长度要求 12–256 字符。
-- 管理员 Bearer Token 使用 HS256，签发有效期 24 小时；认证检查签名、过期时间、管理员状态和 Token Version。
+- 管理员 Access Token 使用 HS256，当前有效期 15 分钟；Refresh Token 有效期 7 天，通过 HttpOnly、SameSite=Lax Cookie 下发并轮换，数据库仅存 SHA-256 哈希。鉴权检查签名、过期时间、管理员状态、Token Version 与服务端会话登记；登出撤销当前 Access Session 和 Refresh Token family。
 - 登录按经过可信代理校验的客户端 IP 限制尝试频率；敏感写接口另有按 IP + 路由独立滑动窗口限流，超限返回 429：密码修改 5 次/5 分钟；支付人工核对、支付设置和余额调整各 10 次/5 分钟；群发创建、上游采购重试/退款/核实各 5 次/5 分钟。限流状态当前为进程内存储，进程重启会重置；多实例部署需改为共享限流存储。
 - 修改管理员密码会递增 Token Version，使已有会话失效。
 - Bot Token、支付 API Key、SMTP 密码、Cap Secret Key 通过持久化 AES-256-GCM 密钥加密保存；密钥文件创建权限为 0600。
 - JWT Secret 未显式设置时保存在 DATA_DIR/jwt-secret；Bot/支付/SMTP/Cap 加密密钥位于 DATA_DIR/bot-token.key，均依赖持久化数据卷。
 - Docker 镜像以非 root 的 tgcard 用户运行；应用数据目录由镜像构建步骤设置权限。
 - HTTP 响应设置 X-Content-Type-Options、Referrer-Policy 和 X-Frame-Options 安全头。
-- Cap 人机验证（PR #78 开发中）：管理员登录在密码校验前调用 Cap `siteverify`；只有 `success=true` 放行，验证失败/服务不可用 fail-closed。Secret Key 通过 AES-256-GCM 加密存储，读取接口只返回 configured 状态；数据库 `cap_enabled=false` 或 `DISABLE_CAP=true` 可紧急关闭。
+- Cap 人机验证（PR #78/#81 已合并）：管理员登录页通过固定版本 jsDelivr `cap-widget` 加载新版 Cap Widget，服务端调用自托管 Cap `/{site-key}/siteverify`；只有 `success=true` 放行，验证失败/服务不可用 fail-closed。Secret Key 通过 AES-256-GCM 加密存储，读取接口只返回 configured 状态；数据库 `cap_enabled=false` 或 `DISABLE_CAP=true` 可紧急关闭。新版 Cap 不依赖已移除的 Widget files 开关。
 - HTTP Server 设置 ReadHeaderTimeout=5s、IdleTimeout=60s；应用自身未配置 TLS listener。新增需管理员认证的 GET /api/health/detailed，返回数据库、Bot 运行状态、支付监听器、上游同步与迁移版本，不返回凭证、Token 或 DSN。Bot 缺失/断开、Polling 冲突或连续 3 次轮询错误会通知 Owner。
 
 ### 20.2 部署建议与待确认项
@@ -1051,7 +1051,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 限制应用数据目录、备份文件和日志的访问；备份应加密并限制权限。
 - 当前普通管理员 API 主要采用统一 Bearer 认证；支付人工补单额外要求 super。敏感写接口限流覆盖管理员密码修改、支付人工核对、支付设置、余额调整、群发创建、上游采购重试/退款/核实。可信代理仅通过 TRUSTED_PROXY_CIDRS 显式 CIDR 白名单启用；未列入白名单的来源一律忽略 XFF/X-Real-IP。细粒度 RBAC、CSRF/CORS 专项策略仍待单独评估。
 - PR #53 已实现服务端会话撤销：数据库仅保存 Token SHA-256 摘要，每个 JWT 有独立 JTI；登出撤销当前设备 Token，密码修改通过 TokenVersion 撤销全部旧会话。旧未登记 Token 在迁移后失效，管理员需重新登录。
-- Cap 人机验证开发中：新增键值设置表 0051，后台密钥加密存储；登录接口服务端验证 Cap token；数据库 SQL 开关和 DISABLE_CAP 环境变量均可紧急禁用。详见 docs/cap-human-verification.md。
+- Cap 人机验证已由 PR #78/#81 合并：新增键值设置表 0051，后台密钥加密存储；登录接口服务端验证 Cap token；新版 Widget 从固定版本 CDN 加载；数据库 SQL 开关和 DISABLE_CAP 环境变量均可紧急禁用。详见 docs/cap-human-verification.md。
 - PR S #57 已合并，merge commit `41389825d6edef83330c4e28c7b5662e23f932a7`；main Go CI #44603593840、Admin CI #44603593868、Security #44603593955 与 Docker Publish #44603594008 全部成功。GHCR 多架构 latest digest：`sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署及 Compose 备份/恢复实操演练尚未完成。
 
 ## 21. 本次核对的代码位置
