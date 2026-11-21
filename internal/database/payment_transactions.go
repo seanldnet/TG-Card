@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/tron"
@@ -138,15 +139,18 @@ func ReconcileTRC20Transfer(ctx context.Context, db *sql.DB, driver, transaction
 		if orderStatus != "pending_payment" && orderStatus != "expired" {
 			return fmt.Errorf("订单状态不允许补单：%s", orderStatus)
 		}
+		expiry, expiryErr := time.Parse(time.RFC3339Nano, expiresAt)
+		latePayment := orderStatus == "expired" || (expiryErr == nil && !now.Before(expiry))
+		if latePayment && strings.TrimSpace(note) == "" {
+			return fmt.Errorf("过期订单补单必须填写人工核对依据")
+		}
 		var keyID string
 		keyQuery := "SELECT id FROM product_keys WHERE order_id=" + placeholder(driver,1) + " AND status=1 LIMIT 1"
 		if driver == "postgres" { keyQuery += " FOR UPDATE" }
 		keyErr := tx.QueryRowContext(ctx, keyQuery, orderID).Scan(&keyID)
 		if keyErr != nil && keyErr != sql.ErrNoRows { return keyErr }
 		if keyErr == sql.ErrNoRows {
-			expiry, parseErr := time.Parse(time.RFC3339Nano, expiresAt)
-			late := orderStatus == "expired" || (parseErr == nil && !now.Before(expiry))
-			if !late { return fmt.Errorf("订单预留库存不存在，拒绝自动补发") }
+			if !latePayment { return fmt.Errorf("订单预留库存不存在，拒绝自动补发") }
 			if productID == "" { return fmt.Errorf("订单商品已不存在，无法重新分配库存") }
 			stockQuery := "SELECT id FROM product_keys WHERE product_id=" + placeholder(driver,1) + " AND status=0 ORDER BY created_at,id LIMIT 1"
 			if driver == "postgres" { stockQuery += " FOR UPDATE SKIP LOCKED" }
