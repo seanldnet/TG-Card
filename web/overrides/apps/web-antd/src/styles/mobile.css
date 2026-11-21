@@ -225,11 +225,11 @@ body {
 [data-layout-region='content'] .ant-btn,
 .ant-modal .ant-btn,
 .ant-drawer .ant-btn {
-  height: 30px !important;
-  min-height: 30px !important;
-  padding-inline: 10px !important;
-  font-size: 13px !important;
-  line-height: 28px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding-inline: 7px !important;
+  font-size: 12px !important;
+  line-height: 22px !important;
 }
 [data-layout-region='content'] .ant-btn-circle,
 [data-layout-region='content'] .ant-btn-icon-only,
@@ -237,8 +237,8 @@ body {
 .ant-modal .ant-btn-icon-only,
 .ant-drawer .ant-btn-circle,
 .ant-drawer .ant-btn-icon-only {
-  width: 30px !important;
-  min-width: 30px !important;
+  width: 24px !important;
+  min-width: 24px !important;
   padding-inline: 0 !important;
 }
 [data-layout-region='content'] .ant-btn-link,
@@ -247,5 +247,5 @@ body {
 .ant-modal .ant-btn-text,
 .ant-drawer .ant-btn-link,
 .ant-drawer .ant-btn-text {
-  padding-inline: 6px !important;
+  padding-inline: 4px !important;
 }
