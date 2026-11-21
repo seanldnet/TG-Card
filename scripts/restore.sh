@@ -26,16 +26,12 @@ backup_crypt() {
   if [ -n "${BACKUP_CRYPT_BIN:-}" ]; then
     BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_ENCRYPTION_PASSPHRASE" "$BACKUP_CRYPT_BIN" "$action" "$input" "$output"
   else
-    docker compose run --rm --no-deps -T -v "$tmp_dir:/backup" -e BACKUP_ENCRYPTION_PASSPHRASE --entrypoint /app/backup-crypt app \
+    docker compose run --rm --no-deps -T -v "$tmp_dir:/backup" --entrypoint /app/backup-crypt app \
       "$action" "/backup/$(basename "$input")" "/backup/$(basename "$output")"
   fi
 }
 
 if [ -f "$BACKUP_DIR/postgres.dump.age" ] && [ -f "$BACKUP_DIR/tg_card_data.tar.gz.age" ]; then
-  if [ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 32 ]; then
-    echo "BACKUP_ENCRYPTION_PASSPHRASE must be configured to decrypt this backup" >&2
-    exit 2
-  fi
   echo "Encrypted age backup detected; decrypting into a private temporary directory..."
   cp -- "$BACKUP_DIR/postgres.dump.age" "$tmp_dir/"
   cp -- "$BACKUP_DIR/tg_card_data.tar.gz.age" "$tmp_dir/"
