@@ -19,10 +19,12 @@ func TestEpusdtPaymentIntentAndCallbackEventsAreIdempotent(t *testing.T) {
 	order,err:=CreateOrder(ctx,db,"sqlite","gmpay-test-bot","buyer-1","chat-1",product.ID,20*time.Minute)
 	if err!=nil{t.Fatal(err)}
 
-	first,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
+	first,created,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
 	if err!=nil{t.Fatal(err)}
-	second,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
+	if !created{t.Fatal("first intent must be newly created")}
+	second,created,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
 	if err!=nil{t.Fatal(err)}
+	if created{t.Fatal("second intent must reuse the existing local intent")}
 	if first.ID!=second.ID||first.AmountMinor!=order.AmountMinor||first.Status!="creating"{t.Fatalf("intent not idempotent: first=%+v second=%+v",first,second)}
 
 	if err:=UpdateEpusdtPaymentOrder(ctx,db,"sqlite",order.ID,"trade-123","https://checkout.example/pay/123",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
@@ -56,7 +58,7 @@ func TestCreateEpusdtPaymentIntentRejectsCancelledOrder(t *testing.T) {
 	order,err:=CreateOrder(ctx,db,"sqlite","gmpay-test-bot","buyer-2","chat-2",product.ID,time.Minute)
 	if err!=nil{t.Fatal(err)}
 	if err:=ClosePendingOrder(ctx,db,"sqlite",order.OrderNo);err!=nil{t.Fatal(err)}
-	if _,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID);err==nil{t.Fatal("cancelled order must not create a provider payment intent")}
+	if _,_,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID);err==nil{t.Fatal("cancelled order must not create a provider payment intent")}
 }
 
 func TestPaymentSettingsPersistEpusdtNotifyURL(t *testing.T) {
