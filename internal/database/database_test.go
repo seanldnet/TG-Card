@@ -65,7 +65,7 @@ func TestBotRegistryCRUD(t *testing.T) {
 	items, err := ListBots(ctx, db)
 	if err != nil { t.Fatal(err) }
 	if len(items) != 1 || items[0].TokenCiphertext != "encrypted-token" { t.Fatalf("unexpected list: %+v", items) }
-	if err := UpdateBot(ctx, db, cfg.DBDriver, created.ID, "Updated Shop", "Updated welcome", 0); err != nil { t.Fatal(err) }
+	if err := UpdateBot(ctx, db, cfg.DBDriver, admin.ID, "Updated Shop", "Updated welcome", 0); err != nil { t.Fatal(err) }
 	items, err = ListBots(ctx, db)
 	if err != nil { t.Fatal(err) }
 	if items[0].Name != "Updated Shop" || items[0].Status != 0 { t.Fatalf("update not applied: %+v", items[0]) }
@@ -721,6 +721,7 @@ func TestAdminTOTPEnrollmentPersistence(t *testing.T) {
 	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
 	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
 	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"totp-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
 	if err:=SetAdminTOTPPendingSecret(ctx,db,cfg.DBDriver,created.ID,"encrypted-pending-secret");err!=nil{t.Fatal(err)}
 	pending,err:=FindAdminByID(ctx,db,cfg.DBDriver,created.ID);if err!=nil{t.Fatal(err)}
 	if pending.TOTPEnabled||pending.TOTPPendingSecretCiphertext!="encrypted-pending-secret"{t.Fatalf("pending TOTP state not persisted: %+v",pending)}
