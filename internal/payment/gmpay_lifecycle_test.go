@@ -52,7 +52,7 @@ func TestParseMinorIsExactAndRejectsExcessPrecision(t *testing.T){
 func TestDecodeGMPayCallbackPreservesJSONNumbers(t *testing.T){
 	fields,err:=DecodeGMPayCallback([]byte(`{"pid":"1000","amount":12.50,"status":2,"actual_amount":12.3456}`))
 	if err!=nil{t.Fatal(err)}
-	if fields["amount"]!="12.5"||fields["status"]!="2"||fields["actual_amount"]!="12.3456"{t.Fatalf("numeric callback values changed: %#v",fields)}
+	if fields["amount"]!="12.50"||fields["status"]!="2"||fields["actual_amount"]!="12.3456"{t.Fatalf("numeric callback values changed: %#v",fields)}
 }
 
 func TestGMPayCallbackRejectsWrongSignatureAndAmountMismatch(t *testing.T){
