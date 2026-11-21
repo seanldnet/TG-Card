@@ -115,10 +115,11 @@ func TestAdminLoginRequiresValidTOTPWhenEnabled(t *testing.T) {
 	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"});if err!=nil{t.Fatal(err)};defer db.Close()
 	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
 	created,err:=database.EnsureAdmin(ctx,db,"sqlite","totp-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	admin,err:=database.FindAdminByUsername(ctx,db,"sqlite",created.Username);if err!=nil{t.Fatal(err)}
 	secretValue,err:=auth.GenerateTOTPSecret();if err!=nil{t.Fatal(err)}
 	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
 	ciphertext,err:=secrets.Encrypt(secretValue);if err!=nil{t.Fatal(err)}
-	if err:=database.SetAdminTOTPPendingSecret(ctx,db,"sqlite",created.ID,ciphertext);err!=nil{t.Fatal(err)}
+	if err:=database.SetAdminTOTPPendingSecret(ctx,db,"sqlite",admin.ID,ciphertext);err!=nil{t.Fatal(err)}
 	if err:=database.EnableAdminTOTP(ctx,db,"sqlite",created.ID);err!=nil{t.Fatal(err)}
 	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
 	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
