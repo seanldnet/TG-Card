@@ -610,7 +610,7 @@ func (a *application) refresh(w http.ResponseWriter,r *http.Request){
 	if err!=nil{writeJSON(w,http.StatusInternalServerError,map[string]any{"data":"","status":http.StatusInternalServerError});return}
 	newRefresh,err:=auth.GenerateRefreshToken()
 	if err!=nil{writeJSON(w,http.StatusInternalServerError,map[string]any{"data":"","status":http.StatusInternalServerError});return}
-	if err:=database.RotateAdminRefreshSession(r.Context(),a.db,a.driver,oldHash,adminTokenHash(newRefresh),adminTokenHash(accessToken),now.Add(accessLifetime),now.Add(refreshLifetime),now);err!=nil{
+	if _,err:=database.RotateAdminRefreshSession(r.Context(),a.db,a.driver,oldHash,adminTokenHash(newRefresh),adminTokenHash(accessToken),now.Add(accessLifetime),now.Add(refreshLifetime),now);err!=nil{
 		if err==database.ErrAdminRefreshTokenReplay{
 			database.RecordAdminAudit(r.Context(),a.db,a.driver,admin.ID,"auth.refresh.replay","admin:"+admin.Username,a.clientIP(r),r.UserAgent(),"refresh token reuse detected; entire token family revoked")
 			_ = database.CreateSystemException(r.Context(),a.db,a.driver,"admin-refresh-replay:"+session.FamilyID,"admin_refresh","critical","admin",admin.ID,"管理员刷新令牌重放","检测到已轮换的 refresh token 被再次使用，已撤销整个会话族")
