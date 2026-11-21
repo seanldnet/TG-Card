@@ -17,6 +17,12 @@ func smtpPortUsesImplicitTLS(port int) bool { return port == 465 }
 // sendSMTPMessage supports implicit TLS (normally port 465) and STARTTLS
 // (normally port 587). When requireTLS is true, plaintext SMTP is never used.
 func sendSMTPMessage(ctx context.Context, host string, port int, username, password, from string, recipients []string, message []byte, requireTLS bool) error {
+	return sendSMTPMessageWithTLSConfig(ctx, host, port, username, password, from, recipients, message, requireTLS, nil)
+}
+
+// sendSMTPMessageWithTLSConfig keeps production TLS verification enabled while allowing
+// tests to trust an ephemeral local certificate without changing global root CAs.
+func sendSMTPMessageWithTLSConfig(ctx context.Context, host string, port int, username, password, from string, recipients []string, message []byte, requireTLS bool, baseTLSConfig *tls.Config) error {
 	host = strings.TrimSpace(host)
 	if host == "" || port < 1 || port > 65535 {
 		return errors.New("SMTP 主机或端口无效")
@@ -31,10 +37,7 @@ func sendSMTPMessage(ctx context.Context, host string, port int, username, passw
 	var err error
 	implicitTLS := smtpPortUsesImplicitTLS(port)
 	if implicitTLS {
-		tlsDialer := &tls.Dialer{NetDialer: &dialer, Config: &tls.Config{
-			ServerName: host,
-			MinVersion: tls.VersionTLS12,
-		}}
+		tlsDialer := &tls.Dialer{NetDialer: &dialer, Config: smtpTLSConfig(host, baseTLSConfig)}
 		conn, err = tlsDialer.DialContext(ctx, "tcp", address)
 	} else {
 		conn, err = dialer.DialContext(ctx, "tcp", address)
@@ -54,7 +57,7 @@ func sendSMTPMessage(ctx context.Context, host string, port int, username, passw
 	encrypted := implicitTLS
 	if !implicitTLS {
 		if ok, _ := client.Extension("STARTTLS"); ok {
-			if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+			if err := client.StartTLS(smtpTLSConfig(host, baseTLSConfig)); err != nil {
 				return fmt.Errorf("SMTP STARTTLS 握手失败：%w", err)
 			}
 			encrypted = true
@@ -94,4 +97,16 @@ func sendSMTPMessage(ctx context.Context, host string, port int, username, passw
 		return fmt.Errorf("SMTP 服务器未接受邮件：%w", err)
 	}
 	return nil
+}
+
+func smtpTLSConfig(host string, base *tls.Config) *tls.Config {
+	config := &tls.Config{}
+	if base != nil {
+		config = base.Clone()
+	}
+	config.ServerName = host
+	if config.MinVersion == 0 {
+		config.MinVersion = tls.VersionTLS12
+	}
+	return config
 }
