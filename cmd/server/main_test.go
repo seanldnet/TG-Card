@@ -174,3 +174,26 @@ func TestAdminLoginIssuesShortAccessAndRotatingRefreshCookie(t *testing.T) {
 	followResp:=httptest.NewRecorder();app.refresh(followResp,followReq)
 	if followResp.Code!=http.StatusUnauthorized{t.Fatalf("successor refresh should be revoked after replay, status=%d",followResp.Code)}
 }
+
+
+func TestLogoutRevokesRefreshCookieFamilyWithoutBearerHeader(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"});if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	if _,err:=database.EnsureAdmin(ctx,db,"sqlite","logout-refresh-admin","a-strong-test-password");err!=nil{t.Fatal(err)}
+	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
+	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
+	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
+	body,_:=json.Marshal(loginRequest{Username:"logout-refresh-admin",Password:"a-strong-test-password"})
+	loginReq:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body))
+	loginResp:=httptest.NewRecorder();app.login(loginResp,loginReq)
+	if loginResp.Code!=http.StatusOK{t.Fatalf("login status=%d body=%s",loginResp.Code,loginResp.Body.String())}
+	cookies:=loginResp.Result().Cookies();if len(cookies)==0{t.Fatal("login did not set refresh cookie")}
+	logoutReq:=httptest.NewRequest(http.MethodPost,"/api/auth/logout",nil);logoutReq.AddCookie(cookies[0])
+	logoutResp:=httptest.NewRecorder();app.logout(logoutResp,logoutReq)
+	if logoutResp.Code!=http.StatusOK{t.Fatalf("logout status=%d body=%s",logoutResp.Code,logoutResp.Body.String())}
+	cleared:=logoutResp.Result().Cookies();if len(cleared)==0||cleared[0].MaxAge>=0{t.Fatal("logout must clear refresh cookie")}
+	refreshReq:=httptest.NewRequest(http.MethodPost,"/api/auth/refresh",nil);refreshReq.AddCookie(cookies[0])
+	refreshResp:=httptest.NewRecorder();app.refresh(refreshResp,refreshReq)
+	if refreshResp.Code!=http.StatusUnauthorized{t.Fatalf("refresh after logout status=%d want 401",refreshResp.Code)}
+}
