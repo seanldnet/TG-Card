@@ -143,7 +143,7 @@ mkdir -p "$LEGACY_BACKUP"
 (cd "$LEGACY_BACKUP" && sha256sum postgres.dump tg_card_data.tar.gz > SHA256SUMS)
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE orders SET status='refunded' WHERE id='order-1';"
 bash scripts/restore.sh "$LEGACY_BACKUP" --yes
-ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\\r')"
+ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\r')"
 test "$ORDER_STATUS" = "paid"
 
 RESTORE_FINISHED="$(date +%s)"
