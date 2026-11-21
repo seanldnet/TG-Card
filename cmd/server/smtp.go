@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+func smtpPortUsesImplicitTLS(port int) bool { return port == 465 }
+
 // sendSMTPMessage supports implicit TLS (normally port 465) and STARTTLS
 // (normally port 587). When requireTLS is true, plaintext SMTP is never used.
 func sendSMTPMessage(ctx context.Context, host string, port int, username, password, from string, recipients []string, message []byte, requireTLS bool) error {
@@ -27,7 +29,7 @@ func sendSMTPMessage(ctx context.Context, host string, port int, username, passw
 	dialer := net.Dialer{Timeout: 15 * time.Second}
 	var conn net.Conn
 	var err error
-	implicitTLS := port == 465
+	implicitTLS := smtpPortUsesImplicitTLS(port)
 	if implicitTLS {
 		conn, err = tls.DialWithDialer(&dialer, "tcp", address, &tls.Config{
 			ServerName: host,
