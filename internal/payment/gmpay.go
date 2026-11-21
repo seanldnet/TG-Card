@@ -78,6 +78,33 @@ func (m *Manager) GatewayEnabled() bool {
 // CreateGMPayCheckout reserves exactly one provider create attempt for each
 // local order. Epusdt order_id values cannot be reused; ambiguous timeouts are
 // quarantined instead of blindly creating a second provider transaction.
+// NextPaymentProviderForOrder chooses among every currently enabled channel.
+// A previously reserved intent always wins, preserving its provider after config changes.
+func (m *Manager) NextPaymentProviderForOrder(ctx context.Context, order database.Order) (string,error) {
+	if order.ID == "" || order.OrderNo == "" { return "", errors.New("order ID and number are required") }
+	if intent, err := database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo); err == nil {
+		return intent.Provider,nil
+	} else if !errors.Is(err,sql.ErrNoRows) { return "",err }
+	m.mu.Lock()
+	providers := make([]string,0,3)
+	if m.chain != nil { providers=append(providers,"trc20") }
+	if m.gateway != nil && m.gatewayNotifyURL != "" { providers=append(providers,"epusdt") }
+	if m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != "" { providers=append(providers,"gmpay_edge") }
+	if len(providers)==0 { m.mu.Unlock(); return "",ErrGatewayDisabled }
+	selected := providers[m.checkoutCursor%uint64(len(providers))]
+	m.checkoutCursor++
+	m.mu.Unlock()
+	if selected=="trc20" {
+		if _,_,err:=database.CreatePaymentIntentForProvider(ctx,m.db,m.driver,order.ID,"trc20");err!=nil{return "",err}
+	}
+	return selected,nil
+}
+
+func (m *Manager) CreateHostedCheckoutForProvider(ctx context.Context, order database.Order, provider string) (string,error) {
+	if provider!="epusdt" && provider!="gmpay_edge" { return "",fmt.Errorf("unsupported hosted payment provider %q",provider) }
+	return m.createGMPayCheckoutForProvider(ctx,order,provider)
+}
+
 func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order) (string,error) {
 	return m.createGMPayCheckoutForProvider(ctx, order, "epusdt")
 }
