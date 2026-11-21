@@ -1,22 +1,14 @@
-## 2026-11-22 — 上游 manual 商品单件自助购买（开发中；文档版本 2.2.81）
+## 2026-11-22 — PR #129 manual 商品买家自助购买已合并并发布（文档版本 2.2.82）
 
-- 独立分支：`feat/upstream-manual-buyer-checkout`，基于 PR #128 合并后的 main。
-- 已实现初版：买家在 Telegram 商品详情发起 manual 表单；字段按上游 schema 动态采集；会话数据使用现有 AES-GCM Secret Manager 加密并持久化，20 分钟过期，支持 /cancel 与重启后继续填写。
-- 订单新增加密表单快照；采购 worker 只在履约类型为 manual 时解密并向 Dujiao-Next 传入 `manual_form_data`，auto 订单禁止携带该字段；缺失/解密失败时阻止采购提交。
-- 目前仅单件直购，不接入购物车；优惠码暂不进入 manual 购买流程。仍需补齐数据库/采购/Telegram 测试、格式化与 CI，完成前不得视为已上线。
-- 表单数据不写入订单列表、普通日志或 Owner 通知；订单快照仅存密文。CI、镜像构建与生产验收均待后续结果确认。
-
-## 当前状态摘要（2026-11-22；文档版本 2.2.81）
-
-- main 当前基线：`dfbf12ac744cd15f15b88ff08646d812a5163a44`（PR #127 合并提交）。
-- PR #125「每日 PostgreSQL 备份失败自动重试」已合并；失败后 30 分钟冷却重试，成功后才记录当日完成。PR head 与合并后 main 的 Go/Admin/Security CI、Docker Publish 均成功。生产恢复演练仍单独验收。
-- PR #127「TRC20 过期订单人工补单审计约束」已合并；过期订单人工关联链上交易必须填写核对依据，空备注会在事务内拒绝，交易保持未匹配且订单/库存不变。
-- PR #127 合并后 main 工作流：Go CI run `44954684292`、Admin CI run `44954684197`、Security Scan run `44954684146`、Docker Publish run `44954684139`，全部 success。
-- PR #127 镜像构建使用 GHCR `latest` 与 commit SHA 标签；当前已确认构建推送成功，OCI digest 尚未从构建元数据中独立提取，不在此虚报 digest。
-- Telegram 交付：已有租约并发控制、`delivery_uncertain` 隔离、自动扫描排除不确定状态；普通单步骤不确定交付不得直接重发。`file_card` 只有在分步骤结果都经人工核实为 succeeded/failed 后，才可恢复失败步骤。Telegram 不提供业务幂等键，不能承诺 exactly-once。
-- 六项优化进度：支付资金安全（PR #127 已补强，仍需审计剩余风险）；备份恢复（PR #125 已合并，生产恢复演练待执行）；Telegram 交付可靠性（既有状态机已实现，继续校准说明与边界）；manual 商品买家自助购买正在独立分支实现；后台异常中心体验、安全与运行监控继续按阶段推进。
-- 项目范围保持单站点、单运营者；不引入多租户、多商户隔离、代理/分销体系或复杂 RBAC。多个上游供应商不构成多租户。
-- 本次 manual 商品自助购买工作位于独立分支 `feat/upstream-manual-buyer-checkout`；已新增加密订单表单快照与可过期的持久化表单会话迁移，尚未完成 CI/合并/发布。
+- PR #129：`feat: support single-item upstream manual fulfillment checkout`，独立分支 `feat/upstream-manual-buyer-checkout`，已 Squash Merge；merge commit：`8a55d5959bb30bbec03006e0121298dc51c6294f`。
+- 已实现 Telegram 买家端 manual SKU 动态表单、私聊填写、20 分钟持久化会话、`/cancel`、机器人重启后恢复；最终表单快照使用 AES-GCM 密文保存。
+- 付款后仅 manual 履约订单解密并向 Dujiao-Next 传入 `manual_form_data`；缺失/解密失败/格式错误时阻止采购提交。auto 采购和本地商品购物车流程保持不变。
+- 当前范围仅单件直购；manual 商品暂不支持购物车与优惠码。未进行真实商户联调，不将 mock/CI 结果表述为真实交易验收。
+- PR head `22f96e8b621c3665559d9955d7d14a049ad5a9eb` 的 Go CI run `44956376650`、Admin CI run `44956376682`、Security Scan run `44956376611` 全部 success。
+- 合并后 main commit `8a55d5959bb30bbec03006e0121298dc51c6294f` 的 Go CI run `44956658630`、Admin CI run `44956658628`、Security Scan run `44956658547`、Docker Publish run `44956658620` 全部 success。
+- GHCR 已推送：`ghcr.io/seanldnet/tg-card:latest` 与 commit SHA 标签 `ghcr.io/seanldnet/tg-card:8a55d5959bb30bbec03006e0121298dc51c6294f`。OCI manifest digest：`sha256:a1e26577afb22d7d285b4d69dfc7f61d235eb26c70a26122cee29dbaa4e47c02`。
+- 代码合并、CI 和镜像发布已完成；生产部署、数据库迁移执行及真实 Telegram 买家购买验收仍需在目标环境单独确认，不视为已完成。
+- main 当前基线：`8a55d5959bb30bbec03006e0121298dc51c6294f`。项目范围仍为单站点、单运营者，不引入多租户、多商户隔离或复杂 RBAC。
 
 ## 2026-11-22 — main 状态校准（PR #125/#127 已合并；文档版本 2.2.80）
 

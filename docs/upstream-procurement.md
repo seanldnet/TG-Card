@@ -1,3 +1,11 @@
+## 2026-11-22 — PR #129 manual 商品买家单件自助购买（已合并并发布；PROJECT_STATUS 2.2.82）
+
+- PR #129 已 Squash Merge，merge commit `8a55d5959bb30bbec03006e0121298dc51c6294f`；新增 Telegram 买家动态表单采集，manual 表单只允许私聊填写，支持 20 分钟会话过期、`/cancel` 与机器人重启后恢复。
+- 表单会话及订单最终表单快照均以 AES-GCM 密文持久化；采购 worker 仅对 manual 履约订单解密并转发 Dujiao-Next `manual_form_data`。数据缺失、解密失败或 JSON 格式异常时 fail closed，阻止采购提交。
+- auto 履约不携带 `manual_form_data`，既有 auto 采购与本地商品购物车流程不变。
+- 当前只开放单件直购；manual 商品暂不支持购物车和优惠码。未进行真实商户联调，生产环境仍需单独验收数据库迁移与 Telegram 实际购买流程。
+- 合并后 Go/Admin/Security/Docker Publish 均成功；GHCR OCI digest：`sha256:a1e26577afb22d7d285b4d69dfc7f61d235eb26c70a26122cee29dbaa4e47c02`。
+
 ## P0-4 补充 — uncertain 采购人工核实后台入口
 
 - 上游采购人工处理队列对 `uncertain` 状态只展示“核实受理状态”，不再展示直接重试或退款按钮。
@@ -129,9 +137,9 @@
 
 ## 8. 当前限制与阶段边界
 
-- manual 商品单件自助购买正在独立分支 `feat/upstream-manual-buyer-checkout` 开发：Telegram 买家动态填写上游 schema 字段，会话与最终订单表单数据均以 AES-GCM 密文持久化；付款后采购 worker 解密并向上游传入 `manual_form_data`。
+- manual 商品单件自助购买已由 PR #129 合并并发布：Telegram 买家动态填写上游 schema 字段，私聊会话与最终订单表单数据均以 AES-GCM 密文持久化；付款后仅 manual 订单向上游传入 `manual_form_data`。
 - 当前仅支持单件直购，不接入购物车；优惠码暂不支持 manual 商品。auto 商品继续沿用原采购流程。
-- 本功能尚未通过 CI、合并或发布；部署前需完成数据库迁移与完整回归。
+- PR #129 的 Go/Admin/Security CI 与合并后 main 的 Go/Admin/Security/Docker Publish 均已通过，镜像 digest 见本文顶部；生产迁移执行与真实 Telegram 买家购买流程仍待目标环境验收。
 - PR C 使用 mock/fake API，不需要真实商户凭证。
 - PR D（PR #38）已实现进一步供应商资金安全、扣款/余额一致性与异常保护，并已合并发布；项目所有者于 2026-11-22 确认 Dujiao-Next 正常对接完成，不再要求额外 PR E 真实商户联调。
 - PR #38 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。Dujiao-Next 正常对接已由项目所有者确认完成；不再将 PR E 真实商户联调列为项目待办。
