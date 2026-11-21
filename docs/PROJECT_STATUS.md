@@ -12,7 +12,7 @@
 - 补充真实协议交互测试：本地 SMTP 服务端公告 STARTTLS，完成 TLS 握手后才允许 AUTH，随后验证 MAIL/RCPT/DATA 成功并由服务端接受邮件正文。
 - 新增可注入 TLS 配置的内部测试 seam；生产入口仍使用系统根证书信任库、主机名校验和 TLS 1.2 最低版本，不改变生产信任策略。
 - 现有“启用 TLS 时拒绝明文服务器”和 465/587 模式选择测试保留。
-- 无数据库迁移、无新增环境变量或后台配置；真实 yeah.net/QQ 投递仍需部署后实发验收。
+- 无数据库迁移、无新增环境变量或后台配置；真实 yeah.net/QQ 投递已由项目所有者确认测试通过（2026-11-22）。
 - PR #111 head Go Backend CI run `44910235265`、Admin Frontend CI run `44910235218`、Security Scan run `44910235251` 全部成功；合并后 main Go Backend CI run `44910477815`、Admin Frontend CI run `44910477812`、Security Scan run `44910477833`、Docker Publish run `44910477861` 全部成功。GHCR OCI manifest digest：`sha256:0ce229136794ce1ba60c981f07f635fd700c3a39c77b6784e3fe5e99de13ad26`。
 
 ## 2026-11-21 — SMTP TLS 发送修复（PR #107 已合并并发布）
@@ -22,7 +22,7 @@
 - 修复：新增统一 SMTP 发送器；465 使用隐式 TLS，其他支持 STARTTLS 的端口先协商 STARTTLS；启用 TLS 时服务器不提供加密能力则拒绝发送；SMTP 账号认证不允许走明文连接。三类邮件均复用该实现。
 - 后台增加网易 `yeah.net` / `163.com`、QQ SMTP 主机、完整邮箱用户名和 SMTP 授权码提示。网易官方帮助资料确认 yeah.net 使用 `smtp.yeah.net`，推荐 465/SSL，且需开启客户端协议并使用授权码。参考：网易邮箱官方帮助中心（https://help.mail.163.com/）
 - PR head Go Backend CI run `44892658871`、Admin Frontend CI run `44892658856`、Security Scan run `44892658941` 全部成功。合并后 main Go Backend CI run `44907751568`、Admin Frontend CI run `44907751716`、Security Scan run `44907751683`、Docker Publish run `44907751675` 全部成功；GHCR 镜像 manifest digest：`sha256:b8c84ea9241472750b6301e8f66cf3ead4aeb59862bc208bd620dad0173f9c1f`。
-- 新增 SMTP TLS 行为测试；无数据库迁移、无新增环境变量。真实网易/QQ 邮箱验证码投递仍需部署后实发验收。
+- 新增 SMTP TLS 行为测试；无数据库迁移、无新增环境变量。真实网易/QQ 邮箱验证码投递已由项目所有者确认测试通过（2026-11-22）。
 - 文档版本：2.2.62。
 
 ## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（PR #105 已合并并发布）
@@ -32,7 +32,7 @@
 - 恢复码通过单独的“无法使用验证器？使用一次性恢复码”入口切换同一个输入框，不再与动态验证码同时占用页面空间；登录接口仍负责最终验证与一次性消费。
 - Cap widget 使用官方支持的 CSS 自定义属性，将高度从默认约 58px 调整为 30px，并同步缩小内边距、间距和复选框；保持全宽，与账号/密码输入框左右对齐。
 - 新增 TOTP 登录预检接口及后端测试；无数据库迁移、无新增环境变量。Cap 验证流程和 fail-closed 行为不变。
-- 验证：PR head Go Backend CI run `44891533105`、Admin Frontend CI run `44891533058`、Security Scan run `44891533023` 全部成功；合并后 main Go Backend CI run `44891739024`、Admin Frontend CI run `44891739045`、Security Scan run `44891739012`、Docker Publish run `44891738972` 全部成功；镜像 digest `sha256:bf5a1ba71e51cfd9318e3feada105c3f741d90bb4d6bb52bd854d7f5968e71a3`。真实手机浏览器视觉验收待执行。
+- 验证：PR head Go Backend CI run `44891533105`、Admin Frontend CI run `44891533058`、Security Scan run `44891533023` 全部成功；合并后 main Go Backend CI run `44891739024`、Admin Frontend CI run `44891739045`、Security Scan run `44891739012`、Docker Publish run `44891738972` 全部成功；镜像 digest `sha256:bf5a1ba71e51cfd9318e3feada105c3f741d90bb4d6bb52bd854d7f5968e71a3`。真实手机浏览器视觉验收已由项目所有者确认通过（2026-11-22）。
 - 文档版本：2.2.62。
 
 ## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 已合并；原 PR #77 已关闭并由 PR #104 替代）
@@ -396,8 +396,8 @@
 > **文档元信息**
 > - 最后更新时间：2026-11-22
 > - 文档版本：2.2.67
-> - 源码核对基线：`main@7175ad7153d885394b47bdecacc2eb7ab4eff4f1`；PR #111 SMTP STARTTLS 成功路径测试已合并并发布
-> - 本次文档更新：记录 PR #111 合并与镜像 digest；将已由所有者验收的 CDN/PC 布局项目从待办清单中移出；版本更新至 2.2.66
+> - 源码核对基线：`main@7aae4a4aea18284ba188a4e2b6bc838f000cca0b`；PR #112 文档基线校准已合并
+> - 本次文档更新：记录项目所有者确认的 Telegram、售后、SMTP 与移动端测试验收结果；版本更新至 2.2.67
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
