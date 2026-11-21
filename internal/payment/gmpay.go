@@ -116,7 +116,7 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
 		return "",errors.New("Epusdt response is missing or mismatches order_id, trade_id or payment_url; duplicate create blocked")
 	}
-	if data.Status!=1 {
+	if data.Status!=1 && data.Status!=2 {
 		state:="create_uncertain"
 		if data.Status==3{state="expired"}
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,state,"")
@@ -137,6 +137,11 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
 		m.bots.Notify("risk_alert","GMPay 支付单已在网关创建，但本地保存支付凭据失败。订单："+order.OrderNo+"\n交易："+data.TradeID+"\n请人工核对，禁止重复创建。","")
 		return "",fmt.Errorf("persist Epusdt trade after provider creation: %w",err)
+	}
+	if data.Status==2 {
+		status,queryErr:=m.CheckGMPayPayment(ctx,order.ID)
+		if queryErr!=nil{return "",queryErr}
+		if status=="paid"{return "",errors.New("order payment has already been confirmed")}
 	}
 	return data.PaymentURL,nil
 }
