@@ -5,6 +5,18 @@ These scripts back up and restore both persistent data components used by the Co
 - PostgreSQL database `tgcard` (custom-format `pg_dump` archive).
 - Docker volume mounted at `/app/data` in the application container (`tg_card_data`), including the JWT signing key, encryption key and uploaded files.
 
+## Encryption secret setup
+
+Set the same externally managed secret on the deployment host in the uncommitted `.env` file before creating new backups:
+
+```dotenv
+BACKUP_ENCRYPTION_PASSPHRASE=replace-with-at-least-32-random-characters
+```
+
+Generate a high-entropy value (for example, `openssl rand -base64 48`) and store it in a password manager or separate secrets vault. **Do not store it in `/app/data`, the database, this repository, or inside the backup being encrypted.** Loss of this passphrase makes encrypted backups unrecoverable. Keep old passphrases until every backup encrypted with them has expired. Compose passes the value to the app container; recreate the app container after changing it.
+
+If the variable is missing or shorter than 32 non-whitespace characters, scheduled backup and the local backup script fail closed rather than creating or delivering a plaintext backup. The scheduled retry mechanism continues to notify the Owner and retry after its normal cooldown.
+
 ## Create a backup
 
 Run from the directory containing `docker-compose.yml`:
