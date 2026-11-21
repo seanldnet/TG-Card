@@ -220,3 +220,24 @@ body {
     padding-bottom: calc(16px + var(--tg-safe-bottom));
   }
 }
+
+/* TG-Card admin action consistency: keep button sizing uniform across all pages. */
+.ant-btn,
+.ant-btn-sm,
+.ant-btn-lg {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding-inline: 10px !important;
+  font-size: 13px !important;
+  line-height: 28px !important;
+}
+.ant-btn-circle,
+.ant-btn-icon-only {
+  width: 30px !important;
+  min-width: 30px !important;
+  padding-inline: 0 !important;
+}
+.ant-btn-link,
+.ant-btn-text {
+  padding-inline: 6px !important;
+}
