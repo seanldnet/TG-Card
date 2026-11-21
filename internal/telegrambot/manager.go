@@ -171,6 +171,19 @@ func (m *Manager) Notify(event, details, userChatID string) {
  if notifier != nil { notifier(event, details, userChatID) }
 }
 
+func (m *Manager) notifyDeliveryUncertainOnce(ctx context.Context, order database.Order, reason string) {
+	// A lost Telegram response can mean the customer received the delivery.
+	// Notify the owner once per order, never on every lease/retry cycle.
+	claimed, err := database.ClaimFinanceExceptionAlert(ctx, m.db, m.driver, "delivery-uncertain:"+order.ID, "once")
+	if err != nil {
+		log.Printf("claim delivery uncertainty alert failed: order_id=%s error=%v", order.ID, err)
+		return
+	}
+	if !claimed { return }
+	details := "订单交付结果不确定，已暂停自动重复发送。\n订单号：" + order.OrderNo + "\n原因：" + reason + "\n请先核实 Telegram 消息是否已送达，再在后台处理异常订单。"
+	m.Notify("risk_alert", details, "")
+}
+
 func (m *Manager) Reconcile(configs []Config) {
 	m.startExpiryLoop()
 	m.mu.Lock()
@@ -1696,7 +1709,13 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	}
 	if deliveryErr != nil {
 		if item.Order.Status != "delivered" {
-			if deliveryAttempted { if err := database.UpdateOrderDeliveryUncertainError(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()); err != nil { log.Printf("update uncertain Telegram delivery error failed: order_id=%s error=%v", item.Order.ID, err) } } else { _ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) }
+			if deliveryAttempted {
+				if err := database.UpdateOrderDeliveryUncertainError(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()); err != nil {
+					log.Printf("update uncertain Telegram delivery error failed: order_id=%s error=%v", item.Order.ID, err)
+				} else {
+					m.notifyDeliveryUncertainOnce(ctx,item.Order,deliveryErr.Error())
+				}
+			} else { _ = database.MarkOrderDeliveryFailed(ctx,m.db,m.driver,item.Order.ID,deliveryErr.Error()) }
 		}
 		return fmt.Errorf("send paid order delivery: %w",deliveryErr)
 	}
