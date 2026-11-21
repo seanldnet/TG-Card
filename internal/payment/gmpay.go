@@ -44,6 +44,30 @@ func (m *Manager) SetGatewayConfig(baseURL,pid,secret,notifyURL string,enabled b
 	return nil
 }
 
+// SetGMPayEdgeConfig applies the independent GMPay Edge merchant credentials.
+func (m *Manager) SetGMPayEdgeConfig(baseURL, pid, secret, notifyURL string, enabled bool) error {
+	var client *GatewayClient
+	if enabled {
+		if strings.TrimSpace(notifyURL) == "" || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(notifyURL)), "https://") {
+			return errors.New("GMPay Edge notify URL must be HTTPS")
+		}
+		var err error
+		client, err = NewGatewayClient(baseURL, pid, secret, nil)
+		if err != nil { return err }
+	}
+	m.mu.Lock()
+	m.gmpayEdge = client
+	m.gmpayEdgeNotifyURL = strings.TrimSpace(notifyURL)
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) GMPayEdgeEnabled() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != ""
+}
+
 func (m *Manager) GatewayEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
