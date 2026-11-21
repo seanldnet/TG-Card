@@ -126,7 +126,7 @@ onMounted(load);
       <div class="mb-3 text-sm font-semibold">Cap 人机验证</div>
       
       <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
-       <div class="pr-4"><div class="text-sm font-medium">启用登录人机验证</div><div class="mt-1 text-xs text-gray-500">关闭后不再要求登录验证；服务器 DISABLE_CAP=true 可作为紧急总开关。</div></div>
+       <div class="pr-4"><div class="text-sm font-medium">启用登录人机验证</div></div>
        <a-switch v-model:checked="form.capEnabled" />
       </div>
       <a-form layout="vertical">
@@ -134,7 +134,7 @@ onMounted(load);
        <a-form-item label="Site Key"><a-input v-model:value="form.capSiteKey" autocomplete="off" /></a-form-item>
        <a-form-item label="Secret Key">
         <a-input-password v-model:value="form.capSecret" autocomplete="new-password" :placeholder="capSecretConfigured?'已加密保存，留空保持不变':'请输入 Cap Secret Key'" />
-        <div class="mt-1 text-xs text-gray-500">Secret Key 使用服务端密钥加密后保存在 PostgreSQL；读取时不会返回明文。</div>
+        
        </a-form-item>
       </a-form>
       
