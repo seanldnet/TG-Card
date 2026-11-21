@@ -1,3 +1,9 @@
+## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
+
+- 修复 Vben Admin 默认登出请求未携带 Authorization Bearer 的问题；现在同时发送 Bearer 与 HttpOnly Refresh Cookie。
+- 登出后服务端撤销当前 access session 和整个 refresh token family；新增 HTTP 回归测试验证旧 access token 立即失效。
+- 无数据库迁移、无新增环境变量；PROJECT_STATUS 文档版本更新至 2.2.53。CI 待验证。
+
 ## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（开发中）
 
 - Access Token 有效期缩短至 15 分钟；7 天 Refresh Token 使用 HttpOnly、SameSite=Lax Cookie。
