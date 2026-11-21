@@ -8,11 +8,18 @@ import (
 )
 
 func main() {
+	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
+	if len(os.Args) == 2 && os.Args[1] == "validate" {
+		if err := backupcrypto.ValidatePassphrase(passphrase); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) != 4 {
-		fmt.Fprintln(os.Stderr, "usage: backup-crypt <encrypt|decrypt> <input> <output>")
+		fmt.Fprintln(os.Stderr, "usage: backup-crypt validate | <encrypt|decrypt> <input> <output>")
 		os.Exit(2)
 	}
-	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
 	var err error
 	switch os.Args[1] {
 	case "encrypt":
