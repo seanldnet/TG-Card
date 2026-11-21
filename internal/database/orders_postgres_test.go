@@ -312,7 +312,7 @@ func TestPostgresAdminTOTPRecoveryCodeIsSingleUse(t *testing.T) {
 	defer func(){_,_=db.ExecContext(context.Background(),"DELETE FROM admins WHERE id=$1",adminID)}()
 	if err:=SetAdminTOTPPendingSecret(ctx,db,"postgres",adminID,"encrypted-test-secret");err!=nil{t.Fatal(err)}
 	code:="JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
-	if err:=EnableAdminTOTPWithRecoveryCodes(ctx,db,"postgres",adminID,[]string{code});err!=nil{t.Fatal(err)}
+	if err:=EnableAdminTOTPWithRecoveryCodes(ctx,db,"postgres",adminID,[]string{code,"MZXW6YTBOI======","KRSXG5DSNFXGOIDB","ONSWG4TFOQ======","IFBEGRCFIZDUQ==="});err!=nil{t.Fatal(err)}
 	consumed,err:=ConsumeAdminTOTPRecoveryCode(ctx,db,"postgres",adminID,code);if err!=nil||!consumed{t.Fatalf("first recovery code use: consumed=%v err=%v",consumed,err)}
 	consumed,err=ConsumeAdminTOTPRecoveryCode(ctx,db,"postgres",adminID,code);if err!=nil||consumed{t.Fatalf("second recovery code use must fail: consumed=%v err=%v",consumed,err)}
 }
