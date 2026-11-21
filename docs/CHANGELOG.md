@@ -12,7 +12,7 @@
 
 - 状态：独立分支 `test/isolated-backup-restore-p1`，基于 PR #100 合并后的 main。
 - 影响模块：Compose 备份脚本、恢复脚本、PostgreSQL 数据、应用持久化密钥与上传文件、Go CI。
-- 变更内容：新增隔离 Docker Compose 集成测试，调用正式 `scripts/backup.sh` 与 `scripts/restore.sh`；创建合成数据库记录、JWT/加密密钥文件和上传文件，备份后模拟数据库篡改、文件丢失/污染，再恢复并断言原数据完整且新增污染数据消失。
+- 变更内容：新增隔离 Docker Compose 集成测试，调用正式 `scripts/backup.sh` 与 `scripts/restore.sh`；创建合成分类、商品、库存卡密、订单及站点设置记录，以及 JWT/加密密钥文件和上传文件；备份后模拟订单状态污染、库存行丢失、设置变更、密钥损坏和上传文件丢失，再恢复并断言所有状态回到备份值。
 - 数据库迁移：无生产 schema 迁移；测试使用临时 PostgreSQL 16 容器和独立命名卷。
 - 配置/部署影响：无生产环境变量；CI runner 需要 Docker Compose。
 - 兼容性与已知限制：本测试 RTO 只衡量隔离测试容器恢复到 running 的耗时，不代表生产应用就绪 RTO；生产 RPO/RTO 需按实际备份频率和业务验收单独测量。
