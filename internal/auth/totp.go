@@ -76,15 +76,3 @@ func HashTOTPRecoveryCode(code string)string{
 	sum:=sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(sum[:])
 }
-
-
-func GenerateTOTPRecoveryCodes(count int)([]string,error){
-	if count<5||count>20{return nil,fmt.Errorf("recovery code count must be between 5 and 20")}
-	codes:=make([]string,0,count)
-	for i:=0;i<count;i++{
-		raw:=make([]byte,16)
-		if _,err:=rand.Read(raw);err!=nil{return nil,fmt.Errorf("generate TOTP recovery code: %w",err)}
-		codes=append(codes,base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw))
-	}
-	return codes,nil
-}
