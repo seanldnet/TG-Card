@@ -42,6 +42,13 @@ func signedCallback(order database.Order,tradeID,amount string)map[string]string
 	return fields
 }
 
+func TestValidateGMPayCheckoutURLRequiresHTTPS(t *testing.T) {
+	for _,value:=range []string{"javascript:alert(1)","http://checkout.example/pay","//checkout.example/pay","https://user:pass@checkout.example/pay","not a url"} {
+		if err:=validateGMPayCheckoutURL(value);err==nil{t.Errorf("unsafe cashier URL accepted: %q",value)}
+	}
+	if err:=validateGMPayCheckoutURL("https://checkout.example/pay?id=123");err!=nil{t.Fatalf("valid HTTPS cashier URL rejected: %v",err)}
+}
+
 func TestParseMinorIsExactAndRejectsExcessPrecision(t *testing.T){
 	for input,want:=range map[string]int64{"0.01":1,"12.5":1250,"100":10000,"001.09":109}{
 		got,err:=parseMinor(input);if err!=nil||got!=want{t.Fatalf("parseMinor(%q)=%d,%v want %d",input,got,err,want)}
