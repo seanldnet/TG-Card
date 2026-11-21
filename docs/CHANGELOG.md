@@ -1,9 +1,17 @@
-## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（开发中）
+## 2026-11-21 — SMTP TLS 发送修复（PR #107 已合并并发布）
 
-- 状态：基于 main@354f73499ce23cafee598e8ec66683e196993ee2 建立独立分支 `fix/login-totp-conditional-cap-compact`。
-- 变更：凭据验证通过后再确认账户 TOTP 状态；未启用不显示二次验证输入框，启用后只显示一个动态验证码输入框；恢复码通过切换入口复用该输入框。
-- Cap：通过官方 CSS 变量将 widget 高度缩至 30px，并缩小内边距、间距和复选框，保持全宽对齐。
-- 测试与发布：新增后端预检测试；Go/Admin/Security CI 待验证；无数据库迁移、无新增环境变量；合并后镜像 digest 待核验。
+- 根因：站点配置中的 `SMTPUseTLS` 未应用到测试邮件、管理员邮箱验证码和业务通知的 SMTP 发送路径。
+- 修复：统一 SMTP 客户端；465 隐式 TLS、支持 STARTTLS 的端口先协商加密；启用 TLS 但服务器不支持加密时 fail closed；禁止 SMTP 凭据通过明文连接认证。
+- 后台补充网易 yeah.net/163 与 QQ SMTP 地址、完整邮箱账号及授权码说明。
+- PR head Go/Admin/Security CI 全部成功；合并后 main Go/Admin/Security/Docker Publish 全部成功，GHCR manifest digest：`sha256:b8c84ea9241472750b6301e8f66cf3ead4aeb59862bc208bd620dad0173f9c1f`。
+- 无数据库迁移、无新增环境变量；真实邮箱投递验收待部署后执行。PROJECT_STATUS 文档版本更新至 2.2.62。
+
+## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（PR #105 已合并并发布）
+
+- PR #105 已 Squash Merge，merge commit `84ead9a94505c1c0b9a9240b0748d9472dfdf048`。
+- 登录按账户 TOTP 状态条件显示二次验证字段；恢复码复用同一输入框；Cap widget 高度缩至 30px 并保持全宽对齐。
+- PR head Go/Admin/Security CI 与合并后 main Go/Admin/Security/Docker Publish 全部成功；GHCR manifest digest：`sha256:bf5a1ba71e51cfd9318e3feada105c3f741d90bb4d6bb52bd854d7f5968e71a3`。
+- 真实手机浏览器视觉验收仍待执行。
 
 ## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 开发中；原 PR #77 已关闭并由本 PR 替代）
 

@@ -1,12 +1,22 @@
-## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（PR 开发中）
+## 2026-11-21 — SMTP TLS 发送修复（PR #107 已合并并发布）
 
-- 基线：main commit `354f73499ce23cafee598e8ec66683e196993ee2`；独立分支 `fix/login-totp-conditional-cap-compact`。
+- 基线：main commit `84ead9a94505c1c0b9a9240b0748d9472dfdf048`；PR #107 已 Squash Merge，merge commit `ae6ff579b23ca8ebba71e535d4302acb8c6d666c`。
+- 根因：站点设置保存了 `SMTPUseTLS`，但测试邮件、管理员邮箱验证码和业务邮件通知三条路径都没有读取该设置，仍直接调用旧 `smtp.SendMail`。
+- 修复：新增统一 SMTP 发送器；465 使用隐式 TLS，其他支持 STARTTLS 的端口先协商 STARTTLS；启用 TLS 时服务器不提供加密能力则拒绝发送；SMTP 账号认证不允许走明文连接。三类邮件均复用该实现。
+- 后台增加网易 `yeah.net` / `163.com`、QQ SMTP 主机、完整邮箱用户名和 SMTP 授权码提示。网易官方帮助资料确认 yeah.net 使用 `smtp.yeah.net`，推荐 465/SSL，且需开启客户端协议并使用授权码。参考：网易邮箱官方帮助中心（https://help.mail.163.com/）
+- PR head Go Backend CI run `44892658871`、Admin Frontend CI run `44892658856`、Security Scan run `44892658941` 全部成功。合并后 main Go Backend CI run `44907751568`、Admin Frontend CI run `44907751716`、Security Scan run `44907751683`、Docker Publish run `44907751675` 全部成功；GHCR 镜像 manifest digest：`sha256:b8c84ea9241472750b6301e8f66cf3ead4aeb59862bc208bd620dad0173f9c1f`。
+- 新增 SMTP TLS 行为测试；无数据库迁移、无新增环境变量。真实网易/QQ 邮箱验证码投递仍需部署后实发验收。
+- 文档版本：2.2.62。
+
+## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（PR #105 已合并并发布）
+
+- 基线：main commit `354f73499ce23cafee598e8ec66683e196993ee2`；PR #105 已 Squash Merge，merge commit `84ead9a94505c1c0b9a9240b0748d9472dfdf048`。
 - 登录页不再默认显示动态验证码和恢复码字段。用户先提交用户名/密码，服务端仅在凭据正确后返回该账户是否启用了 TOTP；未启用时不显示二次验证字段，已启用时只显示一个字段，默认提示“已开启双重验证，请输入 6 位动态验证码”。
 - 恢复码通过单独的“无法使用验证器？使用一次性恢复码”入口切换同一个输入框，不再与动态验证码同时占用页面空间；登录接口仍负责最终验证与一次性消费。
 - Cap widget 使用官方支持的 CSS 自定义属性，将高度从默认约 58px 调整为 30px，并同步缩小内边距、间距和复选框；保持全宽，与账号/密码输入框左右对齐。
 - 新增 TOTP 登录预检接口及后端测试；无数据库迁移、无新增环境变量。Cap 验证流程和 fail-closed 行为不变。
-- 验证：Go Backend CI、Admin Frontend CI、安全扫描待 PR 检查；移动浏览器视觉验收待执行。
-- 文档版本：2.2.60。
+- 验证：PR head Go Backend CI run `44891533105`、Admin Frontend CI run `44891533058`、Security Scan run `44891533023` 全部成功；合并后 main Go Backend CI run `44891739024`、Admin Frontend CI run `44891739045`、Security Scan run `44891739012`、Docker Publish run `44891738972` 全部成功；镜像 digest `sha256:bf5a1ba71e51cfd9318e3feada105c3f741d90bb4d6bb52bd854d7f5968e71a3`。真实手机浏览器视觉验收待执行。
+- 文档版本：2.2.62。
 
 ## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 已合并；原 PR #77 已关闭并由 PR #104 替代）
 
