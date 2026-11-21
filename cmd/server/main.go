@@ -226,6 +226,7 @@ func main() {
 	api.HandleFunc("GET /api/dashboard/metrics", app.dashboardMetrics)
 	api.HandleFunc("GET /api/auth/cap-config", app.getCapConfig)
 	api.HandleFunc("POST /api/auth/login", app.login)
+	api.HandleFunc("POST /api/auth/refresh", app.sensitiveRateLimit("admin-refresh", 30, 5*time.Minute, app.refresh))
 	api.HandleFunc("POST /api/auth/logout", app.logout)
 	api.HandleFunc("POST /api/admin/password", app.sensitiveRateLimit("admin-password", 5, 5*time.Minute, app.changePassword))
 	api.HandleFunc("GET /api/admin/security/totp/status", app.adminTOTPStatus)
@@ -432,6 +433,8 @@ func (a *application) getCapConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
 	ip := a.clientIP(r)
 	if !a.allowLoginAttempt(ip) { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
 	var input loginRequest
@@ -511,19 +514,33 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	now:=time.Now()
+	accessLifetime:=15*time.Minute
+	refreshLifetime:=7*24*time.Hour
 	token, err := a.tokens.Issue(auth.Claims{
 		AdminID: admin.ID, Username: admin.Username, RealName: admin.RealName, Role: admin.Role, TokenVersion: admin.TokenVersion,
-	}, 24*time.Hour)
+	}, accessLifetime)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Unable to create login session")
 		return
 	}
-	tokenHash := adminTokenHash(token)
-	if err := database.CreateAdminTokenSession(r.Context(), a.db, a.driver, admin.ID, tokenHash, time.Now().Add(24*time.Hour)); err != nil {
-		log.Printf("persist administrator token session: %v", err)
-		writeError(w, http.StatusInternalServerError, "Unable to persist login session")
+	refreshToken,err:=auth.GenerateRefreshToken()
+	if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to create refresh session");return}
+	familyID,err:=auth.GenerateRefreshToken()
+	if err!=nil{writeError(w,http.StatusInternalServerError,"Unable to create refresh session");return}
+	tokenHash:=adminTokenHash(token)
+	if err:=database.CreateAdminTokenSession(r.Context(),a.db,a.driver,admin.ID,tokenHash,now.Add(accessLifetime));err!=nil{
+		log.Printf("persist administrator access session: %v",err)
+		writeError(w,http.StatusInternalServerError,"Unable to persist login session")
 		return
 	}
+	if err:=database.CreateAdminRefreshSession(r.Context(),a.db,a.driver,admin.ID,admin.TokenVersion,adminTokenHash(refreshToken),familyID,now.Add(refreshLifetime));err!=nil{
+		_ = database.RevokeAdminTokenSession(r.Context(),a.db,a.driver,admin.ID,tokenHash)
+		log.Printf("persist administrator refresh session: %v",err)
+		writeError(w,http.StatusInternalServerError,"Unable to persist refresh session")
+		return
+	}
+	setAdminRefreshCookie(w,r,refreshToken,refreshLifetime)
 	if err := database.UpdateLastLogin(r.Context(), a.db, a.driver, admin.ID); err != nil {
 		log.Printf("update administrator last login: %v", err)
 	}
@@ -544,17 +561,70 @@ func (a *application) allowLoginAttempt(ip string) bool {
 func (a *application) recordLoginFailure(ip string){a.loginMu.Lock();defer a.loginMu.Unlock();if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)};a.loginFailures[ip]=append(a.loginFailures[ip],time.Now())}
 func (a *application) clearLoginFailures(ip string){a.loginMu.Lock();delete(a.loginFailures,ip);a.loginMu.Unlock()}
 
-func (a *application) logout(w http.ResponseWriter, r *http.Request) {
-	claims, ok := a.authenticate(w, r)
-	if !ok { return }
-	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-	if err := database.RevokeAdminTokenSession(r.Context(), a.db, a.driver, claims.AdminID, adminTokenHash(token)); err != nil {
-		log.Printf("revoke administrator token session: %v", err)
-		writeError(w, http.StatusInternalServerError, "Unable to revoke login session")
-		return
+func (a *application) logout(w http.ResponseWriter,r *http.Request){
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
+	if cookie,err:=r.Cookie(adminRefreshCookieName);err==nil&&cookie.Value!=""{
+		if err:=database.RevokeAdminRefreshFamilyByTokenHash(r.Context(),a.db,a.driver,adminTokenHash(cookie.Value));err!=nil{
+			log.Printf("revoke administrator refresh family: %v",err)
+			writeError(w,http.StatusInternalServerError,"Unable to revoke refresh session")
+			return
+		}
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "auth.logout", "admin:"+claims.Username, a.clientIP(r), r.UserAgent(), "current bearer session revoked")
-	writeSuccess(w, http.StatusOK, "")
+	bearer:=strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "))
+	if bearer!=""{
+		if claims,err:=a.tokens.Verify(bearer);err==nil{
+			if err:=database.RevokeAdminTokenSession(r.Context(),a.db,a.driver,claims.AdminID,adminTokenHash(bearer));err!=nil{
+				log.Printf("revoke administrator access session: %v",err)
+				writeError(w,http.StatusInternalServerError,"Unable to revoke access session")
+				return
+			}
+			database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"auth.logout","admin:"+claims.Username,a.clientIP(r),r.UserAgent(),"refresh token family and current access session revoked")
+		}
+	}
+	clearAdminRefreshCookie(w,r)
+	writeSuccess(w,http.StatusOK,"")
+}
+
+
+const adminRefreshCookieName="tgcard_refresh"
+
+func setAdminRefreshCookie(w http.ResponseWriter,r *http.Request,value string,lifetime time.Duration){
+	secure:=r.TLS!=nil||strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")),"https")
+	http.SetCookie(w,&http.Cookie{Name:adminRefreshCookieName,Value:value,Path:"/api/auth",HttpOnly:true,Secure:secure,SameSite:http.SameSiteLaxMode,MaxAge:int(lifetime.Seconds()),Expires:time.Now().Add(lifetime)})
+}
+func clearAdminRefreshCookie(w http.ResponseWriter,r *http.Request){
+	secure:=r.TLS!=nil||strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")),"https")
+	http.SetCookie(w,&http.Cookie{Name:adminRefreshCookieName,Value:"",Path:"/api/auth",HttpOnly:true,Secure:secure,SameSite:http.SameSiteLaxMode,MaxAge:-1,Expires:time.Unix(1,0)})
+}
+
+func (a *application) refresh(w http.ResponseWriter,r *http.Request){
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
+	cookie,err:=r.Cookie(adminRefreshCookieName)
+	if err!=nil||strings.TrimSpace(cookie.Value)==""{clearAdminRefreshCookie(w,r);writeJSON(w,http.StatusUnauthorized,map[string]any{"data":"","status":http.StatusUnauthorized});return}
+	oldHash:=adminTokenHash(cookie.Value)
+	session,err:=database.FindAdminRefreshSession(r.Context(),a.db,a.driver,oldHash)
+	if err!=nil{clearAdminRefreshCookie(w,r);writeJSON(w,http.StatusUnauthorized,map[string]any{"data":"","status":http.StatusUnauthorized});return}
+	admin,err:=database.FindAdminByID(r.Context(),a.db,a.driver,session.AdminID)
+	if err!=nil||admin.Status!=1||admin.TokenVersion!=session.TokenVersion{
+		_ = database.RevokeAdminRefreshFamilyByTokenHash(r.Context(),a.db,a.driver,oldHash)
+		clearAdminRefreshCookie(w,r);writeJSON(w,http.StatusUnauthorized,map[string]any{"data":"","status":http.StatusUnauthorized});return
+	}
+	now:=time.Now();accessLifetime:=15*time.Minute;refreshLifetime:=7*24*time.Hour
+	accessToken,err:=a.tokens.Issue(auth.Claims{AdminID:admin.ID,Username:admin.Username,RealName:admin.RealName,Role:admin.Role,TokenVersion:admin.TokenVersion},accessLifetime)
+	if err!=nil{writeJSON(w,http.StatusInternalServerError,map[string]any{"data":"","status":http.StatusInternalServerError});return}
+	newRefresh,err:=auth.GenerateRefreshToken()
+	if err!=nil{writeJSON(w,http.StatusInternalServerError,map[string]any{"data":"","status":http.StatusInternalServerError});return}
+	if _,err:=database.RotateAdminRefreshSession(r.Context(),a.db,a.driver,oldHash,adminTokenHash(newRefresh),adminTokenHash(accessToken),now.Add(accessLifetime),now.Add(refreshLifetime),now);err!=nil{
+		if err==database.ErrAdminRefreshTokenReplay{
+			database.RecordAdminAudit(r.Context(),a.db,a.driver,admin.ID,"auth.refresh.replay","admin:"+admin.Username,a.clientIP(r),r.UserAgent(),"refresh token reuse detected; entire token family revoked")
+			_ = database.CreateSystemException(r.Context(),a.db,a.driver,"admin-refresh-replay:"+session.FamilyID,"admin_refresh","critical","admin",admin.ID,"管理员刷新令牌重放","检测到已轮换的 refresh token 被再次使用，已撤销整个会话族")
+		}
+		clearAdminRefreshCookie(w,r);writeJSON(w,http.StatusUnauthorized,map[string]any{"data":"","status":http.StatusUnauthorized});return
+	}
+	setAdminRefreshCookie(w,r,newRefresh,refreshLifetime)
+	writeJSON(w,http.StatusOK,map[string]any{"data":accessToken,"status":http.StatusOK})
 }
 
 func (a *application) accessCodes(w http.ResponseWriter, r *http.Request) {

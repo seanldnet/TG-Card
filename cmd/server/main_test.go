@@ -136,3 +136,64 @@ func TestAdminLoginRequiresValidTOTPWhenEnabled(t *testing.T) {
 	if status:=login("",recoveryCode);status!=http.StatusOK{t.Fatalf("valid recovery code login status=%d want 200",status)}
 	if status:=login("",recoveryCode);status!=http.StatusUnauthorized{t.Fatalf("reused recovery code status=%d want 401",status)}
 }
+
+
+func TestAdminLoginIssuesShortAccessAndRotatingRefreshCookie(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"});if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	if _,err:=database.EnsureAdmin(ctx,db,"sqlite","refresh-admin","a-strong-test-password");err!=nil{t.Fatal(err)}
+	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
+	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
+	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
+	body,_:=json.Marshal(loginRequest{Username:"refresh-admin",Password:"a-strong-test-password"})
+	loginReq:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body));loginReq.RemoteAddr="192.0.2.21:12345"
+	loginResp:=httptest.NewRecorder();app.login(loginResp,loginReq)
+	if loginResp.Code!=http.StatusOK{t.Fatalf("login status=%d body=%s",loginResp.Code,loginResp.Body.String())}
+	var loginBody struct{Data struct{AccessToken string `json:"accessToken"`} `json:"data"`}
+	if err:=json.Unmarshal(loginResp.Body.Bytes(),&loginBody);err!=nil{t.Fatal(err)}
+	claims,err:=tokens.Verify(loginBody.Data.AccessToken);if err!=nil{t.Fatal(err)}
+	remaining:=time.Until(time.Unix(claims.Expires,0))
+	if remaining>16*time.Minute||remaining<14*time.Minute{t.Fatalf("access token lifetime should be 15 minutes, got %s",remaining)}
+	cookies:=loginResp.Result().Cookies()
+	if len(cookies)==0{t.Fatal("login must set an HttpOnly refresh cookie")}
+	oldCookie:=cookies[0]
+	if oldCookie.Name!=adminRefreshCookieName||!oldCookie.HttpOnly||oldCookie.Path!="/api/auth"||oldCookie.MaxAge!=int((7*24*time.Hour).Seconds()){t.Fatalf("unexpected refresh cookie attributes: %+v",oldCookie)}
+	refreshReq:=httptest.NewRequest(http.MethodPost,"/api/auth/refresh",nil);refreshReq.AddCookie(oldCookie)
+	refreshResp:=httptest.NewRecorder();app.refresh(refreshResp,refreshReq)
+	if refreshResp.Code!=http.StatusOK{t.Fatalf("refresh status=%d body=%s",refreshResp.Code,refreshResp.Body.String())}
+	var refreshBody struct{Data string `json:"data"`;Status int `json:"status"`}
+	if err:=json.Unmarshal(refreshResp.Body.Bytes(),&refreshBody);err!=nil{t.Fatal(err)}
+	if refreshBody.Data==""||refreshBody.Status!=http.StatusOK{t.Fatalf("unexpected refresh response: %+v",refreshBody)}
+	newCookies:=refreshResp.Result().Cookies();if len(newCookies)==0||newCookies[0].Value==oldCookie.Value{t.Fatal("refresh must rotate the HttpOnly cookie")}
+	// Reusing the old cookie is a replay and must revoke the entire token family.
+	replayReq:=httptest.NewRequest(http.MethodPost,"/api/auth/refresh",nil);replayReq.AddCookie(oldCookie)
+	replayResp:=httptest.NewRecorder();app.refresh(replayResp,replayReq)
+	if replayResp.Code!=http.StatusUnauthorized{t.Fatalf("replayed refresh status=%d want 401",replayResp.Code)}
+	followReq:=httptest.NewRequest(http.MethodPost,"/api/auth/refresh",nil);followReq.AddCookie(newCookies[0])
+	followResp:=httptest.NewRecorder();app.refresh(followResp,followReq)
+	if followResp.Code!=http.StatusUnauthorized{t.Fatalf("successor refresh should be revoked after replay, status=%d",followResp.Code)}
+}
+
+
+func TestLogoutRevokesRefreshCookieFamilyWithoutBearerHeader(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"});if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	if _,err:=database.EnsureAdmin(ctx,db,"sqlite","logout-refresh-admin","a-strong-test-password");err!=nil{t.Fatal(err)}
+	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
+	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
+	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
+	body,_:=json.Marshal(loginRequest{Username:"logout-refresh-admin",Password:"a-strong-test-password"})
+	loginReq:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body))
+	loginResp:=httptest.NewRecorder();app.login(loginResp,loginReq)
+	if loginResp.Code!=http.StatusOK{t.Fatalf("login status=%d body=%s",loginResp.Code,loginResp.Body.String())}
+	cookies:=loginResp.Result().Cookies();if len(cookies)==0{t.Fatal("login did not set refresh cookie")}
+	logoutReq:=httptest.NewRequest(http.MethodPost,"/api/auth/logout",nil);logoutReq.AddCookie(cookies[0])
+	logoutResp:=httptest.NewRecorder();app.logout(logoutResp,logoutReq)
+	if logoutResp.Code!=http.StatusOK{t.Fatalf("logout status=%d body=%s",logoutResp.Code,logoutResp.Body.String())}
+	cleared:=logoutResp.Result().Cookies();if len(cleared)==0||cleared[0].MaxAge>=0{t.Fatal("logout must clear refresh cookie")}
+	refreshReq:=httptest.NewRequest(http.MethodPost,"/api/auth/refresh",nil);refreshReq.AddCookie(cookies[0])
+	refreshResp:=httptest.NewRecorder();app.refresh(refreshResp,refreshReq)
+	if refreshResp.Code!=http.StatusUnauthorized{t.Fatalf("refresh after logout status=%d want 401",refreshResp.Code)}
+}

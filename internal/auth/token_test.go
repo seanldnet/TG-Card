@@ -32,3 +32,11 @@ func TestTokenIssueGeneratesUniqueTokenIDs(t *testing.T) {
  if err!=nil{t.Fatal(err)}
  if firstClaims.TokenID==""||secondClaims.TokenID==""||firstClaims.TokenID==secondClaims.TokenID{t.Fatalf("each token must have a distinct JTI: first=%q second=%q",firstClaims.TokenID,secondClaims.TokenID)}
 }
+
+
+func TestGenerateRefreshTokenIsOpaqueAndUnique(t *testing.T) {
+	first,err:=GenerateRefreshToken();if err!=nil{t.Fatal(err)}
+	second,err:=GenerateRefreshToken();if err!=nil{t.Fatal(err)}
+	if first==second{t.Fatal("refresh tokens must be unique")}
+	if len(first)<40{t.Fatalf("refresh token entropy encoding unexpectedly short: %d",len(first))}
+}

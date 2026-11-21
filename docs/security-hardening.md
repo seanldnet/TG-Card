@@ -1,3 +1,11 @@
+## 管理员短效 Access Token 与 Refresh Token 轮换（PR #97 开发中）
+
+- Access Token 15 分钟；Refresh Token 7 天，HttpOnly、SameSite=Lax Cookie，Path 限定为 `/api/auth`。
+- Refresh token 以 SHA-256 哈希保存；每次刷新旧 token 原子作废并创建新 token，同时创建短效 access session。
+- 已撤销 token 再次使用视为重放，撤销同一 family 下全部 refresh token，并写管理员审计和全局异常。
+- 密码/TOTP 修改导致 token_version 递增，refresh 时校验版本，旧 refresh family 随即失效。
+- 登出接口兼容 Vben Admin 通过 `withCredentials` 发送 refresh cookie 的调用方式。
+
 ## TOTP 一次性恢复码（PR #96 开发中）
 
 - TOTP 绑定确认时生成 10 个 80-bit 随机 Base32 恢复码；每个仅可使用一次。

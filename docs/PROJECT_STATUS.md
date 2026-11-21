@@ -1,10 +1,19 @@
-## 2026-11-21 — P1 TOTP 一次性恢复码（开发中）
+## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（开发中）
 
-- 当前 main 基线：`902518c8e0cfbfddb83d3570206c34f3d69028fd`（PR #95 已合并）；独立分支：`feat/admin-totp-recovery-codes-p1`。
+- 当前 main 基线：`45dda335062f5ae8a5b053f92b98588006a9ce3e`（PR #96 已合并）；独立分支：`feat/admin-refresh-token-rotation-p1`。
+- Access Token 缩短为 15 分钟；Refresh Token 有效期 7 天，通过 HttpOnly、SameSite=Lax Cookie（`/api/auth`）下发，不返回给前端 JS。
+- 刷新接口与 Vben Admin 既有 `refreshTokenApi` 协议兼容；每次刷新轮换 refresh token，并在数据库仅存 SHA-256 token hash。
+- 检测已撤销 refresh token 重放时，撤销整个 token family 并记录管理员审计与全局异常；密码/TOTP 状态变化通过 token_version 使旧 refresh session 失效。
+- 登出可通过 HttpOnly refresh cookie 撤销会话族；新增迁移 `0056_admin_refresh_sessions.sql`，无新增环境变量。
+- 当前状态：独立 PR 开发中；Go/Admin/Security CI、SQLite/PostgreSQL 轮换/重放测试及真实浏览器刷新验收待完成；未合并、未发布。
+
+## 2026-11-21 — P1 TOTP 一次性恢复码（PR #96 已合并）
+
+- PR #96 已 Squash Merge 至 main，merge commit `45dda335062f5ae8a5b053f92b98588006a9ce3e`；独立分支：`feat/admin-totp-recovery-codes-p1`。
 - PR #95 已提供 RFC 6238 管理员 TOTP、AES-GCM 加密密钥、绑定/关闭流程、登录校验与会话撤销；PR #95 Go/Admin/Security CI 全部通过并已合并。
 - 本阶段补齐 10 个高熵一次性恢复码：仅在绑定确认时显示一次，数据库仅保存 SHA-256 哈希；消费采用 compare-and-swap 防并发复用，成功登录后审计；关闭 TOTP 同时清空恢复码。
 - 新增迁移 `0055_admin_totp_recovery_codes.sql`，登录支持备用恢复码，安全设置页面一次性展示并提示安全保存。
-- 当前状态：独立 PR 开发中，Go/Admin/Security CI 和 SQLite/PostgreSQL 验证待完成；未合并、未发布。真实管理员绑定/恢复码登录验收仍待执行。
+- PR #96 Go/Admin/Security/Docker Publish 全部通过并已合并；GHCR manifest digest：`sha256:41c3c879a278a7aa442f45abd838abfb6fa82df718515a4ed2811d30d97a8758`。真实管理员绑定/恢复码登录验收仍待执行。
 
 ## 2026-11-21 — P1 管理员 TOTP 双重验证（PR #95 已合并）
 
@@ -234,7 +243,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.51
+> - 文档版本：2.2.52
 > - 源码核对基线：main 分支，commit `c02ad8fc2db50212affcfa948226dfb79f5b9ba7`；PR #94 已合并
 > - 本次文档更新：记录 P1 管理员 TOTP 双重验证
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
