@@ -2,7 +2,6 @@ package payment
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,7 +67,7 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	} else {
 		// A creating intent may have been left by an earlier timed-out request.
 		// Query first; only a definite provider 404 permits a same-key create retry.
-		if intent.Status=="creating" && intent.CreatedAt!="" {
+		if intent.Status=="creating" {
 			result,err=client.QueryGMPayOrder(ctx,map[string]string{"order_id":order.OrderNo})
 			if err!=nil && !strings.Contains(err.Error(),"HTTP 404") && !strings.Contains(strings.ToLower(err.Error()),"not found") {
 				return "",fmt.Errorf("query Epusdt order after uncertain create: %w",err)
@@ -101,26 +100,14 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		Message string `json:"message"`
 		Data gmpayCreateResponse `json:"data"`
 	}
-	if err:=json.Unmarshal(resultRaw(result),&envelope);err!=nil{return "",fmt.Errorf("decode Epusdt order response: %w",err)}
+	rawResult,marshalErr:=json.Marshal(result);if marshalErr!=nil{return "",marshalErr}
+	if err:=json.Unmarshal(rawResult,&envelope);err!=nil{return "",fmt.Errorf("decode Epusdt order response: %w",err)}
 	if envelope.StatusCode!=0 && envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt order rejected (%d): %s",envelope.StatusCode,envelope.Message)}
 	data:=envelope.Data
 	if data.OrderID!="" && data.OrderID!=order.OrderNo{return "",errors.New("Epusdt returned a different merchant order ID")}
 	if data.TradeID=="" || data.PaymentURL==""{return "",errors.New("Epusdt response is missing trade_id or payment_url")}
 	if err:=database.UpdateEpusdtPaymentOrder(ctx,m.db,m.driver,order.ID,data.TradeID,data.PaymentURL,data.ExpirationTime);err!=nil{return "",err}
 	return data.PaymentURL,nil
-}
-
-func resultRaw(result map[string]json.RawMessage) []byte {
-	raw:=make([]byte,0,512)
-	raw=append(raw,'{')
-	first:=true
-	for key,value:=range result{
-		if !first{raw=append(raw,',')};first=false
-		encodedKey,_:=json.Marshal(key)
-		raw=append(raw,encodedKey...);raw=append(raw,':');raw=append(raw,value...)
-	}
-	raw=append(raw,'}')
-	return raw
 }
 
 func formatMinor(value int64) string {
@@ -221,6 +208,3 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 	return nil
 }
 
-// Keep the sql package referenced in this file for errors.Is(sql.ErrNoRows)
-// compatibility in future provider lookup changes.
-var _ = sql.ErrNoRows
