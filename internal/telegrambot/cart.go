@@ -76,12 +76,14 @@ func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query Callba
 	balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,userID)
 	message:="✅ 购物车统一订单已创建！\n订单号："+order.OrderNo+"\n\n"+strings.Join(lines,"\n")+"\n\n应付总额："+formatPrice(order.AmountMinor,order.Currency)+"\n链上准确付款金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n支付有效期：20 分钟"
 	if balanceErr==nil { message+="\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
-	keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{
+	buttons:=[][]map[string]string{
 		{{"text":"💳 使用站内余额一次支付","callback_data":"shop:walletpay:"+order.ID}},
 		{{"text":"💵 使用 TRC20 USDT 一次支付","callback_data":"shop:chainpay:"+order.ID}},
-		{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}},
-		{{"text":"📦 查看我的订单","callback_data":"menu:orders"}},
-	}}
+	}
+	if _,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
+	buttons=append(buttons,[]map[string]string{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}})
+	buttons=append(buttons,[]map[string]string{{"text":"📦 查看我的订单","callback_data":"menu:orders"}})
+	keyboard:=map[string]any{"inline_keyboard":buttons}
 	m.Notify("order_created","购物车统一订单："+order.OrderNo+"\n商品种类："+strconv.Itoa(len(items))+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,message,keyboard)
 }
