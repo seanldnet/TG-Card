@@ -367,18 +367,54 @@ func (m *Manager) checkGMPayPaymentForProvider(ctx context.Context, orderID, pro
 	var envelope struct { StatusCode int `json:"status_code"`; Message string `json:"message"`; Data json.RawMessage `json:"data"` }
 	if err := json.Unmarshal(raw,&envelope); err != nil { return "",err }
 	if envelope.StatusCode != 0 && envelope.StatusCode != http.StatusOK { return "",fmt.Errorf("%s status query failed (%d): %s",provider,envelope.StatusCode,envelope.Message) }
-	fields,err := DecodeGMPayCallback(envelope.Data)
+	statusFields,err := DecodeGMPayCallback(envelope.Data)
 	if err != nil { return "",fmt.Errorf("decode %s status result: %w",provider,err) }
-	if fields["trade_id"] != intent.ProviderTradeID { return "",errors.New("status response trade ID is missing or does not match local payment intent") }
-	status,err := strconv.Atoi(fields["status"])
+	if statusFields["trade_id"] != intent.ProviderTradeID { return "",errors.New("status response trade ID is missing or does not match local payment intent") }
+	status,err := strconv.Atoi(statusFields["status"])
 	if err != nil { return "",errors.New("status response is missing a valid status") }
 	switch status {
 	case 1,4:
 		return "pending",nil
 	case 2:
+		// Epusdt's /pay/check-status endpoint only returns trade_id/status.
+		// Fetch its checkout snapshot for the immutable amount/currency/token
+		// before treating the status as a payment confirmation.
+		paymentFields := statusFields
+		paymentPayload := string(envelope.Data)
+		if provider == "epusdt" {
+			infoResult,infoErr := client.QueryGMPayCheckoutInfo(ctx,intent.ProviderTradeID)
+			if infoErr != nil { return "",fmt.Errorf("query Epusdt checkout payment details: %w",infoErr) }
+			infoRaw,infoErr := json.Marshal(infoResult)
+			if infoErr != nil { return "",infoErr }
+			var infoEnvelope struct { StatusCode int `json:"status_code"`; Message string `json:"message"`; Data json.RawMessage `json:"data"` }
+			if infoErr := json.Unmarshal(infoRaw,&infoEnvelope); infoErr != nil { return "",infoErr }
+			if infoEnvelope.StatusCode != 0 && infoEnvelope.StatusCode != http.StatusOK { return "",fmt.Errorf("Epusdt checkout detail query failed (%d): %s",infoEnvelope.StatusCode,infoEnvelope.Message) }
+			paymentFields,infoErr = DecodeGMPayCallback(infoEnvelope.Data)
+			if infoErr != nil { return "",fmt.Errorf("decode Epusdt checkout payment details: %w",infoErr) }
+			if paymentFields["trade_id"] != intent.ProviderTradeID { return "",errors.New("Epusdt checkout detail trade ID does not match local payment intent") }
+			paymentPayload = string(infoEnvelope.Data)
+		}
+		eventTradeID := intent.ProviderTradeID
+		if provider == "gmpay_edge" { eventTradeID = "gmpay_edge:" + eventTradeID }
+		if !strings.EqualFold(strings.TrimSpace(paymentFields["token"]), "USDT") {
+			inserted,recordErr := database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:paymentFields["block_transaction_id"],Status:"asset_mismatch",PayloadJSON:paymentPayload})
+			if recordErr != nil { return "",recordErr }
+			if err := database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"asset_mismatch",paymentFields["block_transaction_id"]); err != nil { return "",err }
+			if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付资产与订单要求不一致，已阻止自动入账。订单："+order.OrderNo+"\n返回资产："+paymentFields["token"],"") }
+			return "",errors.New("provider status response asset does not match USDT order")
+		}
+		queriedAmount,amountErr := parseMinor(paymentFields["amount"])
+		if amountErr != nil || queriedAmount != intent.AmountMinor || !strings.EqualFold(strings.TrimSpace(paymentFields["currency"]), "USD") {
+			if amountErr != nil { queriedAmount = 0 }
+			inserted,recordErr := database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:paymentFields["block_transaction_id"],AmountMinor:queriedAmount,Status:"amount_mismatch",PayloadJSON:paymentPayload})
+			if recordErr != nil { return "",recordErr }
+			if err := database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"amount_mismatch",paymentFields["block_transaction_id"]); err != nil { return "",err }
+			if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付金额或法币币种与订单不一致，已阻止自动入账。订单："+order.OrderNo+"\n应付："+formatMinor(intent.AmountMinor)+" USD\n查单返回："+paymentFields["amount"]+" "+paymentFields["currency"],"") }
+			return "",errors.New("provider status response amount or currency does not match local order")
+		}
 		settlement := map[string]string{"pid":client.pid,"order_id":order.OrderNo,"trade_id":intent.ProviderTradeID,"amount":formatMinor(intent.AmountMinor),"token":"USDT","status":"2"}
-		if fields["block_transaction_id"] != "" { settlement["block_transaction_id"] = fields["block_transaction_id"] }
-		if err := m.settleGMPayPaymentForProvider(ctx,settlement,string(envelope.Data),provider); err != nil { return "",err }
+		if paymentFields["block_transaction_id"] != "" { settlement["block_transaction_id"] = paymentFields["block_transaction_id"] }
+		if err := m.settleGMPayPaymentForProvider(ctx,settlement,paymentPayload,provider); err != nil { return "",err }
 		return "paid",nil
 	case 3:
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"expired","")
