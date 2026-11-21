@@ -64,6 +64,7 @@ type Manager struct {
 	paymentAddress string
 	paymentEnabled bool
 	gmpayCheckout func(context.Context, database.Order) (string, error)
+	gmpayStatus func(context.Context, string) (string, error)
 	gmpayEnabled bool
 	ownerID string
 	customerServiceURL string
@@ -159,17 +160,18 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 // SetNotifier attaches the application-level notification dispatcher.
 func (m *Manager) SetEncryptor(encrypt func(string) (string, error)) { m.mu.Lock(); m.encrypt=encrypt; m.mu.Unlock() }
 
-func (m *Manager) SetGMPayCheckout(checkout func(context.Context, database.Order) (string,error), enabled bool) {
+func (m *Manager) SetGMPayCheckout(checkout func(context.Context, database.Order) (string,error), status func(context.Context,string)(string,error), enabled bool) {
 	m.mu.Lock()
 	m.gmpayCheckout=checkout
-	m.gmpayEnabled=enabled && checkout!=nil
+	m.gmpayStatus=status
+	m.gmpayEnabled=enabled && checkout!=nil && status!=nil
 	m.mu.Unlock()
 }
 
-func (m *Manager) gmpayCheckoutConfig() (func(context.Context,database.Order)(string,error),bool) {
+func (m *Manager) gmpayCheckoutConfig() (func(context.Context,database.Order)(string,error),func(context.Context,string)(string,error),bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.gmpayCheckout,m.gmpayEnabled
+	return m.gmpayCheckout,m.gmpayStatus,m.gmpayEnabled
 }
 
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
@@ -1096,7 +1098,7 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 		{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},
 		{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},
 	}
-	if _,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
+	if _,_,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
 	buttons=append(buttons,[]map[string]string{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}})
 	keyboard := map[string]any{"inline_keyboard":buttons}
 	if query.ID!=""{_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")}
@@ -1328,7 +1330,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在、已关闭或已付款")
 			return
 		}
-		checkout,enabled:=m.gmpayCheckoutConfig()
+		checkout,_,enabled:=m.gmpayCheckoutConfig()
 		if !enabled || checkout==nil {
 			_ = m.answerCallback(ctx,cfg.Token,query.ID,"GMPay 暂未启用")
 			return
@@ -1523,7 +1525,7 @@ func (m *Manager) showOrderPayment(ctx context.Context, cfg Config, chatID int64
 	if enabled {
 		buttons = append(buttons, []map[string]string{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}})
 	}
-	if _,gmpayEnabled:=m.gmpayCheckoutConfig();gmpayEnabled {
+	if _,_,gmpayEnabled:=m.gmpayCheckoutConfig();gmpayEnabled {
 		buttons = append(buttons, []map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}})
 	}
 	buttons = append(buttons, []map[string]string{{"text":"查看订单详情","callback_data":"order:detail:"+order.ID}})
