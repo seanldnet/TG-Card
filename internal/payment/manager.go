@@ -23,8 +23,10 @@ type Manager struct {
 	chain *tron.Client
 	gateway *GatewayClient
 	gatewayNotifyURL string
+	gatewayEnabled bool
 	gmpayEdge *GatewayClient
 	gmpayEdgeNotifyURL string
+	gmpayEdgeEnabled bool
 	checkoutCursor uint64
 	lastScanAt time.Time
 	lastError string
