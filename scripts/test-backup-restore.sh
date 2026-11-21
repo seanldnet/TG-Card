@@ -125,5 +125,17 @@ test "$STOCK_COUNT" = "1"
 test "$CAP_ENABLED" = "true"
 docker compose exec -T app sh -c 'test "$(cat /app/data/jwt-secret)" = "test-jwt-signing-key" && test "$(cat /app/data/bot-token.key)" = "test-encryption-key" && test "$(cat /app/data/uploads/fixture.bin)" = "original-upload" && test ! -e /app/data/extra.txt'
 docker compose ps --status running | grep -q 'app'
+
+echo "[7/7] Verifying backward compatibility with legacy plaintext backups..."
+LEGACY_BACKUP="$BACKUP_DIR/legacy-plaintext"
+mkdir -p "$LEGACY_BACKUP"
+"$BACKUP_CRYPT_BIN" decrypt "$BACKUP_PATH/postgres.dump.age" "$LEGACY_BACKUP/postgres.dump"
+"$BACKUP_CRYPT_BIN" decrypt "$BACKUP_PATH/tg_card_data.tar.gz.age" "$LEGACY_BACKUP/tg_card_data.tar.gz"
+(cd "$LEGACY_BACKUP" && sha256sum postgres.dump tg_card_data.tar.gz > SHA256SUMS)
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE orders SET status='refunded' WHERE id='order-1';"
+bash scripts/restore.sh "$LEGACY_BACKUP" --yes
+ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\\r')"
+test "$ORDER_STATUS" = "paid"
+
 RESTORE_FINISHED="$(date +%s)"
-echo "Isolated backup/restore integration test passed. Simulated data-loss window (RPO): $((SIMULATED_FAILURE_AT - BACKUP_FINISHED)) seconds. Restore-to-container-running RTO: $((RESTORE_FINISHED - RESTORE_STARTED)) seconds."
+echo "Encrypted and legacy backup/restore integration test passed. Simulated data-loss window (RPO): $((SIMULATED_FAILURE_AT - BACKUP_FINISHED)) seconds. Restore-to-container-running RTO: $((RESTORE_FINISHED - RESTORE_STARTED)) seconds."
