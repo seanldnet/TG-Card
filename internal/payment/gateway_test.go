@@ -23,8 +23,9 @@ func TestGMPaySignatureAndVerification(t *testing.T) {
 func TestGMPayOrderRequestIsSignedAndPreservesAmount(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/payments/gmpay/v1/order/create-transaction" { t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path) }
-		var fields map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&fields); err != nil { t.Fatal(err) }
+		if err := r.ParseForm(); err != nil { t.Fatal(err) }
+		fields := make(map[string]string, len(r.Form))
+		for key := range r.Form { fields[key] = r.Form.Get(key) }
 		if fields["amount"] != "12.50" || fields["pid"] != "1000" || !VerifyGMPay(fields, "secret") { t.Fatalf("invalid signed payload: %#v", fields) }
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"status_code":200,"message":"success","data":{"payment_url":"https://checkout.example/abc"}}`)
