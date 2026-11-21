@@ -9,7 +9,7 @@
 
 - 新增管理员 TOTP 绑定、动态码确认、关闭与登录校验；密钥 AES-GCM 加密存储，绑定前需当前密码。
 - 新增登录动态码字段、安全设置页面、接口限流与审计。
-- 迁移 0054_admin_totp.sql；无新增环境变量。PR #95 Go/Admin/Security CI 全部通过并已合并；合并后发布工作流正在执行。生产验收待完成。PROJECT_STATUS 文档版本更新至 2.2.50。
+- 迁移 0054_admin_totp.sql；无新增环境变量。PR #95 Go/Admin/Security/Docker Publish 全部通过并已合并；GHCR manifest digest：`sha256:b51ec8ed881cf73d52e2038e6f68a3064b3c818b0e59132970df2339b77fa17a`。真实管理员绑定验收待完成。PROJECT_STATUS 文档版本更新至 2.2.50。
 
 ## 2026-11-21 — P1 业务风险 Owner 主动告警（PR #94 已合并）
 
