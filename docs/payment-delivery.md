@@ -163,7 +163,7 @@ The GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) 
 
 Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. The next independent payment-lifecycle PR must implement Telegram storefront checkout, provider callback/query verification, atomic order payment confirmation, idempotent settlement, and delivery handoff, with security regression tests. Configuration alone does not mean the channel can accept payments.
 
-## Epusdt GMPay checkout lifecycle (PR #120 in progress)
+## Epusdt GMPay checkout lifecycle (PR #121 in progress)
 
 The existing GMPay client and merchant configuration are now wired into the Telegram storefront.
 
@@ -174,4 +174,4 @@ The existing GMPay client and merchant configuration are now wired into the Tele
 - The user can request a status refresh; TG-Card queries the provider using `GET /pay/check-status/{trade_id}`. A confirmed status is bound to the exact local trade ID and amount before settlement.
 - Duplicate callbacks are idempotent. Amount mismatches, unexpected/duplicate trade IDs, and payments arriving after local order cancellation are recorded as payment events and do not trigger a second delivery.
 - An ambiguous create timeout is recorded as `create_uncertain`; because Epusdt merchant `order_id` values cannot be reused and the public status API requires a provider `trade_id`, TG-Card does not issue a second create request. A later signed callback can reconcile the original local order; otherwise the Owner must inspect the provider merchant console.
-- PR #120 CI, merge, and Docker image digest are pending. This implementation is not marked released until the applicable Go/Admin/Security checks pass, the PR is merged, and Docker Publish succeeds.
+- PR #121 CI, merge, and Docker image digest are pending. This implementation is not marked released until the applicable Go/Admin/Security checks pass, the PR is merged, and Docker Publish succeeds.
