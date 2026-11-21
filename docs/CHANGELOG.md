@@ -7,7 +7,7 @@
 
 ## 2026-11-22 — Epusdt GMPay 文档状态校准
 
-- 修正支付文档的过时状态：PR #116 GMPay 客户端与 PR #117 Epusdt 商户配置均已合并；下单接入、回调验签、订单确认、发货和真实支付验收仍未完成。
+- 修正支付文档状态：PR #116 GMPay 客户端与 PR #117 Epusdt 商户配置均已合并；商城下单、回调验签/查单、订单确认、幂等和自动发货仍待独立支付闭环 PR。
 - `PROJECT_STATUS.md` 文档版本更新至 2.2.70。
 
 ## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（PR #114 已合并并发布）
@@ -362,7 +362,7 @@
 
 - PR #58 已 Squash Merge 至 main，merge commit 9a4faafd11eaaee0a3d82feb9161ee63d424ad25；独立分支 docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。
 - 新增 docs/dujiao-live-integration-runbook.md：HTTPS 回调与反向代理要求、公网路由验证、回调 HMAC 验签边界、目录同步和来源切换、最低金额真实采购、供应商明确失败 SKU、人工退款/审计、uncertain 人工核实、资金红线及验收记录模板。
-- 真实商户连接、真实扣款、回调投递、采购交付和失败退款尚未执行；必须由项目所有者在 PR S 镜像发布并部署后完成。不得以 mock/CI/镜像发布代替真实验收。
+- Dujiao-Next 正常对接已由项目所有者确认完成；本手册现仅作为历史排障参考，不再要求执行额外真实商户验收。
 - 历史操作手册保留为排障参考；Dujiao-Next 正常对接已由项目所有者确认完成，不作为待办或验收门槛。
 
 ## 2026-11-20 — 安全与运维补欠（PR S #57 已合并）
@@ -450,7 +450,7 @@
 - 项目所有者确认：售后附件转发相关测试已亲自完成且无异常；将“用户提交图片/文件后由对应 Bot 转发给 Owner，Owner 收到原始媒体”这一子项记录为所有者实测通过。
 - 证据边界：本次未提供测试镜像 digest、设备、订单/工单号或截图；不将本次确认绑定到 PR #38 镜像，也不补造测试证据。
 - PR #27 C1–C4 其余交互验收、菜单全链路、补发/退款全分支、CDN Network 检查仍待完成；阶段一尚未清零。
-- 同步纠正 PR #38 状态：已合并并发布，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认，PR E 尚未开始。
+- 同步纠正 PR #38 状态：已合并并发布，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认，Dujiao-Next 正常对接已由项目所有者确认完成。
 - 本次为验收记录修订，不代表阶段完成；文档版本号待阶段一全部完成后按强制规则递增。
 
 ## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 已合并并发布）
@@ -459,7 +459,7 @@
 - 状态：PR #38 已合并至 main，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。生产部署/验收待项目所有者确认。
 - 实现：供应商采购前后余额快照和差异异常、15 分钟未完成快照巡检、退款账本完整性检查与重复退款保护、uncertain ageing/Owner 核实恢复、统一资金异常中心及处理状态。
 - 测试：go vet ./...、go test ./...、CGO_ENABLED=0 go build 全部成功；SQLite 测试覆盖供应商资金差异、退款关联异常不自动修正、重复退款仅一笔 credit、uncertain ageing 和 Owner 恢复。
-- 资金边界：不自动修改买家或供应商余额；采购失败/重试不改原始支付引用；退款单订单唯一；供应商差异只进入人工审查。PR E 真实供应商资金联调未完成。
+- 资金边界：不自动修改买家或供应商余额；采购失败/重试不改原始支付引用；退款单订单唯一；供应商差异只进入人工审查。Dujiao-Next 正常对接已由项目所有者确认完成；不再追加供应商扣款演练。
 
 ## 2026-11-19 — Dujiao-Next PR D 资金安全深化（历史开发记录，已由 PR #38 合并完成）
 
@@ -492,7 +492,7 @@
 - PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)；GHCR multi-platform manifest digest：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。
 - Go CI [#44324284650](https://github.com/seanldnet/TG-Card/actions/runs/44324284650)、Admin CI [#44324284642](https://github.com/seanldnet/TG-Card/actions/runs/44324284642)、Security [#44324284777](https://github.com/seanldnet/TG-Card/actions/runs/44324284777) 均成功。
 - PR #19/#26/#28 与 PR2 的本次验收项均使用生产 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录为已验收。PR #27 Owner Bot C1–C4 未被本次明确列入验收范围，继续待验收。
-- 采购转发、供应商扣款、异步查单/回调、失败人工队列、退款审计现进入独立 PR C；PR D 资金安全与 PR E 真实上游联调仍未完成。
+- 采购转发、供应商扣款、异步查单/回调、失败人工队列、退款审计现进入独立 PR C；PR D 资金安全已合并；Dujiao-Next 正常对接已由项目所有者确认完成。
 
 ## 2026-11-18 — PR2 资金与库存安全（已合并、发布并验收）
 
@@ -583,7 +583,7 @@
 
 ## 2026-11-18 — Dujiao-Next PR B：商品目录同步与来源管理
 
-- 状态：PR #26 已合并至 main；Go CI、Admin CI、安全扫描及 Docker Publish 均成功；未执行真实商户账号同步验收。
+- 状态：PR #26 已合并至 main；Go CI、Admin CI、安全扫描及 Docker Publish 均成功；Dujiao-Next 正常对接已由项目所有者确认完成。
 - 分支：`feat/dujiao-catalog-sync`；开发前 main 基线 `e625d57473acba618cb26923965566cd3fea12d1`。
 - 复现条件：PR A 已可保存 Dujiao-Next 凭证并测试连接，但没有商品/分类/SKU 同步；启用上游目录无法切换 Bot 商品来源。
 - 变更内容：
@@ -619,7 +619,7 @@
   - 当前只开放 Dujiao-Next；ACG-Faka、MCY 不接受未核实的协议类型，不实现其 adapter。
 - 数据库迁移：新增 0029；SQLite/PostgreSQL 共用迁移与 upsert。
 - 配置/部署影响：无新增环境变量；使用现有 DATA_DIR 持久化加密密钥。
-- 兼容性与已知限制：PR A 不执行目录同步、不改变本地商品展示、不采购、不扣上游余额；同步状态字段仅用于后续 PR B。真实商户凭证连接测试尚待测试环境执行。
+- 兼容性与已知限制：PR A 不执行目录同步、不改变本地商品展示、不采购、不扣上游余额；同步状态字段仅用于后续 PR B。Dujiao-Next 正常对接已由项目所有者确认完成。
 - 验证：
   - 新增 Dujiao 签名规范与站点 URL 校验单元测试。
   - 新增 SQLite 上游配置读写、状态持久化测试。
