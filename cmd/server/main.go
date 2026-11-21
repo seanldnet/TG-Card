@@ -135,6 +135,7 @@ type loginRequest struct {
 	Password string `json:"password"`
 	CapToken string `json:"capToken"`
 	TOTPCode string `json:"totpCode"`
+	TOTPRecoveryCode string `json:"totpRecoveryCode"`
 }
 
 type userInfo struct {
@@ -492,11 +493,21 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 			writeError(w,http.StatusServiceUnavailable,"动态验证码配置暂不可用，请联系管理员")
 			return
 		}
-		if !auth.VerifyTOTPCode(secretValue,input.TOTPCode,time.Now()) {
-			a.recordLoginFailure(ip)
-			database.RecordLoginAudit(r.Context(),a.db,a.driver,admin.ID,admin.Username,ip,r.UserAgent(),false)
-			writeError(w,http.StatusUnauthorized,"动态验证码错误或已过期")
-			return
+		validTOTP:=auth.VerifyTOTPCode(secretValue,input.TOTPCode,time.Now())
+		if !validTOTP {
+			consumed,recoveryErr:=database.ConsumeAdminTOTPRecoveryCode(r.Context(),a.db,a.driver,admin.ID,input.TOTPRecoveryCode)
+			if recoveryErr!=nil {
+				log.Printf("consume administrator TOTP recovery code: %v",recoveryErr)
+				writeError(w,http.StatusServiceUnavailable,"恢复码暂时无法验证，请稍后重试")
+				return
+			}
+			if !consumed {
+				a.recordLoginFailure(ip)
+				database.RecordLoginAudit(r.Context(),a.db,a.driver,admin.ID,admin.Username,ip,r.UserAgent(),false)
+				writeError(w,http.StatusUnauthorized,"动态验证码或一次性恢复码错误/已使用")
+				return
+			}
+			database.RecordAdminAudit(r.Context(),a.db,a.driver,admin.ID,"admin.security.totp.recovery_used","admin:"+admin.ID,ip,r.UserAgent(),"one-time TOTP recovery code consumed")
 		}
 	}
 
