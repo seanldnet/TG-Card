@@ -1,4 +1,4 @@
-## 2026-11-22 — 后台菜单与三支付通道整合（PR #122 已合并并发布；PROJECT_STATUS 2.2.75）
+## 2026-11-22 — 后台菜单与三支付通道整合及验收状态校准（PR #122 已合并并发布；PROJECT_STATUS 2.2.76）
 
 - 分支/PR：`feat/admin-menu-payment-provider-ux` / #122；已 Squash Merge，merge commit `0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`。
 - 后台侧边栏已按仪表盘、运营管理、商品管理、财务管理、系统设置分类；支付设置分别配置内置 TRC20 USDT、GMPay Edge、Epusdt，凭据相互独立。
@@ -6,7 +6,8 @@
 - Go CI run `44950987871`、Admin CI run `44950987936`、Security Scan run `44950987933`、Docker Publish run `44950987923` 均成功，均对应 main commit `0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`。
 - GHCR 标签：`ghcr.io/seanldnet/tg-card:latest` 和 commit SHA 标签；OCI digest：`sha256:89ba402c59ff45f4667ecd51d273507155fa814ece73e185e670065f0c03c551`。
 - Go CI 首轮发现的测试夹具状态错位已修正：测试显式执行 `reserved → creating` 原子认领后再模拟网关响应；最新 PR head Go/Admin/Security 检查全部成功。
-- 真实商户支付配置、回调可达性和完整交付仍待独立生产验收，不以 CI 或镜像发布代替。
+- 商城支付下单、回调验签、查单、订单确认、幂等结算及交付交接均已实现；真实商户三通道收款、回调可达性及端到端交付仍需按部署环境单独验收。
+- 项目所有者于 2026-11-22 确认 Dujiao-Next 正常对接完成，不再将 PR E 真实商户联调列为待办；售后工单与 Owner Bot C1–C4、补发/退款及通知流程验收通过。
 
 ## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；PROJECT_STATUS 2.2.72）
 
