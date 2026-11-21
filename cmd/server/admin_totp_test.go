@@ -19,7 +19,9 @@ func TestAdminLoginTOTPRequirementOnlyReportsAfterValidCredentials(t *testing.T)
 	if err != nil { t.Fatal(err) }
 	defer db.Close()
 	if err := database.Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
-	bootstrap, err := database.EnsureAdmin(ctx, db, "sqlite", "totp-preflight-admin", "a-strong-test-password")
+	_, err = database.EnsureAdmin(ctx, db, "sqlite", "totp-preflight-admin", "a-strong-test-password")
+	if err != nil { t.Fatal(err) }
+	admin, err := database.FindAdminByUsername(ctx, db, "sqlite", "totp-preflight-admin")
 	if err != nil { t.Fatal(err) }
 	app := &application{db: db, driver: "sqlite", loginFailures: make(map[string][]time.Time)}
 
@@ -41,7 +43,7 @@ func TestAdminLoginTOTPRequirementOnlyReportsAfterValidCredentials(t *testing.T)
 	if resp.Code != http.StatusOK { t.Fatalf("valid credentials status=%d body=%s", resp.Code, resp.Body.String()) }
 	if enabled, _ := data["enabled"].(bool); enabled { t.Fatal("new administrator must not require TOTP") }
 
-	if err := database.SetAdminTOTPPendingSecret(ctx, db, "sqlite", bootstrap.Admin.ID, "test-encrypted-secret"); err != nil { t.Fatal(err) }
+	if err := database.SetAdminTOTPPendingSecret(ctx, db, "sqlite", admin.ID, "test-encrypted-secret"); err != nil { t.Fatal(err) }
 	if err := database.EnableAdminTOTPWithRecoveryCodes(ctx, db, "sqlite", bootstrap.Admin.ID, []string{"unused-recovery-code"}); err != nil { t.Fatal(err) }
 	resp, data = call("totp-preflight-admin", "a-strong-test-password")
 	if resp.Code != http.StatusOK { t.Fatalf("enabled TOTP status=%d body=%s", resp.Code, resp.Body.String()) }
