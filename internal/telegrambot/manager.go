@@ -1618,7 +1618,7 @@ func (m *Manager) showOrderPayment(ctx context.Context, cfg Config, chatID int64
 		"\n支付截止：" + order.ExpiresAt
 	buttons := [][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}}}
 	if m.paymentEnabled || m.gmpayEnabled {
-		buttons = append(buttons, []map[string]string{{{"text":"🔄 自动选择支付方式","callback_data":"shop:autopay:"+order.ID}}})
+		buttons = append(buttons, []map[string]string{{"text":"🔄 自动选择支付方式","callback_data":"shop:autopay:"+order.ID}})
 	}
 	buttons = append(buttons, []map[string]string{{"text":"查看订单详情","callback_data":"order:detail:"+order.ID}})
 	buttons = append(buttons, []map[string]string{{"text":"⬅️ 返回订单列表","callback_data":"menu:orders"}})
