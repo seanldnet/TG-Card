@@ -60,7 +60,7 @@ func TestGMPayCallbackRejectsWrongSignatureAndAmountMismatch(t *testing.T){
 	m,db,order:=newGMPayTestManager(t);defer db.Close()
 	defer m.bots.Stop()
 	configureTestGateway(t,m,"https://gateway.example")
-	intent,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
+	intent,_,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
 	if err:=database.UpdateEpusdtPaymentOrder(context.Background(),db,"sqlite",order.ID,"trade-amount","https://checkout.example/pay",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
 
 	wrong:=signedCallback(order,"trade-wrong","12.50");wrong["signature"]="00"
@@ -79,7 +79,7 @@ func TestGMPayDuplicateCallbackAndSecondPaymentAreIdempotent(t *testing.T){
 	m,db,order:=newGMPayTestManager(t);defer db.Close()
 	defer m.bots.Stop()
 	configureTestGateway(t,m,"https://gateway.example")
-	if _,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
+	if _,_,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
 	if err:=database.UpdateEpusdtPaymentOrder(context.Background(),db,"sqlite",order.ID,"trade-first","https://checkout.example/pay",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
 	first:=signedCallback(order,"trade-first","12.50")
 	if err:=m.HandleGMPayCallback(context.Background(),first,"{}");err!=nil{t.Fatal(err)}
