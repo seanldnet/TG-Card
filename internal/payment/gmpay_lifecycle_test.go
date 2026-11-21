@@ -2,15 +2,12 @@ package payment
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"strconv"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -177,7 +174,3 @@ func TestGMPayQueryUsesOrderIdentitySignature(t *testing.T){
 	if err!=nil{t.Fatal(err)}
 }
 
-var _ = json.Valid
-var _ = strconv.Itoa
-var _ = strings.TrimSpace
-var _ = url.Values{}
