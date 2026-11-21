@@ -21,6 +21,7 @@ type gmpayCreateResponse struct {
 	OrderID string `json:"order_id"`
 	PaymentURL string `json:"payment_url"`
 	ExpirationTime int64 `json:"expiration_time"`
+	Status int `json:"status"`
 }
 
 func (m *Manager) SetGatewayConfig(baseURL,pid,secret,notifyURL string,enabled bool) error {
@@ -60,6 +61,7 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	if err!=nil{return "",err}
 	if intent.Status=="paid"{return "",errors.New("order is already paid")}
 	if intent.Status=="late_payment" || intent.Status=="amount_mismatch" || intent.Status=="duplicate_payment" {return "",errors.New("payment requires manual reconciliation")}
+	if intent.Status=="expired" {return "",errors.New("Epusdt payment order has expired") }
 
 	var result map[string]json.RawMessage
 	if intent.ProviderTradeID!="" {
@@ -105,6 +107,10 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	if err:=json.Unmarshal(rawResult,&envelope);err!=nil{return "",fmt.Errorf("decode Epusdt order response: %w",err)}
 	if envelope.StatusCode!=0 && envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt order rejected (%d): %s",envelope.StatusCode,envelope.Message)}
 	data:=envelope.Data
+	if data.Status==3 { _=database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"expired",""); return "",errors.New("Epusdt payment order has expired") }
+	if data.Status==2 { if _,queryErr:=m.CheckGMPayPayment(ctx,order.ID);queryErr!=nil{return "",queryErr}; return "",errors.New("order payment has already been confirmed") }
+	if data.TradeID=="" { data.TradeID=intent.ProviderTradeID }
+	if data.PaymentURL=="" { data.PaymentURL=intent.PaymentURL }
 	if data.OrderID!="" && data.OrderID!=order.OrderNo{return "",errors.New("Epusdt returned a different merchant order ID")}
 	if data.TradeID=="" || data.PaymentURL==""{return "",errors.New("Epusdt response is missing trade_id or payment_url")}
 	if err:=database.UpdateEpusdtPaymentOrder(ctx,m.db,m.driver,order.ID,data.TradeID,data.PaymentURL,data.ExpirationTime);err!=nil{return "",err}
