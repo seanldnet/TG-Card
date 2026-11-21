@@ -145,52 +145,33 @@
 - 不新增数据库迁移、环境变量或 API 参数；不改变已交付订单退款与已明确失败订单退款流程。
 - PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security CI 与 Docker Publish run `44872936750` 全部成功。GHCR `latest` 与提交标签 `f3e09ba7637f683494a8675b3f7e928df59059b9` 已发布，manifest digest：`sha256:ecbcb456eb6e2eb19057d3338b2705ac09e7d0e6a563a338096340eff6d71eb9`。生产部署和真实 Telegram 交付/退款并发验收仍需单独确认。
 
-## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
+## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（PR #88 已合并）
 
-- 当前 main 基线：`ccb1803a6418a930c1cdf091607c41a31e508b07`（PR #87 已合并）；本项独立分支：`feat/refunded-upstream-order-orphan-audit-p0-4d`。
-- PR #87 已完成退款状态双向一致性检测：订单与采购队列退款状态不一致时，登记财务异常；只读，不自动修复。
-- 本项补充检测第三种孤立情况：订单来源快照明确为 upstream 且订单已退款，但 `upstream_procurements` 生命周期记录缺失。该情况无法核对供应商侧退款状态，必须作为 critical 财务异常提示人工核实。
-- 新增 SQLite 回归测试覆盖缺失采购生命周期记录，并断言检查过程不修改订单状态和来源快照。
-- Go/Admin/Security CI 待 PR 验证；PR #87 合并后的 main push workflows 已触发，需分别确认成功及 Docker digest。
-- 安全边界：只读检测，不补建采购行、不退款、不更改钱包余额/流水、不调用上游 API。
+- PR #88 已 Squash Merge，merge commit `4ee33774a6bc136f3360728a91a58d5dfd43f4eb`。
+- 在只读退款完整性巡检中补充检测：来源快照为 upstream 且本地订单已退款，但缺少 `upstream_procurements` 生命周期记录时，登记 critical 财务异常。
+- 新增 SQLite 回归测试；不补建采购行、不修改订单/钱包、不创建退款流水、不调用上游 API。
+- 该项代码已合并；真实生产历史数据异常核查仍需部署后执行。
 
-## 2026-11-21 — P0-4 退款状态一致性核对（开发中）
+## 2026-11-21 — P0-4 退款状态一致性核对（PR #87 已合并）
 
-- 当前 main 基线：`3e2be62cef60553e92a92aea082d2470a51bf3e9`（PR #86 已合并）；本项独立分支：`feat/refund-state-ledger-reconciliation-p0-4c`。
-- PR #86 已合并：Telegram 交付结果不确定时按订单唯一键通知 Owner；不自动重发、不自动退款、不改余额。PR #86 合并后的 Go/Admin/Security/Docker 发布检查仍在运行，需以最终 workflow 结论确认。
-- 本项扩展退款完整性只读核对：除退款流水与金额/用户/管理员关联外，额外检查本地订单 `orders.status` 与上游采购 `upstream_procurements.status` 是否同时处于 `refunded`。
-- 检测双向状态分裂：订单已退款但采购队列未退款；采购队列已退款但订单未退款。异常进入统一财务异常中心，按订单 source key 幂等登记。
-- 新增 SQLite 回归测试覆盖两种状态分裂，并断言核对器不修改任一订单/采购状态。Go/Admin/Security CI 待 PR 验证。
-- 安全边界：只报告、不自动修复；不改用户余额、不新增 credit/debit、不触发供应商请求、不改变退款记录。
+- PR #87 已 Squash Merge，merge commit `ccb1803a6418a930c1cdf091607c41a31e508b07`。
+- 退款完整性巡检除核验退款记录、钱包 credit、金额、买家与管理员关联外，新增核验 `orders.status` 与 `upstream_procurements.status` 是否同时为 `refunded`。
+- 双向状态分裂按订单维度幂等登记 critical 财务异常；只报告、不自动修复，不改余额、流水或采购状态。
+- PR #87 的实现已被后续 PR #88 扩展，生产异常数据核查仍待部署执行。
 
-## 2026-11-21 — 订单与资金补偿机制 P0-4（持续开发）
+## 2026-11-21 — 订单与资金补偿机制 P0-4（PR #85–#86 已合并）
 
-- 最新 main 基线：`1a6f05cde287ecfd5ac52a33e02698d70d75bc63`（PR #85 已合并）；后续独立分支：`feat/procurement-reconciliation-owner-alerts-p0-4b`。
-- P0-4 第一项已交付：PR #85 的已付款上游订单缺失采购队列自动恢复。Go Backend CI、Admin Frontend CI、安全扫描均通过；合并后 Docker Publish 与 Go/Admin/Security push workflows 正在执行，待确认最新镜像结果。
-- 队列恢复只处理仍为 `procurement_pending`、已确认付款、来源明确为 upstream 且采购队列行缺失的订单；按原始付款时间恢复 deadline，幂等补建，不修改支付信息、钱包余额或资金流水。
-- P0-4 后续项：Telegram 交付请求出现网络/响应不确定时，订单已进入隔离状态，但此前缺少直接 Owner 通知。本分支增加按订单唯一键的一次性告警认领，复用 `risk_alert` 通知通道，避免每次租约/重试循环重复轰炸。
-- 新增回归测试验证同一订单不确定告警仅触发一次；Go/Admin/Security CI 待本分支验证。真实 Telegram 发送失败/响应丢失仍需真机验收。
-- 资金安全边界保持不变：不自动改余额、不自动退款、不盲目重发不确定交付；Owner 必须先核实 Telegram 是否已送达，再在后台处理异常订单。
+- PR #85 已合并，merge commit `1a6f05cde287ecfd5ac52a33e02698d70d75bc63`：定时恢复已付款、仍处于 `procurement_pending` 且缺失采购队列行的上游订单；沿用原始 `paid_at` 计算 deadline，以本地订单号唯一约束保证幂等，不修改支付信息、钱包余额或资金流水。
+- PR #86 已合并，merge commit `3e2be62cef60553e92a92aea082d2470a51bf3e9`：Telegram 交付结果不确定时按订单唯一键认领一次 Owner 告警，复用 `risk_alert`，避免调度循环重复通知。
+- 两项均不自动重试不确定交付、不自动退款、不自动调整余额；真实 Telegram 网络响应丢失和 Owner 通知仍需目标环境验收。
 
-- 开发分支：`feat/order-fund-compensation-reconciliation-p0-4`，基于 main@c56d6322a6a16bd5ce71977e52152a82eeb9d1c1。
-- P0-3 分步骤 file_card 交付恢复 PR #84 已合并；Go CI、Admin CI、安全扫描与 Docker Publish 均成功。GHCR manifest digest：`sha256:50530060864b7ac04c8a5839e40b086e78049f3b7db4547103a2926eea001a75`。
-- 本阶段第一项已实现：定时扫描仍处于 `procurement_pending`、支付已确认且采购队列行缺失的上游订单，按原始 `paid_at` 与配置超时恢复队列，不延长订单采购期限；`local_order_id` 唯一约束保证幂等。
-- 恢复只创建缺失采购队列记录，不改变订单状态、支付方式/交易引用、钱包余额或资金流水；`procurement_failed`、`procurement_uncertain`、已退款/已交付订单不会被该恢复器自动重排。
-- 恢复器已接入现有 5 秒采购调度循环；新增测试覆盖缺失队列恢复、重复扫描幂等及支付/钱包账本不变。Go/Admin/Security CI 待本 PR 验证。
-- 后续工作：继续核对本地交付失败恢复、采购异常通知与补偿状态边界；任何退款或余额变更仍只允许现有经过审计的人工事务，不加入自动资金补偿。
+## 2026-11-21 — 分步骤交付状态机 P0-3（PR #84 已合并）
 
-## 2026-11-21 — 分步骤交付状态机 P0-3（开发中）
-
-- 当前基线：`main@0a8895d54bbac02a78743b8692192c8ed66ea072`（P0-2 全局异常中心 PR #83 已合并）；独立分支 `feat/stepwise-delivery-state-machine-p0-3`。
-- 现有 PR #69–#72 已完成交付不确定隔离、一次性邀请链接保护、file_card 整单盲重试阻断和已交付 file_card 再次获取防重发；这些保护不能替代子步骤状态机。
-- 本轮目标：为 `file_card` 的文件发送与卡密消息分别记录 attempts、status、last_error、Telegram message_id 和时间；管理员恢复时跳过已成功步骤，只重试明确失败步骤。
-- 结果不确定或进程崩溃留下的 `sending` 步骤必须先人工核实，原子记录审计后才能标记成功/失败；禁止盲目重发。已交付订单的 file_card 再次获取仍保持禁止。
-- 外部 Telegram 请求执行期间保留订单租约；并发管理员不能重复 claim 或提前核实。租约过期后遗留的 sending 步骤先转为 uncertain，再允许人工判定。
-- 迁移 0053 会将升级前已处于 `delivery_uncertain` 的 file_card 订单回填为两个独立的 uncertain 步骤，要求管理员分别核实文件与卡密消息，避免升级后把旧订单误当成可安全重发。
-- 已实现初版：迁移 0053、步骤持久化 API/数据库方法、Telegram message_id 采集、file_card 分步恢复、后台订单详情步骤记录与人工核实操作、回归测试。
-- P0-2 发布：PR #83 已合并至 main，Go CI #44836648477、Admin CI #44836648431、安全扫描 #44836648441、Docker Publish #44836648433 全部成功；GHCR digest：`sha256:9792e121f9447fc450921910d3bafab545119ea8d67de1702ee8cc49c3d1a06d`。
-- P0-3 验证：当前分支待 Go/Admin/Security CI；真实 Telegram sendDocument/sendMessage 分步骤恢复仍需真机验收。
-- 数据库迁移：新增 `0053_order_delivery_steps.sql`，兼容 PostgreSQL/SQLite；应用启动自动迁移。
+- PR #84 已 Squash Merge，merge commit `c56d6322a6a16bd5ce71977e52152a82eeb9d1c1`；新增迁移 `0053_order_delivery_steps.sql`，兼容 PostgreSQL/SQLite 并由应用启动自动迁移。
+- `file_card` 文件发送与卡密消息分别持久化步骤状态、attempts、Telegram message_id、错误与时间；恢复时跳过成功步骤，只重试明确失败步骤。
+- 发送结果不确定或崩溃遗留的 sending 步骤先转为 uncertain，必须人工核实并审计后才能恢复；发送期间订单租约阻止并发 claim/核实。
+- PR #84 Go/Admin/Security CI 与 Docker Publish 已成功，镜像 digest：`sha256:50530060864b7ac04c8a5839e40b086e78049f3b7db4547103a2926eea001a75`。
+- 代码已合并发布；真实 Telegram sendDocument/sendMessage 分步骤恢复仍待项目所有者验收。
 
 ## 2026-11-21 — Cap Widget 新版 CDN 加载兼容修复（PR #81 已合并）
 
@@ -397,9 +378,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.63
-> - 源码核对基线：`main@86e1e055d42c0c43bb94e5e7aa83f06636344af9`；PR #107 SMTP TLS 修复与 PR #108 文档校准均已合并
-> - 本次文档更新：校准 SMTP TLS 发布记录、PR #104 合并状态及文档元信息；源码基线更新至 main@86e1e055
+> - 文档版本：2.2.64
+> - 源码核对基线：`main@a4600b895ae8fea60d646e104fb4045003de0b0b`；PR #109 文档基线校准已合并
+> - 本次文档更新：校准 P0-3/P0-4 的 PR #84–#89 合并状态、CI/发布边界及文档版本
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card

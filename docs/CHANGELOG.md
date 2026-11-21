@@ -1,3 +1,14 @@
+## 2026-11-21 — P0-3/P0-4 分步骤交付与资金保护状态校准（PR #84–#89 已合并）
+
+- PR #84：分步骤 file_card 交付状态机已合并，merge commit `c56d6322a6a16bd5ce71977e52152a82eeb9d1c1`。
+- PR #85：已付款上游订单缺失采购队列恢复已合并，merge commit `1a6f05cde287ecfd5ac52a33e02698d70d75bc63`。
+- PR #86：交付结果不确定时按订单幂等通知 Owner 已合并，merge commit `3e2be62cef60553e92a92aea082d2470a51bf3e9`。
+- PR #87：退款状态双向一致性只读核对已合并，merge commit `ccb1803a6418a930c1cdf091607c41a31e508b07`。
+- PR #88：已退款上游订单缺少采购生命周期记录检测已合并，merge commit `4ee33774a6bc136f3360728a91a58d5dfd43f4eb`。
+- PR #89：活动首次交付期间禁止退款已合并，merge commit `f3e09ba7637f683494a8675b3f7e928df59059b9`；Docker Publish digest `sha256:ecbcb456eb6e2eb19057d3338b2705ac09e7d0e6a563a338096340eff6d71eb9`。
+- 安全边界：不确定交付/采购不盲目重试，不自动退款或调整钱包；财务一致性巡检只登记异常，不自动修复。
+- 生产 PostgreSQL 历史数据检查、真实 Telegram 不确定发送/通知与交付-退款并发验收仍待目标环境执行。
+
 ## 2026-11-21 — SMTP TLS 发送修复（PR #107 已合并并发布）
 
 - 根因：站点配置中的 `SMTPUseTLS` 未应用到测试邮件、管理员邮箱验证码和业务通知的 SMTP 发送路径。
@@ -13,13 +24,13 @@
 - PR head Go/Admin/Security CI 与合并后 main Go/Admin/Security/Docker Publish 全部成功；GHCR manifest digest：`sha256:bf5a1ba71e51cfd9318e3feada105c3f741d90bb4d6bb52bd854d7f5968e71a3`。
 - 真实手机浏览器视觉验收仍待执行。
 
-## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 开发中；原 PR #77 已关闭并由本 PR 替代）
+## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 已合并；原 PR #77 已关闭并由 PR #104 替代）
 
 - 状态：基于 PR #103 合并后的 main 新建独立分支 `fix/owner-media-reply-single-side-effect-rebased`，不沿用落后主线的旧 PR 分支。
 - 影响模块：Owner Bot 售后媒体回复、客服工单时间线。
 - 变更内容：caption 超过 900 个 Unicode 字符时，在任何客户侧媒体发送前拒绝；移除媒体发送后再补发剩余文本的第二次 Telegram API 调用。
 - 数据库迁移：无；配置/部署影响：无新增环境变量。
-- 验证：新增回归测试确认超长 caption 不触发 sendPhoto/sendDocument，且不写入已送达的 admin 回复记录；PR head CI 待验证。
+- 验证：PR head Go/Admin/Security CI 已通过；真实 Telegram Owner 回复验收仍待项目所有者执行。
 - 兼容性与验收边界：普通文本回复和用户提交媒体不变；真实 Telegram Owner 回复验收仍待项目所有者执行。
 
 ## 2026-11-21 — 备份恢复集成测试补充模拟 RPO/RTO 计时（PR #102 已合并并发布）
