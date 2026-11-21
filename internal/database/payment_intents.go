@@ -85,7 +85,7 @@ func RecordEpusdtPaymentEvent(ctx context.Context, db *sql.DB, driver string, ev
 	id,err:=randomID();if err!=nil{return false,err}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
 	query:="INSERT INTO epusdt_payment_events(id,order_id,provider_trade_id,block_transaction_id,amount_minor,status,payload_json,created_at) VALUES("+
-		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+") ON CONFLICT(provider_trade_id) DO NOTHING"
+		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+") ON CONFLICT(provider_trade_id) DO UPDATE SET block_transaction_id=excluded.block_transaction_id,amount_minor=excluded.amount_minor,status=excluded.status,payload_json=excluded.payload_json,created_at=excluded.created_at WHERE epusdt_payment_events.order_id=excluded.order_id"
 	result,err:=db.ExecContext(ctx,query,id,event.OrderID,event.ProviderTradeID,event.BlockTransactionID,event.AmountMinor,event.Status,event.PayloadJSON,now)
 	if err!=nil{return false,err}
 	n,err:=result.RowsAffected();if err!=nil{return false,err}
