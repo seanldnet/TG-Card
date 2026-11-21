@@ -13,7 +13,7 @@
 - PR #95 已提供 RFC 6238 管理员 TOTP、AES-GCM 加密密钥、绑定/关闭流程、登录校验与会话撤销；PR #95 Go/Admin/Security CI 全部通过并已合并。
 - 本阶段补齐 10 个高熵一次性恢复码：仅在绑定确认时显示一次，数据库仅保存 SHA-256 哈希；消费采用 compare-and-swap 防并发复用，成功登录后审计；关闭 TOTP 同时清空恢复码。
 - 新增迁移 `0055_admin_totp_recovery_codes.sql`，登录支持备用恢复码，安全设置页面一次性展示并提示安全保存。
-- PR #96 Go/Admin/Security CI 全部通过并已合并；合并后 Docker Publish 工作流正在执行。真实管理员绑定/恢复码登录验收仍待执行。
+- PR #96 Go/Admin/Security/Docker Publish 全部通过并已合并；GHCR manifest digest：`sha256:41c3c879a278a7aa442f45abd838abfb6fa82df718515a4ed2811d30d97a8758`。真实管理员绑定/恢复码登录验收仍待执行。
 
 ## 2026-11-21 — P1 管理员 TOTP 双重验证（PR #95 已合并）
 
