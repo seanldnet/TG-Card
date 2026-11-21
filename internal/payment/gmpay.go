@@ -251,6 +251,51 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 // CheckGMPayPayment uses Epusdt's public trade status endpoint over HTTPS.
 // The response identifies the exact local trade_id; the signed callback remains
 // the source for amount verification when available.
+// HandleGMPayEdgeCallback authenticates callbacks with the independent GMPay Edge credential.
+func (m *Manager) HandleGMPayEdgeCallback(ctx context.Context, fields map[string]string, payloadJSON string) error {
+	m.mu.RLock()
+	client := m.gmpayEdge
+	m.mu.RUnlock()
+	if client == nil { return ErrGatewayDisabled }
+	if fields["pid"] == "" || fields["pid"] != client.pid || !VerifyGMPay(fields, client.secret) { return ErrInvalidSignature }
+	return m.settleGMPayPaymentForProvider(ctx, fields, payloadJSON, "gmpay_edge")
+}
+
+// CreateHostedCheckoutRoundRobin assigns a new order to one enabled hosted
+// provider. Existing intents always resume through their original provider.
+func (m *Manager) CreateHostedCheckoutRoundRobin(ctx context.Context, order database.Order) (string,error) {
+	if order.ID == "" { return "", errors.New("order ID is required") }
+	if intent, err := database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo); err == nil {
+		switch intent.Provider {
+		case "epusdt": return m.CreateGMPayCheckout(ctx,order)
+		case "gmpay_edge": return m.CreateGMPayEdgeCheckout(ctx,order)
+		default: return "", fmt.Errorf("unsupported recorded payment provider %q",intent.Provider)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) { return "",err }
+	m.mu.Lock()
+	providers := make([]string,0,2)
+	if m.gateway != nil && m.gatewayNotifyURL != "" { providers=append(providers,"epusdt") }
+	if m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != "" { providers=append(providers,"gmpay_edge") }
+	if len(providers)==0 { m.mu.Unlock(); return "",ErrGatewayDisabled }
+	selected := providers[0]
+	if len(providers)>1 { selected=providers[(m.checkoutCursor%uint64(len(providers)))]; m.checkoutCursor++ }
+	m.mu.Unlock()
+	if selected=="gmpay_edge" { return m.CreateGMPayEdgeCheckout(ctx,order) }
+	return m.CreateGMPayCheckout(ctx,order)
+}
+
+func (m *Manager) CheckHostedPayment(ctx context.Context, orderID string) (string,error) {
+	order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+	if err!=nil{return "",err}
+	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo)
+	if err!=nil{return "",err}
+	switch intent.Provider {
+	case "epusdt": return m.CheckGMPayPayment(ctx,orderID)
+	case "gmpay_edge": return m.CheckGMPayEdgePayment(ctx,orderID)
+	default: return "",fmt.Errorf("unsupported recorded payment provider %q",intent.Provider)
+	}
+}
+
 func (m *Manager) CheckGMPayPayment(ctx context.Context, orderID string) (string,error) {
 	return m.checkGMPayPaymentForProvider(ctx, orderID, "epusdt")
 }
