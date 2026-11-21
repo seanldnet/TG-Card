@@ -1,8 +1,15 @@
-## 2026-11-21 — P1 管理员 TOTP 双重验证（开发中）
+## 2026-11-21 — P1 TOTP 一次性恢复码（开发中）
+
+- 为管理员 TOTP 绑定增加 10 个一次性恢复码；仅在绑定确认时显示一次，数据库只存 SHA-256 哈希。
+- 登录可使用动态验证码或未使用的恢复码；恢复码采用并发安全的一次性消费，重复使用会拒绝并记录审计。
+- 关闭 TOTP 清空恢复码；安全设置页面显示一次性恢复码并提示安全保存。
+- 新增迁移 `0055_admin_totp_recovery_codes.sql`；Go/Admin/Security CI 与 PostgreSQL 验证待完成。PROJECT_STATUS 文档版本更新至 2.2.51。
+
+## 2026-11-21 — P1 管理员 TOTP 双重验证（PR #95 已合并）
 
 - 新增管理员 TOTP 绑定、动态码确认、关闭与登录校验；密钥 AES-GCM 加密存储，绑定前需当前密码。
 - 新增登录动态码字段、安全设置页面、接口限流与审计。
-- 迁移 0054_admin_totp.sql；无新增环境变量。恢复码和生产恢复流程尚未完成；PROJECT_STATUS 文档版本更新至 2.2.50，CI 待验证。
+- 迁移 0054_admin_totp.sql；无新增环境变量。PR #95 Go/Admin/Security/Docker Publish 全部通过并已合并；GHCR manifest digest：`sha256:b51ec8ed881cf73d52e2038e6f68a3064b3c818b0e59132970df2339b77fa17a`。真实管理员绑定验收待完成。PROJECT_STATUS 文档版本更新至 2.2.50。
 
 ## 2026-11-21 — P1 业务风险 Owner 主动告警（PR #94 已合并）
 

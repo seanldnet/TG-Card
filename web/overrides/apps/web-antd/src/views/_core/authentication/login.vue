@@ -147,6 +147,13 @@ const formSchema = computed((): VbenFormSchema[] => [
     label: '动态验证码（可选）',
     rules: z.string().optional(),
   },
+  {
+    component: 'VbenInput',
+    componentProps: { placeholder: '无法使用验证器时，可输入未使用的一次性恢复码' },
+    fieldName: 'totpRecoveryCode',
+    label: '一次性恢复码（备用）',
+    rules: z.string().optional(),
+  },
   ...(capEnabled.value
     ? [{
         component: markRaw(CapWidgetField),

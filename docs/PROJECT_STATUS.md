@@ -1,11 +1,19 @@
-## 2026-11-21 — P1 管理员 TOTP 双重验证（开发中）
+## 2026-11-21 — P1 TOTP 一次性恢复码（开发中）
 
-- 当前 main 基线：`c02ad8fc2db50212affcfa948226dfb79f5b9ba7`（PR #94 已合并）；独立分支：`feat/admin-totp-two-factor-p1`。
+- 当前 main 基线：`902518c8e0cfbfddb83d3570206c34f3d69028fd`（PR #95 已合并）；独立分支：`feat/admin-totp-recovery-codes-p1`。
+- PR #95 已提供 RFC 6238 管理员 TOTP、AES-GCM 加密密钥、绑定/关闭流程、登录校验与会话撤销；PR #95 Go/Admin/Security CI 全部通过并已合并。
+- 本阶段补齐 10 个高熵一次性恢复码：仅在绑定确认时显示一次，数据库仅保存 SHA-256 哈希；消费采用 compare-and-swap 防并发复用，成功登录后审计；关闭 TOTP 同时清空恢复码。
+- 新增迁移 `0055_admin_totp_recovery_codes.sql`，登录支持备用恢复码，安全设置页面一次性展示并提示安全保存。
+- 当前状态：独立 PR 开发中，Go/Admin/Security CI 和 SQLite/PostgreSQL 验证待完成；未合并、未发布。真实管理员绑定/恢复码登录验收仍待执行。
+
+## 2026-11-21 — P1 管理员 TOTP 双重验证（PR #95 已合并）
+
+- PR #95 已 Squash Merge 至 main，merge commit `902518c8e0cfbfddb83d3570206c34f3d69028fd`；独立分支：`feat/admin-totp-two-factor-p1`。
 - 新增 RFC 6238 TOTP（6 位、30 秒周期、±1 时间步），启用需当前密码 + 验证器确认；已启用管理员登录需密码 + Cap（如启用）+ TOTP。
 - TOTP 密钥使用现有 AES-GCM Secret Manager 加密存储；数据库只存密文，绑定采用 pending→confirm→enabled 状态转换；关闭需当前密码与 TOTP。
 - 新增安全设置页面、登录动态码输入、独立限流和管理员审计；迁移 0054_admin_totp.sql，无新增环境变量。
-- 当前限制：暂未提供一次性恢复码，生产启用前需确认验证器备份/账户恢复流程。
-- 当前状态：代码、迁移、测试和文档已提交独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未生产验收。
+- 后续 PR #96 补充一次性恢复码，生产启用前仍需完成真实管理员验证器绑定与恢复码登录验收。
+- PR #95 Go/Admin/Security/Docker Publish 全部通过；GHCR manifest digest：`sha256:b51ec8ed881cf73d52e2038e6f68a3064b3c818b0e59132970df2339b77fa17a`。真实管理员绑定验收待完成。
 
 ## 2026-11-21 — P1 业务风险 Owner 主动告警（PR #94 已合并）
 
@@ -226,7 +234,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.50
+> - 文档版本：2.2.51
 > - 源码核对基线：main 分支，commit `c02ad8fc2db50212affcfa948226dfb79f5b9ba7`；PR #94 已合并
 > - 本次文档更新：记录 P1 管理员 TOTP 双重验证
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）

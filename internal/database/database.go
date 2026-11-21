@@ -4,6 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"database/sql"
 	"embed"
 	"encoding/base64"
@@ -38,6 +41,7 @@ type Admin struct {
 	TOTPPendingSecretCiphertext string
 	TOTPEnabled bool
 	TOTPEnabledAt string
+	TOTPRecoveryCodeHashes string
 }
 
 type BootstrapResult struct {
@@ -136,9 +140,9 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, driver, username, password str
 }
 
 func FindAdminByUsername(ctx context.Context, db *sql.DB, driver, username string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version, totp_secret_ciphertext, totp_pending_secret_ciphertext, totp_enabled, totp_enabled_at FROM admins WHERE username = "+placeholder(driver,1)
+	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version, totp_secret_ciphertext, totp_pending_secret_ciphertext, totp_enabled, totp_enabled_at, totp_recovery_code_hashes FROM admins WHERE username = "+placeholder(driver,1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion, &admin.TOTPSecretCiphertext, &admin.TOTPPendingSecretCiphertext, &admin.TOTPEnabled, &admin.TOTPEnabledAt)
+	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion, &admin.TOTPSecretCiphertext, &admin.TOTPPendingSecretCiphertext, &admin.TOTPEnabled, &admin.TOTPEnabledAt, &admin.TOTPRecoveryCodeHashes)
 	return admin, err
 }
 
@@ -192,9 +196,9 @@ func nullableString(value string) any {
 
 
 func FindAdminByID(ctx context.Context, db *sql.DB, driver, adminID string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version, totp_secret_ciphertext, totp_pending_secret_ciphertext, totp_enabled, totp_enabled_at FROM admins WHERE id = " + placeholder(driver, 1)
+	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version, totp_secret_ciphertext, totp_pending_secret_ciphertext, totp_enabled, totp_enabled_at, totp_recovery_code_hashes FROM admins WHERE id = " + placeholder(driver, 1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion, &admin.TOTPSecretCiphertext, &admin.TOTPPendingSecretCiphertext, &admin.TOTPEnabled, &admin.TOTPEnabledAt)
+	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion, &admin.TOTPSecretCiphertext, &admin.TOTPPendingSecretCiphertext, &admin.TOTPEnabled, &admin.TOTPEnabledAt, &admin.TOTPRecoveryCodeHashes)
 	return admin, err
 }
 
@@ -568,7 +572,7 @@ func SetAdminTOTPPendingSecret(ctx context.Context,db *sql.DB,driver,adminID,cip
 
 func EnableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,token_version=token_version+1,totp_enabled_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",now,now,adminID)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,totp_recovery_code_hashes='[]',token_version=token_version+1,totp_enabled_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",now,now,adminID)
 	if err!=nil{return err}
 	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("TOTP enrollment is not pending")}
 	return nil
@@ -576,8 +580,39 @@ func EnableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
 
 func DisableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext='',totp_pending_secret_ciphertext='',totp_enabled=0,token_version=token_version+1,totp_enabled_at='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,adminID)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext='',totp_pending_secret_ciphertext='',totp_enabled=0,totp_recovery_code_hashes='[]',token_version=token_version+1,totp_enabled_at='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,adminID)
 	if err!=nil{return err}
 	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("administrator not found")}
 	return nil
+}
+
+
+func normalizeTOTPRecoveryCode(code string)string{return strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(code),"-","")," ",""))}
+
+func EnableAdminTOTPWithRecoveryCodes(ctx context.Context,db *sql.DB,driver,adminID string,codes []string)error{
+	if len(codes)<5{return fmt.Errorf("at least five recovery codes are required")}
+	hashes:=make([]string,0,len(codes))
+	for _,code:=range codes{sum:=sha256.Sum256([]byte(normalizeTOTPRecoveryCode(code)));hashes=append(hashes,hex.EncodeToString(sum[:]))}
+	encoded,err:=json.Marshal(hashes);if err!=nil{return err}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,totp_recovery_code_hashes="+placeholder(driver,1)+",token_version=token_version+1,totp_enabled_at="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",string(encoded),now,now,adminID)
+	if err!=nil{return err};n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("TOTP enrollment is not pending")};return nil
+}
+
+func ConsumeAdminTOTPRecoveryCode(ctx context.Context,db *sql.DB,driver,adminID,code string)(bool,error){
+	code=normalizeTOTPRecoveryCode(code);if len(code)<16||len(code)>64{return false,nil}
+	sum:=sha256.Sum256([]byte(code));wanted:=hex.EncodeToString(sum[:])
+	for attempt:=0;attempt<5;attempt++{
+		var raw string
+		if err:=db.QueryRowContext(ctx,"SELECT totp_recovery_code_hashes FROM admins WHERE id="+placeholder(driver,1)+" AND totp_enabled=1",adminID).Scan(&raw);err!=nil{if err==sql.ErrNoRows{return false,nil};return false,err}
+		var hashes []string;if err:=json.Unmarshal([]byte(raw),&hashes);err!=nil{return false,fmt.Errorf("decode recovery code hashes: %w",err)}
+		found:=-1
+		for i,h:=range hashes{if subtle.ConstantTimeCompare([]byte(h),[]byte(wanted))==1{found=i}}
+		if found<0{return false,nil}
+		hashes=append(hashes[:found],hashes[found+1:]...)
+		updated,err:=json.Marshal(hashes);if err!=nil{return false,err}
+		res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_recovery_code_hashes="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2)+" AND totp_recovery_code_hashes="+placeholder(driver,3)+" AND totp_enabled=1",string(updated),adminID,raw)
+		if err!=nil{return false,err};n,err:=res.RowsAffected();if err!=nil{return false,err};if n==1{return true,nil}
+	}
+	return false,fmt.Errorf("recovery code was concurrently consumed; retry")
 }
