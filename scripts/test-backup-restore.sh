@@ -63,7 +63,7 @@ CREATE TABLE product_categories (
 );
 CREATE TABLE products (
   id TEXT PRIMARY KEY, category_id TEXT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
-  price_minor BIGINT NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USDT',
+  price_minor INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USDT',
   delivery_type TEXT NOT NULL DEFAULT 'card', status INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   FOREIGN KEY(category_id) REFERENCES product_categories(id) ON DELETE SET NULL
@@ -77,8 +77,8 @@ CREATE TABLE product_keys (
 CREATE TABLE orders (
   id TEXT PRIMARY KEY, order_no TEXT NOT NULL UNIQUE, bot_id TEXT NOT NULL DEFAULT '',
   telegram_user_id TEXT NOT NULL, telegram_chat_id TEXT NOT NULL, product_id TEXT,
-  product_name TEXT NOT NULL, unit_price_minor BIGINT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1,
-  amount_minor BIGINT NOT NULL, currency TEXT NOT NULL DEFAULT 'USDT',
+  product_name TEXT NOT NULL, unit_price_minor INTEGER NOT NULL, quantity INTEGER NOT NULL DEFAULT 1,
+  amount_minor INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'USDT',
   status TEXT NOT NULL DEFAULT 'pending_payment', expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL, paid_at TEXT, delivered_at TEXT,
   FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE SET NULL
