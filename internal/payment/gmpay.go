@@ -177,7 +177,9 @@ func DecodeGMPayCallback(body []byte)(map[string]string,error){
 	for key,value:=range values{
 		switch v:=value.(type){
 		case string: fields[key]=v
-		case json.Number: fields[key]=v.String()
+		case json.Number:
+			f,err:=v.Float64();if err!=nil{return nil,fmt.Errorf("invalid GMPay numeric field %q",key)}
+			fields[key]=strconv.FormatFloat(f,'f',-1,64)
 		case bool: fields[key]=strconv.FormatBool(v)
 		case nil: fields[key]=""
 		default: return nil,fmt.Errorf("unsupported GMPay callback field %q",key)
