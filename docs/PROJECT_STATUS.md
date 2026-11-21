@@ -1,3 +1,12 @@
+## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
+
+- 当前 main 基线：`ccb1803a6418a930c1cdf091607c41a31e508b07`（PR #87 已合并）；本项独立分支：`feat/refunded-upstream-order-orphan-audit-p0-4d`。
+- PR #87 已完成退款状态双向一致性检测：订单与采购队列退款状态不一致时，登记财务异常；只读，不自动修复。
+- 本项补充检测第三种孤立情况：订单来源快照明确为 upstream 且订单已退款，但 `upstream_procurements` 生命周期记录缺失。该情况无法核对供应商侧退款状态，必须作为 critical 财务异常提示人工核实。
+- 新增 SQLite 回归测试覆盖缺失采购生命周期记录，并断言检查过程不修改订单状态和来源快照。
+- Go/Admin/Security CI 待 PR 验证；PR #87 合并后的 main push workflows 已触发，需分别确认成功及 Docker digest。
+- 安全边界：只读检测，不补建采购行、不退款、不更改钱包余额/流水、不调用上游 API。
+
 ## 2026-11-21 — P0-4 退款状态一致性核对（开发中）
 
 - 当前 main 基线：`3e2be62cef60553e92a92aea082d2470a51bf3e9`（PR #86 已合并）；本项独立分支：`feat/refund-state-ledger-reconciliation-p0-4c`。
@@ -155,9 +164,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.42
+> - 文档版本：2.2.43
 > - 源码核对基线：main 分支，commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；PR #83 已合并
-> - 本次文档更新：记录 PR #86 合并及 P0-4 退款状态一致性核对开发进度
+> - 本次文档更新：记录 PR #87 合并及 P0-4 上游退款生命周期孤立订单检测
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。

@@ -186,3 +186,19 @@ func TestRefundIntegrityDetectsOrderProcurementStateMismatch(t *testing.T) {
  if err:=db.QueryRowContext(ctx,"SELECT status FROM upstream_procurements WHERE local_order_id=?",orders[1].ID).Scan(&procB);err!=nil{t.Fatal(err)}
  if orderA!="refunded"||procA!="failed"||orderB=="refunded"||procB!="refunded"{t.Fatalf("integrity checker must be read-only: A=%s/%s B=%s/%s",orderA,procA,orderB,procB)}
 }
+
+func TestRefundIntegrityDetectsUpstreamOrderWithoutProcurementRecord(t *testing.T) {
+ ctx:=context.Background();db:=reconciliationTestDB(t)
+ product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"upstream",PriceMinor:1000,Currency:"USDT",DeliveryType:"fixed_text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ order,err:=CreateOrder(ctx,db,"sqlite","bot","orphan-upstream-user","orphan-upstream-chat",product.ID,time.Hour)
+ if err!=nil{t.Fatal(err)}
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='refunded',upstream_source_snapshot='upstream' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+ count,err:=RunRefundLedgerIntegrityCheck(ctx,db,"sqlite")
+ if err!=nil||count!=1{t.Fatalf("expected missing procurement lifecycle exception, count=%d err=%v",count,err)}
+ open,err:=CountOpenFinanceExceptions(ctx,db)
+ if err!=nil||open!=1{t.Fatalf("expected one open exception, count=%d err=%v",open,err)}
+ var status,source string
+ if err:=db.QueryRowContext(ctx,"SELECT status,upstream_source_snapshot FROM orders WHERE id=?",order.ID).Scan(&status,&source);err!=nil{t.Fatal(err)}
+ if status!="refunded"||source!="upstream"{t.Fatalf("integrity check must not mutate order: status=%s source=%s",status,source)}
+}

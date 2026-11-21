@@ -278,6 +278,12 @@ func RunRefundLedgerIntegrityCheck(ctx context.Context,db *sql.DB,driver string)
  if err!=nil{return 0,err}
  for stateRows.Next(){var id,orderStatus,procurementStatus string;if err:=stateRows.Scan(&id,&orderStatus,&procurementStatus);err!=nil{stateRows.Close();return 0,err};bad=append(bad,anomaly{id,"订单与上游采购退款状态不一致：order="+orderStatus+", procurement="+procurementStatus})}
  if err:=stateRows.Err();err!=nil{stateRows.Close();return 0,err};if err:=stateRows.Close();err!=nil{return 0,err}
+ // An upstream order cannot be considered refunded if its procurement
+ // lifecycle row is missing: there is no supplier-side state to reconcile.
+ orphanProcurements,err:=db.QueryContext(ctx,"SELECT o.id FROM orders o WHERE o.status='refunded' AND (o.upstream_source_snapshot='upstream' OR o.upstream_fulfillment_type_snapshot='upstream') AND NOT EXISTS (SELECT 1 FROM upstream_procurements p WHERE p.local_order_id=o.id)")
+ if err!=nil{return 0,err}
+ for orphanProcurements.Next(){var id string;if err:=orphanProcurements.Scan(&id);err!=nil{orphanProcurements.Close();return 0,err};bad=append(bad,anomaly{id,"上游订单已退款，但缺少采购生命周期记录，无法核对供应商退款状态"})}
+ if err:=orphanProcurements.Err();err!=nil{orphanProcurements.Close();return 0,err};if err:=orphanProcurements.Close();err!=nil{return 0,err}
  // Detect refund credits that are not referenced by the unique procurement refund ledger.
  orphan,err:=db.QueryContext(ctx,"SELECT w.id FROM wallet_transactions w WHERE w.direction='credit' AND w.note LIKE '上游采购失败退款：%' AND NOT EXISTS (SELECT 1 FROM upstream_procurement_refunds r WHERE r.wallet_transaction_id=w.id)")
  if err!=nil{return 0,err};for orphan.Next(){var id string;if err:=orphan.Scan(&id);err!=nil{orphan.Close();return 0,err};bad=append(bad,anomaly{id,"存在上游采购退款 credit，但没有对应的退款账本记录"})};if err:=orphan.Err();err!=nil{orphan.Close();return 0,err};orphan.Close()
