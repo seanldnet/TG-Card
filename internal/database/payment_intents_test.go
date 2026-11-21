@@ -14,7 +14,7 @@ func TestEpusdtPaymentIntentAndCallbackEventsAreIdempotent(t *testing.T) {
 	if err!=nil{t.Fatal(err)}
 	defer db.Close()
 	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
-	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"GMPay product",PriceMinor:1250,Currency:"USDT",DeliveryType:"text",DeliveryConfig:"{}",Status:1})
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"GMPay product",PriceMinor:1250,Currency:"USDT",DeliveryType:"text",DeliveryConfigJSON:"{}",Status:1})
 	if err!=nil{t.Fatal(err)}
 	order,err:=CreateOrder(ctx,db,"sqlite","gmpay-test-bot","buyer-1","chat-1",product.ID,20*time.Minute)
 	if err!=nil{t.Fatal(err)}
@@ -51,7 +51,7 @@ func TestCreateEpusdtPaymentIntentRejectsCancelledOrder(t *testing.T) {
 	if err!=nil{t.Fatal(err)}
 	defer db.Close()
 	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
-	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"GMPay product",PriceMinor:100,Currency:"USDT",DeliveryType:"text",DeliveryConfig:"{}",Status:1})
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"GMPay product",PriceMinor:100,Currency:"USDT",DeliveryType:"text",DeliveryConfigJSON:"{}",Status:1})
 	if err!=nil{t.Fatal(err)}
 	order,err:=CreateOrder(ctx,db,"sqlite","gmpay-test-bot","buyer-2","chat-2",product.ID,time.Minute)
 	if err!=nil{t.Fatal(err)}
