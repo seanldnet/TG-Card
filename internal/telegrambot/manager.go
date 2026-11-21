@@ -63,6 +63,9 @@ type Manager struct {
 	expiryCancel context.CancelFunc
 	paymentAddress string
 	paymentEnabled bool
+	gmpayCheckout func(context.Context, database.Order) (string, error)
+	gmpayStatus func(context.Context, string) (string, error)
+	gmpayEnabled bool
 	ownerID string
 	customerServiceURL string
 	communityURL string
@@ -156,6 +159,20 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 
 // SetNotifier attaches the application-level notification dispatcher.
 func (m *Manager) SetEncryptor(encrypt func(string) (string, error)) { m.mu.Lock(); m.encrypt=encrypt; m.mu.Unlock() }
+
+func (m *Manager) SetGMPayCheckout(checkout func(context.Context, database.Order) (string,error), status func(context.Context,string)(string,error), enabled bool) {
+	m.mu.Lock()
+	m.gmpayCheckout=checkout
+	m.gmpayStatus=status
+	m.gmpayEnabled=enabled && checkout!=nil && status!=nil
+	m.mu.Unlock()
+}
+
+func (m *Manager) gmpayCheckoutConfig() (func(context.Context,database.Order)(string,error),func(context.Context,string)(string,error),bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.gmpayCheckout,m.gmpayStatus,m.gmpayEnabled
+}
 
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
  m.mu.Lock()
@@ -1077,7 +1094,13 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 	if order.PromotionCode!=""{text+="\n优惠码："+order.PromotionCode+"（减 "+formatPrice(order.PromotionDiscountMinor,order.Currency)+"）"}
 	text+="\n金额："+formatPrice(order.AmountMinor,order.Currency)+"\n请选择付款方式。"
 	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
-	keyboard := map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}}}}
+	buttons := [][]map[string]string{
+		{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},
+		{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},
+	}
+	if _,_,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
+	buttons=append(buttons,[]map[string]string{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}})
+	keyboard := map[string]any{"inline_keyboard":buttons}
 	if query.ID!=""{_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")}
 	m.Notify("order_created","新订单："+order.OrderNo+"\n商品："+order.ProductName+"\n数量："+strconv.Itoa(order.Quantity)+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,keyboard)
@@ -1300,6 +1323,53 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
+	case strings.HasPrefix(query.Data,"shop:gmpay:"):
+		orderID:=strings.TrimPrefix(query.Data,"shop:gmpay:")
+		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+		if orderErr!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" {
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在、已关闭或已付款")
+			return
+		}
+		checkout,_,enabled:=m.gmpayCheckoutConfig()
+		if !enabled || checkout==nil {
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,"GMPay 暂未启用")
+			return
+		}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在连接 GMPay 收银台")
+		paymentURL,checkoutErr:=checkout(ctx,order)
+		if checkoutErr!=nil {
+			log.Printf("GMPay checkout creation failed: order_id=%s error=%v",order.ID,checkoutErr)
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建 GMPay 收银台，请稍后重试；如已提交过请求，系统会先查询原支付单，避免重复创建。")
+			return
+		}
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的 GMPay 收银台已准备好。请在支付有效期内完成付款，系统收到签名验证通过的回调后会自动确认并发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开 GMPay 收银台","url":paymentURL}},{{"text":"🔄 我已付款，刷新状态","callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
+	case strings.HasPrefix(query.Data,"shop:gmpaycheck:"):
+		orderID:=strings.TrimPrefix(query.Data,"shop:gmpaycheck:")
+		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+		if orderErr!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) {
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或无权查看")
+			return
+		}
+		_,statusCheck,enabled:=m.gmpayCheckoutConfig()
+		if !enabled || statusCheck==nil {
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,"GMPay 暂未启用")
+			return
+		}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在向支付网关查询状态")
+		status,statusErr:=statusCheck(ctx,order.ID)
+		if statusErr!=nil {
+			log.Printf("GMPay status query failed: order_id=%s error=%v",order.ID,statusErr)
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法查询支付状态，请稍后重试。")
+			return
+		}
+		switch status {
+		case "paid":
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"✅ 支付网关已确认到账，订单已进入自动发货流程。请在“我的订单”查看最新状态。")
+		case "expired":
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"该 GMPay 支付单已过期，请联系管理员处理或重新创建订单。")
+		default:
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"支付网关暂未确认到账。请勿重复转账，稍后可再次刷新状态。")
+		}
 	case query.Data=="wallet:openrecharge":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"请选择充值金额")
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
@@ -1481,6 +1551,9 @@ func (m *Manager) showOrderPayment(ctx context.Context, cfg Config, chatID int64
 	_, enabled := m.paymentConfig()
 	if enabled {
 		buttons = append(buttons, []map[string]string{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}})
+	}
+	if _,_,gmpayEnabled:=m.gmpayCheckoutConfig();gmpayEnabled {
+		buttons = append(buttons, []map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}})
 	}
 	buttons = append(buttons, []map[string]string{{"text":"查看订单详情","callback_data":"order:detail:"+order.ID}})
 	buttons = append(buttons, []map[string]string{{"text":"⬅️ 返回订单列表","callback_data":"menu:orders"}})

@@ -61,7 +61,7 @@ Important operational limits:
 - A transfer detected only after order expiry is not automatically credited, even if its block timestamp is close to expiry; it requires manual reconciliation.
 - Unmatched, underpaid, overpaid, expired, or ambiguous transfers are not automatically refunded or credited. A dedicated transaction ledger and reconciliation UI are still future work.
 - No wallet signing, sweeping, withdrawals, or refunds are implemented.
-- GMPay protocol client (HMAC-SHA256 signing, create-order request, and order query request) is implemented in PR #116. Epusdt merchant configuration (gateway URL, PID, encrypted Secret) is implemented in PR #117. Telegram checkout integration, provider callback verification, payment-state transition, delivery handoff, and live merchant acceptance are not implemented yet.
+- GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) are merged. Telegram checkout, callback verification, order settlement and delivery handoff are implemented in PR #121 and remain subject to PR checks and release.
 
 Configure the following in the server .env before enabling real payments:
 
@@ -157,8 +157,21 @@ When a refund is blocked because an active re-delivery lease exists, the support
 - 拒绝退款不修改订单、卡密、钱包余额或资金流水。订单必须先由交付恢复/人工核实流程收敛到明确状态。
 
 
-## Epusdt GMPay merchant configuration (merged; checkout lifecycle pending)
+## Epusdt GMPay merchant configuration (PR #116/#117 merged)
 
 The GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) are merged. Merchant credentials are managed in the existing administrator payment settings. The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
 
 Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. The next independent payment-lifecycle PR must implement Telegram storefront checkout, provider callback/query verification, atomic order payment confirmation, idempotent settlement, and delivery handoff, with security regression tests. Configuration alone does not mean the channel can accept payments.
+
+## Epusdt GMPay checkout lifecycle (PR #121 in progress)
+
+The existing GMPay client and merchant configuration are now wired into the Telegram storefront.
+
+- The product purchase flow and unified cart checkout expose a hosted GMPay cashier option when enabled.
+- The merchant order number is the Epusdt `order_id`; the provider requires it to be unique and at most 32 characters. TG-Card creates one local payment intent per local order and never blindly retries a provider create after an ambiguous timeout.
+- Requests use `POST /payments/gmpay/v1/order/create-transaction`, `currency=usd`, `token=usdt`, and `network=tron`. The local USDT-denominated amount is sent as a two-decimal USD amount.
+- The public callback endpoint is `POST /api/payment/epusdt/notify`. It requires the configured HTTPS notify URL, validates PID and HMAC-SHA256 signature, checks order/trade binding and exact minor-unit amount, then uses the existing order payment guard before delivery.
+- The user can request a status refresh; TG-Card queries the provider using `GET /pay/check-status/{trade_id}`. A confirmed status is bound to the exact local trade ID and amount before settlement.
+- Duplicate callbacks are idempotent. Amount or token mismatches, unexpected/duplicate trade IDs, and payments arriving after local order cancellation are recorded as payment events and do not trigger a second delivery.
+- An ambiguous create timeout is recorded as `create_uncertain`; because Epusdt merchant `order_id` values cannot be reused and the public status API requires a provider `trade_id`, TG-Card does not issue a second create request. A later signed callback can reconcile the original local order; otherwise the Owner must inspect the provider merchant console.
+- PR #121 CI, merge, and Docker image digest are pending. This implementation is not marked released until the applicable Go/Admin/Security checks pass, the PR is merged, and Docker Publish succeeds.

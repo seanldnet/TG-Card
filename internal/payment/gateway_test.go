@@ -37,11 +37,18 @@ func TestGMPayOrderRequestIsSignedAndPreservesAmount(t *testing.T) {
 	if !strings.Contains(string(result["data"]), "payment_url") { t.Fatalf("missing provider data: %s", result["data"]) }
 }
 
-func TestQueryRequiresExactlyOneIdentity(t *testing.T) {
-	client, err := NewGatewayClient("https://gateway.example", "1000", "secret", nil)
-	if err != nil { t.Fatal(err) }
-	for _, identity := range []map[string]string{{}, {"order_id":"a","trade_id":"b"}} {
-		if _, err := client.QueryGMPayOrder(context.Background(), identity); err == nil { t.Fatal("expected identity validation error") }
-	}
+func TestGMPayStatusQueryUsesProviderTradeIDEndpoint(t *testing.T) {
+	server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+		if r.Method!=http.MethodGet || r.URL.Path!="/pay/check-status/trade-123" { t.Fatalf("unexpected status query: %s %s",r.Method,r.URL.Path) }
+		if r.URL.RawQuery!="" { t.Fatalf("status endpoint must not receive merchant query credentials: %s",r.URL.RawQuery) }
+		w.Header().Set("Content-Type","application/json")
+		_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-123","status":1}}`)
+	}))
+	defer server.Close()
+	client,err:=NewGatewayClient(server.URL,"1000","secret",server.Client())
+	if err!=nil{t.Fatal(err)}
+	result,err:=client.QueryGMPayOrder(context.Background(),"trade-123")
+	if err!=nil{t.Fatal(err)}
+	if !strings.Contains(string(result["data"]),"trade-123"){t.Fatalf("unexpected query response: %s",result["data"])}
+	if _,err:=client.QueryGMPayOrder(context.Background(),"");err==nil{t.Fatal("empty provider trade_id must be rejected")}
 }
-

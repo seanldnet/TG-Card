@@ -134,6 +134,7 @@ type paymentSettingsRequest struct {
 	EpusdtSecret string `json:"epusdtSecret"`
 	ClearEpusdtSecret bool `json:"clearEpusdtSecret"`
 	EpusdtEnabled bool `json:"epusdtEnabled"`
+	EpusdtNotifyURL string `json:"epusdtNotifyUrl"`
 }
 
 type loginRequest struct {
@@ -213,7 +214,14 @@ func main() {
 	cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract = "", "", paymentSettings.TronUSDTContract
 	if paymentsEnabled { cfg.TronGridAPIKey, cfg.TronReceiveAddress = apiKey, paymentSettings.TronReceiveAddress }
 	paymentManager, err := payment.NewManager(cfg, db, cfg.DBDriver, botManager)
-	if err != nil { log.Fatalf("initialize TRC20 payment watcher: %v", err) }
+	if err != nil { log.Fatalf("initialize payment manager: %v", err) }
+	gatewaySecret := ""
+	if paymentSettings.EpusdtSecretCiphertext != "" {
+		gatewaySecret, err = secrets.Decrypt(paymentSettings.EpusdtSecretCiphertext)
+		if err != nil { log.Fatalf("decrypt saved Epusdt GMPay secret: %v", err) }
+	}
+	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt GMPay checkout: %v", err) }
+	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.CheckGMPayPayment, paymentManager.GatewayEnabled())
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
@@ -274,6 +282,7 @@ func main() {
 	api.HandleFunc("GET /api/users/{id}/wallet", app.listUserWalletLedger)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
+	api.HandleFunc("POST /api/payment/epusdt/notify", app.epusdtGMPayNotify)
 	api.HandleFunc("GET /api/reconciliation/reports", app.listReconciliationReports)
 	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
@@ -350,6 +359,7 @@ type paymentSettingsView struct {
 	EpusdtPID string `json:"epusdtPid"`
 	EpusdtSecretConfigured bool `json:"epusdtSecretConfigured"`
 	EpusdtEnabled bool `json:"epusdtEnabled"`
+	EpusdtNotifyURL string `json:"epusdtNotifyUrl"`
 }
 
 func (a *application) getRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
@@ -380,6 +390,7 @@ func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request)
 		EpusdtPID: s.EpusdtPID,
 		EpusdtSecretConfigured: s.EpusdtSecretCiphertext != "",
 		EpusdtEnabled: s.EpusdtEnabled,
+		EpusdtNotifyURL: s.EpusdtNotifyURL,
 	})
 }
 
@@ -396,6 +407,7 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	input.EpusdtBaseURL = strings.TrimSpace(input.EpusdtBaseURL)
 	input.EpusdtPID = strings.TrimSpace(input.EpusdtPID)
 	input.EpusdtSecret = strings.TrimSpace(input.EpusdtSecret)
+	input.EpusdtNotifyURL = strings.TrimSpace(input.EpusdtNotifyURL)
 	if input.USDTContract == "" { input.USDTContract = tron.MainnetUSDTContract }
 	current, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
 	if err != nil { log.Printf("load existing payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load current payment settings"); return }
@@ -426,9 +438,10 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		if !strings.HasPrefix(strings.ToLower(input.EpusdtBaseURL), "https://") {
 			writeError(w, http.StatusBadRequest, "Epusdt 网关必须使用 HTTPS 地址"); return
 		}
-		if input.EpusdtBaseURL == "" || input.EpusdtPID == "" || epusdtSecretCiphertext == "" {
-			writeError(w, http.StatusBadRequest, "启用 Epusdt GMPay 前必须配置网关地址、PID 和 Secret"); return
+		if input.EpusdtBaseURL == "" || input.EpusdtPID == "" || epusdtSecretCiphertext == "" || input.EpusdtNotifyURL == "" {
+			writeError(w, http.StatusBadRequest, "启用 Epusdt GMPay 前必须配置网关地址、PID、Secret 和 HTTPS 回调地址"); return
 		}
+		if !strings.HasPrefix(strings.ToLower(input.EpusdtNotifyURL), "https://") { writeError(w, http.StatusBadRequest, "Epusdt 回调地址必须使用 HTTPS"); return }
 		secretValue, decryptErr := a.secrets.Decrypt(epusdtSecretCiphertext)
 		if decryptErr != nil { writeError(w, http.StatusInternalServerError, "无法读取已保存的 Epusdt Secret"); return }
 		if _, gatewayErr := payment.NewGatewayClient(input.EpusdtBaseURL, input.EpusdtPID, secretValue, nil); gatewayErr != nil { writeError(w, http.StatusBadRequest, "Epusdt GMPay 配置无效："+gatewayErr.Error()); return }
@@ -442,6 +455,7 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtPID: input.EpusdtPID,
 		EpusdtSecretCiphertext: epusdtSecretCiphertext,
 		EpusdtEnabled: input.EpusdtEnabled,
+		EpusdtNotifyURL: input.EpusdtNotifyURL,
 	}
 	if err := database.SavePaymentSettings(r.Context(), a.db, a.driver, next); err != nil {
 		log.Printf("save payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to save payment settings"); return
@@ -450,6 +464,10 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "TRON 配置校验失败："+err.Error()); return
 	}
 	a.botManager.SetPaymentConfig(input.ReceiveAddress, input.Enabled)
+	gatewaySecret := ""
+	if epusdtSecretCiphertext != "" { gatewaySecret, _ = a.secrets.Decrypt(epusdtSecretCiphertext) }
+	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt GMPay 配置应用失败："+err.Error()); return }
+	a.botManager.SetGMPayCheckout(a.paymentManager.CreateGMPayCheckout, a.paymentManager.CheckGMPayPayment, a.paymentManager.GatewayEnabled())
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
 		APIKeyConfigured: apiKeyCiphertext != "",
@@ -460,7 +478,41 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtPID: input.EpusdtPID,
 		EpusdtSecretConfigured: epusdtSecretCiphertext != "",
 		EpusdtEnabled: input.EpusdtEnabled,
+		EpusdtNotifyURL: input.EpusdtNotifyURL,
 	})
+}
+
+
+func (a *application) epusdtGMPayNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil {
+		http.Error(w, "invalid callback body", http.StatusBadRequest)
+		return
+	}
+	fields, err := payment.DecodeGMPayCallback(body)
+	if err != nil {
+		http.Error(w, "invalid callback payload", http.StatusBadRequest)
+		return
+	}
+	if err := a.paymentManager.HandleGMPayCallback(r.Context(), fields, string(body)); err != nil {
+		switch {
+		case errors.Is(err, payment.ErrInvalidSignature):
+			http.Error(w, "invalid signature", http.StatusUnauthorized)
+		case errors.Is(err, payment.ErrGatewayDisabled):
+			http.Error(w, "payment gateway unavailable", http.StatusServiceUnavailable)
+		default:
+			log.Printf("Epusdt GMPay callback processing failed: order_id=%s trade_id=%s error=%v", fields["order_id"], fields["trade_id"], err)
+			http.Error(w, "callback processing failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "ok")
 }
 
 func (a *application) health(w http.ResponseWriter, r *http.Request) {
