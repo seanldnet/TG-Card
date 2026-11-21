@@ -17,7 +17,7 @@ const anomalyCount=computed(()=>runs.value[0]?.mismatchUsers||0);
 function runLabel(value:string){return value.startsWith('manual-')?'手动检查 · '+value.slice(7):value}
 function money(value:number){return (Number(value||0)/1_000_000).toFixed(6)+' USDT'}
 function when(value:string){const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString()}
-async function loadAnomalies(runKey:string){selectedRun.value=runKey;detailOpen.value=true;detailLoading.value=true;anomalies.value=[];try{anomalies.value=await requestClient.get<BalanceAnomaly[]>('/reconciliation/balance-anomalies',{params:{runKey}})}catch{message.error('余额异常明细加载失败')}finally{detailLoading.value=false}}
+async function loadAnomalies(runKey:string, open=true){selectedRun.value=runKey;if(open)detailOpen.value=true;detailLoading.value=true;anomalies.value=[];try{anomalies.value=await requestClient.get<BalanceAnomaly[]>('/reconciliation/balance-anomalies',{params:{runKey}})}catch{message.error('余额异常明细加载失败')}finally{detailLoading.value=false}}
 async function load(){
  loading.value=true;
  try{
@@ -26,7 +26,7 @@ async function load(){
    requestClient.get<BalanceRun[]>('/reconciliation/balance-runs',{params:{limit:24}}),
   ]);
   reports.value=daily;runs.value=history;
-  if(history.length>0){await loadAnomalies(selectedRun.value&&history.some(x=>x.runKey===selectedRun.value)?selectedRun.value:history[0].runKey)}
+  if(history.length>0){await loadAnomalies(selectedRun.value&&history.some(x=>x.runKey===selectedRun.value)?selectedRun.value:history[0].runKey,false)}
   else{anomalies.value=[];selectedRun.value=''}
  }catch{message.error('对账数据加载失败')}finally{loading.value=false}
 }
