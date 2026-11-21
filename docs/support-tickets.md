@@ -112,6 +112,10 @@ Owner 点击“开始回复”后，Bot 提示直接发送文字/图片/文件�
 - 站点邮件/Telegram 通知：`cmd/server/main.go`
 - 网站文字时间线：`web/overrides/apps/web-antd/src/views/support/index.vue`
 
+## Owner 媒体回复的单次副作用限制
+
+Owner 通过媒体回复用户时，caption（包含“客服回复：”前缀）最多允许 900 个 Unicode 字符。超过限制会在发送媒体前拒绝，并提示 Owner 缩短内容后重新发送。媒体与剩余文字不再拆成两次 Telegram API 调用，避免第一步已送达、第二步失败时造成时间线缺失及重试重复发送媒体。该限制只适用于 Owner 媒体回复，不限制普通文本消息。
+
 ## 验收边界
 
 - 代码提交和 CI 通过不代表 Telegram 真机验收完成。
