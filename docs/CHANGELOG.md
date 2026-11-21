@@ -6,7 +6,7 @@
 - 数据库迁移：无；生产备份/恢复脚本无改动。
 - 配置/部署影响：无新增生产配置；CI 仍使用临时 PostgreSQL 与独立命名卷。
 - 兼容性与已知限制：模拟 RPO 不代表生产备份周期的真实 RPO；容器 running 不等于应用健康就绪，生产 RTO 需通过健康检查和业务 smoke test 计时。
-- 验证：待 PR CI 验证。PROJECT_STATUS 文档版本更新至 2.2.57。
+- 验证：PR #102 Go Backend CI、Admin Frontend CI、Security Scan 均已通过；PR 尚未合并，因此没有合并后 Docker Publish 或生产验收结论。PROJECT_STATUS 文档版本更新至 2.2.57.
 
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并）
 
@@ -16,7 +16,7 @@
 - 数据库迁移：新增 `0057_admin_action_confirmations.sql`；启动时自动迁移，无手工 SQL。
 - 配置/部署影响：无新增环境变量；需部署新镜像后才启用新接口与后台交互。
 - 兼容性与已知限制：真实浏览器密码/TOTP/恢复码确认流程仍待部署验收；CI 通过不代表生产验收。
-- 验证：PR head Go/Admin/Security 均成功；合并后 Go/Admin/Security 均成功；Docker Publish 尚未完成。
+- 验证：PR head Go Backend CI、Admin Frontend CI、Security Scan 全部通过；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部通过；Docker Publish（run `44885024397`）成功，GHCR manifest digest：`sha256:1ef5ec7d1ef7cc75b9b764bcbea972b83687798468f705e0a4da3664704493a2`。真实浏览器 step-up 流程仍待部署验收。
 
 ## 2026-11-21 — 数据库备份/恢复隔离演练自动化（PR #101 已合并，发布检查中）
 
