@@ -159,11 +159,63 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 	m.mu.RUnlock()
 	if client==nil{return ErrGatewayDisabled}
 	if fields["pid"]=="" || fields["pid"]!=client.pid || !VerifyGMPay(fields,client.secret){return ErrInvalidSignature}
+	return m.settleGMPayPayment(ctx,fields,payloadJSON)
+}
+
+// CheckGMPayPayment performs an authenticated provider-side status query. It is
+// used by the Telegram "refresh payment" action and recovers callbacks that were
+// delayed or lost. The query request is HMAC-signed and sent only over HTTPS.
+func (m *Manager) CheckGMPayPayment(ctx context.Context,orderID string)(string,error){
+	m.mu.RLock()
+	client:=m.gateway
+	m.mu.RUnlock()
+	if client==nil{return "",ErrGatewayDisabled}
+	order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+	if err!=nil{return "",err}
+	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo)
+	if err!=nil{return "",err}
+	identity:=map[string]string{"order_id":order.OrderNo}
+	if intent.ProviderTradeID!=""{identity=map[string]string{"trade_id":intent.ProviderTradeID}}
+	result,err:=client.QueryGMPayOrder(ctx,identity)
+	if err!=nil{return "",err}
+	raw,err:=json.Marshal(result)
+	if err!=nil{return "",err}
+	var envelope struct{StatusCode int `json:"status_code"`;Message string `json:"message"`;Data json.RawMessage `json:"data"`}
+	if err:=json.Unmarshal(raw,&envelope);err!=nil{return "",err}
+	if envelope.StatusCode!=0&&envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt query failed (%d): %s",envelope.StatusCode,envelope.Message)}
+	fields,err:=DecodeGMPayCallback(envelope.Data)
+	if err!=nil{return "",fmt.Errorf("decode Epusdt query result: %w",err)}
+	if fields["order_id"]!=""&&fields["order_id"]!=order.OrderNo{return "",errors.New("Epusdt query returned a different merchant order")}
+	if fields["trade_id"]!=""&&intent.ProviderTradeID!=""&&fields["trade_id"]!=intent.ProviderTradeID{return "",errors.New("Epusdt query returned a different provider trade")}
+	if fields["trade_id"]!=""&&fields["payment_url"]!=""&&intent.ProviderTradeID==""{
+		expiry,_:=strconv.ParseInt(fields["expiration_time"],10,64)
+		if err:=database.UpdateEpusdtPaymentOrder(ctx,m.db,m.driver,order.ID,fields["trade_id"],fields["payment_url"],expiry);err!=nil{return "",err}
+	}
+	status,err:=strconv.Atoi(fields["status"])
+	if err!=nil{return "",fmt.Errorf("Epusdt query returned an invalid payment status")}
+	switch status{
+	case 1,4:
+		return "pending",nil
+	case 2:
+		fields["pid"]=client.pid
+		if fields["trade_id"]==""{return "",errors.New("paid Epusdt query result is missing trade_id")}
+		if fields["amount"]==""{return "",errors.New("paid Epusdt query result is missing amount")}
+		if err:=m.settleGMPayPayment(ctx,fields,string(envelope.Data));err!=nil{return "",err}
+		return "paid",nil
+	case 3:
+		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"expired","")
+		return "expired",nil
+	default:
+		return "",fmt.Errorf("unsupported Epusdt payment status %d",status)
+	}
+}
+
+func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]string,payloadJSON string) error {
 	orderNo:=strings.TrimSpace(fields["order_id"])
 	tradeID:=strings.TrimSpace(fields["trade_id"])
-	if orderNo==""||tradeID==""{return errors.New("GMPay callback is missing order_id or trade_id")}
+	if orderNo==""||tradeID==""{return errors.New("GMPay payment is missing order_id or trade_id")}
 	status,err:=strconv.Atoi(fields["status"])
-	if err!=nil||status!=2{return errors.New("GMPay callback is not a successful payment")}
+	if err!=nil||status!=2{return errors.New("GMPay payment is not successful")}
 	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,orderNo)
 	if err!=nil{return fmt.Errorf("unknown Epusdt merchant order %q: %w",orderNo,err)}
 	amount,amountErr:=parseMinor(fields["amount"])
@@ -208,4 +260,3 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 	if err:=m.bots.DeliverPaidOrder(ctx,item);err!=nil{log.Printf("GMPay payment confirmed but automatic delivery failed; retry queue will handle it: order_id=%s error=%v",order.ID,err)}
 	return nil
 }
-
