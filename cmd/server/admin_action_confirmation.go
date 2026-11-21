@@ -52,8 +52,14 @@ func canonicalAdminActionPayload(raw []byte) (string, error) {
 		return "", nil
 	}
 	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
 		return "", fmt.Errorf("action payload must be valid JSON: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return "", fmt.Errorf("action payload contains trailing JSON data")
 	}
 	canonical, err := json.Marshal(value)
 	if err != nil {
@@ -68,7 +74,7 @@ func adminActionRequestHash(method, path string, rawPayload []byte) (string, err
 	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete {
 		return "", fmt.Errorf("unsupported sensitive action method")
 	}
-	if !strings.HasPrefix(path, "/api/") || strings.ContainsAny(path, "?#\\r\\n") || strings.Contains(path, "/../") {
+	if !strings.HasPrefix(path, "/api/") || strings.ContainsAny(path, "?#") || strings.ContainsAny(path, "\\r\\n") || strings.Contains(path, "\\\\") || strings.Contains(path, "/../") {
 		return "", fmt.Errorf("invalid sensitive action path")
 	}
 	payload, err := canonicalAdminActionPayload(rawPayload)
@@ -129,8 +135,12 @@ func (a *application) confirmAdminAction(w http.ResponseWriter, r *http.Request)
 			}
 			validCode = auth.VerifyTOTPCode(secretValue, input.TOTPCode, time.Now())
 		}
-		if !validCode && strings.TrimSpace(input.TOTPRecoveryCode) != "" {
-			consumed, consumeErr := database.ConsumeAdminTOTPRecoveryCode(r.Context(), a.db, a.driver, admin.ID, input.TOTPRecoveryCode)
+		recoveryCandidate := strings.TrimSpace(input.TOTPRecoveryCode)
+		if recoveryCandidate == "" && !validCode {
+			recoveryCandidate = strings.TrimSpace(input.TOTPCode)
+		}
+		if !validCode && recoveryCandidate != "" {
+			consumed, consumeErr := database.ConsumeAdminTOTPRecoveryCode(r.Context(), a.db, a.driver, admin.ID, recoveryCandidate)
 			if consumeErr != nil {
 				writeError(w, http.StatusInternalServerError, "校验一次性恢复码失败")
 				return
