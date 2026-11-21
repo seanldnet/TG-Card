@@ -63,6 +63,8 @@ type Manager struct {
 	expiryCancel context.CancelFunc
 	paymentAddress string
 	paymentEnabled bool
+	gmpayCheckout func(context.Context, database.Order) (string, error)
+	gmpayEnabled bool
 	ownerID string
 	customerServiceURL string
 	communityURL string
@@ -156,6 +158,19 @@ func NewManager(db *sql.DB, driver string, decrypt func(string) (string, error),
 
 // SetNotifier attaches the application-level notification dispatcher.
 func (m *Manager) SetEncryptor(encrypt func(string) (string, error)) { m.mu.Lock(); m.encrypt=encrypt; m.mu.Unlock() }
+
+func (m *Manager) SetGMPayCheckout(checkout func(context.Context, database.Order) (string,error), enabled bool) {
+	m.mu.Lock()
+	m.gmpayCheckout=checkout
+	m.gmpayEnabled=enabled && checkout!=nil
+	m.mu.Unlock()
+}
+
+func (m *Manager) gmpayCheckoutConfig() (func(context.Context,database.Order)(string,error),bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.gmpayCheckout,m.gmpayEnabled
+}
 
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
  m.mu.Lock()
