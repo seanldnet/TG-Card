@@ -96,7 +96,7 @@ func TestGMPayCallbackForCancelledOrderIsRecordedAsLatePayment(t *testing.T){
 	m,db,order:=newGMPayTestManager(t);defer db.Close()
 	defer m.bots.Stop()
 	configureTestGateway(t,m,"https://gateway.example")
-	if _,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
+	if _,_,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
 	if err:=database.UpdateEpusdtPaymentOrder(context.Background(),db,"sqlite",order.ID,"trade-late","https://checkout.example/pay",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
 	if err:=database.ClosePendingOrder(context.Background(),db,"sqlite",order.OrderNo);err!=nil{t.Fatal(err)}
 	if err:=m.HandleGMPayCallback(context.Background(),signedCallback(order,"trade-late","12.50"),"{}");err!=nil{t.Fatal(err)}
