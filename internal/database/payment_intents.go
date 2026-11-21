@@ -30,7 +30,7 @@ type EpusdtPaymentEvent struct {
 }
 
 // CreateEpusdtPaymentIntent reserves one provider intent for an existing unpaid
-// local order. The unique order_id is also the provider idempotency key.
+// local order. The unique local order_id prevents concurrent create attempts.
 func CreateEpusdtPaymentIntent(ctx context.Context, db *sql.DB, driver, orderID string) (EpusdtPaymentIntent, bool, error) {
 	if orderID == "" { return EpusdtPaymentIntent{}, false, fmt.Errorf("order ID is required") }
 	tx, err := db.BeginTx(ctx, nil)
@@ -40,9 +40,9 @@ func CreateEpusdtPaymentIntent(ctx context.Context, db *sql.DB, driver, orderID 
 	if driver == "postgres" { orderQuery += " FOR UPDATE" }
 	var orderNo,status,currency string
 	var amount int64
-	if err := tx.QueryRowContext(ctx,orderQuery,orderID).Scan(&orderNo,&status,&amount,&currency); err != nil { return EpusdtPaymentIntent{}, err }
+	if err := tx.QueryRowContext(ctx,orderQuery,orderID).Scan(&orderNo,&status,&amount,&currency); err != nil { return EpusdtPaymentIntent{}, false, err }
 	if status != "pending_payment" { return EpusdtPaymentIntent{}, false, fmt.Errorf("order is not awaiting payment: %s",status) }
-	if amount <= 0 || currency != "USDT" { return EpusdtPaymentIntent{}, fmt.Errorf("Epusdt checkout requires a positive USDT order amount") }
+	if amount <= 0 || currency != "USDT" { return EpusdtPaymentIntent{}, false, fmt.Errorf("Epusdt checkout requires a positive USDT order amount") }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id,err := randomID()
 	if err != nil { return EpusdtPaymentIntent{},false,err }
