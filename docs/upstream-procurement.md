@@ -129,8 +129,9 @@
 
 ## 8. 当前限制与阶段边界
 
-- 当前仅支持上游 \`auto\` 自动交付 SKU。
-- \`manual\` 商品需要 \`manual_form_data\`；买家侧动态表单采集尚未实现，因此 Telegram 商城暂不允许自助购买这类商品。
+- manual 商品单件自助购买正在独立分支 `feat/upstream-manual-buyer-checkout` 开发：Telegram 买家动态填写上游 schema 字段，会话与最终订单表单数据均以 AES-GCM 密文持久化；付款后采购 worker 解密并向上游传入 `manual_form_data`。
+- 当前仅支持单件直购，不接入购物车；优惠码暂不支持 manual 商品。auto 商品继续沿用原采购流程。
+- 本功能尚未通过 CI、合并或发布；部署前需完成数据库迁移与完整回归。
 - PR C 使用 mock/fake API，不需要真实商户凭证。
 - PR D（PR #38）已实现进一步供应商资金安全、扣款/余额一致性与异常保护，并已合并发布；项目所有者于 2026-11-22 确认 Dujiao-Next 正常对接完成，不再要求额外 PR E 真实商户联调。
 - PR #38 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。Dujiao-Next 正常对接已由项目所有者确认完成；不再将 PR E 真实商户联调列为项目待办。
