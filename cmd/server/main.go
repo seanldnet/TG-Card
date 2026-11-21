@@ -134,6 +134,7 @@ type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	CapToken string `json:"capToken"`
+	TOTPCode string `json:"totpCode"`
 }
 
 type userInfo struct {
@@ -226,6 +227,10 @@ func main() {
 	api.HandleFunc("POST /api/auth/login", app.login)
 	api.HandleFunc("POST /api/auth/logout", app.logout)
 	api.HandleFunc("POST /api/admin/password", app.sensitiveRateLimit("admin-password", 5, 5*time.Minute, app.changePassword))
+	api.HandleFunc("GET /api/admin/security/totp/status", app.adminTOTPStatus)
+	api.HandleFunc("POST /api/admin/security/totp/enroll", app.enrollAdminTOTP)
+	api.HandleFunc("POST /api/admin/security/totp/confirm", app.confirmAdminTOTP)
+	api.HandleFunc("POST /api/admin/security/totp/disable", app.disableAdminTOTP)
 	api.HandleFunc("GET /api/bots", app.listBots)
 	api.HandleFunc("GET /api/bots/runtime", app.listBotRuntime)
 	api.HandleFunc("GET /api/broadcasts", app.listBroadcastTasks)
@@ -478,6 +483,21 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		database.RecordLoginAudit(r.Context(), a.db, a.driver, "", input.Username, ip, r.UserAgent(), false)
 		writeError(w, http.StatusUnauthorized, "Username or password is incorrect")
 		return
+	}
+	if admin.TOTPEnabled {
+		secretValue,decryptErr:=a.secrets.Decrypt(admin.TOTPSecretCiphertext)
+		if decryptErr!=nil {
+			log.Printf("decrypt administrator TOTP secret: %v",decryptErr)
+			_ = database.CreateSystemException(r.Context(),a.db,a.driver,"admin-totp-decrypt:"+admin.ID,"admin_totp","critical","admin",admin.ID,"管理员 TOTP 密钥解密失败","登录时无法解密已启用的 TOTP 密钥")
+			writeError(w,http.StatusServiceUnavailable,"动态验证码配置暂不可用，请联系管理员")
+			return
+		}
+		if !auth.VerifyTOTPCode(secretValue,input.TOTPCode,time.Now()) {
+			a.recordLoginFailure(ip)
+			database.RecordLoginAudit(r.Context(),a.db,a.driver,admin.ID,admin.Username,ip,r.UserAgent(),false)
+			writeError(w,http.StatusUnauthorized,"动态验证码错误或已过期")
+			return
+		}
 	}
 
 	token, err := a.tokens.Issue(auth.Claims{
@@ -734,8 +754,12 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 7, "title": "支付设置"},
 		},
 		{
+			"name": "AdminSecuritySettings", "path": "/settings/security", "component": "/settings/security/index",
+			"meta": map[string]any{"icon": "lucide:shield-check", "order": 8, "title": "安全设置"},
+		},
+		{
 			"name": "UpstreamSettings", "path": "/upstream", "component": "/upstream/index",
-			"meta": map[string]any{"icon": "lucide:plug-zap", "order": 8, "title": "上游对接"},
+			"meta": map[string]any{"icon": "lucide:plug-zap", "order": 9, "title": "上游对接"},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
