@@ -234,6 +234,7 @@ func main() {
 	}
 	if err := paymentManager.SetGMPayEdgeConfig(paymentSettings.GMPayBaseURL, paymentSettings.GMPayPID, gmpayEdgeSecret, paymentSettings.GMPayNotifyURL, paymentSettings.GMPayEnabled); err != nil { log.Fatalf("initialize GMPay Edge checkout: %v", err) }
 	botManager.SetGMPayCheckout(paymentManager.CreateHostedCheckoutRoundRobin, paymentManager.CheckHostedPayment, paymentManager.GatewayEnabled() || paymentManager.GMPayEdgeEnabled())
+	botManager.SetPaymentRouter(paymentManager.NextPaymentProviderForOrder, paymentManager.CreateHostedCheckoutForProvider)
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
@@ -522,6 +523,7 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt 配置应用失败："+err.Error()); return }
 	if err := a.paymentManager.SetGMPayEdgeConfig(input.GMPayBaseURL, input.GMPayPID, gmpayEdgeSecret, input.GMPayNotifyURL, input.GMPayEnabled); err != nil { writeError(w, http.StatusBadRequest, "GMPay Edge 配置应用失败："+err.Error()); return }
 	a.botManager.SetGMPayCheckout(a.paymentManager.CreateHostedCheckoutRoundRobin, a.paymentManager.CheckHostedPayment, a.paymentManager.GatewayEnabled() || a.paymentManager.GMPayEdgeEnabled())
+	a.botManager.SetPaymentRouter(a.paymentManager.NextPaymentProviderForOrder, a.paymentManager.CreateHostedCheckoutForProvider)
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
 		APIKeyConfigured: apiKeyCiphertext != "",
