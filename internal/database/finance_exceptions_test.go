@@ -158,3 +158,31 @@ func TestUpdateSystemExceptionWithAuditIsAtomic(t *testing.T) {
 	if err:=db.QueryRowContext(ctx,"SELECT status FROM system_exceptions WHERE id=?",failedItems[0].ID).Scan(&afterFailure);err!=nil{t.Fatal(err)}
 	if afterFailure!="open"{t.Fatalf("exception state must roll back when audit insert fails, got %s",afterFailure)}
 }
+
+func TestRefundIntegrityDetectsOrderProcurementStateMismatch(t *testing.T) {
+ ctx:=context.Background();db:=reconciliationTestDB(t)
+ product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"upstream",PriceMinor:1000,Currency:"USDT",DeliveryType:"fixed_text",Status:1})
+ if err!=nil{t.Fatal(err)}
+ now:=time.Now().UTC().Format(time.RFC3339Nano)
+ orders:=make([]Order,0,2)
+ for _,user:=range []string{"refund-state-a","refund-state-b"} {
+  order,err:=CreateOrder(ctx,db,"sqlite","bot",user,user,product.ID,time.Hour)
+  if err!=nil{t.Fatal(err)}
+  orders=append(orders,order)
+  if _,err:=db.ExecContext(ctx, `INSERT INTO upstream_procurements(local_order_id,local_order_no,status,deadline_at,created_at,updated_at) VALUES(?,?,'failed',?,?,?)`,order.ID,order.OrderNo,now,now,now);err!=nil{t.Fatal(err)}
+ }
+ // Case A: order marked refunded while procurement is still failed.
+ if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='refunded' WHERE id=?",orders[0].ID);err!=nil{t.Fatal(err)}
+ // Case B: procurement marked refunded while the order is not refunded.
+ if _,err:=db.ExecContext(ctx,"UPDATE upstream_procurements SET status='refunded' WHERE local_order_id=?",orders[1].ID);err!=nil{t.Fatal(err)}
+ count,err:=RunRefundLedgerIntegrityCheck(ctx,db,"sqlite")
+ if err!=nil||count!=2{t.Fatalf("expected both refund state mismatches, count=%d err=%v",count,err)}
+ open,err:=CountOpenFinanceExceptions(ctx,db)
+ if err!=nil||open!=2{t.Fatalf("expected two open integrity exceptions, count=%d err=%v",open,err)}
+ var orderA,procA,orderB,procB string
+ if err:=db.QueryRowContext(ctx,"SELECT status FROM orders WHERE id=?",orders[0].ID).Scan(&orderA);err!=nil{t.Fatal(err)}
+ if err:=db.QueryRowContext(ctx,"SELECT status FROM upstream_procurements WHERE local_order_id=?",orders[0].ID).Scan(&procA);err!=nil{t.Fatal(err)}
+ if err:=db.QueryRowContext(ctx,"SELECT status FROM orders WHERE id=?",orders[1].ID).Scan(&orderB);err!=nil{t.Fatal(err)}
+ if err:=db.QueryRowContext(ctx,"SELECT status FROM upstream_procurements WHERE local_order_id=?",orders[1].ID).Scan(&procB);err!=nil{t.Fatal(err)}
+ if orderA!="refunded"||procA!="failed"||orderB=="refunded"||procB!="refunded"{t.Fatalf("integrity checker must be read-only: A=%s/%s B=%s/%s",orderA,procA,orderB,procB)}
+}
