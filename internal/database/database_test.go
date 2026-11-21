@@ -809,11 +809,10 @@ func TestAdminActionConfirmationExpiresAndIsAdminBound(t *testing.T) {
 	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
 	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
 	first,err:=EnsureAdmin(ctx,db,"sqlite","action-expiry-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
-	second,err:=EnsureAdmin(ctx,db,"sqlite","action-other-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
 	a1,err:=FindAdminByUsername(ctx,db,"sqlite",first.Username);if err!=nil{t.Fatal(err)}
-	a2,err:=FindAdminByUsername(ctx,db,"sqlite",second.Username);if err!=nil{t.Fatal(err)}
+	otherAdminID:="another-admin-id"
 	now:=time.Now()
 	if err:=CreateAdminActionConfirmation(ctx,db,"sqlite",a1.ID,"order.cleanup","request-hash","token-hash-expiry",now.Add(time.Minute));err!=nil{t.Fatal(err)}
-	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",a2.ID,"order.cleanup","request-hash","token-hash-expiry",now);err!=nil||consumed{t.Fatalf("another administrator must not consume proof: consumed=%v err=%v",consumed,err)}
+	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",otherAdminID,"order.cleanup","request-hash","token-hash-expiry",now);err!=nil||consumed{t.Fatalf("another administrator must not consume proof: consumed=%v err=%v",consumed,err)}
 	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",a1.ID,"order.cleanup","request-hash","token-hash-expiry",now.Add(2*time.Minute));err!=nil||consumed{t.Fatalf("expired proof must not be consumed: consumed=%v err=%v",consumed,err)}
 }
