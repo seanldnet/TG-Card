@@ -16,24 +16,6 @@
 - 镜像：`ghcr.io/seanldnet/tg-card:latest`；OCI digest：`sha256:6b5a98cafdcff3ab75201834c18c82d4f1033a717ec912b6f788e19562ef04e8`。
 - 已完成商品/购物车收银台、Epusdt GMPay 回调验签、查单、订单支付确认与交付交接、幂等及异常保护。支付配置完成与真实通道收款验收仍分别记录。
 
-## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；文档版本 2.2.72）
-
-- 基线：main `b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`；代码分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`。
-- 已完成本阶段代码范围：Epusdt GMPay 商城商品订单/购物车统一订单收银台入口；支付单本地幂等占位；GMPay HMAC-SHA256 回调验签；按 trade_id 查询支付状态；订单支付确认与本地商品自动发货/上游采购交接；HTTPS 回调 URL 后台配置。
-- 安全策略：校验 PID、签名、订单号、trade_id、金额与回调 token（必须为 USDT）；重复回调幂等；不同 trade_id 重复付款/意外交易、金额不符、取消订单后迟到付款均记为异常并阻止二次发货；支付创建超时进入 `create_uncertain`，因 Epusdt order_id 不可重复，不盲目重试创建。
-- 支付状态查询按 Epusdt 当前 API 使用 `GET /pay/check-status/{trade_id}`；创建交易使用 `POST /payments/gmpay/v1/order/create-transaction`；回调返回 HTTP 200 + `ok`。
-- 当前阶段尚未完成：Go/Admin/Security CI、合并后 Docker Publish、镜像 digest 发布记录。不得将分支代码或本地测试声明为生产可用。
-- 已增加自动化测试：错误签名、金额不符、重复回调、重复付款、超时/不确定创建、取消订单迟到付款、查询补偿、支付成功交付；Go CI 仍待完成。
-
-
-- 基线：main `82c5c0b14e18e8b117fcb7dda48bd7b7ff631d4f`；本记录为当前状态的唯一优先摘要，后续历史条目仅说明当时提交时的状态，不覆盖本摘要。
-- PR #114 每日自动备份与 Telegram Owner 投递：已合并并发布；历史记录中“等待 CI/审查”的旧描述已失效。生产恢复演练与代码交付状态分开记录，不得倒写为 PR 未完成。
-- PR #116 GMPay 客户端、PR #117 Epusdt 商户配置：均已合并；PR #117 合并提交 `d7d607ddb068e02c47386391eabbdc4c800514fc`，Go/Admin/Security 检查通过。迁移 0058 与密钥加密/脱敏配置已完成。
-- Epusdt + GMPay 支付生命周期正在 PR #121 独立实现；商品/购物车收银台、回调验签、状态查单、订单确认、幂等和发货交接已进入代码，最终以 PR CI、合并和 Docker Publish 为准。
-- Dujiao-Next：项目所有者已确认正常对接，按已完成处理；不再要求额外真实商户验收、商户压力测试或供应商扣款演练作为阻塞项。既有采购、查单、回调和资金保护实现按已合并状态维护。
-- 每个独立 PR 更新 PROJECT_STATUS、CHANGELOG 和受影响专项文档；代码、CI、合并、镜像发布、生产部署/验收分别标记，不将某一层状态推断为另一层状态。
-- PR #119 是纯文档校准；本次 PR #121 则包含支付业务代码、迁移 0059、回归测试及专项文档更新。
-
 ## 2026-11-22 — Epusdt GMPay 文档状态校准
 
 - PR #117 已合并，合并提交 `d7d607ddb068e02c47386391eabbdc4c800514fc`；Go Backend CI、Admin Frontend CI、Security Scan 均通过。
