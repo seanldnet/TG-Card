@@ -32,7 +32,10 @@ func TestAgeRejectsWrongPassphraseAndTampering(t *testing.T) {
 }
 
 func TestAgeRequiresExternalStrongPassphrase(t *testing.T) {
-	for _, passphrase := range []string{"", "short"} {
+	for _, passphrase := range []string{"", "short", strings.Repeat(" ", 64), strings.Repeat("x", 31)} {
 		if err := ValidatePassphrase(passphrase); err == nil { t.Fatalf("expected rejection for %q", passphrase) }
+	}
+	if err := ValidatePassphrase(strings.Repeat("x", 32)); err != nil {
+		t.Fatalf("32-character passphrase should be accepted: %v", err)
 	}
 }
