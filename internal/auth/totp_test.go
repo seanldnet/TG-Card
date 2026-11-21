@@ -31,3 +31,9 @@ func containsString(value,part string)bool{
 	for i:=0;i+len(part)<=len(value);i++{if value[i:i+len(part)]==part{return true}}
 	return false
 }
+
+func TestTOTPCodeMatchesRFC6238SHA1Vector(t *testing.T) {
+	code,err:=TOTPCode("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",time.Unix(59,0).UTC())
+	if err!=nil{t.Fatal(err)}
+	if code!="287082"{t.Fatalf("RFC 6238 6-digit SHA1 code=%s want 287082",code)}
+}
