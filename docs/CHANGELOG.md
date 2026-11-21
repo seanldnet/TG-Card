@@ -1,3 +1,14 @@
+## 2026-11-22 — 全仓文档状态校准（PROJECT_STATUS 2.2.77）
+
+- 本轮逐份复核仓库 Markdown 文档，统一支付、上游采购、售后验收和历史阶段状态；不修改业务代码。
+- 当前支付状态：内置 TRC20 USDT、Epusdt、GMPay Edge 三个独立通道；PR #121/#122 已实现并发布下单、回调验签、查单、订单确认、幂等结算与交付交接。真实商户收款与回调可达性仍按目标部署环境单独验收。
+- 当前上游状态：项目所有者确认 Dujiao-Next 正常对接完成，不再将 PR E 真实商户联调、额外扣款演练列为待办；异次元/萌次元不开发适配器。
+- 当前售后状态：项目所有者于 2026-11-22 确认 Owner Bot C1–C4、媒体/附件转发、补发/退款分支及相关通知测试通过；旧待验收记录已改为历史阶段快照。
+- 清理 PROJECT_STATUS、CHANGELOG、README、payment-delivery、support-tickets、upstream-integration、product-scope 中与当前事实冲突的描述；旧阶段记录保留并明确标注已被后续实现/验收覆盖。
+- 文档版本递增至 2.2.77；本轮仅文档变更，独立 PR #123，不修改 main 业务代码。
+
+<!-- 历史记录说明：本文件按时间倒序。下方旧条目中的“开发中/待验收/CI pending”等仅描述对应日期的阶段状态；若与顶部最新记录冲突，以顶部最新记录及 PROJECT_STATUS.md 当前状态为准。 -->
+
 ## 2026-11-22 — 后台菜单与三支付通道整合及验收状态校准（PR #122 已合并并发布；PROJECT_STATUS 2.2.76）
 
 - 分支/PR：`feat/admin-menu-payment-provider-ux` / #122；已 Squash Merge，merge commit `0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`。
@@ -9,25 +20,25 @@
 - 商城支付下单、回调验签、查单、订单确认、幂等结算及交付交接均已实现；真实商户三通道收款、回调可达性及端到端交付仍需按部署环境单独验收。
 - 项目所有者于 2026-11-22 确认 Dujiao-Next 正常对接完成，不再将 PR E 真实商户联调列为待办；售后工单与 Owner Bot C1–C4、补发/退款及通知流程验收通过。
 
-## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；PROJECT_STATUS 2.2.72）
+## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 已合并并发布；历史阶段记录）
 
 - 分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`；基线 main@`b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`。
 - 实现商城商品订单与购物车统一订单 GMPay 收银台入口；后台配置 HTTPS 异步回调地址；订单金额以 USD 表示并指定 USDT/TRON 收款。
 - 增加 Epusdt payment intent/event 持久化、GMPay HMAC-SHA256 回调验签、trade_id 状态查询、支付幂等与本地自动发货/上游采购交接。
 - 异常处理：错误签名拒绝；金额或支付币种不符不确认；重复回调幂等；不同交易号的重复付款/意外交易转异常；订单取消后迟到付款不重开订单；创建超时进入 `create_uncertain`，禁止盲目重复创建。JSON 数字字段保留原始十进制文本，避免 float64 精度变化影响签名验算。
-- 本阶段 Go/Admin/Security CI 与合并后 Docker Publish 尚未完成；发布记录待 CI/合并/镜像 digest 后补充。
+- 历史状态（PR #121 合并前）：当时 Go/Admin/Security CI 与 Docker Publish 尚未完成。后续 PR #121 已合并发布，CI 与镜像信息见 PROJECT_STATUS.md 顶部及本文件最新记录。
 
 ## 2026-11-22 — 文档基线彻底校准（PR #119，PROJECT_STATUS 2.2.71）
 
 - PR / 分支：PR #119，`docs/calibrate-current-status-2.2.71`；基线 main@`82c5c0b14e18e8b117fcb7dda48bd7b7ff631d4f`。
 - 校正 PR #114：每日自动备份与 Telegram Owner 投递已合并并发布，删除合并前“等待 CI/代码审查”的当前状态描述。
-- 校正 PR #116/#117：GMPay 客户端与 Epusdt 商户配置均已合并；PR #117 的旧“开发中/等待 CI/未发布”记录改为历史状态。商城下单、回调验签/查单、支付确认、幂等和自动发货仍待独立支付闭环 PR。
+- 校正 PR #116/#117：GMPay 客户端与 Epusdt 商户配置均已合并；当时商城支付闭环仍待实现，后续已由 PR #121/#122 完成并发布。
 - 统一 Dujiao-Next 状态：项目所有者已确认正常对接完成；不再将 PR E 真实商户验收作为待办或阻塞项。历史操作手册保留为参考。
 - `PROJECT_STATUS.md` 文档版本递增至 2.2.71；本次仅更新文档，不修改业务代码。
 
 ## 2026-11-22 — Epusdt GMPay 文档状态校准
 
-- 修正支付文档状态：PR #116 GMPay 客户端与 PR #117 Epusdt 商户配置均已合并；商城下单、回调验签/查单、订单确认、幂等和自动发货仍待独立支付闭环 PR。
+- 历史阶段状态：当时 PR #116/#117 已合并，但商城支付闭环尚待实现；该事项后续已由 PR #121/#122 完成并发布。
 - `PROJECT_STATUS.md` 文档版本更新至 2.2.70。
 
 ## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（PR #114 已合并并发布）
