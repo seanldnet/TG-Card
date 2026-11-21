@@ -18,7 +18,7 @@
 - 兼容性与已知限制：真实浏览器密码/TOTP/恢复码确认流程仍待部署验收；CI 通过不代表生产验收。
 - 验证：PR head Go Backend CI、Admin Frontend CI、Security Scan 全部通过；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部通过；Docker Publish（run `44885024397`）成功，GHCR manifest digest：`sha256:1ef5ec7d1ef7cc75b9b764bcbea972b83687798468f705e0a4da3664704493a2`。真实浏览器 step-up 流程仍待部署验收。
 
-## 2026-11-21 — 数据库备份/恢复隔离演练自动化（PR #101 已合并，发布检查中）
+## 2026-11-21 — 数据库备份/恢复隔离演练自动化（PR #101 已合并并发布）
 
 - 状态：PR #101 已 Squash Merge 至 main，merge commit `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d`；基于 PR #100 合并后的 main。
 - 影响模块：Compose 备份脚本、恢复脚本、PostgreSQL 数据、应用持久化密钥与上传文件、Go CI。
