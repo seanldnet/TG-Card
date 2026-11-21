@@ -85,7 +85,7 @@ func RecordEpusdtPaymentEvent(ctx context.Context, db *sql.DB, driver string, ev
 	id,err:=randomID();if err!=nil{return false,err}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
 	query:="INSERT INTO epusdt_payment_events(id,order_id,provider_trade_id,block_transaction_id,amount_minor,status,payload_json,created_at) VALUES("+
-		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+") ON CONFLICT(provider_trade_id) DO UPDATE SET block_transaction_id=excluded.block_transaction_id,amount_minor=excluded.amount_minor,status=excluded.status,payload_json=excluded.payload_json,created_at=excluded.created_at WHERE epusdt_payment_events.order_id=excluded.order_id"
+		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+","+placeholder(driver,8)+") ON CONFLICT(provider_trade_id) DO NOTHING"
 	result,err:=db.ExecContext(ctx,query,id,event.OrderID,event.ProviderTradeID,event.BlockTransactionID,event.AmountMinor,event.Status,event.PayloadJSON,now)
 	if err!=nil{return false,err}
 	n,err:=result.RowsAffected();if err!=nil{return false,err}
@@ -93,6 +93,8 @@ func RecordEpusdtPaymentEvent(ctx context.Context, db *sql.DB, driver string, ev
 	var existingOrder string
 	if err:=db.QueryRowContext(ctx,"SELECT order_id FROM epusdt_payment_events WHERE provider_trade_id="+placeholder(driver,1),event.ProviderTradeID).Scan(&existingOrder);err!=nil{return false,err}
 	if existingOrder!=event.OrderID{return false,fmt.Errorf("Epusdt trade ID is already associated with another local order")}
+	update:="UPDATE epusdt_payment_events SET block_transaction_id="+placeholder(driver,1)+",amount_minor="+placeholder(driver,2)+",status="+placeholder(driver,3)+",payload_json="+placeholder(driver,4)+",created_at="+placeholder(driver,5)+" WHERE provider_trade_id="+placeholder(driver,6)+" AND order_id="+placeholder(driver,7)
+	if _,err:=db.ExecContext(ctx,update,event.BlockTransactionID,event.AmountMinor,event.Status,event.PayloadJSON,now,event.ProviderTradeID,event.OrderID);err!=nil{return false,err}
 	return false,nil
 }
 
