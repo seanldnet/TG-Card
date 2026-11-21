@@ -1,3 +1,12 @@
+## 2026-11-22 — 后台菜单与支付通道整合及支付测试修正（PR #122 开发中；PROJECT_STATUS 2.2.74）
+
+- 分支/PR：`feat/admin-menu-payment-provider-ux` / #122；PR 仍开放，尚未合并或发布。
+- 菜单按仪表盘、运营管理、商品管理、财务管理、系统设置分组；支付设置增加三通道统一开关卡，Epusdt 与 GMPay Edge 凭证独立展示。
+- GMPay Edge 增加独立加密凭证、独立回调入口、签名查单和支付意图 provider 快照；托管通道按已启用 Epusdt/GMPay Edge 轮询。
+- Telegram 商城统一支付选择已接入 TRC20、Epusdt、GMPay Edge 三路轮询；订单支付意图固定 provider，链上监听拒绝与快照通道不一致的转账。
+- 修复 Go CI 暴露的支付测试夹具状态错位：测试必须先原子认领 `reserved` 意图进入 `creating`，再模拟网关响应；GMPay 生命周期测试统一遵循该状态流转。提交：`110444fb633363393d14ef1944f1b34b9be76059`、`4a64d7fa245156717e15b3ea6ec74b9caa9b394e`。
+- 修复提交的 Go CI `44950436477`、Admin CI `44950436480` 尚在运行；Security scan `44950436478` 已通过。未合并、未发布，等待 CI 完成。
+
 ## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；PROJECT_STATUS 2.2.72）
 
 - 分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`；基线 main@`b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`。

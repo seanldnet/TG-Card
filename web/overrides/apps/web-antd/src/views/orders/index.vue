@@ -115,7 +115,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
     <a-table-column title="创建时间" key="createdAt" :width="190"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
     <a-table-column title="付款截止" key="expiresAt" :width="190"><template #default="{record}">{{formatTime(record.expiresAt)}}</template></a-table-column>
    </a-table>
-   <a-alert class="mt-10 mb-2 rounded-lg border border-blue-200 px-4 py-4" type="info" show-icon message="TRC20 USDT 经 TronGrid 确认后自动核验，付款成功进入自动发货队列；失败时可在此重试。"/>
+   
   </a-card>
   <a-modal v-model:open="cleanupOpen" title="一键清理全部订单数据" :confirm-loading="cleanupLoading" ok-text="确认永久清理" ok-type="danger" cancel-text="取消" @ok="clearAllOrderData" @cancel="cleanupPhrase=''">
    <a-alert class="mb-4" type="error" show-icon message="此操作不可撤销" description="将删除所有商城订单、支付交易流水、充值记录、售后工单和余额流水，并把所有用户站内余额归零。已发出的卡密会继续标记为已售，避免重复发货；未发货的库存预留会释放。"/>

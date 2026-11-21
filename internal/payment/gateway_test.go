@@ -52,3 +52,29 @@ func TestGMPayStatusQueryUsesProviderTradeIDEndpoint(t *testing.T) {
 	if !strings.Contains(string(result["data"]),"trade-123"){t.Fatalf("unexpected query response: %s",result["data"])}
 	if _,err:=client.QueryGMPayOrder(context.Background(),"");err==nil{t.Fatal("empty provider trade_id must be rejected")}
 }
+
+func TestGMPayEdgeOrderQueryUsesSignedMerchantEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/payments/gmpay/v1/order/query" {
+			t.Fatalf("unexpected GMPay Edge query: %s %s", r.Method, r.URL.Path)
+		}
+		fields := map[string]string{}
+		for key, values := range r.URL.Query() {
+			if len(values) != 1 { t.Fatalf("query field %s has %d values", key, len(values)) }
+			fields[key] = values[0]
+		}
+		if fields["pid"] != "2000" || fields["trade_id"] != "edge-trade-1" || !VerifyGMPay(fields, "edge-secret") {
+			t.Fatalf("GMPay Edge query signature or identity invalid: %#v", fields)
+		}
+		if fields["order_id"] != "" { t.Fatal("query must use exactly one order identifier") }
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status_code":200,"message":"success","data":{"trade_id":"edge-trade-1","status":"paid"}}`)
+	}))
+	defer server.Close()
+	client, err := NewGatewayClient(server.URL, "2000", "edge-secret", server.Client())
+	if err != nil { t.Fatal(err) }
+	result, err := client.QueryGMPayEdgeOrder(context.Background(), "edge-trade-1")
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(string(result["data"]), "edge-trade-1") { t.Fatalf("unexpected GMPay Edge result: %s", result["data"]) }
+	if _, err := client.QueryGMPayEdgeOrder(context.Background(), " "); err == nil { t.Fatal("empty trade_id must be rejected") }
+}

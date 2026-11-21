@@ -54,7 +54,7 @@ onMounted(loadStatus);
 <template>
   <div class="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-4 p-3 md:p-6">
     <a-card :bordered="false" title="管理员双重验证（TOTP）" :loading="loading">
-      <a-alert class="mb-4" type="info" show-icon message="启用后，管理员每次登录除了密码，还必须输入验证器应用生成的 6 位动态验证码。请使用支持 TOTP 的验证器应用，并妥善保管绑定密钥。" />
+      
       <div v-if="enabled" class="flex flex-col gap-3">
         <div v-if="recoveryCodes.length" class="rounded-lg border border-amber-300 p-3">
           <a-alert class="mb-3" type="warning" show-icon message="这些一次性恢复码只显示这一次。每个恢复码只能使用一次，请复制并保存在密码管理器等安全位置；关闭页面后无法再次查看。" />

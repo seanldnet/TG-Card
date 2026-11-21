@@ -23,6 +23,11 @@ type Manager struct {
 	chain *tron.Client
 	gateway *GatewayClient
 	gatewayNotifyURL string
+	gatewayEnabled bool
+	gmpayEdge *GatewayClient
+	gmpayEdgeNotifyURL string
+	gmpayEdgeEnabled bool
+	checkoutCursor uint64
 	lastScanAt time.Time
 	lastError string
 	lastErrorAt time.Time
@@ -198,7 +203,23 @@ func (m *Manager) scan(ctx context.Context) error {
 				log.Printf("TRC20 transfer requires reconciliation: tx=%s error=%v", transfer.TransactionID, err)
 				continue
 			}
+			intent, intentErr := database.GetEpusdtPaymentIntentByOrderNo(scanCtx,m.db,m.driver,order.OrderNo)
+			if intentErr == nil && intent.Provider != "trc20" {
+				note := "Confirmed TRC20 transfer arrived for an order assigned to a different payment provider; manual reconciliation required"
+				_ = database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required",order.ID,note)
+				m.bots.Notify("risk_alert","检测到订单支付通道与实际链上转账不一致，已阻止自动入账。订单："+order.OrderNo+"\n交易："+transfer.TransactionID,"")
+				continue
+			}
+			if intentErr != nil && !errors.Is(intentErr,sql.ErrNoRows) {
+				_ = database.ClassifyTRC20Transfer(scanCtx,m.db,m.driver,transfer.TransactionID,"reconciliation_required",order.ID,intentErr.Error())
+				continue
+			}
 			_, err = database.ConfirmOrderPayment(scanCtx, m.db, m.driver, order.ID, "trc20-usdt", transfer.TransactionID)
+			if err == nil && intentErr == nil && intent.Provider == "trc20" {
+				if statusErr := database.SetEpusdtPaymentIntentStatus(scanCtx,m.db,m.driver,order.ID,"paid",transfer.TransactionID); statusErr != nil {
+					log.Printf("TRC20 payment intent status update failed: order_id=%s tx=%s error=%v",order.ID,transfer.TransactionID,statusErr)
+				}
+			}
 			if err != nil {
 				_ = database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", order.ID, err.Error())
 				m.bots.Notify("risk_alert","链上付款未能自动确认，已阻止发货。订单："+order.OrderNo+"\n交易："+transfer.TransactionID+"\n原因："+err.Error(),"")

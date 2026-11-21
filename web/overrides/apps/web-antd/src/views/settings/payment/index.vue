@@ -18,6 +18,11 @@ interface PaymentSettings {
   epusdtSecretConfigured: boolean;
   epusdtEnabled: boolean;
   epusdtNotifyUrl: string;
+  gmpayBaseUrl: string;
+  gmpayPid: string;
+  gmpaySecretConfigured: boolean;
+  gmpayEnabled: boolean;
+  gmpayNotifyUrl: string;
 }
 
 const loading = ref(false);
@@ -28,12 +33,15 @@ const apiKey = ref('');
 const clearApiKey = ref(false);
 const epusdtSecret = ref('');
 const clearEpusdtSecret = ref(false);
+const gmpaySecret = ref('');
+const clearGmpaySecret = ref(false);
 const settings = reactive<PaymentSettings>({
   apiKeyConfigured: false,
   receiveAddress: '',
   usdtContract: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
   enabled: false,
   epusdtBaseUrl: '', epusdtPid: '', epusdtSecretConfigured: false, epusdtEnabled: false, epusdtNotifyUrl: '',
+  gmpayBaseUrl: '', gmpayPid: '', gmpaySecretConfigured: false, gmpayEnabled: false, gmpayNotifyUrl: '',
 });
 
 async function loadBonusRule(){
@@ -76,6 +84,12 @@ async function saveSettings() {
       clearEpusdtSecret: clearEpusdtSecret.value,
       epusdtEnabled: settings.epusdtEnabled,
       epusdtNotifyUrl: settings.epusdtNotifyUrl,
+      gmpayBaseUrl: settings.gmpayBaseUrl,
+      gmpayPid: settings.gmpayPid,
+      gmpaySecret: gmpaySecret.value,
+      clearGmpaySecret: clearGmpaySecret.value,
+      gmpayEnabled: settings.gmpayEnabled,
+      gmpayNotifyUrl: settings.gmpayNotifyUrl,
     };
     const data = await withAdminActionConfirmation({
       actionKey: 'settings.payment.update',
@@ -89,6 +103,8 @@ async function saveSettings() {
     clearApiKey.value = false;
     epusdtSecret.value = '';
     clearEpusdtSecret.value = false;
+    gmpaySecret.value = '';
+    clearGmpaySecret.value = false;
     message.success('支付设置已保存');
   } catch (error: any) {
     message.error(error?.response?.data?.message || '保存失败，请检查配置');
@@ -102,20 +118,32 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
 
 <template>
   <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
+    <a-card :bordered="false" title="支付方式">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+          <div><div class="font-medium">内置 USDT（TRC20）</div><div class="text-xs text-gray-500">链上收款</div></div>
+          <a-switch v-model:checked="settings.enabled" />
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+          <div><div class="font-medium">GMPay Edge</div><div class="text-xs text-gray-500">独立商户网关</div></div>
+          <a-switch v-model:checked="settings.gmpayEnabled" />
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+          <div><div class="font-medium">Epusdt</div><div class="text-xs text-gray-500">独立商户网关</div></div>
+          <a-switch v-model:checked="settings.epusdtEnabled" />
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button></div>
+    </a-card>
     <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
       <template #extra>
         <a-tag :color="settings.enabled ? 'success' : 'default'">
           {{ settings.enabled ? '收款已启用' : '收款未启用' }}
         </a-tag>
       </template>
-      <a-alert
-        class="mb-5"
-        type="info"
-        show-icon
-        message="在此页面直接配置收款信息，无需修改服务器 .env 或重启 Docker。API Key 使用 AES-256-GCM 加密后保存在当前数据库中。"
-      />
+      
       <a-form layout="vertical">
-        <a-form-item label="TronGrid API Key" extra="密钥不会回显。留空表示保持现有密钥；如需更换，请输入新密钥。">
+        <a-form-item label="TronGrid API Key">
           <a-input-password
             v-model:value="apiKey"
             autocomplete="new-password"
@@ -128,25 +156,18 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
             <a-checkbox v-model:checked="clearApiKey">清除已保存的 API Key</a-checkbox>
           </div>
         </a-form-item>
-        <a-form-item label="TRON 收款地址" required extra="请输入商户控制的 TRON 主网地址，系统会校验 Base58Check 格式。">
+        <a-form-item label="TRON 收款地址" required>
           <a-input
             v-model:value="settings.receiveAddress"
             autocomplete="off"
             placeholder="T 开头的 TRON 主网地址"
           />
         </a-form-item>
-        <a-form-item label="USDT TRC20 合约地址" extra="默认是 TRON 主网官方 USDT 合约地址。">
+        <a-form-item label="USDT TRC20 合约地址">
           <a-input v-model:value="settings.usdtContract" autocomplete="off" />
         </a-form-item>
         <a-divider />
-        <a-form-item label="启用 TRC20 自动收款">
-          <div class="flex items-center gap-3">
-            <a-switch v-model:checked="settings.enabled" />
-            <span class="text-sm text-gray-500">
-              开启后 Bot 才会显示本订单专属应付金额和收款地址，并启动链上到账监听。
-            </span>
-          </div>
-        </a-form-item>
+
         <a-alert
           class="mb-4"
           type="warning"
@@ -154,27 +175,31 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
           message="安全提醒"
           description="请只填写商户自己的收款地址。系统仅监听到账，不需要钱包私钥；少付、多付、过期转账仍需人工对账。"
         />
-        <div class="mt-7 border-t border-gray-100 pt-5">
-          <a-space wrap>
-            <a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button>
-            <a-button :disabled="saving" @click="loadSettings">重新加载</a-button>
-          </a-space>
-        </div>
       </a-form>
     </a-card>
-    <a-card :bordered="false" :loading="loading" title="Epusdt · GMPay 商户配置">
+    <a-card :bordered="false" :loading="loading" title="Epusdt 网关">
       <template #extra><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag></template>
-      <a-alert class="mb-4" type="info" show-icon message="此处配置 Epusdt GMPay 商户接口。Secret 使用 AES-256-GCM 加密存储且不会回传；启用后 Telegram 商城显示 GMPay 收银台入口，回调必须使用 HTTPS 并完成签名与订单金额核验。"/>
+      
       <a-form layout="vertical">
-        <a-form-item label="Epusdt 网关地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
-        <a-form-item label="GMPay PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
-        <a-form-item label="GMPay 异步回调地址" required extra="填写当前 TG-Card 服务公网可访问的 HTTPS 地址，例如 https://你的域名/api/payment/epusdt/notify。请在 Epusdt 商户端允许此回调地址。"><a-input v-model:value="settings.epusdtNotifyUrl" placeholder="https://你的域名/api/payment/epusdt/notify" autocomplete="url"/></a-form-item>
-        <a-form-item label="GMPay Secret" extra="不会回显；留空保持现有密钥，输入新值可轮换。"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 GMPay 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
-        <a-form-item label="启用 Epusdt GMPay 配置"><a-switch v-model:checked="settings.epusdtEnabled"/><span class="ml-3 text-sm text-gray-500">开启后用户可在商城订单中选择 GMPay 托管收银台；回调验签、金额核验、幂等确认与自动发货由服务端处理。</span></a-form-item>
+        <a-form-item label="Epusdt 服务地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
+        <a-form-item label="Epusdt 商户 PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
+        <a-form-item label="Epusdt 异步回调地址" required><a-input v-model:value="settings.epusdtNotifyUrl" placeholder="https://你的域名/api/payment/epusdt/notify" autocomplete="url"/></a-form-item>
+        <a-form-item label="Epusdt Secret"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 Epusdt 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
+        
+      </a-form>
+    </a-card>
+    <a-card :bordered="false" :loading="loading" title="GMPay Edge 网关">
+      <template #extra><a-tag :color="settings.gmpayEnabled ? 'success' : 'default'">{{ settings.gmpayEnabled ? '已启用' : '未启用' }}</a-tag></template>
+      <a-form layout="vertical">
+        <a-form-item label="GMPay Edge 服务地址" required><a-input v-model:value="settings.gmpayBaseUrl" placeholder="https://gmpay.example.com" autocomplete="url"/></a-form-item>
+        <a-form-item label="GMPay Edge 商户 PID" required><a-input v-model:value="settings.gmpayPid" autocomplete="off"/></a-form-item>
+        <a-form-item label="GMPay Edge 回调地址" required><a-input v-model:value="settings.gmpayNotifyUrl" placeholder="https://你的域名/api/payment/gmpay/notify" autocomplete="url"/></a-form-item>
+        <a-form-item label="GMPay Edge Secret"><a-input-password v-model:value="gmpaySecret" autocomplete="new-password" placeholder="输入 GMPay Edge 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.gmpaySecretConfigured ? 'success' : 'warning'">{{ settings.gmpaySecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearGmpaySecret">清除已保存 Secret</a-checkbox></div></a-form-item>
+        
       </a-form>
     </a-card>
     <a-card :bordered="false" title="充值赠送规则">
-      <a-alert class="mb-4" type="info" show-icon message="规则按充值本金匹配最高门槛；固定赠送填写 USDT 金额，百分比赠送填写百分数。创建充值单时会锁定赠送金额，支付确认时与本金在同一事务中入账，重复回调不会重复赠送。"/>
+      
       <div class="mb-4 flex flex-wrap items-center gap-3"><a-switch v-model:checked="bonusRule.enabled"/><span>启用充值赠送</span><a-button size="small" @click="addBonusTier">添加阶梯</a-button></div>
       <div v-for="(tier,index) in bonusRule.tiers" :key="index" class="mb-3 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 md:grid-cols-3">
        <a-form-item label="充值满（USDT）" class="mb-0"><a-input-number v-model:value="tier.minAmountAtomic" :min="1000000" :step="1000000" class="w-full" :formatter="(v:any)=>String(Number(v||0)/1000000)" :parser="(v:any)=>Number(v)*1000000"/></a-form-item>

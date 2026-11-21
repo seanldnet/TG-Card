@@ -25,7 +25,11 @@ func TestEpusdtPaymentIntentAndCallbackEventsAreIdempotent(t *testing.T) {
 	second,created,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
 	if err!=nil{t.Fatal(err)}
 	if created{t.Fatal("second intent must reuse the existing local intent")}
-	if first.ID!=second.ID||first.AmountMinor!=order.AmountMinor||first.Status!="creating"{t.Fatalf("intent not idempotent: first=%+v second=%+v",first,second)}
+	claimed,err:=ClaimReservedPaymentIntent(ctx,db,"sqlite",order.ID)
+	if err!=nil||!claimed{t.Fatalf("claim reserved intent: claimed=%t err=%v",claimed,err)}
+	second,_,err=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
+	if err!=nil{t.Fatal(err)}
+	if first.ID!=second.ID||first.AmountMinor!=order.AmountMinor||second.Status!="creating"{t.Fatalf("intent not idempotent: first=%+v second=%+v",first,second)}
 
 	if err:=UpdateEpusdtPaymentOrder(ctx,db,"sqlite",order.ID,"trade-123","https://checkout.example/pay/123",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
 	got,err:=GetEpusdtPaymentIntentByOrderNo(ctx,db,"sqlite",order.OrderNo)
@@ -71,4 +75,51 @@ func TestPaymentSettingsPersistEpusdtNotifyURL(t *testing.T) {
 	if err:=SavePaymentSettings(ctx,db,"sqlite",want);err!=nil{t.Fatal(err)}
 	got,err:=GetPaymentSettings(ctx,db,"sqlite");if err!=nil{t.Fatal(err)}
 	if got.EpusdtNotifyURL!=want.EpusdtNotifyURL||got.EpusdtPID!=want.EpusdtPID||!got.EpusdtEnabled{t.Fatalf("payment settings mismatch: got=%+v want=%+v",got,want)}
+}
+
+func TestPaymentIntentProviderIsImmutable(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, "sqlite", Product{Name:"Provider selection",PriceMinor:500,Currency:"USDT",DeliveryType:"text",DeliveryConfigJSON:"{}",Status:1})
+	if err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, "sqlite", "provider-test-bot", "buyer-provider", "chat-provider", product.ID, 20*time.Minute)
+	if err != nil { t.Fatal(err) }
+
+	intent, created, err := CreatePaymentIntentForProvider(ctx, db, "sqlite", order.ID, "gmpay_edge")
+	if err != nil { t.Fatal(err) }
+	if !created || intent.Provider != "gmpay_edge" { t.Fatalf("expected new GMPay Edge intent, got created=%t intent=%+v", created, intent) }
+	reused, created, err := CreatePaymentIntentForProvider(ctx, db, "sqlite", order.ID, "gmpay_edge")
+	if err != nil { t.Fatal(err) }
+	if created || reused.Provider != "gmpay_edge" || reused.ID != intent.ID { t.Fatalf("same provider must reuse immutable intent: %+v", reused) }
+	if _, _, err := CreatePaymentIntentForProvider(ctx, db, "sqlite", order.ID, "epusdt"); err == nil {
+		t.Fatal("an existing order intent must not switch from GMPay Edge to Epusdt")
+	}
+	got, err := GetEpusdtPaymentIntentByOrderNo(ctx, db, "sqlite", order.OrderNo)
+	if err != nil { t.Fatal(err) }
+	if got.Provider != "gmpay_edge" { t.Fatalf("provider snapshot was not persisted: %+v", got) }
+}
+
+func TestPaymentSettingsPersistIndependentMerchantProviders(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.Config{DBDriver:"sqlite", DatabaseDSN:":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	want := PaymentSettings{
+		TronUSDTContract:"TRON-USDT",
+		EpusdtBaseURL:"https://epusdt.example", EpusdtPID:"epu-1", EpusdtSecretCiphertext:"epu-cipher", EpusdtEnabled:true, EpusdtNotifyURL:"https://merchant.example/api/payment/epusdt/notify",
+		GMPayBaseURL:"https://gmpay.example", GMPayPID:"gmpay-2", GMPaySecretCiphertext:"gmpay-cipher", GMPayEnabled:true, GMPayNotifyURL:"https://merchant.example/api/payment/gmpay/notify",
+	}
+	if err := SavePaymentSettings(ctx, db, "sqlite", want); err != nil { t.Fatal(err) }
+	got, err := GetPaymentSettings(ctx, db, "sqlite")
+	if err != nil { t.Fatal(err) }
+	if got.EpusdtBaseURL != want.EpusdtBaseURL || got.EpusdtPID != want.EpusdtPID || got.EpusdtSecretCiphertext != want.EpusdtSecretCiphertext || !got.EpusdtEnabled || got.EpusdtNotifyURL != want.EpusdtNotifyURL {
+		t.Fatalf("Epusdt settings mismatch: got=%+v want=%+v", got, want)
+	}
+	if got.GMPayBaseURL != want.GMPayBaseURL || got.GMPayPID != want.GMPayPID || got.GMPaySecretCiphertext != want.GMPaySecretCiphertext || !got.GMPayEnabled || got.GMPayNotifyURL != want.GMPayNotifyURL {
+		t.Fatalf("GMPay Edge settings mismatch: got=%+v want=%+v", got, want)
+	}
 }

@@ -135,6 +135,12 @@ type paymentSettingsRequest struct {
 	ClearEpusdtSecret bool `json:"clearEpusdtSecret"`
 	EpusdtEnabled bool `json:"epusdtEnabled"`
 	EpusdtNotifyURL string `json:"epusdtNotifyUrl"`
+	GMPayBaseURL string `json:"gmpayBaseUrl"`
+	GMPayPID string `json:"gmpayPid"`
+	GMPaySecret string `json:"gmpaySecret"`
+	ClearGMPaySecret bool `json:"clearGmpaySecret"`
+	GMPayEnabled bool `json:"gmpayEnabled"`
+	GMPayNotifyURL string `json:"gmpayNotifyUrl"`
 }
 
 type loginRequest struct {
@@ -220,8 +226,15 @@ func main() {
 		gatewaySecret, err = secrets.Decrypt(paymentSettings.EpusdtSecretCiphertext)
 		if err != nil { log.Fatalf("decrypt saved Epusdt GMPay secret: %v", err) }
 	}
-	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt GMPay checkout: %v", err) }
-	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.CheckGMPayPayment, paymentManager.GatewayEnabled())
+	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt checkout: %v", err) }
+	gmpayEdgeSecret := ""
+	if paymentSettings.GMPaySecretCiphertext != "" {
+		gmpayEdgeSecret, err = secrets.Decrypt(paymentSettings.GMPaySecretCiphertext)
+		if err != nil { log.Fatalf("decrypt saved GMPay Edge secret: %v", err) }
+	}
+	if err := paymentManager.SetGMPayEdgeConfig(paymentSettings.GMPayBaseURL, paymentSettings.GMPayPID, gmpayEdgeSecret, paymentSettings.GMPayNotifyURL, paymentSettings.GMPayEnabled); err != nil { log.Fatalf("initialize GMPay Edge checkout: %v", err) }
+	botManager.SetGMPayCheckout(paymentManager.CreateHostedCheckoutRoundRobin, paymentManager.CheckHostedPayment, paymentManager.GatewayEnabled() || paymentManager.GMPayEdgeEnabled())
+	botManager.SetPaymentRouter(paymentManager.NextPaymentProviderForOrder, paymentManager.CreateHostedCheckoutForProvider)
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
@@ -283,6 +296,7 @@ func main() {
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("POST /api/payment/epusdt/notify", app.epusdtGMPayNotify)
+	api.HandleFunc("POST /api/payment/gmpay/notify", app.gmpayEdgeNotify)
 	api.HandleFunc("GET /api/reconciliation/reports", app.listReconciliationReports)
 	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
@@ -360,6 +374,11 @@ type paymentSettingsView struct {
 	EpusdtSecretConfigured bool `json:"epusdtSecretConfigured"`
 	EpusdtEnabled bool `json:"epusdtEnabled"`
 	EpusdtNotifyURL string `json:"epusdtNotifyUrl"`
+	GMPayBaseURL string `json:"gmpayBaseUrl"`
+	GMPayPID string `json:"gmpayPid"`
+	GMPaySecretConfigured bool `json:"gmpaySecretConfigured"`
+	GMPayEnabled bool `json:"gmpayEnabled"`
+	GMPayNotifyURL string `json:"gmpayNotifyUrl"`
 }
 
 func (a *application) getRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
@@ -391,6 +410,11 @@ func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request)
 		EpusdtSecretConfigured: s.EpusdtSecretCiphertext != "",
 		EpusdtEnabled: s.EpusdtEnabled,
 		EpusdtNotifyURL: s.EpusdtNotifyURL,
+		GMPayBaseURL: s.GMPayBaseURL,
+		GMPayPID: s.GMPayPID,
+		GMPaySecretConfigured: s.GMPaySecretCiphertext != "",
+		GMPayEnabled: s.GMPayEnabled,
+		GMPayNotifyURL: s.GMPayNotifyURL,
 	})
 }
 
@@ -408,6 +432,10 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	input.EpusdtPID = strings.TrimSpace(input.EpusdtPID)
 	input.EpusdtSecret = strings.TrimSpace(input.EpusdtSecret)
 	input.EpusdtNotifyURL = strings.TrimSpace(input.EpusdtNotifyURL)
+	input.GMPayBaseURL = strings.TrimSpace(input.GMPayBaseURL)
+	input.GMPayPID = strings.TrimSpace(input.GMPayPID)
+	input.GMPaySecret = strings.TrimSpace(input.GMPaySecret)
+	input.GMPayNotifyURL = strings.TrimSpace(input.GMPayNotifyURL)
 	if input.USDTContract == "" { input.USDTContract = tron.MainnetUSDTContract }
 	current, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
 	if err != nil { log.Printf("load existing payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load current payment settings"); return }
@@ -434,6 +462,27 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		epusdtSecretCiphertext, err = a.secrets.Encrypt(input.EpusdtSecret)
 		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 Epusdt Secret"); return }
 	}
+	gmpaySecretCiphertext := current.GMPaySecretCiphertext
+	if input.ClearGMPaySecret { gmpaySecretCiphertext = "" } else if input.GMPaySecret != "" {
+		gmpaySecretCiphertext, err = a.secrets.Encrypt(input.GMPaySecret)
+		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 GMPay Secret"); return }
+	}
+	gmpayEdgeSecret := ""
+	if gmpaySecretCiphertext != "" {
+		gmpayEdgeSecret, err = a.secrets.Decrypt(gmpaySecretCiphertext)
+		if err != nil { writeError(w, http.StatusInternalServerError, "无法读取已保存的 GMPay Edge Secret"); return }
+	}
+	if input.GMPayEnabled {
+		if !strings.HasPrefix(strings.ToLower(input.GMPayBaseURL), "https://") || !strings.HasPrefix(strings.ToLower(input.GMPayNotifyURL), "https://") {
+			writeError(w, http.StatusBadRequest, "GMPay Edge 网关和回调地址必须使用 HTTPS"); return
+		}
+		if input.GMPayBaseURL == "" || input.GMPayPID == "" || gmpaySecretCiphertext == "" || input.GMPayNotifyURL == "" {
+			writeError(w, http.StatusBadRequest, "启用 GMPay Edge 前必须配置独立网关地址、PID、Secret 和 HTTPS 回调地址"); return
+		}
+		if _, parseErr := payment.NewGatewayClient(input.GMPayBaseURL, input.GMPayPID, "validation-only", nil); parseErr != nil {
+			writeError(w, http.StatusBadRequest, "GMPay Edge 网关地址无效"); return
+		}
+	}
 	if input.EpusdtEnabled {
 		if !strings.HasPrefix(strings.ToLower(input.EpusdtBaseURL), "https://") {
 			writeError(w, http.StatusBadRequest, "Epusdt 网关必须使用 HTTPS 地址"); return
@@ -456,6 +505,11 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtSecretCiphertext: epusdtSecretCiphertext,
 		EpusdtEnabled: input.EpusdtEnabled,
 		EpusdtNotifyURL: input.EpusdtNotifyURL,
+		GMPayBaseURL: input.GMPayBaseURL,
+		GMPayPID: input.GMPayPID,
+		GMPaySecretCiphertext: gmpaySecretCiphertext,
+		GMPayEnabled: input.GMPayEnabled,
+		GMPayNotifyURL: input.GMPayNotifyURL,
 	}
 	if err := database.SavePaymentSettings(r.Context(), a.db, a.driver, next); err != nil {
 		log.Printf("save payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to save payment settings"); return
@@ -466,8 +520,10 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	a.botManager.SetPaymentConfig(input.ReceiveAddress, input.Enabled)
 	gatewaySecret := ""
 	if epusdtSecretCiphertext != "" { gatewaySecret, _ = a.secrets.Decrypt(epusdtSecretCiphertext) }
-	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt GMPay 配置应用失败："+err.Error()); return }
-	a.botManager.SetGMPayCheckout(a.paymentManager.CreateGMPayCheckout, a.paymentManager.CheckGMPayPayment, a.paymentManager.GatewayEnabled())
+	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt 配置应用失败："+err.Error()); return }
+	if err := a.paymentManager.SetGMPayEdgeConfig(input.GMPayBaseURL, input.GMPayPID, gmpayEdgeSecret, input.GMPayNotifyURL, input.GMPayEnabled); err != nil { writeError(w, http.StatusBadRequest, "GMPay Edge 配置应用失败："+err.Error()); return }
+	a.botManager.SetGMPayCheckout(a.paymentManager.CreateHostedCheckoutRoundRobin, a.paymentManager.CheckHostedPayment, a.paymentManager.GatewayEnabled() || a.paymentManager.GMPayEdgeEnabled())
+	a.botManager.SetPaymentRouter(a.paymentManager.NextPaymentProviderForOrder, a.paymentManager.CreateHostedCheckoutForProvider)
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
 		APIKeyConfigured: apiKeyCiphertext != "",
@@ -479,9 +535,35 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtSecretConfigured: epusdtSecretCiphertext != "",
 		EpusdtEnabled: input.EpusdtEnabled,
 		EpusdtNotifyURL: input.EpusdtNotifyURL,
+		GMPayBaseURL: input.GMPayBaseURL,
+		GMPayPID: input.GMPayPID,
+		GMPaySecretConfigured: gmpaySecretCiphertext != "",
+		GMPayEnabled: input.GMPayEnabled,
+		GMPayNotifyURL: input.GMPayNotifyURL,
 	})
 }
 
+
+func (a *application) gmpayEdgeNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil { http.Error(w, "invalid callback body", http.StatusBadRequest); return }
+	fields, err := payment.DecodeGMPayCallback(body)
+	if err != nil { http.Error(w, "invalid callback payload", http.StatusBadRequest); return }
+	if err := a.paymentManager.HandleGMPayEdgeCallback(r.Context(), fields, string(body)); err != nil {
+		switch {
+		case errors.Is(err, payment.ErrInvalidSignature): http.Error(w, "invalid signature", http.StatusUnauthorized)
+		case errors.Is(err, payment.ErrGatewayDisabled): http.Error(w, "payment gateway unavailable", http.StatusServiceUnavailable)
+		default:
+			log.Printf("GMPay Edge callback processing failed: order_id=%s trade_id=%s error=%v", fields["order_id"], fields["trade_id"], err)
+			http.Error(w, "callback processing failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "ok")
+}
 
 func (a *application) epusdtGMPayNotify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -863,79 +945,49 @@ func (a *application) menus(w http.ResponseWriter, r *http.Request) {
 			"name": "Dashboard", "path": "/dashboard", "redirect": "/dashboard/analytics",
 			"meta": map[string]any{"icon": "lucide:layout-dashboard", "order": -1, "title": "仪表盘"},
 			"children": []map[string]any{
-				{
-					"name": "Analytics", "path": "analytics", "component": "/dashboard/analytics/index",
-					"meta": map[string]any{"affixTab": true, "icon": "lucide:area-chart", "title": "经营概览"},
-				},
-				{
-					"name": "Workspace", "path": "workspace", "component": "/dashboard/workspace/index",
-					"meta": map[string]any{"icon": "carbon:workspace", "title": "工作台"},
-				},
+				{"name":"Analytics","path":"analytics","component":"/dashboard/analytics/index","meta":map[string]any{"affixTab":true,"icon":"lucide:area-chart","title":"经营概览"}},
+				{"name":"Workspace","path":"workspace","component":"/dashboard/workspace/index","meta":map[string]any{"icon":"carbon:workspace","title":"工作台"}},
 			},
 		},
 		{
-			"name": "BotManagement", "path": "/bots", "component": "/bots/index",
-			"meta": map[string]any{"icon": "lucide:bot", "order": 1, "title": "机器人管理"},
+			"name":"Operations","path":"/operations","redirect":"/bots",
+			"meta":map[string]any{"icon":"lucide:workflow","order":1,"title":"运营管理"},
+			"children":[]map[string]any{
+				{"name":"BotManagement","path":"/bots","component":"/bots/index","meta":map[string]any{"icon":"lucide:bot","title":"机器人管理"}},
+				{"name":"Broadcasts","path":"/broadcasts","component":"/broadcasts/index","meta":map[string]any{"icon":"lucide:send","title":"群发通知"}},
+				{"name":"Users","path":"/users","component":"/users/index","meta":map[string]any{"icon":"lucide:users","title":"用户管理"}},
+				{"name":"Support","path":"/support","component":"/support/index","meta":map[string]any{"icon":"lucide:life-buoy","title":"售后工单"}},
+			},
 		},
 		{
-			"name": "Broadcasts", "path": "/broadcasts", "component": "/broadcasts/index",
-			"meta": map[string]any{"icon": "lucide:send", "order": 2, "title": "群发通知"},
+			"name":"Products","path":"/products","redirect":"/catalog",
+			"meta":map[string]any{"icon":"lucide:package","order":2,"title":"商品管理"},
+			"children":[]map[string]any{
+				{"name":"Catalog","path":"/catalog","component":"/catalog/index","meta":map[string]any{"icon":"lucide:boxes","title":"商品与库存"}},
+				{"name":"Coupons","path":"/coupons","component":"/promotions/index","meta":map[string]any{"icon":"lucide:ticket-percent","title":"优惠券管理"}},
+				{"name":"RedemptionCodes","path":"/redemption-codes","component":"/redemption-codes/index","meta":map[string]any{"icon":"lucide:gift","title":"兑换码管理"}},
+			},
 		},
 		{
-			"name": "Users", "path": "/users", "component": "/users/index",
-			"meta": map[string]any{"icon": "lucide:users", "order": 2, "title": "用户管理"},
+			"name":"Finance","path":"/finance","redirect":"/orders",
+			"meta":map[string]any{"icon":"lucide:wallet","order":3,"title":"财务管理"},
+			"children":[]map[string]any{
+				{"name":"Orders","path":"/orders","component":"/orders/index","meta":map[string]any{"icon":"lucide:receipt-text","title":"订单管理"}},
+				{"name":"PaymentTransactions","path":"/payments/transactions","component":"/payments/index","meta":map[string]any{"icon":"lucide:arrow-left-right","title":"支付交易流水"}},
+				{"name":"Reconciliation","path":"/reconciliation","component":"/reconciliation/index","meta":map[string]any{"icon":"lucide:calendar-check","title":"对账与余额校验"}},
+				{"name":"FinanceExceptions","path":"/finance-exceptions","component":"/finance-exceptions/index","meta":map[string]any{"icon":"lucide:shield-alert","title":"资金异常中心"}},
+			},
 		},
 		{
-			"name": "Orders", "path": "/orders", "component": "/orders/index",
-			"meta": map[string]any{"icon": "lucide:receipt-text", "order": 3, "title": "订单管理"},
-		},
-		{
-			"name": "PaymentTransactions", "path": "/payments/transactions", "component": "/payments/index",
-			"meta": map[string]any{"icon": "lucide:arrow-left-right", "order": 4, "title": "支付交易流水"},
-		},
-		{
-			"name": "Reconciliation", "path": "/reconciliation", "component": "/reconciliation/index",
-			"meta": map[string]any{"icon": "lucide:calendar-check", "order": 4, "title": "对账与余额校验"},
-		},
-		{
-			"name": "FinanceExceptions", "path": "/finance-exceptions", "component": "/finance-exceptions/index",
-			"meta": map[string]any{"icon": "lucide:shield-alert", "order": 5, "title": "资金异常中心"},
-		},
-		{
-			"name": "SystemExceptions", "path": "/system-exceptions", "component": "/system-exceptions/index",
-			"meta": map[string]any{"icon": "lucide:triangle-alert", "order": 6, "title": "全局异常中心"},
-		},
-		{
-			"name": "Catalog", "path": "/catalog", "component": "/catalog/index",
-			"meta": map[string]any{"icon": "lucide:package", "order": 2, "title": "商品与库存"},
-		},
-		{
-			"name": "Coupons", "path": "/coupons", "component": "/promotions/index",
-			"meta": map[string]any{"icon": "lucide:ticket-percent", "order": 4, "title": "优惠券管理"},
-		},
-		{
-			"name": "RedemptionCodes", "path": "/redemption-codes", "component": "/redemption-codes/index",
-			"meta": map[string]any{"icon": "lucide:gift", "order": 5, "title": "兑换码管理"},
-		},
-		{
-			"name": "Support", "path": "/support", "component": "/support/index",
-			"meta": map[string]any{"icon": "lucide:life-buoy", "order": 5, "title": "售后工单"},
-		},
-		{
-			"name": "SiteSettings", "path": "/settings/site", "component": "/settings/site/index",
-			"meta": map[string]any{"icon": "lucide:settings", "order": 6, "title": "网站设置"},
-		},
-		{
-			"name": "PaymentSettings", "path": "/settings/payment", "component": "/settings/payment/index",
-			"meta": map[string]any{"icon": "lucide:wallet-cards", "order": 7, "title": "支付设置"},
-		},
-		{
-			"name": "AdminSecuritySettings", "path": "/settings/security", "component": "/settings/security/index",
-			"meta": map[string]any{"icon": "lucide:shield-check", "order": 8, "title": "安全设置"},
-		},
-		{
-			"name": "UpstreamSettings", "path": "/upstream", "component": "/upstream/index",
-			"meta": map[string]any{"icon": "lucide:plug-zap", "order": 9, "title": "上游对接"},
+			"name":"System","path":"/system","redirect":"/settings/site",
+			"meta":map[string]any{"icon":"lucide:sliders-horizontal","order":4,"title":"系统设置"},
+			"children":[]map[string]any{
+				{"name":"SiteSettings","path":"/settings/site","component":"/settings/site/index","meta":map[string]any{"icon":"lucide:settings","title":"网站设置"}},
+				{"name":"PaymentSettings","path":"/settings/payment","component":"/settings/payment/index","meta":map[string]any{"icon":"lucide:wallet-cards","title":"支付设置"}},
+				{"name":"AdminSecuritySettings","path":"/settings/security","component":"/settings/security/index","meta":map[string]any{"icon":"lucide:shield-check","title":"安全设置"}},
+				{"name":"UpstreamSettings","path":"/upstream","component":"/upstream/index","meta":map[string]any{"icon":"lucide:plug-zap","title":"上游对接"}},
+				{"name":"SystemExceptions","path":"/system-exceptions","component":"/system-exceptions/index","meta":map[string]any{"icon":"lucide:triangle-alert","title":"全局异常中心"}},
+			},
 		},
 	}
 	writeSuccess(w, http.StatusOK, menus)
