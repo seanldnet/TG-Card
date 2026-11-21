@@ -31,10 +31,11 @@ func sendSMTPMessage(ctx context.Context, host string, port int, username, passw
 	var err error
 	implicitTLS := smtpPortUsesImplicitTLS(port)
 	if implicitTLS {
-		conn, err = tls.DialWithDialer(&dialer, "tcp", address, &tls.Config{
+		tlsDialer := &tls.Dialer{NetDialer: &dialer, Config: &tls.Config{
 			ServerName: host,
 			MinVersion: tls.VersionTLS12,
-		})
+		}}
+		conn, err = tlsDialer.DialContext(ctx, "tcp", address)
 	} else {
 		conn, err = dialer.DialContext(ctx, "tcp", address)
 	}
