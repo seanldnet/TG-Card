@@ -129,6 +129,11 @@ type paymentSettingsRequest struct {
 	ReceiveAddress string `json:"receiveAddress"`
 	USDTContract string `json:"usdtContract"`
 	Enabled bool `json:"enabled"`
+	EpusdtBaseURL string `json:"epusdtBaseUrl"`
+	EpusdtPID string `json:"epusdtPid"`
+	EpusdtSecret string `json:"epusdtSecret"`
+	ClearEpusdtSecret bool `json:"clearEpusdtSecret"`
+	EpusdtEnabled bool `json:"epusdtEnabled"`
 }
 
 type loginRequest struct {
@@ -341,6 +346,10 @@ type paymentSettingsView struct {
 	ReceiveAddress string `json:"receiveAddress"`
 	USDTContract string `json:"usdtContract"`
 	Enabled bool `json:"enabled"`
+	EpusdtBaseURL string `json:"epusdtBaseUrl"`
+	EpusdtPID string `json:"epusdtPid"`
+	EpusdtSecretConfigured bool `json:"epusdtSecretConfigured"`
+	EpusdtEnabled bool `json:"epusdtEnabled"`
 }
 
 func (a *application) getRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
@@ -367,6 +376,10 @@ func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request)
 		ReceiveAddress: s.TronReceiveAddress,
 		USDTContract: s.TronUSDTContract,
 		Enabled: s.TronEnabled,
+		EpusdtBaseURL: s.EpusdtBaseURL,
+		EpusdtPID: s.EpusdtPID,
+		EpusdtSecretConfigured: s.EpusdtSecretCiphertext != "",
+		EpusdtEnabled: s.EpusdtEnabled,
 	})
 }
 
@@ -380,6 +393,9 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	input.ReceiveAddress = strings.TrimSpace(input.ReceiveAddress)
 	input.USDTContract = strings.TrimSpace(input.USDTContract)
 	input.APIKey = strings.TrimSpace(input.APIKey)
+	input.EpusdtBaseURL = strings.TrimSpace(input.EpusdtBaseURL)
+	input.EpusdtPID = strings.TrimSpace(input.EpusdtPID)
+	input.EpusdtSecret = strings.TrimSpace(input.EpusdtSecret)
 	if input.USDTContract == "" { input.USDTContract = tron.MainnetUSDTContract }
 	current, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
 	if err != nil { log.Printf("load existing payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load current payment settings"); return }
@@ -401,11 +417,31 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, "TRON 配置校验失败："+err.Error()); return
 		}
 	}
+	epusdtSecretCiphertext := current.EpusdtSecretCiphertext
+	if input.ClearEpusdtSecret { epusdtSecretCiphertext = "" } else if input.EpusdtSecret != "" {
+		epusdtSecretCiphertext, err = a.secrets.Encrypt(input.EpusdtSecret)
+		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 Epusdt Secret"); return }
+	}
+	if input.EpusdtEnabled {
+		if !strings.HasPrefix(strings.ToLower(input.EpusdtBaseURL), "https://") {
+			writeError(w, http.StatusBadRequest, "Epusdt 网关必须使用 HTTPS 地址"); return
+		}
+		if input.EpusdtBaseURL == "" || input.EpusdtPID == "" || epusdtSecretCiphertext == "" {
+			writeError(w, http.StatusBadRequest, "启用 Epusdt GMPay 前必须配置网关地址、PID 和 Secret"); return
+		}
+		secretValue, decryptErr := a.secrets.Decrypt(epusdtSecretCiphertext)
+		if decryptErr != nil { writeError(w, http.StatusInternalServerError, "无法读取已保存的 Epusdt Secret"); return }
+		if _, gatewayErr := payment.NewGatewayClient(input.EpusdtBaseURL, input.EpusdtPID, secretValue, nil); gatewayErr != nil { writeError(w, http.StatusBadRequest, "Epusdt GMPay 配置无效："+gatewayErr.Error()); return }
+	}
 	next := database.PaymentSettings{
 		TronAPIKeyCiphertext: apiKeyCiphertext,
 		TronReceiveAddress: input.ReceiveAddress,
 		TronUSDTContract: input.USDTContract,
 		TronEnabled: input.Enabled,
+		EpusdtBaseURL: input.EpusdtBaseURL,
+		EpusdtPID: input.EpusdtPID,
+		EpusdtSecretCiphertext: epusdtSecretCiphertext,
+		EpusdtEnabled: input.EpusdtEnabled,
 	}
 	if err := database.SavePaymentSettings(r.Context(), a.db, a.driver, next); err != nil {
 		log.Printf("save payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to save payment settings"); return
@@ -420,6 +456,10 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		ReceiveAddress: input.ReceiveAddress,
 		USDTContract: input.USDTContract,
 		Enabled: input.Enabled,
+		EpusdtBaseURL: input.EpusdtBaseURL,
+		EpusdtPID: input.EpusdtPID,
+		EpusdtSecretConfigured: epusdtSecretCiphertext != "",
+		EpusdtEnabled: input.EpusdtEnabled,
 	})
 }
 

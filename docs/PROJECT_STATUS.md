@@ -1,3 +1,12 @@
+## 2026-11-22 — Epusdt GMPay 商户配置（开发中）
+
+- 独立分支：`feat/epusdt-gmpay-settings`；基于 main `b4b1f19`。
+- 本 PR 范围：在现有支付设置中增加 Epusdt 网关地址、GMPay PID、Secret 加密存储与启用标记；Secret 仅返回 configured 状态；保留现有 TRC20 配置。
+- 数据库迁移：新增 0058，为 `payment_settings` 增加 Epusdt 字段；旧记录默认空值/关闭，不影响 TRC20。
+- 当前边界：只管理配置，不执行 GMPay 下单、回调验签、订单入账或自动发货；这些属于后续独立支付闭环 PR。
+- 验证：等待 PR CI；尚未合并、尚未发布镜像、未进行真实商户验收。
+- 文档版本：2.2.69。
+
 ## 2026-11-22 — 每日自动备份与 Telegram Owner 文件投递（PR #114 已合并并发布镜像）\n\n- 独立分支：`feat/scheduled-backup-owner-delivery`；PR #114 已 Squash Merge，main 合并提交 `4bdfd38476daf068761f0afb9a462afad3cefb22`。\n- 已实现每日调度器、后台开关与 `HH:mm` 时间设置；新安装默认启用每日 03:00（服务器本地时区），管理员可在“网站设置 → 自动备份”调整或关闭。\n- 备份内容：PostgreSQL `pg_dump` 自定义格式 + `/app/data` 持久化目录，打包为 `.tar.gz`；通过启用的 Telegram Bot `sendDocument` 发送到站点配置的 Telegram Owner ID，消息附 SHA-256。\n- Docker 运行镜像安装 `postgresql-client` 以提供 `pg_dump`；保留现有手动 `scripts/backup.sh` / `scripts/restore.sh`。无数据库迁移、无新增环境变量。\n- 当前状态：功能代码已提交到独立分支，尚待 Go/Admin/Security CI 与代码审查；失败重试、生产 Telegram 文件投递及实际备份恢复仍未验收。\n- 文档版本：2.2.68。\n\n## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
 
 - 状态：项目所有者已确认本轮测试均无问题；据此将 PROJECT_STATUS 第 11 节对应真实验收项更新为已验收。
