@@ -214,7 +214,7 @@ func (m *Manager) CheckGMPayPayment(ctx context.Context,orderID string)(string,e
 	if envelope.StatusCode!=0&&envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt status query failed (%d): %s",envelope.StatusCode,envelope.Message)}
 	fields,err:=DecodeGMPayCallback(envelope.Data)
 	if err!=nil{return "",fmt.Errorf("decode Epusdt status result: %w",err)}
-	if fields["trade_id"]!=""&&fields["trade_id"]!=intent.ProviderTradeID{return "",errors.New("Epusdt status response trade ID does not match local payment intent")}
+	if fields["trade_id"]!=intent.ProviderTradeID{return "",errors.New("Epusdt status response trade ID is missing or does not match local payment intent")}
 	status,err:=strconv.Atoi(fields["status"])
 	if err!=nil{return "",errors.New("Epusdt status response is missing a valid status")}
 	switch status{
