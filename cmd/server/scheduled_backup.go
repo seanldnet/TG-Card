@@ -112,6 +112,11 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	if dsn == "" { return fmt.Errorf("DATABASE_URL is not configured") }
 	u, err := url.Parse(dsn); if err != nil { return fmt.Errorf("parse database URL: %w", err) }
 	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
+	if settings.BackupEncryptionPassphraseCiphertext != "" {
+		var decryptErr error
+		passphrase, decryptErr = a.secrets.Decrypt(settings.BackupEncryptionPassphraseCiphertext)
+		if decryptErr != nil { return fmt.Errorf("decrypt configured backup encryption key: %w", decryptErr) }
+	}
 	if err := backupcrypto.ValidatePassphrase(passphrase); err != nil { return err }
 	tmp, err := os.MkdirTemp("", "tg-card-backup-*"); if err != nil { return err }
 	defer os.RemoveAll(tmp)
