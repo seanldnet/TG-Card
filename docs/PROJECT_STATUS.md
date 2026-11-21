@@ -6,7 +6,7 @@
 - 不改变生产备份/恢复脚本、数据库结构或部署配置；生产 RPO/RTO 仍需结合真实备份周期和应用健康检查实测。
 - 文档版本：2.2.57。
 
-## 2026-11-21 — P1 数据库备份/恢复隔离演练自动化（PR #101 已合并，发布检查中）
+## 2026-11-21 — P1 数据库备份/恢复隔离演练自动化（PR #101 已合并并发布）
 
 - PR #101 已 Squash Merge 至 main，merge commit `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d`；独立分支 `test/isolated-backup-restore-p1`。
 - 新增 `scripts/test-backup-restore.sh`：在独立 Docker Compose project、临时 PostgreSQL 16 容器和独立命名卷中调用正式备份/恢复脚本。
@@ -747,7 +747,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 - 保留升级前一致性数据库备份，以及 tg_card_data、postgres_data 持久化卷。
 - tg_card_data 包含 jwt-secret、bot-token.key 和上传文件。丢失或替换密钥可能导致现有会话失效、已加密 Bot Token/支付密钥无法解密。
 - 不要通过删除 Docker volumes 回滚。
-- Compose 备份/恢复脚本已存在并有专项说明；本轮新增隔离 Docker Compose 自动恢复测试，待 PR CI 验证。生产停机窗口、PostgreSQL PITR 和逐版本回滚矩阵仍待补充/验证。
+- Compose 备份/恢复脚本已存在并有专项说明；隔离 Docker Compose 自动恢复测试已随 PR #101 合并并通过 CI，镜像已发布。生产停机窗口、PostgreSQL PITR 和逐版本回滚矩阵仍待补充/验证；真实生产恢复演练尚未执行。
 
 ## 16. API 接口索引
 
