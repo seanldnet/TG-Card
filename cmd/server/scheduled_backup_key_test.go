@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/seanldnet/TG-Card/internal/secret"
@@ -30,6 +29,6 @@ func TestResolveScheduledBackupPassphrase(t *testing.T) {
 	})
 	t.Run("corrupt saved key does not fall back to environment", func(t *testing.T) {
 		_, err := resolveScheduledBackupPassphrase(siteSettings{BackupEncryptionPassphraseCiphertext: "not-valid-ciphertext"}, manager.Decrypt, "environment-key-that-is-at-least-32-characters")
-		if err == nil || errors.Is(err, nil) { t.Fatal("expected decrypt error") }
+		if err == nil { t.Fatal("expected decrypt error") }
 	})
 }
