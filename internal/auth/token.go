@@ -89,3 +89,10 @@ func (m *Manager) sign(value string) string {
 	_, _ = mac.Write([]byte(value))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
+
+
+func GenerateRefreshToken()(string,error){
+	raw:=make([]byte,32)
+	if _,err:=rand.Read(raw);err!=nil{return "",fmt.Errorf("generate refresh token: %w",err)}
+	return base64.RawURLEncoding.EncodeToString(raw),nil
+}
