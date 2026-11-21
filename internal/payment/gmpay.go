@@ -251,59 +251,72 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 // CheckGMPayPayment uses Epusdt's public trade status endpoint over HTTPS.
 // The response identifies the exact local trade_id; the signed callback remains
 // the source for amount verification when available.
-func (m *Manager) CheckGMPayPayment(ctx context.Context,orderID string)(string,error){
+func (m *Manager) CheckGMPayPayment(ctx context.Context, orderID string) (string,error) {
+	return m.checkGMPayPaymentForProvider(ctx, orderID, "epusdt")
+}
+
+func (m *Manager) CheckGMPayEdgePayment(ctx context.Context, orderID string) (string,error) {
+	return m.checkGMPayPaymentForProvider(ctx, orderID, "gmpay_edge")
+}
+
+func (m *Manager) checkGMPayPaymentForProvider(ctx context.Context, orderID, provider string) (string,error) {
 	m.mu.RLock()
-	client:=m.gateway
+	client := m.gateway
+	if provider == "gmpay_edge" { client = m.gmpayEdge }
 	m.mu.RUnlock()
-	if client==nil{return "",ErrGatewayDisabled}
-	order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
-	if err!=nil{return "",err}
-	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo)
-	if err!=nil{return "",err}
-	if intent.ProviderTradeID==""{return "",errors.New("Epusdt provider trade ID is not available; payment creation outcome requires manual reconciliation")}
-	result,err:=client.QueryGMPayOrder(ctx,intent.ProviderTradeID)
-	if err!=nil{return "",err}
-	raw,err:=json.Marshal(result)
-	if err!=nil{return "",err}
-	var envelope struct{StatusCode int `json:"status_code"`;Message string `json:"message"`;Data json.RawMessage `json:"data"`}
-	if err:=json.Unmarshal(raw,&envelope);err!=nil{return "",err}
-	if envelope.StatusCode!=0&&envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt status query failed (%d): %s",envelope.StatusCode,envelope.Message)}
-	fields,err:=DecodeGMPayCallback(envelope.Data)
-	if err!=nil{return "",fmt.Errorf("decode Epusdt status result: %w",err)}
-	if fields["trade_id"]!=intent.ProviderTradeID{return "",errors.New("Epusdt status response trade ID is missing or does not match local payment intent")}
-	status,err:=strconv.Atoi(fields["status"])
-	if err!=nil{return "",errors.New("Epusdt status response is missing a valid status")}
-	switch status{
+	if client == nil { return "", ErrGatewayDisabled }
+	order, err := database.GetOrderByID(ctx,m.db,m.driver,orderID)
+	if err != nil { return "",err }
+	intent, err := database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo)
+	if err != nil { return "",err }
+	if intent.Provider != provider { return "",fmt.Errorf("order payment provider mismatch: expected %s, recorded %s",provider,intent.Provider) }
+	if intent.ProviderTradeID == "" { return "",errors.New("provider trade ID is not available; payment creation outcome requires manual reconciliation") }
+	var result map[string]json.RawMessage
+	if provider == "gmpay_edge" {
+		result,err = client.QueryGMPayEdgeOrder(ctx,intent.ProviderTradeID)
+	} else {
+		result,err = client.QueryGMPayOrder(ctx,intent.ProviderTradeID)
+	}
+	if err != nil { return "",err }
+	raw,err := json.Marshal(result)
+	if err != nil { return "",err }
+	var envelope struct { StatusCode int `json:"status_code"`; Message string `json:"message"`; Data json.RawMessage `json:"data"` }
+	if err := json.Unmarshal(raw,&envelope); err != nil { return "",err }
+	if envelope.StatusCode != 0 && envelope.StatusCode != http.StatusOK { return "",fmt.Errorf("%s status query failed (%d): %s",provider,envelope.StatusCode,envelope.Message) }
+	fields,err := DecodeGMPayCallback(envelope.Data)
+	if err != nil { return "",fmt.Errorf("decode %s status result: %w",provider,err) }
+	if fields["trade_id"] != intent.ProviderTradeID { return "",errors.New("status response trade ID is missing or does not match local payment intent") }
+	status,err := strconv.Atoi(fields["status"])
+	if err != nil { return "",errors.New("status response is missing a valid status") }
+	switch status {
 	case 1,4:
 		return "pending",nil
 	case 2:
-		settlement:=map[string]string{
-			"pid":client.pid,
-			"order_id":order.OrderNo,
-			"trade_id":intent.ProviderTradeID,
-			"amount":formatMinor(intent.AmountMinor),
-			"token":"USDT",
-			"status":"2",
-		}
-		if fields["block_transaction_id"]!=""{settlement["block_transaction_id"]=fields["block_transaction_id"]}
-		if err:=m.settleGMPayPayment(ctx,settlement,string(envelope.Data));err!=nil{return "",err}
+		settlement := map[string]string{"pid":client.pid,"order_id":order.OrderNo,"trade_id":intent.ProviderTradeID,"amount":formatMinor(intent.AmountMinor),"token":"USDT","status":"2"}
+		if fields["block_transaction_id"] != "" { settlement["block_transaction_id"] = fields["block_transaction_id"] }
+		if err := m.settleGMPayPaymentForProvider(ctx,settlement,string(envelope.Data),provider); err != nil { return "",err }
 		return "paid",nil
 	case 3:
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"expired","")
 		return "expired",nil
 	default:
-		return "",fmt.Errorf("unsupported Epusdt payment status %d",status)
+		return "",fmt.Errorf("unsupported %s payment status %d",provider,status)
 	}
 }
 
 func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]string,payloadJSON string) error {
+	return m.settleGMPayPaymentForProvider(ctx, fields, payloadJSON, "epusdt")
+}
+
+func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[string]string, payloadJSON, provider string) error {
 	orderNo:=strings.TrimSpace(fields["order_id"])
 	tradeID:=strings.TrimSpace(fields["trade_id"])
 	if orderNo==""||tradeID==""{return errors.New("GMPay payment is missing order_id or trade_id")}
 	status,err:=strconv.Atoi(fields["status"])
 	if err!=nil||status!=2{return errors.New("GMPay payment is not successful")}
 	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,orderNo)
-	if err!=nil{return fmt.Errorf("unknown Epusdt merchant order %q: %w",orderNo,err)}
+	if err!=nil{return fmt.Errorf("unknown provider merchant order %q: %w",orderNo,err)}
+	if intent.Provider != provider { return fmt.Errorf("callback provider mismatch: expected %s, order is assigned to %s",provider,intent.Provider) }
 	order,err:=database.GetOrderByID(ctx,m.db,m.driver,intent.OrderID)
 	if err!=nil{return err}
 	if intent.ProviderTradeID!="" && intent.ProviderTradeID!=tradeID {
