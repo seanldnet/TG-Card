@@ -4,7 +4,7 @@
 
 - 基线：main `b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`；代码分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`。
 - 已完成本阶段代码范围：Epusdt GMPay 商城商品订单/购物车统一订单收银台入口；支付单本地幂等占位；GMPay HMAC-SHA256 回调验签；按 trade_id 查询支付状态；订单支付确认与本地商品自动发货/上游采购交接；HTTPS 回调 URL 后台配置。
-- 安全策略：校验 PID、签名、订单号、trade_id 与金额；重复回调幂等；不同 trade_id 重复付款/意外交易、金额不符、取消订单后迟到付款均记为异常并阻止二次发货；支付创建超时进入 `create_uncertain`，因 Epusdt order_id 不可重复，不盲目重试创建。
+- 安全策略：校验 PID、签名、订单号、trade_id、金额与回调 token（必须为 USDT）；重复回调幂等；不同 trade_id 重复付款/意外交易、金额不符、取消订单后迟到付款均记为异常并阻止二次发货；支付创建超时进入 `create_uncertain`，因 Epusdt order_id 不可重复，不盲目重试创建。
 - 支付状态查询按 Epusdt 当前 API 使用 `GET /pay/check-status/{trade_id}`；创建交易使用 `POST /payments/gmpay/v1/order/create-transaction`；回调返回 HTTP 200 + `ok`。
 - 当前阶段尚未完成：Go/Admin/Security CI、合并后 Docker Publish、镜像 digest 发布记录。不得将分支代码或本地测试声明为生产可用。
 - 已增加自动化测试：错误签名、金额不符、重复回调、重复付款、超时/不确定创建、取消订单迟到付款、查询补偿、支付成功交付；Go CI 仍待完成。
