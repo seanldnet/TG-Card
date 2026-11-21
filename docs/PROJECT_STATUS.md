@@ -1,25 +1,34 @@
+## 2026-11-22 — 当前主线状态校准（文档版本 2.2.71）
+
+- 基线：main `82c5c0b14e18e8b117fcb7dda48bd7b7ff631d4f`；本记录为当前状态的唯一优先摘要，后续历史条目仅说明当时提交时的状态，不覆盖本摘要。
+- PR #114 每日自动备份与 Telegram Owner 投递：已合并并发布；历史记录中“等待 CI/审查”的旧描述已失效。生产恢复演练与代码交付状态分开记录，不得倒写为 PR 未完成。
+- PR #116 GMPay 客户端、PR #117 Epusdt 商户配置：均已合并；PR #117 合并提交 `d7d607ddb068e02c47386391eabbdc4c800514fc`，Go/Admin/Security 检查通过。迁移 0058 与密钥加密/脱敏配置已完成。
+- Epusdt + GMPay 支付生命周期尚待独立开发：商城创建支付单、回调/查单验证、订单支付确认、支付幂等与自动发货均不能因配置已合并而标记完成。
+- Dujiao-Next：项目所有者已确认正常对接，按已完成处理；不再要求额外“PR E 真实商户验收”、真实商户压力测试或供应商扣款演练作为阻塞项。既有采购、查单、回调和资金保护实现按已合并状态维护。
+- 每个独立 PR 更新 PROJECT_STATUS、CHANGELOG 和受影响专项文档；代码、CI、合并、镜像发布、生产部署/验收分别标记，不将某一层状态推断为另一层状态。
+- 本次仅校准文档；未改业务代码、数据库或运行配置。
+
 ## 2026-11-22 — Epusdt GMPay 文档状态校准
 
 - PR #117 已合并，合并提交 `d7d607ddb068e02c47386391eabbdc4c800514fc`；Go Backend CI、Admin Frontend CI、Security Scan 均通过。
 - 已完成：后台 Epusdt 网关地址、GMPay PID、AES-GCM Secret 加密存储与读取脱敏；数据库迁移 0058。
 - 未完成：Telegram 商城 GMPay 下单入口、支付结果查询/回调验签、订单支付确认、自动发货和真实商户验收。配置页启用状态不代表支付通道已可收款。
 - 修正 `docs/payment-delivery.md` 中“GMpay 和 EPUSDT adapters are not implemented”的过时描述，区分已完成客户端/配置与未完成的支付生命周期。
-- 文档版本：2.2.70。
+- 文档版本：2.2.71。
 
-## 2026-11-22 — Epusdt GMPay 商户配置（开发中）
+## 2026-11-22 — 每日自动备份与 Telegram Owner 文件投递（PR #114 已合并并发布）
 
-- 独立分支：`feat/epusdt-gmpay-settings`；基于 main `b4b1f19`。
-- 本 PR 范围：在现有支付设置中增加 Epusdt 网关地址、GMPay PID、Secret 加密存储与启用标记；Secret 仅返回 configured 状态；保留现有 TRC20 配置。
-- 数据库迁移：新增 0058，为 `payment_settings` 增加 Epusdt 字段；旧记录默认空值/关闭，不影响 TRC20。
-- 当前边界：只管理配置，不执行 GMPay 下单、回调验签、订单入账或自动发货；这些属于后续独立支付闭环 PR。
-- 验证：等待 PR CI；尚未合并、尚未发布镜像、未进行真实商户验收。
-- 文档版本：2.2.69。
+- 独立分支：`feat/scheduled-backup-owner-delivery`；PR #114 已 Squash Merge，main 合并提交 `4bdfd38476daf068761f0afb9a462afad3cefb22`。
+- 已实现每日调度器、后台开关与 `HH:mm` 时间设置；新安装默认启用每日 03:00（服务器本地时区）。
+- PostgreSQL `pg_dump` 自定义格式与 `/app/data` 打包为 `.tar.gz`，经启用的 Telegram Bot `sendDocument` 投递至站点 Owner ID，并附 SHA-256。
+- Docker runtime 已包含 `postgresql-client`；保留手动备份/恢复脚本；无数据库迁移、无新增环境变量。
+- 状态：代码已合并、镜像已发布。旧版“等待 CI/代码审查”文字属于合并前快照，现已作废；生产恢复演练属于独立运维验收，不改变 PR #114 的合并状态。
 
-## 2026-11-22 — 每日自动备份与 Telegram Owner 文件投递（PR #114 已合并并发布镜像）\n\n- 独立分支：`feat/scheduled-backup-owner-delivery`；PR #114 已 Squash Merge，main 合并提交 `4bdfd38476daf068761f0afb9a462afad3cefb22`。\n- 已实现每日调度器、后台开关与 `HH:mm` 时间设置；新安装默认启用每日 03:00（服务器本地时区），管理员可在“网站设置 → 自动备份”调整或关闭。\n- 备份内容：PostgreSQL `pg_dump` 自定义格式 + `/app/data` 持久化目录，打包为 `.tar.gz`；通过启用的 Telegram Bot `sendDocument` 发送到站点配置的 Telegram Owner ID，消息附 SHA-256。\n- Docker 运行镜像安装 `postgresql-client` 以提供 `pg_dump`；保留现有手动 `scripts/backup.sh` / `scripts/restore.sh`。无数据库迁移、无新增环境变量。\n- 当前状态：功能代码已提交到独立分支，尚待 Go/Admin/Security CI 与代码审查；失败重试、生产 Telegram 文件投递及实际备份恢复仍未验收。\n- 文档版本：2.2.68。\n\n## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
+## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
 
 - 状态：项目所有者已确认本轮测试均无问题；据此将 PROJECT_STATUS 第 11 节对应真实验收项更新为已验收。
 - 验收范围：Telegram 菜单与按钮流程、售后补发/退款及状态分支、Owner Bot C1–C4 与失败场景、移动端真实设备回归，以及 SMTP 实际邮件投递。
-- 验收依据：项目所有者于 2026-11-22 在项目对话中明确确认“测试都没问题了”；本记录不将该确认扩大为 Dujiao-Next PR E 真实商户采购联调或生产 PostgreSQL PITR/恢复演练已完成。
+- 验收依据：项目所有者于 2026-11-22 在项目对话中明确确认“测试都没问题了”；该确认与 Dujiao-Next 正常对接完成的状态分别记录；生产 PostgreSQL PITR/恢复演练仍作为独立运维事项，不影响 PR #114 已合并状态。
 - 代码/数据库/配置：无业务代码变更、无数据库迁移、无新增配置；本次仅校准验收状态。
 - 文档版本：2.2.67。
 
@@ -322,7 +331,7 @@
 - GHCR 多架构镜像已发布：ghcr.io/seanldnet/tg-card:latest 与固定提交标签 59337349d36937a467e673e427f571ec276c17ce；manifest digest 为 sha256:09f9b2c7ee23037ad9c03e26d1b490bdb853988958e6e7804e224bc855039f7d。生产服务器是否已拉取/部署该镜像未由 CI 证明。
 - PR #62 PostgreSQL 并发集成测试仍在开发：Go CI 增加临时 PostgreSQL 16 服务，验证两个独立 Bot/用户争抢同一件卡密时只允许一个结算成功，失败方购物车保留。CI 验证完成前不合并。
 - 数据库影响：PR #61 新增迁移 0049/0050，随应用启动自动执行；PR #62 不新增迁移、不改运行时逻辑、不增加生产环境变量或手工 SQL。
-- 专项文档边界保持：PR E 真实商户联调未执行；Owner C1–C4、生产部署和真实 Telegram 验收分别跟踪，不以 CI 或镜像发布代替。
+- 专项文档边界保持：Dujiao-Next 额外真实商户验收未执行；Owner C1–C4、生产部署和真实 Telegram 验收分别跟踪，不以 CI 或镜像发布代替。
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
@@ -338,7 +347,7 @@
 - 已写入分支的实现：Dujiao 商品分页拉取（后台可配置 20–50 条/批、250–10000ms 间隔，默认 25/1000ms）；每批独立数据库事务；商品/分类指纹包含上游目录字段及本地加价/汇率策略；未变化商品/分类只标记本轮已见，跳过 SKU 重写和图片下载。
 - 同步入口改为后台任务：手动与定时同步共用任务锁；数据库唯一活动任务索引阻止多实例重复执行；持久化进度、批次、错误数和取消请求；单页最多重试 3 次，失败页记录后继续扫描，连续 3 页失败暂停并通知 Owner；取消保留已提交批次且不执行缺失商品下架收尾。进程重启时将未结束任务标记为 interrupted/failed。
 - 目录写入在同步期间标记 stale，使 Bot 暂时只展示本地目录，避免向用户暴露新旧混合的上游目录；全量页成功后统一执行缺失商品/分类收尾，再恢复上游来源。
-- Bot 商城改为来源过滤后的数据库分页：分类页每屏最多 5 个分类按钮并提供翻页；分类商品每屏最多 5 个并显示价格/库存；商品详情按 ID 单条读取；搜索限制为 7 条结果；Owner 商品列表限制为 50 条。上游 auto 履约商品可进入正常订单/付款/采购队列，manual 履约不开放自助购买；真实供应商联调仍待 PR E。
+- Bot 商城改为来源过滤后的数据库分页：分类页每屏最多 5 个分类按钮并提供翻页；分类商品每屏最多 5 个并显示价格/库存；商品详情按 ID 单条读取；搜索限制为 7 条结果；Owner 商品列表限制为 50 条。上游 auto 履约商品可进入正常订单/付款/采购队列，manual 履约不开放自助购买；Dujiao-Next 正常对接已由项目所有者确认完成。
 - 停用上游改为单独二次确认流程：先将目录标记 stale、切回本地售卖，再按分类→商品/SKU→图片清理；只删除 `source_type='upstream'` 数据；若发现上游商品关联本地卡密库存则中止清理防止级联丢失；图片只处理上游专属目录中的 hash 文件，并检查本地记录引用；历史订单依靠 `ON DELETE SET NULL` 与订单名称/价格快照保留。清理完成才把 `enabled` 置为 false；失败保持本地售卖并允许重试；完成写审计数量并通知 Owner。
 - 新增迁移：`0044_upstream_sync_jobs.sql`、`0045_upstream_sync_batch_config.sql`、`0046_upstream_product_fingerprint.sql`、`0047_upstream_sync_single_active_job.sql`、`0048_upstream_category_fingerprint.sql`。
 - 官方协议限制：商品接口支持 page/page_size（官方上限 100）并返回 updated_at；官方未提供 updated_since；分类接口文档没有分页与更新时间字段。因此当前“增量”是分页扫描后按稳定指纹只处理变化商品/分类，不声称减少上游分页请求。
@@ -404,7 +413,7 @@
 - 项目所有者明确确认：用户提交的图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体，媒体转发子项实测通过。
 - 验收边界：未提供本次测试使用的镜像 digest、测试设备、订单/工单号或截图；不将此结果绑定到 PR #38 镜像，也不补造证据。
 - 仍待验收：Owner C1–C4 真实 Telegram 流程、完整菜单/按钮、补发/退款各状态分支，以及跟踪防护下静态资源零外部 CDN Network 检查。自动化测试通过不能替代这些真机/浏览器验收。
-- PR #38（PR D）已合并并成功发布 GHCR，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署与该 digest 的生产验收未确认。PR E 真实商户联调未开始。
+- PR #38（PR D）已合并并成功发布 GHCR，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署与该 digest 的生产验收未确认。Dujiao-Next 正常对接已由项目所有者确认完成。
 
 # TG-Card 项目现状与功能总览
 
@@ -566,7 +575,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - Telegram 消息发送没有幂等键，因此网络响应丢失后仍存在重复发送可能；当前交付保证是**至少一次**，不是严格 exactly-once。
 - 已交付订单的售后补发属于单独的重发流程，不应误用首次交付重试接口；邀请链接不应被重复发放。
 
-详细本地支付/交付状态机见 `docs/payment-delivery.md`；上游采购队列、回调、退款和异常恢复见 `docs/upstream-procurement.md`。PR #32 已合并并发布，但未进行真实上游商户联调；PR E 完成前不代表真实供应商采购闭环已验收。
+详细本地支付/交付状态机见 `docs/payment-delivery.md`；上游采购队列、回调、退款和异常恢复见 `docs/upstream-procurement.md`。PR #32 已合并并发布；项目所有者已确认 Dujiao-Next 正常对接，不再要求额外 PR E 真实商户验收。
 
 ## 6. 支付与余额
 
@@ -577,7 +586,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - TronGrid 查询已确认的转入交易。
 - 订单生成唯一六位小数应付金额，用于同一收款地址下识别订单。
 - 校验收款地址、USDT 合约、金额、交易引用及订单时间窗口。
-- 本地商品支付成功后触发订单交付；Dujiao-Next 上游商品支付成功后登记独立采购任务，采购交付完成后再触发 Telegram 交付（PR C #32 已合并，真实商户联调留待 PR E）。
+- 本地商品支付成功后触发订单交付；Dujiao-Next 上游商品支付成功后登记独立采购任务，采购交付完成后再触发 Telegram 交付（PR C #32 已合并，正常对接已由项目所有者确认完成）。
 - 后台支付设置可配置 TronGrid API Key、收款地址、合约地址及启停状态；敏感 API Key 加密存储，不需要为新部署手动填写支付环境变量。
 - 后台交易流水支持人工核对匹配订单。
 
@@ -587,7 +596,7 @@ Bot 使用 Telegram Inline Keyboard 作为消息内操作按钮，并使用 Repl
 - 监听器使用 TronGrid 的已确认交易标记；当前没有单独配置多级 N-confirmation 策略。
 - 过期、少付、多付、无法匹配或存在歧义的交易需要人工核对。
 - 尚未实现自动退款、钱包私钥签名、归集/提现。
-- GMpay、EPUSDT 尚未接入。
+- GMPay 客户端（PR #116）与 Epusdt 商户配置（PR #117）已合并；商城支付生命周期仍待独立支付闭环 PR 实现。
 
 ### 6.2 站内余额和充值
 
@@ -668,7 +677,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 
 | 原条目 | 优先级 | 建议目标阶段 |
 |---|---|---|
-| 1. GMpay、EPUSDT 支付适配器。 | P1 | 后续支付渠道扩展阶段 |
+| 1. Epusdt + GMPay 商城支付生命周期：下单、回调验签/查单、支付确认、幂等与自动发货。 | P0 | 独立支付闭环 PR |
 | 2. TRC20 自动退款、钱包归集/提现及复杂异常交易自动对账。 | P1 | 支付风控与资金运维阶段 |
 | 3. 完整多角色 RBAC、多租户、代理商/分销体系（当前产品边界也不包含这些）。 | P2 | 产品范围重新评审后再规划 |
 | 4. 签到积分、用户等级、邀请推广等完整营销套件。 | P2 | 营销能力扩展阶段 |
@@ -680,7 +689,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | 10. 旧网站附件预览/下载方案 | 已由产品决策替代并关闭 | 改为 Bot 转发 Owner；历史附件字段和 API 保留，媒体验收转入新售后工作流清单 |
 | 11. 跟踪防护下静态资源零外部 CDN 请求的 Network 验证。 | 已验收（2026-11-19） | 项目所有者已确认 A2 验收通过，后续只需回归监控，不再列为未完成项 |
 | 12. PC 宽屏仪表盘、订单、商品、工单、设置的真实浏览器回归。 | 已验收（2026-11-19） | 项目所有者已确认 A3 验收通过；后续新布局变更仍需单独回归 |
-| 13. 上游发卡对接：PR A/B/C/D 已合并；PR D 资金安全已发布 GHCR，生产部署/验收待确认；PR E 真实商户联调尚未开始。ACG-Faka 与 MCY 不开发适配器。 | P1 | PR D 生产 digest 验收后，进入 PR E 真实商户端到端联调 |
+| 13. 上游发卡对接：PR A/B/C/D 已合并；PR D 资金安全已发布 GHCR，生产部署/验收待确认；Dujiao-Next 正常对接已确认完成。ACG-Faka 与 MCY 不开发适配器。 | P1 | 已完成；不再追加 PR E 真实商户验收门槛 |
 | 14. 售后 Owner Bot 工作流：媒体转发、Owner 菜单、直接回复/继续沟通、结单幂等、超时、通知及失败场景。 | 已验收（2026-11-22，项目所有者确认测试通过） | 后续 Owner Bot 工作流变更仍需单独回归 |
 
 优先级说明：P0 为影响当前核心流程/发布验收的事项；P1 为重要可靠性或支付能力；P2 为非当前产品边界内或后续扩展事项。建议目标阶段是规划建议，不代表已承诺排期。
@@ -948,7 +957,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-19）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-19）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
 | [PR #37](https://github.com/seanldnet/TG-Card/pull/37) | PR C 合并状态、CI/镜像与 PR D/E 边界文档记录。 | 已合并，merge commit 0b0f0514a1c5850aafec0018c95570d0bce8a39f；Admin CI #44338591754/#44338655437 与 main Admin CI #44338618618 成功；文档-only，不触发业务镜像发布。 | 已完成文档记录；PR C 镜像/CI证据见第 19.7 节。 | 已完成。 |
-| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，main 对应 CI 后续通过，流程瑕疵保留记录。 | 生产部署及该 digest 的生产验收尚未确认；PR E 真实商户联调未开始。 | 先完成生产 digest 验收，再启动 PR E 独立联调。 |
+| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，main 对应 CI 后续通过，流程瑕疵保留记录。 | 生产部署及该 digest 的生产验收尚未确认；Dujiao-Next 正常对接已由项目所有者确认完成。 | 先完成生产 digest 验收，再启动 PR E 独立联调。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B/C/D 已合并；PR D #38 已发布 GHCR，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认；真实上游联调留待 PR E。 | PR C 完成 mock/CI；PR D 代码、CI、合并与镜像发布已完成；未进行真实商户联调，真实商户联调仅属于 PR E。 | 完成 PR D 生产 digest 验收后，再启动 PR E 独立联调。 |
 
 ### 19.1 PR #19 镜像发布证据
@@ -1022,7 +1031,7 @@ curl -fsS http://127.0.0.1:38647/api/health
 
 **后续开发顺序（已确认）**
 
-文档修正 → PR2 资金与库存安全 → Dujiao-Next PR C 采购转发（供应商扣款、异步查单/回调、失败人工队列、退款审计）→ PR D 资金安全 → PR E 真实联调 → PR3 异常中心 → PR4 购买体验 → PR5 数据看板 → PR6 群发精细化。每批独立 PR，CI 通过并合并后再启动下一批。PR C/D/E 不与 PR2 混合。
+文档修正 → PR2 资金与库存安全 → Dujiao-Next PR C 采购转发（供应商扣款、异步查单/回调、失败人工队列、退款审计）→ PR D 资金安全 → Dujiao-Next 正常对接 → PR3 异常中心 → PR4 购买体验 → PR5 数据看板 → PR6 群发精细化。每批独立 PR，CI 通过并合并后再启动下一批。PR C/D/E 不与 PR2 混合。
 
 **PR2 CI 强制要求**
 
@@ -1071,9 +1080,9 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 代码范围：支付确认事务写采购队列；订单创建快照上游商品/SKU；采购前复核订单状态和商品来源；持久化本地订单号与上游订单 ID/订单号映射；Dujiao 签名请求、HTTP 业务错误分类、GET 查单、回调验签/幂等、加密交付内容、Telegram 交付；失败人工队列、手动重试、站内余额退款独立账本、管理员审计；供应商余额快照/阈值告警/日报字段。
 - 安全边界：本地买家支付记录在采购失败/重试中保持不变；不自动扣减或退款买家余额。人工退款只允许采购失败且未退款订单，退款记入钱包 credit 和独立 `upstream_procurement_refunds` 表。
 - 协议限制：官方 API 没有按 `downstream_order_no` 查单的接口。若首次 POST 发生网络异常且未取得上游订单 ID，系统标记 `uncertain` 并暂停自动重发；人工核实后可使用同一幂等键重试。已取得上游订单 ID 才调用 `GET /orders/:id`。
-- 当前限制：仅开放 `auto` 自动交付 SKU；`manual` 表单商品在买家表单采集能力完成前不允许自助购买。公网 HTTPS 回调地址必须在后台配置后才能自助下单。真实供应商凭证联调留给 PR E。
+- 当前限制：仅开放 `auto` 自动交付 SKU；`manual` 表单商品在买家表单采集能力完成前不允许自助购买。公网 HTTPS 回调地址必须在后台配置后才能自助下单。Dujiao-Next 正常对接已由项目所有者确认完成。
 - 验证：PR head Go CI #44335141310、Admin CI #44335141493、Security #44335141220 成功；合并后 main Go CI #44335573358、Admin CI #44335573432、Security #44335573555、Docker Publish #44335573493 成功。PR #32 merge Publish manifest digest `sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；当前 main rebuild Publish Run #44338105044 成功，latest digest `sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。`go test ./...` 全部通过。10 项 mock 测试覆盖同步交付、异步查单成功、查单超时、采购失败、重复回调、回调验签失败、超时后同幂等键手动重试、已退款订单跳过、HTTP 402 余额不足、HTTP 404 查单错误。
-- PR D（供应商资金安全）已通过独立 PR #38 合并并发布；生产部署/验收待确认。PR E（真实上游联调）尚未开始；PR C/D/E 不与 PR3–PR6 混合。当前不宣称已使用真实商户凭证或完成真实上游联调。
+- PR D（供应商资金安全）已通过独立 PR #38 合并并发布；生产部署/验收待确认。Dujiao-Next 正常对接已确认完成；PR C/D/E 不与 PR3–PR6 混合。当前不宣称已使用真实商户凭证或完成真实上游联调。
 
 ### 19.8 Dujiao-Next PR D（资金安全深化）发布记录
 
@@ -1083,7 +1092,7 @@ PR2 同时涉及 Go 后端、Admin 页面与定时/通知流程。PR2 PR 必须�
 - 新迁移：0039_finance_safety.sql；新增 finance_exceptions、upstream_procurement_fund_checks，并扩展采购行的供应商资金核对字段。
 - 资金红线：不自动修改买家或供应商余额；采购失败不改变原支付记录；退款每订单最多一条、每笔退款唯一关联一个钱包 credit；同一采购订单重试沿用本地订单号。
 - 验证：SQLite 覆盖供应商余额匹配/差异、退款账本异常只读检测、重复退款拒绝、uncertain ageing 与 Owner 恢复；Go CI #44370639264（vet/test/build）、Admin CI #44370639142、Security #44370639404 全部成功。真实供应商扣款对账与实际资金变动仍属于 PR E。
-- PR E 真实商户联调手册已建立：docs/dujiao-live-integration-runbook.md，包含 HTTPS 回调、公网可达性、最低金额正常采购、供应商失败 SKU、人工退款/审计及验收记录模板；真实环境尚未执行，需项目所有者在 PR S 镜像部署后操作。PR #27 媒体转发子项已由项目所有者实测确认通过，C1–C4 其余交互场景保持待验收。
+- Dujiao-Next 额外真实商户验收手册已建立：docs/dujiao-live-integration-runbook.md，包含 HTTPS 回调、公网可达性、最低金额正常采购、供应商失败 SKU、人工退款/审计及验收记录模板；真实环境尚未执行，需项目所有者在 PR S 镜像部署后操作。PR #27 媒体转发子项已由项目所有者实测确认通过，C1–C4 其余交互场景保持待验收。
 
 ## 20. 安全基线
 
