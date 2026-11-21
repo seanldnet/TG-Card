@@ -136,7 +136,7 @@
 
 - 修复 Vben Admin 默认登出请求未携带 Authorization Bearer 的问题；现在同时发送 Bearer 与 HttpOnly Refresh Cookie。
 - 登出后服务端撤销当前 access session 和整个 refresh token family；新增 HTTP 回归测试验证旧 access token 立即失效。
-- 无数据库迁移、无新增环境变量；PROJECT_STATUS 文档版本更新至 2.2.53。CI 待验证。
+- 无数据库迁移、无新增环境变量；该阶段 CI 待验证属于当时状态，后续验证结果以对应 PR 与 main Actions 记录为准。
 
 ## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（PR #97 已合并并发布）
 
@@ -205,14 +205,14 @@
 - 新增只读核验：已退款且来源快照明确为 upstream 的订单，必须存在对应 `upstream_procurements` 生命周期记录。
 - 若缺少采购生命周期记录，登记 critical 财务异常，提示无法核对供应商退款状态。
 - 新增回归测试，确认检测器不补建采购记录、不修改订单状态。
-- PROJECT_STATUS 文档版本更新至 2.2.43；PR CI 待验证。
+- 历史状态：该阶段 PR CI 当时待验证；后续合并与发布结果见本文件更新记录及 PROJECT_STATUS.md 对应 PR 记录。
 
 ## 2026-11-21 — P0-4 退款状态一致性核对（当日开发阶段快照；后续状态见后续合并记录）
 
 - 扩展只读退款完整性检查：检查本地订单与上游采购队列是否同时标记为 `refunded`。
 - 检测订单已退款但采购队列未退款，以及采购队列已退款但订单未退款两类状态分裂，并写入财务异常中心。
 - 新增回归测试覆盖双向状态不一致，并验证检查器不会修改订单或采购状态。
-- 文档版本：PROJECT_STATUS 2.2.42；PR CI 待验证。
+- 历史状态：该阶段 PR CI 当时待验证；后续合并与发布结果见本文件更新记录及 PROJECT_STATUS.md 对应 PR 记录。
 
 ## 2026-11-21 — P0-4 交付结果不确定 Owner 告警（当日开发阶段快照；后续状态见后续合并记录）
 
@@ -587,7 +587,7 @@
 
 ## 2026-11-18 — 修正 PR #26 stale 状态测试夹具
 
-- 状态：测试夹具已修正并提交，等待最新 Go CI 复验；PR #26 未合并。
+- 历史状态：当时测试夹具已修正并等待 Go CI 复验，PR #26 尚未合并；后续合并状态以 PROJECT_STATUS.md 第 19 节为准。
 - Commit：`4575745f6f35ab0a1ebcdcf36257f63be4c034db`（测试文件提交；文档提交随后更新）。
 - 根因：`SaveUpstreamSettings` 持久化调用方传入的 `CatalogStale`，不会自行推断配置是否变更；实际配置 API 在配置变更时负责将该标志置为 true。测试夹具只设置了 `Enabled=true`，却假定数据库层会自动设置 stale，导致测试误走“上游已启用且目录新鲜”的分支，空的上游活跃商品列表被错误地拿来断言本地目录。
 - 修复：测试显式设置 `CatalogStale:true`，使其符合配置 API 的真实调用契约；随后仍要求成功同步后才切换到上游目录。
@@ -595,7 +595,7 @@
 
 ## 2026-11-18 — 修正 PR #26 上游目录切换测试（配置变更后必须先同步）
 
-- 状态：测试修正已提交，等待 Go CI 复验；PR 未合并。
+- 历史状态：当时测试修正已提交并等待 Go CI 复验；后续合并状态以对应 PR 记录为准。
 - PR：https://github.com/seanldnet/TG-Card/pull/26
 - Commit：`f46a33296ef83c8619abfb7be5edc8225a0e3a28`
 - 根因：上一轮 Go test 仍按“仅保存 Enabled=true 即立即展示上游目录”的旧假设编写断言，与当前安全策略不符。配置变化会将目录标记为 stale，必须成功完成一次同步后才能切换到上游目录。
@@ -604,7 +604,7 @@
 
 ## 2026-11-18 — 修复 Dujiao-Next 分类图标同步回归（PR #26）
 
-- 状态：修复已提交，等待最新 PR CI 复验；未合并。
+- 历史状态：当时修复已提交并等待 PR CI 复验；后续合并状态以对应 PR 记录为准。
 - PR：https://github.com/seanldnet/TG-Card/pull/26
 - 修复 commit：`c402bc8345fb6d2cfc33350457e8083e87fe0948`
 - 根因：分类图标更新 SQL 的 CASE 表达式占位符顺序与参数顺序不一致；当图片下载失败、要求保留旧图标时，旧逻辑把布尔值写入 `upstream_icon`，导致测试失败。
