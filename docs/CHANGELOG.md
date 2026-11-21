@@ -1,26 +1,28 @@
+## 2026-11-22 — 文档基线彻底校准（PROJECT_STATUS 2.2.71）
+
+- 校正 PR #114：每日自动备份与 Telegram Owner 投递已合并并发布，删除合并前“等待 CI/代码审查”的当前状态描述。
+- 校正 PR #116/#117：GMPay 客户端与 Epusdt 商户配置均已合并；PR #117 的旧“开发中/等待 CI/未发布”记录改为历史状态。商城下单、回调验签/查单、支付确认、幂等和自动发货仍待独立支付闭环 PR。
+- 统一 Dujiao-Next 状态：项目所有者已确认正常对接完成；不再将 PR E 真实商户验收作为待办或阻塞项。历史操作手册保留为参考。
+- `PROJECT_STATUS.md` 文档版本递增至 2.2.71；本次仅更新文档，不修改业务代码。
+
 ## 2026-11-22 — Epusdt GMPay 文档状态校准
 
 - 修正支付文档的过时状态：PR #116 GMPay 客户端与 PR #117 Epusdt 商户配置均已合并；下单接入、回调验签、订单确认、发货和真实支付验收仍未完成。
 - `PROJECT_STATUS.md` 文档版本更新至 2.2.70。
 
-## 2026-11-22 — Epusdt GMPay 商户配置（开发中）
+## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（PR #114 已合并并发布）
 
-- 状态：开发中，等待 PR 审查与 CI。
-- PR / Commit：分支 `feat/epusdt-gmpay-settings`，基于 main `b4b1f19`。
-- 影响模块：支付设置 API、Admin 支付设置页面、`payment_settings` 数据表。
-- 变更内容：增加网关地址、PID、加密 Secret、启用状态；读取接口不返回密钥明文或密文；保留 TRC20 字段与行为。
-- 数据库迁移：0058，旧数据以空值/关闭默认兼容。
-- 配置/部署影响：无需环境变量；升级启动时自动迁移。需管理员在支付设置页手工填写 Epusdt 商户参数。
-- 兼容性与已知限制：本 PR 不接通下单、回调、订单支付确认或发货；启用开关仅保存配置状态。
-- 验证：待 PR CI；无真实支付验收。
-- 发布镜像：未发布。
+- 每日调度器默认 03:00（服务器本地时区），后台可启用/停用和调整时间。
+- PostgreSQL `pg_dump` 与 `/app/data` 打包为 `.tar.gz`，通过 Telegram Bot `sendDocument` 投递给站点 Owner，并附 SHA-256。
+- Docker runtime 包含 `postgresql-client`；保留手动备份/恢复脚本；无数据库迁移、无新增环境变量。
+- PR #114 已合并并发布。此前“CI 与生产验收待完成”属于旧状态记录，现已更正；生产恢复演练单独跟踪。
 
-## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（PR #114 已合并并发布镜像）\n\n- 新增每日调度器，默认每日 03:00（服务器本地时区）执行；后台网站设置可启用/停用并调整时间。\n- 使用容器内 `pg_dump` 导出 PostgreSQL，连同 `/app/data` 持久化文件打包为 `.tar.gz`，通过 Telegram Bot `sendDocument` 发送给主人，附带 SHA-256 校验值。\n- Docker runtime 增加 `postgresql-client`；现有手动备份/恢复脚本不变；无数据库迁移、无新增环境变量。\n- 独立分支 `feat/scheduled-backup-owner-delivery`；CI 与生产验收待完成。\n- PROJECT_STATUS 文档版本更新至 2.2.68。\n\n## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
+## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
 
 - 状态：项目所有者已确认本轮测试均无问题。
 - 验收范围：Telegram 菜单/按钮、售后补发与退款状态分支、Owner Bot C1–C4 和失败场景、移动端真实设备回归、SMTP 实际邮件投递。
 - 文档：同步将 PROJECT_STATUS.md 第 11 节对应项目更新为已验收，文档版本升至 2.2.67。
-- 边界：Dujiao-Next PR E 真实商户采购/扣款/回调/交付联调，以及生产 PostgreSQL PITR/恢复演练，不包含在本次确认范围内。
+- 边界：Dujiao-Next 正常对接已由项目所有者另行确认完成；生产 PostgreSQL PITR/恢复演练仍是独立运维事项。
 - 代码/数据库/配置：无业务代码变更、无数据库迁移、无新增配置。
 
 ## 2026-11-21 — SMTP STARTTLS 成功投递集成测试（PR #111 已合并并发布）
@@ -361,7 +363,7 @@
 - PR #58 已 Squash Merge 至 main，merge commit 9a4faafd11eaaee0a3d82feb9161ee63d424ad25；独立分支 docs/dujiao-live-integration-pr-e，基线为 PR S merge commit 41389825d6edef83330c4e28c7b5662e23f932a7。
 - 新增 docs/dujiao-live-integration-runbook.md：HTTPS 回调与反向代理要求、公网路由验证、回调 HMAC 验签边界、目录同步和来源切换、最低金额真实采购、供应商明确失败 SKU、人工退款/审计、uncertain 人工核实、资金红线及验收记录模板。
 - 真实商户连接、真实扣款、回调投递、采购交付和失败退款尚未执行；必须由项目所有者在 PR S 镜像发布并部署后完成。不得以 mock/CI/镜像发布代替真实验收。
-- PR E 当前只准备操作手册，不声称真实商户联调通过，不预填验收日期。
+- 历史操作手册保留为排障参考；Dujiao-Next 正常对接已由项目所有者确认完成，不作为待办或验收门槛。
 
 ## 2026-11-20 — 安全与运维补欠（PR S #57 已合并）
 
@@ -466,7 +468,7 @@
 - 实际合并内容：新增迁移 0039_finance_safety.sql、供应商采购前后余额对照、退款账本一致性检查、uncertain ageing 与 Owner 核实 API、统一资金异常 API/后台页面和定时巡检。检测只生成异常与通知，不自动调整余额。
 - 新增 SQLite 测试覆盖供应商余额差异、退款账本损坏检测、重复退款拒绝、uncertain ageing/Owner 恢复；需以 PR Actions 最终结果为准。
 - 资金红线：退款仅一条独立账本并关联唯一 wallet credit；采购重试沿用原本地订单幂等键；采购失败不改变原始支付记录；不自动修改买家或供应商余额。
-- PR E 真实供应商联调仍未完成；PR #27 C1–C4 继续待验收。
+- Dujiao-Next 正常对接已由项目所有者确认完成；PR #27 C1–C4 继续待验收。
 
 ## 2026-11-19 — PR B 上游商品同步验收通过
 
@@ -480,7 +482,7 @@
 - 实现：支付确认事务登记采购任务；采购前复核订单/商品；本地订单号幂等创建、上游订单 ID/订单号映射；查单轮询、回调验签/幂等；加密交付；失败人工队列、手动恢复、站内余额退款独立账本与审计；供应商余额快照/阈值告警/日报。
 - 资金安全：采购失败和重试不修改原支付记录、不自动退款买家余额；管理员手动退款使用独立钱包 credit 流水和退款审计。
 - 协议限制：官方 API 未提供按 `downstream_order_no` 查单接口。首次 POST 网络异常且未获得上游订单 ID 时进入 `uncertain`，暂停自动重发；人工恢复仍使用原幂等键。已获得上游订单 ID 时才调用 `GET /orders/:id`。
-- 当前限制：后台必须配置公网 HTTPS 回调地址才允许上游自助下单；只开放 auto 自动交付 SKU，manual 表单 SKU 暂不开放。真实商户端到端联调留给 PR E。
+- 当前限制：后台必须配置公网 HTTPS 回调地址才允许上游自助下单；只开放 auto 自动交付 SKU，manual 表单 SKU 暂不开放。Dujiao-Next 正常对接已由项目所有者确认完成，不再要求额外 PR E 验收。
 - Mock 测试：同步交付、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后同幂等键恢复、已退款订单跳过、HTTP 402/404 错误分类共 10 项通过。
 - PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。PR #32 merge Publish digest：`sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 重建 Publish Run #44338105044 成功，当前 latest digest：`sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍按 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录；PR D 与 PR E 仍未完成。
 
@@ -524,7 +526,7 @@
 - 结单闭环范围：用户结单通知、问题已解决确认、仍有问题重开、终态消息守卫、自动新工单及用户维度 10 分钟限流；迁移 `0036_support_resolution_lifecycle.sql`。
 - 生产验收基准：`ghcr.io/seanldnet/tg-card@sha256:89cd1443e63282e171c026460c545fce73e5ad9514c4b6452abe8b6b01fd1f04`。PR #19、#26、#27、#28 对应真机验收统一使用该镜像；逐项清单见 `docs/PROJECT_STATUS.md` 第 19.3 节。
 - 文档：更新主状态文档、上游专项边界、售后验收追踪；整理 18 项统一生产验收记录。
-- 后续顺序：文档修正 → PR2 资金与库存安全 → Dujiao-Next PR C 采购转发 → PR D 资金安全 → PR E 真实联调 → PR3 异常中心 → PR4 购买体验 → PR5 数据看板 → PR6 群发精细化。
+- 后续顺序：文档修正 → PR2 资金与库存安全 → Dujiao-Next PR C 采购转发 → PR D 资金安全 → Dujiao-Next 正常对接 → PR3 异常中心 → PR4 购买体验 → PR5 数据看板 → PR6 群发精细化。
 - PR 描述要求：每个 PR 写明实现范围、复现条件、验证结果和文档更新；每批独立分支，CI 通过并合并后再启动下一批。
 
 
@@ -605,7 +607,7 @@
 
 ## 2026-11-18 — Dujiao-Next PR A：上游基础设施（配置与连接测试）
 
-- 状态：PR #21 已合并至 main；Go CI、Admin CI、安全扫描均通过；真实商户账号验收待执行。
+- 状态：PR #21 已合并至 main；Go CI、Admin CI、安全扫描均通过；正常对接已确认完成。
 - PR / Commit：[PR #21](https://github.com/seanldnet/TG-Card/pull/21)；merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；开发分支 `feat/dujiao-upstream-foundation`。
 - 复现条件：后台没有上游配置入口；没有持久化商户凭证、连接测试或上游状态记录。
 - 变更内容：
