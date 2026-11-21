@@ -210,7 +210,7 @@ func RetryUpstreamProcurement(ctx context.Context,db *sql.DB,driver,orderID,admi
 	var orderStatus,queueStatus string
 	q:="SELECT o.status,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE OF o,p"}
 	if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&orderStatus,&queueStatus);err!=nil{return err}
-	if orderStatus!="procurement_failed"|| (queueStatus!="failed"&&queueStatus!="uncertain"){return fmt.Errorf("订单当前状态不允许手动重试采购")}
+	if orderStatus!="procurement_failed"||queueStatus!="failed"{return fmt.Errorf("订单当前状态不允许手动重试采购；上游受理状态不确定的订单必须先完成供应商侧核实")}
 	if _,err:=tx.ExecContext(ctx,"UPDATE orders SET status='procurement_pending',procurement_error='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,orderID);err!=nil{return err}
 	timeoutMinutes:=30
 	_ = tx.QueryRowContext(ctx,"SELECT procurement_timeout_minutes FROM upstream_settings WHERE id=1").Scan(&timeoutMinutes)
@@ -229,7 +229,7 @@ func RefundUpstreamProcurementToWallet(ctx context.Context,db *sql.DB,driver,ord
 	var status,userID,orderNo,currency,queueStatus string;var amountMinor int64
 	q:="SELECT o.status,o.telegram_user_id,o.order_no,o.currency,o.amount_minor,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id="+placeholder(driver,1);if driver=="postgres"{q+=" FOR UPDATE OF o,p"}
 	if err:=tx.QueryRowContext(ctx,q,orderID).Scan(&status,&userID,&orderNo,&currency,&amountMinor,&queueStatus);err!=nil{return 0,err}
-	if status!="procurement_failed"||(queueStatus!="failed"&&queueStatus!="uncertain"){return 0,fmt.Errorf("仅确认采购失败且未退款的订单可退款")}
+	if status!="procurement_failed"||queueStatus!="failed"{return 0,fmt.Errorf("仅供应商已确认未受理/失败的订单可退款；上游受理状态不确定时禁止退款")}
 	var existingRefund string
 	if err:=tx.QueryRowContext(ctx,"SELECT wallet_transaction_id FROM upstream_procurement_refunds WHERE order_id="+placeholder(driver,1),orderID).Scan(&existingRefund);err==nil{return 0,fmt.Errorf("该订单已存在退款账本，禁止重复退款")}else if err!=sql.ErrNoRows{return 0,err}
 	if !strings.EqualFold(currency,"USDT")||amountMinor<=0||amountMinor>922337203685477{return 0,fmt.Errorf("退款金额或币种无效")}
