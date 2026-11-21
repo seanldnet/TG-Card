@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/auth"
+	"github.com/seanldnet/TG-Card/internal/backupcrypto"
 	"github.com/seanldnet/TG-Card/internal/config"
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/payment"
@@ -115,11 +116,13 @@ type siteSettings struct {
  CapSecret string `json:"capSecret,omitempty"`
  BackupEnabled bool `json:"backupEnabled"`
  BackupTime string `json:"backupTime"`
+ BackupEncryptionPassphraseCiphertext string `json:"backupEncryptionPassphraseCiphertext,omitempty"`
 }
 type siteSettingsView struct {
  siteSettings
  SMTPPasswordConfigured bool `json:"smtpPasswordConfigured"`
  CapSecretConfigured bool `json:"capSecretConfigured"`
+ BackupEncryptionPassphraseConfigured bool `json:"backupEncryptionPassphraseConfigured"`
  CapEnabled bool `json:"capEnabled"`
  CapDomain string `json:"capDomain"`
  CapSiteKey string `json:"capSiteKey"`
@@ -305,6 +308,7 @@ func main() {
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.sensitiveRateLimit("payment-manual-reconcile", 10, 5*time.Minute, app.requireAdminActionConfirmation("payment.transaction.reconcile", app.reconcilePaymentTransaction)))
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.sensitiveRateLimit("site-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.update", app.updateSiteSettings)))
+	api.HandleFunc("PUT /api/settings/site/backup-encryption-key", app.sensitiveRateLimit("backup-encryption-key", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.backup_encryption.update", app.updateSiteBackupEncryptionKey)))
 	api.HandleFunc("POST /api/settings/site/test-email", app.testSiteEmail)
 	api.HandleFunc("POST /api/settings/site/test-telegram", app.testSiteTelegram)
 	api.HandleFunc("GET /api/settings/payment", app.getPaymentSettings)
@@ -1783,8 +1787,44 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if capErr != nil { log.Printf("load Cap settings: %v", capErr); writeError(w,http.StatusInternalServerError,"无法读取人机验证设置"); return }
  settings.CapEnabled, settings.CapDomain, settings.CapSiteKey = capConfig.Enabled, capConfig.Domain, capConfig.SiteKey
  settings.CapSecret = ""
- writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured,CapSecretConfigured:capSecret!="",CapEnabled:settings.CapEnabled,CapDomain:settings.CapDomain,CapSiteKey:settings.CapSiteKey})
+ backupEncryptionConfigured := settings.BackupEncryptionPassphraseCiphertext != ""
+ settings.BackupEncryptionPassphraseCiphertext = ""
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:settings,SMTPPasswordConfigured:configured,CapSecretConfigured:capSecret!="",BackupEncryptionPassphraseConfigured:backupEncryptionConfigured,CapEnabled:settings.CapEnabled,CapDomain:settings.CapDomain,CapSiteKey:settings.CapSiteKey})
 }
+type siteBackupEncryptionKeyRequest struct {
+	Passphrase string `json:"passphrase"`
+}
+
+func (a *application) updateSiteBackupEncryptionKey(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	var input siteBackupEncryptionKeyRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "备份加密密钥格式无效")
+		return
+	}
+	if err := backupcrypto.ValidatePassphrase(input.Passphrase); err != nil {
+		writeError(w, http.StatusBadRequest, "备份加密密钥至少需要 32 个非空白字符")
+		return
+	}
+	raw, err := database.GetSiteSettings(r.Context(), a.db)
+	if err != nil { writeError(w, http.StatusInternalServerError, "无法读取网站设置"); return }
+	var settings siteSettings
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil { writeError(w, http.StatusInternalServerError, "网站设置数据无效"); return }
+	ciphertext, err := a.secrets.Encrypt(input.Passphrase)
+	if err != nil { writeError(w, http.StatusInternalServerError, "无法加密备份密钥"); return }
+	settings.BackupEncryptionPassphraseCiphertext = ciphertext
+	updated, err := json.Marshal(settings)
+	if err != nil { writeError(w, http.StatusInternalServerError, "无法编码网站设置"); return }
+	if err := database.SaveSiteSettings(r.Context(), a.db, a.driver, string(updated)); err != nil {
+		log.Printf("save backup encryption key: %v", err)
+		writeError(w, http.StatusInternalServerError, "保存备份加密密钥失败")
+		return
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "site.backup_encryption.update", "site:backup-encryption-key", a.clientIP(r), r.UserAgent(), "updated")
+	writeSuccess(w, http.StatusOK, map[string]any{"backupEncryptionPassphraseConfigured": true})
+}
+
 func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request) {
  claims, ok := a.authenticate(w,r); if !ok { return }
  var input siteSettings
