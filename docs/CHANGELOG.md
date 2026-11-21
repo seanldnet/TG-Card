@@ -1,12 +1,13 @@
-## 2026-11-21 — 备份恢复集成测试补充模拟 RPO/RTO 计时（PR #102 开发中）
+## 2026-11-21 — 备份恢复集成测试补充模拟 RPO/RTO 计时（PR #102 已合并并发布）
 
-- 状态：独立分支 `test/backup-restore-rpo-metrics`，基于 PR #101 合并后的 main。
+- 状态：PR #102 已 Squash Merge 至 main，merge commit `a3e26c5ea4402b6f79876c7aa5ac4f43fed6e337`。
 - 影响模块：隔离 Docker Compose 备份恢复集成测试、运维验收指标。
-- 变更内容：测试记录备份完成时刻与模拟数据丢失时刻，输出模拟 RPO；同时记录恢复开始至 app 容器 running 的容器启动 RTO。
+- 变更内容：测试记录备份完成时刻至模拟数据丢失时刻的模拟 RPO，以及恢复脚本启动至隔离 app 容器 running 的容器启动 RTO。
 - 数据库迁移：无；生产备份/恢复脚本无改动。
-- 配置/部署影响：无新增生产配置；CI 仍使用临时 PostgreSQL 与独立命名卷。
-- 兼容性与已知限制：模拟 RPO 不代表生产备份周期的真实 RPO；容器 running 不等于应用健康就绪，生产 RTO 需通过健康检查和业务 smoke test 计时。
-- 验证：PR #102 Go Backend CI、Admin Frontend CI、Security Scan 均已通过；PR 尚未合并，因此没有合并后 Docker Publish 或生产验收结论。PROJECT_STATUS 文档版本更新至 2.2.57.
+- 验证：PR head Go Backend CI、Admin Frontend CI、Security Scan 全部成功；合并后 main Go run `44889690716`、Admin run `44889690674`、Security run `44889690676`、Docker Publish run `44889690723` 全部成功。
+- 发布镜像：GHCR `latest` 与 commit tag `a3e26c5ea4402b6f79876c7aa5ac4f43fed6e337` manifest digest：`sha256:aaba213e22f07fd64827ffd2046da4c69f14c1340df41616428c3cc7fbde4396`。
+- 边界：模拟 RPO 不代表生产备份周期的真实 RPO；容器 running 不等于应用健康就绪，生产恢复演练、PostgreSQL PITR 与业务 smoke test 仍待执行。PROJECT_STATUS 文档版本更新至 2.2.58。
+
 
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并）
 
