@@ -21,6 +21,8 @@ type gmpayCreateResponse struct {
 	OrderID string `json:"order_id"`
 	PaymentURL string `json:"payment_url"`
 	ExpirationTime int64 `json:"expiration_time"`
+	Amount json.Number `json:"amount"`
+	Currency string `json:"currency"`
 	Status int `json:"status"`
 }
 
@@ -120,8 +122,8 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,state,"")
 		return "",fmt.Errorf("Epusdt returned unexpected payment status %d",data.Status)
 	}
-	if data.Amount!="" {
-		providerAmount,amountErr:=parseMinor(data.Amount)
+	if data.Amount.String()!="" {
+		providerAmount,amountErr:=parseMinor(data.Amount.String())
 		if amountErr!=nil||providerAmount!=order.AmountMinor {
 			_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"amount_mismatch","")
 			return "",errors.New("Epusdt create response amount does not match local order")
@@ -190,9 +192,9 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 	return m.settleGMPayPayment(ctx,fields,payloadJSON)
 }
 
-// CheckGMPayPayment performs an authenticated provider-side status query. It is
-// used by the Telegram "refresh payment" action and recovers callbacks that were
-// delayed or lost. The query request is HMAC-signed and sent only over HTTPS.
+// CheckGMPayPayment uses Epusdt's public trade status endpoint over HTTPS.
+// The response identifies the exact local trade_id; the signed callback remains
+// the source for amount verification when available.
 func (m *Manager) CheckGMPayPayment(ctx context.Context,orderID string)(string,error){
 	m.mu.RLock()
 	client:=m.gateway
@@ -202,33 +204,32 @@ func (m *Manager) CheckGMPayPayment(ctx context.Context,orderID string)(string,e
 	if err!=nil{return "",err}
 	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo)
 	if err!=nil{return "",err}
-	identity:=map[string]string{"order_id":order.OrderNo}
-	if intent.ProviderTradeID!=""{identity=map[string]string{"trade_id":intent.ProviderTradeID}}
-	result,err:=client.QueryGMPayOrder(ctx,identity)
+	if intent.ProviderTradeID==""{return "",errors.New("Epusdt provider trade ID is not available; payment creation outcome requires manual reconciliation")}
+	result,err:=client.QueryGMPayOrder(ctx,intent.ProviderTradeID)
 	if err!=nil{return "",err}
 	raw,err:=json.Marshal(result)
 	if err!=nil{return "",err}
 	var envelope struct{StatusCode int `json:"status_code"`;Message string `json:"message"`;Data json.RawMessage `json:"data"`}
 	if err:=json.Unmarshal(raw,&envelope);err!=nil{return "",err}
-	if envelope.StatusCode!=0&&envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt query failed (%d): %s",envelope.StatusCode,envelope.Message)}
+	if envelope.StatusCode!=0&&envelope.StatusCode!=http.StatusOK{return "",fmt.Errorf("Epusdt status query failed (%d): %s",envelope.StatusCode,envelope.Message)}
 	fields,err:=DecodeGMPayCallback(envelope.Data)
-	if err!=nil{return "",fmt.Errorf("decode Epusdt query result: %w",err)}
-	if fields["order_id"]!=""&&fields["order_id"]!=order.OrderNo{return "",errors.New("Epusdt query returned a different merchant order")}
-	if fields["trade_id"]!=""&&intent.ProviderTradeID!=""&&fields["trade_id"]!=intent.ProviderTradeID{return "",errors.New("Epusdt query returned a different provider trade")}
-	if fields["trade_id"]!=""&&fields["payment_url"]!=""&&intent.ProviderTradeID==""{
-		expiry,_:=strconv.ParseInt(fields["expiration_time"],10,64)
-		if err:=database.UpdateEpusdtPaymentOrder(ctx,m.db,m.driver,order.ID,fields["trade_id"],fields["payment_url"],expiry);err!=nil{return "",err}
-	}
+	if err!=nil{return "",fmt.Errorf("decode Epusdt status result: %w",err)}
+	if fields["trade_id"]!=""&&fields["trade_id"]!=intent.ProviderTradeID{return "",errors.New("Epusdt status response trade ID does not match local payment intent")}
 	status,err:=strconv.Atoi(fields["status"])
-	if err!=nil{return "",fmt.Errorf("Epusdt query returned an invalid payment status")}
+	if err!=nil{return "",errors.New("Epusdt status response is missing a valid status")}
 	switch status{
 	case 1,4:
 		return "pending",nil
 	case 2:
-		fields["pid"]=client.pid
-		if fields["trade_id"]==""{return "",errors.New("paid Epusdt query result is missing trade_id")}
-		if fields["amount"]==""{return "",errors.New("paid Epusdt query result is missing amount")}
-		if err:=m.settleGMPayPayment(ctx,fields,string(envelope.Data));err!=nil{return "",err}
+		settlement:=map[string]string{
+			"pid":client.pid,
+			"order_id":order.OrderNo,
+			"trade_id":intent.ProviderTradeID,
+			"amount":formatMinor(intent.AmountMinor),
+			"status":"2",
+		}
+		if fields["block_transaction_id"]!=""{settlement["block_transaction_id"]=fields["block_transaction_id"]}
+		if err:=m.settleGMPayPayment(ctx,settlement,string(envelope.Data));err!=nil{return "",err}
 		return "paid",nil
 	case 3:
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"expired","")
