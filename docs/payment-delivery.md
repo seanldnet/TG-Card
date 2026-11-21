@@ -182,3 +182,8 @@ The existing GMPay client and merchant configuration are now wired into the Tele
 - Duplicate callbacks are idempotent. Amount or token mismatches, unexpected/duplicate trade IDs, and payments arriving after local order cancellation are recorded as payment events and do not trigger a second delivery.
 - An ambiguous create timeout is recorded as `create_uncertain`; because Epusdt merchant `order_id` values cannot be reused and the public status API requires a provider `trade_id`, TG-Card does not issue a second create request. A later signed callback can reconcile the original local order; otherwise the Owner must inspect the provider merchant console.
 - Historical pre-merge note: PR #121 的 CI/合并/镜像发布在该条记录形成时尚未完成；后续 PR #121 已合并并发布，PR #122 进一步完成三通道整合。当前实现状态以本文顶部“implemented”说明及 PROJECT_STATUS.md 顶部记录为准。
+
+
+## Late TRC20 payment reconciliation audit requirement
+
+Manual reconciliation of an order whose status is expired, or whose expiry timestamp has passed, requires a non-empty operator note describing the verification basis. The check is enforced inside the same database transaction that locks the transfer and order; a missing note leaves the transfer unmatched and does not mutate the order or stock. This is an audit control only: it does not automatically refund, credit a wallet, or re-open an order without an explicit, successful reconciliation.

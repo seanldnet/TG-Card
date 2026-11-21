@@ -58,7 +58,13 @@ func TestManualTRC20ReconciliationMatchesExactPaymentAndReservesLateStock(t *tes
 	if _, err := ExpirePendingOrders(ctx,db,"sqlite",10); err != nil { t.Fatal(err) }
 	transfer := tron.Transfer{TransactionID:"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",From:"TFrom",To:"TReceive",AmountAtomic:order.PaymentAmountAtomic,Decimals:6,BlockTimestamp:time.Now().UTC().Add(time.Second).UnixMilli()}
 	if _, err := RecordTRC20Transfer(ctx,db,"sqlite",transfer); err != nil { t.Fatal(err) }
-	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,"late payment"); err != nil { t.Fatal(err) }
+	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,""); err == nil {
+		t.Fatal("late payment reconciliation must require an operator audit note")
+	}
+	if status, err := GetTRC20TransferStatus(ctx, db, "sqlite", transfer.TransactionID); err != nil || status != "unmatched" {
+		t.Fatalf("rejected reconciliation must leave transfer unmatched, status=%q err=%v", status, err)
+	}
+	if err := ReconcileTRC20Transfer(ctx,db,"sqlite",transfer.TransactionID,"TReceive",order.ID,"late payment verified against chain transaction"); err != nil { t.Fatal(err) }
 	items, err := ListOrders(ctx,db); if err != nil { t.Fatal(err) }; if len(items)!=1 || items[0].Status!="paid" || items[0].StockReserved { t.Fatalf("late order state: %+v",items) }
 	status, err := GetTRC20TransferStatus(ctx,db,"sqlite",transfer.TransactionID); if err != nil { t.Fatal(err) }; if status!="matched" { t.Fatalf("status=%q",status) }
 	delivery, err := GetOrderDelivery(ctx,db,"sqlite",order.ID); if err != nil { t.Fatal(err) }; if delivery.SecretCiphertext!="late-card-cipher" { t.Fatalf("delivery=%+v",delivery) }
