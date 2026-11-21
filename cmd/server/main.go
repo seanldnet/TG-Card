@@ -407,7 +407,7 @@ func (a *application) paymentCallbackBaseURL(r *http.Request) (string, error) {
 		if forwardedProto != "" { proto = strings.ToLower(forwardedProto) }
 	}
 	host := strings.TrimSpace(r.Host)
-	if host == "" || strings.ContainsAny(host, "/\\\\@?#,\\t\\r\\n") { return "", errors.New("无法确定系统公网域名") }
+	if host == "" || strings.ContainsAny(host, "/\\@?#,\t\r\n") { return "", errors.New("无法确定系统公网域名") }
 	if proto != "https" { return "", errors.New("支付网关回调要求 HTTPS，请检查站点 TLS 或可信反向代理配置") }
 	origin := (&url.URL{Scheme: proto, Host: host}).String()
 	parsed, err := url.ParseRequestURI(origin)
