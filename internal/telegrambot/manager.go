@@ -1111,9 +1111,10 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 	if balanceErr==nil { text += "\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
 	buttons := [][]map[string]string{
 		{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},
-		{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},
 	}
-	if _,_,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用在线支付收银台","callback_data":"shop:gmpay:"+order.ID}}) }
+	if m.paymentEnabled || m.gmpayEnabled {
+		buttons = append(buttons,[]map[string]string{{"text":"🔄 自动选择支付方式","callback_data":"shop:autopay:"+order.ID}})
+	}
 	buttons=append(buttons,[]map[string]string{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}})
 	keyboard := map[string]any{"inline_keyboard":buttons}
 	if query.ID!=""{_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")}
