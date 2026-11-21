@@ -1,4 +1,4 @@
-## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #77 重整开发中）
+## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 开发中；原 PR #77 已关闭并由本 PR 替代）
 
 - 状态：基于 PR #103 合并后的 main 新建独立分支 `fix/owner-media-reply-single-side-effect-rebased`，不沿用落后主线的旧 PR 分支。
 - 影响模块：Owner Bot 售后媒体回复、客服工单时间线。
