@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestAPILatencyP95UsesBoundedSamplePercentile(t *testing.T) {
@@ -26,5 +25,4 @@ func TestMetricsMiddlewareExcludesHealthAndDashboardMetrics(t *testing.T) {
 	}
 	if len(a.apiLatencySamples)!=1{t.Fatalf("recorded %d API samples, want only the non-health business API",len(a.apiLatencySamples))}
 	if a.apiLatencySamples[0]<=0{t.Fatalf("expected positive request duration")}
-	_ = time.Millisecond
 }
