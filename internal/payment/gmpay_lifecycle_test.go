@@ -96,7 +96,12 @@ func TestGMPayCallbackRejectsWrongSignatureAndAmountMismatch(t *testing.T){
 	// the event and settle exactly once rather than leaving stale mismatch history.
 	if err:=m.HandleGMPayCallback(context.Background(),signedCallback(order,"trade-amount","12.50"),"{\"corrected\":true}");err!=nil{t.Fatal(err)}
 	got,err=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
-	if got.Status!="paid"||got.PaymentReference!="trade-amount"{t.Fatalf("valid retry did not settle after mismatch: %+v",got)}
+	if got.PaymentReference!="trade-amount"||got.PaidAt==""{t.Fatalf("valid retry did not confirm payment after mismatch: %+v",got)}
+	// The test fixture intentionally has no running Telegram bot. Payment must
+	// be confirmed once, while delivery remains retryable in the existing queue.
+	if got.Status!="delivery_failed"{t.Fatalf("expected confirmed payment with retryable delivery failure, got: %+v",got)}
+	settled,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
+	if settled.Status!="paid"{t.Fatalf("intent status=%q want paid",settled.Status)}
 	var eventStatus string
 	if err:=db.QueryRow("SELECT status FROM epusdt_payment_events WHERE provider_trade_id='trade-amount'").Scan(&eventStatus);err!=nil{t.Fatal(err)}
 	if eventStatus!="paid"{t.Fatalf("event status=%q want paid after reconciliation",eventStatus)}
