@@ -272,6 +272,12 @@ func RunRefundLedgerIntegrityCheck(ctx context.Context,db *sql.DB,driver string)
  // A refunded procurement order must have exactly one independent refund row.
  missing,err:=db.QueryContext(ctx,"SELECT o.id FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.status='refunded' AND p.status='refunded' AND NOT EXISTS (SELECT 1 FROM upstream_procurement_refunds r WHERE r.order_id=o.id)")
  if err!=nil{return 0,err};for missing.Next(){var id string;if err:=missing.Scan(&id);err!=nil{missing.Close();return 0,err};bad=append(bad,anomaly{id,"订单/采购状态为已退款，但缺少独立退款账本"})};if err:=missing.Err();err!=nil{missing.Close();return 0,err};missing.Close()
+ // Detect split-brain refund state: the local order and supplier procurement
+ // record must agree before a refund is treated as complete.
+ stateRows,err:=db.QueryContext(ctx,"SELECT o.id,o.status,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE (o.status='refunded' AND p.status<>'refunded') OR (p.status='refunded' AND o.status<>'refunded')")
+ if err!=nil{return 0,err}
+ for stateRows.Next(){var id,orderStatus,procurementStatus string;if err:=stateRows.Scan(&id,&orderStatus,&procurementStatus);err!=nil{stateRows.Close();return 0,err};bad=append(bad,anomaly{id,"订单与上游采购退款状态不一致：order="+orderStatus+", procurement="+procurementStatus})}
+ if err:=stateRows.Err();err!=nil{stateRows.Close();return 0,err};if err:=stateRows.Close();err!=nil{return 0,err}
  // Detect refund credits that are not referenced by the unique procurement refund ledger.
  orphan,err:=db.QueryContext(ctx,"SELECT w.id FROM wallet_transactions w WHERE w.direction='credit' AND w.note LIKE '上游采购失败退款：%' AND NOT EXISTS (SELECT 1 FROM upstream_procurement_refunds r WHERE r.wallet_transaction_id=w.id)")
  if err!=nil{return 0,err};for orphan.Next(){var id string;if err:=orphan.Scan(&id);err!=nil{orphan.Close();return 0,err};bad=append(bad,anomaly{id,"存在上游采购退款 credit，但没有对应的退款账本记录"})};if err:=orphan.Err();err!=nil{orphan.Close();return 0,err};orphan.Close()
