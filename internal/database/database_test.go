@@ -785,3 +785,20 @@ func TestAdminRefreshTokenRejectsChangedTokenVersion(t *testing.T) {
 	if err:=UpdateAdminPassword(ctx,db,"sqlite",admin.ID,"new-password-hash");err!=nil{t.Fatal(err)}
 	if _,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-version-hash","refresh-version-new","refresh-version-access",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenVersionMismatch{t.Fatalf("changed admin token version must invalidate refresh session, got %v",err)}
 }
+
+
+func TestAdminActionConfirmationIsBoundAndSingleUse(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	created,err:=EnsureAdmin(ctx,db,"sqlite","action-confirm-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	admin,err:=FindAdminByUsername(ctx,db,"sqlite",created.Username);if err!=nil{t.Fatal(err)}
+	now:=time.Now()
+	if err:=CreateAdminActionConfirmation(ctx,db,"sqlite",admin.ID,"wallet.balance.adjust","request-hash-1","token-hash-1",now.Add(2*time.Minute));err!=nil{t.Fatal(err)}
+	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",admin.ID,"order.cleanup","request-hash-1","token-hash-1",now);err!=nil||consumed{t.Fatalf("wrong action must not consume confirmation: consumed=%v err=%v",consumed,err)}
+	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",admin.ID,"wallet.balance.adjust","request-hash-2","token-hash-1",now);err!=nil||consumed{t.Fatalf("wrong payload must not consume confirmation: consumed=%v err=%v",consumed,err)}
+	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",admin.ID,"wallet.balance.adjust","request-hash-1","token-hash-1",now);err!=nil||!consumed{t.Fatalf("valid confirmation should be consumed: consumed=%v err=%v",consumed,err)}
+	if consumed,err:=ConsumeAdminActionConfirmation(ctx,db,"sqlite",admin.ID,"wallet.balance.adjust","request-hash-1","token-hash-1",now);err!=nil||consumed{t.Fatalf("confirmation must be one-time: consumed=%v err=%v",consumed,err)}
+	if err:=CreateAdminActionConfirmation(ctx,db,"sqlite",admin.ID,"order.cleanup","request-hash-3","token-hash-expired",now.Add(-time.Second));err==nil{t.Fatal("expired confirmation must not be created")}
+}
