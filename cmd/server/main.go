@@ -59,6 +59,7 @@ type application struct {
 	capMetricsMu sync.Mutex
 	capVerifySuccess int64
 	capVerifyFailure int64
+	capFailureStreak int64
 	procurementAPI upstream.ProcurementAPI
 	procurementNotify func(context.Context,string,string)
 	dispatchProcurement func(context.Context,string) error
@@ -215,6 +216,7 @@ func main() {
 	go app.runUpstreamProcurementScheduler(ctx)
 	go app.runReconciliationScheduler(ctx)
 	go app.monitorBotHealth(ctx)
+	go app.monitorBusinessAlerts(ctx)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/health", app.health)
