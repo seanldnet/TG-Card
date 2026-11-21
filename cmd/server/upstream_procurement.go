@@ -132,6 +132,14 @@ func (a *application) processUpstreamProcurement(ctx context.Context,job databas
 			_ = database.CreateFinanceException(ctx,a.db,a.driver,"supplier-funds-before:"+job.LocalOrderID,"supplier_balance","warning","procurement",job.LocalOrderID,"采购前供应商余额快照不可用",beforeErr.Error())
 		}
 		request:=upstream.ProcurementRequest{SKUID:skuID,Quantity:job.Quantity,DownstreamOrderNo:job.LocalOrderNo,CallbackURL:settings.CallbackURL,TraceID:job.LocalOrderID}
+		if job.DeliveryType=="manual" {
+			if strings.TrimSpace(job.ManualFormDataCiphertext)=="" { return database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"manual 商品订单缺少加密表单数据，已阻止向上游提交") }
+			plain,decryptErr:=a.secrets.Decrypt(job.ManualFormDataCiphertext)
+			if decryptErr!=nil { return database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"manual 商品表单数据解密失败，已阻止向上游提交") }
+			var formData map[string]any
+			if jsonErr:=json.Unmarshal([]byte(plain),&formData);jsonErr!=nil||len(formData)==0 { return database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"manual 商品表单数据格式无效，已阻止向上游提交") }
+			request.ManualFormData=formData
+		} else if job.ManualFormDataCiphertext!="" { return database.FailUpstreamProcurement(ctx,a.db,a.driver,job.LocalOrderID,"非 manual 商品订单包含表单数据，已阻止向上游提交") }
 		result,requestErr:=client.CreateOrder(ctx,request)
 		a.recordSupplierProcurementBalanceAfter(ctx,client,job,result)
 		if requestErr!=nil {
