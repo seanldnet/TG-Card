@@ -74,7 +74,7 @@ func adminActionRequestHash(method, path string, rawPayload []byte) (string, err
 	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete {
 		return "", fmt.Errorf("unsupported sensitive action method")
 	}
-	if !strings.HasPrefix(path, "/api/") || strings.ContainsAny(path, "?#") || strings.ContainsAny(path, "\\r\\n") || strings.Contains(path, "\\\\") || strings.Contains(path, "/../") {
+	if !strings.HasPrefix(path, "/api/") || strings.ContainsAny(path, "?#") || strings.ContainsAny(path, "\r\n") || strings.Contains(path, "\\") || strings.Contains(path, "/../") {
 		return "", fmt.Errorf("invalid sensitive action path")
 	}
 	payload, err := canonicalAdminActionPayload(rawPayload)
