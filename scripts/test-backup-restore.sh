@@ -95,12 +95,14 @@ docker compose exec -T app sh -c 'mkdir -p /app/data/uploads && printf "%s" "tes
 
 echo "[3/6] Running the real backup script against isolated Compose services..."
 BACKUP_DIR="$BACKUP_DIR" BACKUP_KEEP=2 bash scripts/backup.sh
+BACKUP_FINISHED="$(date +%s)"
 BACKUP_PATH="$(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name 'tg-card-*' | head -n 1)"
 test -n "$BACKUP_PATH"
 
 echo "[4/6] Mutating database and persistent files to simulate data loss..."
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE orders SET status='refunded' WHERE id='order-1'; DELETE FROM product_keys WHERE id='stock-1'; UPDATE settings SET value='false' WHERE key='cap_enabled';"
 docker compose exec -T app sh -c 'printf "%s" "corrupted-key" > /app/data/jwt-secret && rm -f /app/data/uploads/fixture.bin && printf "%s" "unexpected" > /app/data/extra.txt'
+SIMULATED_FAILURE_AT="$(date +%s)"
 
 echo "[5/6] Restoring with the production restore script and measuring elapsed time..."
 RESTORE_STARTED="$(date +%s)"
@@ -116,4 +118,4 @@ test "$CAP_ENABLED" = "true"
 docker compose exec -T app sh -c 'test "$(cat /app/data/jwt-secret)" = "test-jwt-signing-key" && test "$(cat /app/data/bot-token.key)" = "test-encryption-key" && test "$(cat /app/data/uploads/fixture.bin)" = "original-upload" && test ! -e /app/data/extra.txt'
 docker compose ps --status running | grep -q 'app'
 RESTORE_FINISHED="$(date +%s)"
-echo "Isolated backup/restore integration test passed. Restore container-start RTO: $((RESTORE_FINISHED - RESTORE_STARTED)) seconds."
+echo "Isolated backup/restore integration test passed. Simulated data-loss window (RPO): $((SIMULATED_FAILURE_AT - BACKUP_FINISHED)) seconds. Restore-to-container-running RTO: $((RESTORE_FINISHED - RESTORE_STARTED)) seconds."
