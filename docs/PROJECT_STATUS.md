@@ -1,3 +1,12 @@
+## 2026-11-21 — P0-4 退款状态一致性核对（开发中）
+
+- 当前 main 基线：`3e2be62cef60553e92a92aea082d2470a51bf3e9`（PR #86 已合并）；本项独立分支：`feat/refund-state-ledger-reconciliation-p0-4c`。
+- PR #86 已合并：Telegram 交付结果不确定时按订单唯一键通知 Owner；不自动重发、不自动退款、不改余额。PR #86 合并后的 Go/Admin/Security/Docker 发布检查仍在运行，需以最终 workflow 结论确认。
+- 本项扩展退款完整性只读核对：除退款流水与金额/用户/管理员关联外，额外检查本地订单 `orders.status` 与上游采购 `upstream_procurements.status` 是否同时处于 `refunded`。
+- 检测双向状态分裂：订单已退款但采购队列未退款；采购队列已退款但订单未退款。异常进入统一财务异常中心，按订单 source key 幂等登记。
+- 新增 SQLite 回归测试覆盖两种状态分裂，并断言核对器不修改任一订单/采购状态。Go/Admin/Security CI 待 PR 验证。
+- 安全边界：只报告、不自动修复；不改用户余额、不新增 credit/debit、不触发供应商请求、不改变退款记录。
+
 ## 2026-11-21 — 订单与资金补偿机制 P0-4（持续开发）
 
 - 最新 main 基线：`1a6f05cde287ecfd5ac52a33e02698d70d75bc63`（PR #85 已合并）；后续独立分支：`feat/procurement-reconciliation-owner-alerts-p0-4b`。
@@ -146,9 +155,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.41
+> - 文档版本：2.2.42
 > - 源码核对基线：main 分支，commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；PR #83 已合并
-> - 本次文档更新：记录 PR #85 采购队列恢复合并及 P0-4 交付不确定告警开发进度
+> - 本次文档更新：记录 PR #86 合并及 P0-4 退款状态一致性核对开发进度
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
