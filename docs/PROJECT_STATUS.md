@@ -1,3 +1,13 @@
+## 2026-11-21 — P1 数据库备份/恢复隔离演练自动化（PR #101 开发中）
+
+- 当前开发基线：`main@50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；独立分支 `test/isolated-backup-restore-p1`。
+- 新增 `scripts/test-backup-restore.sh`：在独立 Docker Compose project、临时 PostgreSQL 16 容器和独立命名卷中调用正式备份/恢复脚本。
+- 测试先创建合成数据库记录、JWT signing key、加密 key 和上传文件；备份后模拟数据库污染、密钥损坏、上传文件丢失及额外文件，再恢复并断言原值/文件完整、污染消失。
+- Go Backend CI 将执行该集成测试；测试打印从恢复开始到隔离 app 容器 running 的耗时。该值不是生产应用就绪 RTO。
+- 无生产数据库迁移、无新增生产环境变量；不会连接或修改生产 Compose project、生产数据库或生产 volumes。
+- 当前状态：独立 PR 开发中，待 CI 验证。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
+- 文档版本：2.2.56。
+
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并，发布检查中）
 
 - PR #100 已 Squash Merge 至 main，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；开发分支 `feat/admin-sensitive-action-step-up-p1`。
@@ -345,9 +355,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.55
+> - 文档版本：2.2.56
 > - 源码核对基线：`main@50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；PR #100 已合并，备份恢复隔离演练正在开发
-> - 本次文档更新：校准 PR #100 合并与发布状态；启动隔离 Docker Compose 备份恢复实测，并按第 12 节同步专项文档与变更日志
+> - 本次文档更新：校准 PR #100 合并与发布状态；新增隔离 Docker Compose 备份恢复集成测试，并按第 12 节同步专项文档与变更日志
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
@@ -729,7 +739,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 - 保留升级前一致性数据库备份，以及 tg_card_data、postgres_data 持久化卷。
 - tg_card_data 包含 jwt-secret、bot-token.key 和上传文件。丢失或替换密钥可能导致现有会话失效、已加密 Bot Token/支付密钥无法解密。
 - 不要通过删除 Docker volumes 回滚。
-- 数据库备份/恢复脚本、停机窗口、PostgreSQL PITR 和逐版本回滚矩阵：待补充。
+- Compose 备份/恢复脚本已存在并有专项说明；本轮新增隔离 Docker Compose 自动恢复测试，待 PR CI 验证。生产停机窗口、PostgreSQL PITR 和逐版本回滚矩阵仍待补充/验证。
 
 ## 16. API 接口索引
 
