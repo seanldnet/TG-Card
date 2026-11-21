@@ -1342,7 +1342,34 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建 GMPay 收银台，请稍后重试；如已提交过请求，系统会先查询原支付单，避免重复创建。")
 			return
 		}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的 GMPay 收银台已准备好。请在支付有效期内完成付款，系统收到签名验证通过的回调后会自动确认并发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开 GMPay 收银台","url":paymentURL}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的 GMPay 收银台已准备好。请在支付有效期内完成付款，系统收到签名验证通过的回调后会自动确认并发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开 GMPay 收银台","url":paymentURL}},{{"text":"🔄 我已付款，刷新状态","callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
+	case strings.HasPrefix(query.Data,"shop:gmpaycheck:"):
+		orderID:=strings.TrimPrefix(query.Data,"shop:gmpaycheck:")
+		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
+		if orderErr!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) {
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或无权查看")
+			return
+		}
+		_,statusCheck,enabled:=m.gmpayCheckoutConfig()
+		if !enabled || statusCheck==nil {
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,"GMPay 暂未启用")
+			return
+		}
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在向支付网关查询状态")
+		status,statusErr:=statusCheck(ctx,order.ID)
+		if statusErr!=nil {
+			log.Printf("GMPay status query failed: order_id=%s error=%v",order.ID,statusErr)
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法查询支付状态，请稍后重试。")
+			return
+		}
+		switch status {
+		case "paid":
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"✅ 支付网关已确认到账，订单已进入自动发货流程。请在“我的订单”查看最新状态。")
+		case "expired":
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"该 GMPay 支付单已过期，请联系管理员处理或重新创建订单。")
+		default:
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"支付网关暂未确认到账。请勿重复转账，稍后可再次刷新状态。")
+		}
 	case query.Data=="wallet:openrecharge":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"请选择充值金额")
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
