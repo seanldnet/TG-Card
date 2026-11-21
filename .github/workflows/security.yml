@@ -8,6 +8,7 @@ on:
       - "go.sum"
       - "internal/**"
       - "cmd/**"
+      - "scripts/**"
       - ".github/workflows/security.yml"
   pull_request:
     branches: [main]
@@ -16,6 +17,9 @@ on:
       - "go.sum"
       - "internal/**"
       - "cmd/**"
+      - "scripts/**"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/go-ci.yml"
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
