@@ -135,6 +135,12 @@ type paymentSettingsRequest struct {
 	ClearEpusdtSecret bool `json:"clearEpusdtSecret"`
 	EpusdtEnabled bool `json:"epusdtEnabled"`
 	EpusdtNotifyURL string `json:"epusdtNotifyUrl"`
+	GMPayBaseURL string `json:"gmpayBaseUrl"`
+	GMPayPID string `json:"gmpayPid"`
+	GMPaySecret string `json:"gmpaySecret"`
+	ClearGMPaySecret bool `json:"clearGmpaySecret"`
+	GMPayEnabled bool `json:"gmpayEnabled"`
+	GMPayNotifyURL string `json:"gmpayNotifyUrl"`
 }
 
 type loginRequest struct {
@@ -360,6 +366,11 @@ type paymentSettingsView struct {
 	EpusdtSecretConfigured bool `json:"epusdtSecretConfigured"`
 	EpusdtEnabled bool `json:"epusdtEnabled"`
 	EpusdtNotifyURL string `json:"epusdtNotifyUrl"`
+	GMPayBaseURL string `json:"gmpayBaseUrl"`
+	GMPayPID string `json:"gmpayPid"`
+	GMPaySecretConfigured bool `json:"gmpaySecretConfigured"`
+	GMPayEnabled bool `json:"gmpayEnabled"`
+	GMPayNotifyURL string `json:"gmpayNotifyUrl"`
 }
 
 func (a *application) getRechargeBonusSettings(w http.ResponseWriter,r *http.Request){
@@ -391,6 +402,11 @@ func (a *application) getPaymentSettings(w http.ResponseWriter, r *http.Request)
 		EpusdtSecretConfigured: s.EpusdtSecretCiphertext != "",
 		EpusdtEnabled: s.EpusdtEnabled,
 		EpusdtNotifyURL: s.EpusdtNotifyURL,
+		GMPayBaseURL: s.GMPayBaseURL,
+		GMPayPID: s.GMPayPID,
+		GMPaySecretConfigured: s.GMPaySecretCiphertext != "",
+		GMPayEnabled: s.GMPayEnabled,
+		GMPayNotifyURL: s.GMPayNotifyURL,
 	})
 }
 
@@ -408,6 +424,10 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	input.EpusdtPID = strings.TrimSpace(input.EpusdtPID)
 	input.EpusdtSecret = strings.TrimSpace(input.EpusdtSecret)
 	input.EpusdtNotifyURL = strings.TrimSpace(input.EpusdtNotifyURL)
+	input.GMPayBaseURL = strings.TrimSpace(input.GMPayBaseURL)
+	input.GMPayPID = strings.TrimSpace(input.GMPayPID)
+	input.GMPaySecret = strings.TrimSpace(input.GMPaySecret)
+	input.GMPayNotifyURL = strings.TrimSpace(input.GMPayNotifyURL)
 	if input.USDTContract == "" { input.USDTContract = tron.MainnetUSDTContract }
 	current, err := database.GetPaymentSettings(r.Context(), a.db, a.driver)
 	if err != nil { log.Printf("load existing payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to load current payment settings"); return }
@@ -434,6 +454,22 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		epusdtSecretCiphertext, err = a.secrets.Encrypt(input.EpusdtSecret)
 		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 Epusdt Secret"); return }
 	}
+	gmpaySecretCiphertext := current.GMPaySecretCiphertext
+	if input.ClearGMPaySecret { gmpaySecretCiphertext = "" } else if input.GMPaySecret != "" {
+		gmpaySecretCiphertext, err = a.secrets.Encrypt(input.GMPaySecret)
+		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 GMPay Secret"); return }
+	}
+	if input.GMPayEnabled {
+		if !strings.HasPrefix(strings.ToLower(input.GMPayBaseURL), "https://") || !strings.HasPrefix(strings.ToLower(input.GMPayNotifyURL), "https://") {
+			writeError(w, http.StatusBadRequest, "GMPay Edge 网关和回调地址必须使用 HTTPS"); return
+		}
+		if input.GMPayBaseURL == "" || input.GMPayPID == "" || gmpaySecretCiphertext == "" || input.GMPayNotifyURL == "" {
+			writeError(w, http.StatusBadRequest, "启用 GMPay Edge 前必须配置独立网关地址、PID、Secret 和 HTTPS 回调地址"); return
+		}
+		if _, parseErr := payment.NewGatewayClient(input.GMPayBaseURL, input.GMPayPID, "validation-only", nil); parseErr != nil {
+			writeError(w, http.StatusBadRequest, "GMPay Edge 网关地址无效"); return
+		}
+	}
 	if input.EpusdtEnabled {
 		if !strings.HasPrefix(strings.ToLower(input.EpusdtBaseURL), "https://") {
 			writeError(w, http.StatusBadRequest, "Epusdt 网关必须使用 HTTPS 地址"); return
@@ -456,6 +492,11 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtSecretCiphertext: epusdtSecretCiphertext,
 		EpusdtEnabled: input.EpusdtEnabled,
 		EpusdtNotifyURL: input.EpusdtNotifyURL,
+		GMPayBaseURL: input.GMPayBaseURL,
+		GMPayPID: input.GMPayPID,
+		GMPaySecretCiphertext: gmpaySecretCiphertext,
+		GMPayEnabled: input.GMPayEnabled,
+		GMPayNotifyURL: input.GMPayNotifyURL,
 	}
 	if err := database.SavePaymentSettings(r.Context(), a.db, a.driver, next); err != nil {
 		log.Printf("save payment settings: %v", err); writeError(w, http.StatusInternalServerError, "Unable to save payment settings"); return
@@ -479,6 +520,11 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtSecretConfigured: epusdtSecretCiphertext != "",
 		EpusdtEnabled: input.EpusdtEnabled,
 		EpusdtNotifyURL: input.EpusdtNotifyURL,
+		GMPayBaseURL: input.GMPayBaseURL,
+		GMPayPID: input.GMPayPID,
+		GMPaySecretConfigured: gmpaySecretCiphertext != "",
+		GMPayEnabled: input.GMPayEnabled,
+		GMPayNotifyURL: input.GMPayNotifyURL,
 	})
 }
 
