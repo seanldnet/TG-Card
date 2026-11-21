@@ -1,6 +1,6 @@
-## 2026-11-22 — 本地与每日备份 age 加密（PR #132，已合并）
+## 2026-11-22 — 本地与每日备份 age 加密（PR #132，已合并并发布）
 
-- 状态：PR #132 已 Squash Merge 至 main；合并提交 `0f7c3da3145adb0e10ad37f8a362573032e3e081`。合并后 Go Backend CI、Admin Frontend CI、Security Scan 均通过；Docker Publish 仍在执行，镜像 digest 待确认。
+- 状态：PR #132 已 Squash Merge 至 main；合并提交 `0f7c3da3145adb0e10ad37f8a362573032e3e081`。合并后 Go Backend CI、Admin Frontend CI、Security Scan、Docker Publish 均成功。
 - PR / Commit：PR #132；分支 `feat/encrypted-backup-restore`；合并 commit `0f7c3da3145adb0e10ad37f8a362573032e3e081`。
 - 影响模块：本地 PostgreSQL/应用数据备份、每日 Telegram Owner 备份、恢复脚本与 Docker 镜像。
 - 变更内容：
@@ -12,9 +12,10 @@
 - 兼容性与已知限制：旧备份可恢复；丢失加密口令则新备份不可恢复。生产恢复演练尚未执行。
 - 验证：
   - 自动化测试：PR 合并前 Go、Admin、Security 检查通过；隔离 Docker Compose 加密/解密恢复测试已通过。
-  - 合并后 main：Go Backend CI、Admin Frontend CI、Security Scan 均成功。
-  - Docker 镜像：Publish workflow 正在构建/推送；成功后补录 GHCR digest。
-- 发布镜像：尚未确认发布成功；不得将 workflow 运行中记录为已发布。
+  - 合并后 main：Go Backend CI、Admin Frontend CI、Security Scan、Docker Publish 均成功。
+  - GHCR 标签：`ghcr.io/seanldnet/tg-card:latest` 与 `ghcr.io/seanldnet/tg-card:0f7c3da3145adb0e10ad37f8a362573032e3e081`。
+  - OCI manifest-list digest：`sha256:fea9f69f008019fa08fa58cb551fa3fdae7cf836e18aa17df7c87c2fdbe0b9f8`。
+- 发布镜像：已成功推送；生产部署与恢复演练仍待目标环境验收。
 
 ## 2026-11-22 — 支付查单资金核验修复（PR #131）
 

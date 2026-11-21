@@ -1,14 +1,15 @@
-## 2026-11-22 — 本地与每日备份 age 加密（PR #132 已合并；文档版本 2.2.84）
+## 2026-11-22 — 本地与每日备份 age 加密（PR #132 已合并并发布；文档版本 2.2.84）
 
-- PR #132：`feat: encrypt local and scheduled backups with age`，已 Squash Merge 至 main；合并提交：`0f7c3da3145adb0e10ad37f8a362573032e3e081`。
+- PR #132：`feat: encrypt local and scheduled backups with age`，已 Squash Merge 至 main；代码合并提交：`0f7c3da3145adb0e10ad37f8a362573032e3e081`。
 - 本地 PostgreSQL dump 与 `/app/data` 归档在保留前使用 age scrypt 流式加密；清除明文中间文件，对密文生成 SHA-256 清单。
 - 每日 Telegram Owner 备份先加密再投递；未配置或口令不足 32 个非空白字符时 fail closed，沿用失败通知和 30 分钟重试。
 - 新增镜像内 `/app/backup-crypt` 工具；恢复流程先校验密文并解密到私有临时目录，成功后才停止应用并覆盖数据库/数据卷。
 - 保留旧版明文备份恢复兼容；新增隔离 Compose 测试覆盖密文备份、无明文归档、加密恢复和旧备份恢复。
 - 新增外部环境变量 `BACKUP_ENCRYPTION_PASSPHRASE`：至少 32 个非空白字符，必须保存在部署主机的外部秘密管理位置，不得写入 `/app/data`、数据库、仓库或备份文件。部署时需在未提交的 `.env` 中配置；未配置时新备份将拒绝以明文生成。
 - 数据库迁移：无。升级前的旧备份仍可恢复；新加密备份必须保留对应口令，否则无法解密。
-- 合并后 main 的 Go Backend CI、Admin Frontend CI、Security Scan 均已通过；Docker Publish workflow 仍在构建/推送阶段，GHCR digest 待发布成功后补记。
-- 生产部署、口令托管与真实生产恢复演练尚未验收；代码合并与 CI 通过不代表生产恢复验收完成。
+- 合并后 main 的 Go Backend CI、Admin Frontend CI、Security Scan、Docker Publish 均已通过；GHCR 镜像 `latest` 与 commit tag `0f7c3da3145adb0e10ad37f8a362573032e3e081` 已成功推送。OCI manifest-list digest：`sha256:fea9f69f008019fa08fa58cb551fa3fdae7cf836e18aa17df7c87c2fdbe0b9f8`。
+- 文档校准 PR #133 已合并，main 当前文档提交：`d989151239a1819f00c5d29aa7f7d58f2a3b19e1`。
+- 生产部署、口令托管与真实生产恢复演练尚未验收；代码合并、CI 与镜像发布不代表生产恢复验收完成。
 - 文档版本：2.2.84。
 
 ## 2026-11-22 — 支付查单资金核验修复（PR #131 已合并；文档版本 2.2.83）
