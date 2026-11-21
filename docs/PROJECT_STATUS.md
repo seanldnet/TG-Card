@@ -13,7 +13,7 @@
 - 修复：普通单步骤交付处于 `delivery_uncertain` 时，管理员入口明确拒绝重试；数据库 `ClaimOrderDelivery` 也仅允许 file_card 在存在步骤记录且不存在 uncertain/sending 步骤时恢复，防止绕过 HTTP 入口直接 claim。
 - file_card 仍支持既有分步骤恢复：所有步骤经人工核实为 succeeded/failed 后，可跳过成功步骤，仅恢复失败步骤；缺失步骤证据或仍有不确定步骤时拒绝。
 - 新增 SQLite/PostgreSQL 回归测试覆盖单步骤不确定订单拒绝手动 claim，以及 file_card 缺失/未核实步骤拒绝、全部核实后允许恢复。
-- 无数据库迁移、无新增环境变量/后台配置；明确失败的 `delivery_failed` 重试流程不变。PR head Go/Admin/Security CI 全部通过；合并后 main 发布工作流待最终确认，真实 Telegram 分步骤恢复仍待验收。
+- 无数据库迁移、无新增环境变量/后台配置；明确失败的 `delivery_failed` 重试流程不变。PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security CI 与 Docker Publish run `44873878925` 全部成功。GHCR `latest` 与提交标签 `ff1f2d5c31daa848fc4ee34548b8423e283684c0` 已发布，manifest digest：`sha256:9034d2f3ecbad205291345e84e34f6c9c9e499c3022f68d615b3b1a705bccadf`。真实 Telegram 分步骤恢复仍待验收。
 
 ## 2026-11-21 — P0-4 上游采购不确定状态资金保护（PR #90 已合并并发布）
 
