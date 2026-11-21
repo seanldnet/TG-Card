@@ -112,6 +112,8 @@ type siteSettings struct {
  CapDomain string `json:"capDomain,omitempty"`
  CapSiteKey string `json:"capSiteKey,omitempty"`
  CapSecret string `json:"capSecret,omitempty"`
+ BackupEnabled bool `json:"backupEnabled"`
+ BackupTime string `json:"backupTime"`
 }
 type siteSettingsView struct {
  siteSettings
@@ -216,6 +218,7 @@ func main() {
 	go app.runUpstreamSyncScheduler(ctx)
 	go app.runUpstreamProcurementScheduler(ctx)
 	go app.runReconciliationScheduler(ctx)
+	go app.runScheduledBackupScheduler(ctx)
 	go app.monitorBotHealth(ctx)
 	go app.monitorBusinessAlerts(ctx)
 
