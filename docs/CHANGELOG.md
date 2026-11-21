@@ -16,16 +16,16 @@
 - 数据库迁移：无生产 schema 迁移；测试使用临时 PostgreSQL 16 容器和独立命名卷。
 - 配置/部署影响：无生产环境变量；CI runner 需要 Docker Compose。
 - 兼容性与已知限制：本测试 RTO 只衡量隔离测试容器恢复到 running 的耗时，不代表生产应用就绪 RTO；生产 RPO/RTO 需按实际备份频率和业务验收单独测量。
-- 验证：Go CI 将执行该隔离测试；当前待 CI 验证。真实生产备份/恢复演练未执行。
+- 验证：Go CI 将执行该隔离测试；当前待 CI 验证。真实生产备份/恢复演练未执行。PROJECT_STATUS 文档版本更新至 2.2.56。
 
 
-## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
+## 2026-11-21 — 管理员登出即时撤销 Access Session（PR #99 已合并并发布）
 
 - 修复 Vben Admin 默认登出请求未携带 Authorization Bearer 的问题；现在同时发送 Bearer 与 HttpOnly Refresh Cookie。
 - 登出后服务端撤销当前 access session 和整个 refresh token family；新增 HTTP 回归测试验证旧 access token 立即失效。
 - 无数据库迁移、无新增环境变量；PROJECT_STATUS 文档版本更新至 2.2.53。CI 待验证。
 
-## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（开发中）
+## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（PR #97 已合并并发布）
 
 - Access Token 有效期缩短至 15 分钟；7 天 Refresh Token 使用 HttpOnly、SameSite=Lax Cookie。
 - 新增 refresh endpoint，兼容 Vben Admin 内置刷新客户端；每次刷新轮换令牌，数据库仅存哈希。
