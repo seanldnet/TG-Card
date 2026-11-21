@@ -60,7 +60,7 @@ PR A 的边界仅限配置与连接测试。PR B（PR #26，已合并）已实�
 
 价格处理：Dujiao ping 返回站点币种。TG-Card 订单结算使用 USDT，因此上游币种为 USDT 时按 1:1；其他币种必须在后台手动配置“1 单位上游币种 = ? USDT”的汇率。最终售价 = 上游 SKU 原币价格 × 汇率 ×（1 + 百分比加价）+ 固定 USDT 加价。原币金额与币种作为商品快照保存；不自动抓取或猜测汇率。
 
-PR C 已通过独立 PR #32 合并，完成采购转发、订单状态复核、幂等、异步查单/回调、人工失败队列、退款账本和供应商余额日报；PR head 与 merge 后 Go/Admin/Security CI 通过，十项 mock 测试通过。PR C 的 mock 测试范围与项目所有者确认的正常对接状态分别记录；PR D 已通过 PR #38 合并并发布，生产部署/验收待确认；PR E 真实商户联调操作手册已建立（docs/dujiao-live-integration-runbook.md）；真实商户联调仍未开始。
+PR C 已通过独立 PR #32 合并，完成采购转发、订单状态复核、幂等、异步查单/回调、人工失败队列、退款账本和供应商余额日报；PR head 与 merge 后 Go/Admin/Security CI 通过，十项 mock 测试通过。PR C 的 mock 测试范围按自动化测试实际内容记录；PR D 已通过 PR #38 合并并发布。项目所有者已确认 Dujiao-Next 正常对接完成；`docs/dujiao-live-integration-runbook.md` 仅保留为历史排障参考。
 
 Dujiao-Next API Key 与 API Secret 均使用 TG-Card 的持久化 AES-256-GCM 密钥加密；读取接口只返回掩码/已配置标志。连接测试按官方 HMAC-SHA256 规则调用 `POST /api/v1/upstream/ping`。
 
@@ -89,7 +89,7 @@ PR C、PR D 已按独立 PR 合并；Dujiao-Next 正常对接已由项目所有�
 - 回调端点 `POST /api/v1/upstream/callback`，按官方 HMAC-SHA256 原始请求体签名、API Key 与 ±60 秒时间戳校验。后台必须配置公网 HTTPS 回调地址后才允许上游商品自助下单。
 - 当前仅开放 `auto` 自动交付 SKU；`manual` 表单 SKU 暂不开放自助购买，待买家表单采集能力实现。
 - 十项 mock 测试包括同步交付、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后同幂等键恢复、已退款订单跳过、HTTP 402/404 错误分类；均在 Go CI 通过。mock 不代表真实上游联调。
-- PR D（进一步资金安全控制）已合并并发布；PR E 操作手册已合并，Dujiao-Next 正常对接已由项目所有者确认完成，不再追加 PR E 真实商户验收。
+- PR D（进一步资金安全控制）已合并并发布；Dujiao-Next 正常对接已由项目所有者确认完成；不再追加 PR E 真实商户验收。
 
 
 ## 全局异常中心联动
