@@ -202,6 +202,11 @@ func (m *Manager) scan(ctx context.Context) error {
 				continue
 			}
 			_, err = database.ConfirmOrderPayment(scanCtx, m.db, m.driver, order.ID, "trc20-usdt", transfer.TransactionID)
+			if err == nil {
+				if intentErr := database.SetEpusdtPaymentIntentStatus(scanCtx,m.db,m.driver,order.ID,"paid",transfer.TransactionID); intentErr != nil {
+					log.Printf("TRC20 payment intent status update failed: order_id=%s tx=%s error=%v",order.ID,transfer.TransactionID,intentErr)
+				}
+			}
 			if err != nil {
 				_ = database.ClassifyTRC20Transfer(scanCtx, m.db, m.driver, transfer.TransactionID, "reconciliation_required", order.ID, err.Error())
 				m.bots.Notify("risk_alert","链上付款未能自动确认，已阻止发货。订单："+order.OrderNo+"\n交易："+transfer.TransactionID+"\n原因："+err.Error(),"")
