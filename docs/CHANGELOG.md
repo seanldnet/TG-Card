@@ -10,7 +10,7 @@
 - 为管理员 TOTP 绑定增加 10 个一次性恢复码；仅在绑定确认时显示一次，数据库只存 SHA-256 哈希。
 - 登录可使用动态验证码或未使用的恢复码；恢复码采用并发安全的一次性消费，重复使用会拒绝并记录审计。
 - 关闭 TOTP 清空恢复码；安全设置页面显示一次性恢复码并提示安全保存。
-- 新增迁移 `0055_admin_totp_recovery_codes.sql`；PR #96 Go/Admin/Security CI、SQLite/PostgreSQL 测试全部通过并已合并。PROJECT_STATUS 文档版本更新至 2.2.51。
+- 新增迁移 `0055_admin_totp_recovery_codes.sql`；PR #96 Go/Admin/Security CI、SQLite/PostgreSQL 测试及 Docker Publish 全部通过并已合并；GHCR manifest digest：`sha256:41c3c879a278a7aa442f45abd838abfb6fa82df718515a4ed2811d30d97a8758`。PROJECT_STATUS 文档版本更新至 2.2.51。
 
 ## 2026-11-21 — P1 管理员 TOTP 双重验证（PR #95 已合并）
 
