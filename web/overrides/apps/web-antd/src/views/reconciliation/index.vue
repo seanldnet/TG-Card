@@ -12,11 +12,11 @@ interface BalanceAnomaly {runKey:string;telegramUserId:string;recordedBalanceAto
 const month=ref(new Date().toISOString().slice(0,7));
 const reports=ref<DailyReport[]>([]),runs=ref<BalanceRun[]>([]),anomalies=ref<BalanceAnomaly[]>([]);
 const loading=ref(false),checking=ref(false),selectedRun=ref('');
-const detailOpen=ref(false),detailLoading=ref(false);
 const anomalyCount=computed(()=>runs.value[0]?.mismatchUsers||0);
+function runLabel(value:string){return value.startsWith('manual-')?'手动检查 · '+value.slice(7):value}
 function money(value:number){return (Number(value||0)/1_000_000).toFixed(6)+' USDT'}
 function when(value:string){const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString()}
-async function loadAnomalies(runKey:string){selectedRun.value=runKey;detailOpen.value=true;detailLoading.value=true;anomalies.value=[];try{anomalies.value=await requestClient.get<BalanceAnomaly[]>('/reconciliation/balance-anomalies',{params:{runKey}})}catch{message.error('余额异常明细加载失败')}finally{detailLoading.value=false}}
+async function loadAnomalies(runKey:string){selectedRun.value=runKey;try{anomalies.value=await requestClient.get<BalanceAnomaly[]>('/reconciliation/balance-anomalies',{params:{runKey}})}catch{message.error('余额异常明细加载失败')}}
 async function load(){
  loading.value=true;
  try{
@@ -44,7 +44,7 @@ onMounted(load);
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-end justify-between gap-3">
    <div><h1 class="m-0 text-xl font-semibold">对账与余额校验</h1><p class="mb-0 mt-1 text-xs text-gray-500">每日 UTC 对账日报历史、链上异常统计及用户余额流水只读校验。</p></div>
-   <div class="flex flex-wrap items-center gap-2"><a-date-picker v-model:value="month" picker="month" value-format="YYYY-MM" placeholder="选择月份" class="w-40" @change="load"/><a-button :loading="loading" @click="load">刷新</a-button><a-button type="primary" :loading="checking" @click="runCheck">立即执行余额校验</a-button></div>
+   <div class="flex flex-wrap items-center gap-2"><a-input v-model:value="month" type="month" class="w-40" @change="load"/><a-button :loading="loading" @click="load">刷新</a-button><a-button type="primary" :loading="checking" @click="runCheck">立即执行余额校验</a-button></div>
   </div>
   <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
    <a-card :bordered="false"><div class="text-xs text-gray-500">本月订单数</div><div class="mt-2 text-2xl font-semibold">{{totals.orders}}</div></a-card>
@@ -79,13 +79,10 @@ onMounted(load);
     <a-table-column title="检查用户" data-index="checkedUsers" key="checked" :width="110"/>
     <a-table-column title="异常用户" data-index="mismatchUsers" key="mismatch" :width="110"/>
     <a-table-column title="差异绝对值合计" key="diff" :width="180"><template #default="{record}">{{money(record.totalDifferenceAtomic)}}</template></a-table-column>
-    <a-table-column title="操作" key="action" :width="120"><template #default="{record}"><a-button size="small" @click="loadAnomalies(record.runKey)">查看差异明细</a-button></template></a-table-column>
+    <a-table-column title="操作" key="action" :width="120"><template #default="{record}"><a-button type="link" size="small" @click="loadAnomalies(record.runKey)">查看差异明细</a-button></template></a-table-column>
    </a-table>
-
-  </a-card>
-  <a-modal v-model:open="detailOpen" title="余额差异明细" :footer="null" width="900px">
-   <div class="mb-3 text-xs text-gray-500">检查批次：{{selectedRun}}</div>
-   <a-spin :spinning="detailLoading">
+   <div v-if="selectedRun" class="mt-4">
+    <div class="mb-2 text-sm font-semibold">异常明细 · {{selectedRun}}</div>
     <a-table :data-source="anomalies" row-key="telegramUserId" :pagination="{pageSize:10,hideOnSinglePage:true}" :scroll="{x:850}">
      <a-table-column title="Telegram 用户 ID" data-index="telegramUserId" key="user" :width="180"/>
      <a-table-column title="数据库余额" key="recorded" :width="160"><template #default="{record}">{{money(record.recordedBalanceAtomic)}}</template></a-table-column>
@@ -93,8 +90,8 @@ onMounted(load);
      <a-table-column title="差额（余额－流水）" key="difference" :width="180"><template #default="{record}">{{money(record.differenceAtomic)}}</template></a-table-column>
      <a-table-column title="发现时间" key="created" :width="190"><template #default="{record}">{{when(record.createdAt)}}</template></a-table-column>
     </a-table>
-    <a-empty v-if="!detailLoading&&anomalies.length===0" description="本次检查没有余额差异"/>
-   </a-spin>
-  </a-modal>
+    <a-empty v-if="anomalies.length===0" description="本次检查没有余额差异"/>
+   </div>
+  </a-card>
  </div>
 </template>
