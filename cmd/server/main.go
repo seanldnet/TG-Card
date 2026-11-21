@@ -1596,6 +1596,7 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if _,ok:=savedFields["telegramNotifyRiskAlert"];!ok{settings.TelegramNotifyRiskAlert=true}
  if _,ok:=savedFields["stockAutoUnlistOnZero"];!ok{settings.StockAutoUnlistOnZero=true}
  if settings.SiteName == "" { settings.SiteName = "TG-Card" }
+ if settings.BackupTime == "" { settings.BackupTime = "03:00" }
  if settings.SMTPPort == 0 { settings.SMTPPort = 587 }
  if settings.SMTPFromName == "" { settings.SMTPFromName = settings.SiteName }
  configured := settings.SMTPPasswordCiphertext != ""
@@ -1632,6 +1633,9 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  if input.SMTPPort==0 { input.SMTPPort=587 }; if input.SMTPPort<1 || input.SMTPPort>65535 { writeError(w,http.StatusBadRequest,"SMTP 端口无效"); return }
  oldRaw,err:=database.GetSiteSettings(r.Context(),a.db); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to load current site settings"); return }
  var old siteSettings; _=json.Unmarshal([]byte(oldRaw),&old)
+ if input.BackupTime == "" { input.BackupTime = old.BackupTime }; if input.BackupTime == "" { input.BackupTime = "03:00" }
+ if _, timeErr := time.Parse("15:04", input.BackupTime); timeErr != nil { writeError(w,http.StatusBadRequest,"每日备份时间格式必须为 HH:mm"); return }
+ if len(input.BackupTime) != 5 { writeError(w,http.StatusBadRequest,"每日备份时间格式必须为 HH:mm"); return }
  if input.SMTPPassword=="" { input.SMTPPasswordCiphertext=old.SMTPPasswordCiphertext } else {
   input.SMTPPasswordCiphertext,err=a.secrets.Encrypt(input.SMTPPassword); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to encrypt SMTP password"); return }
  }
