@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
+import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface TelegramBuyer {
   id:string;telegramUserId:string;username:string;firstName:string;lastName:string;
@@ -30,7 +31,7 @@ async function submitBalance(){
  const atomic=Math.round(value*1_000_000);
  if(Math.abs(value*1_000_000-atomic)>0.000001){message.warning('金额最多支持 6 位小数');return;}
  saving.value=true;
- try{await requestClient.post('/users/'+selected.value.id+'/balance',{amountAtomic:atomic,direction:direction.value,note:note.value});message.success(direction.value==='credit'?'余额增加成功':'余额扣减成功');modalOpen.value=false;await load();}
+ try{const path='/api/users/'+selected.value.id+'/balance';const payload={amountAtomic:atomic,direction:direction.value,note:note.value};await withAdminActionConfirmation({actionKey:'wallet.balance.adjust',method:'POST',path,payload,run:(token)=>requestClient.post('/users/'+selected.value!.id+'/balance',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success(direction.value==='credit'?'余额增加成功':'余额扣减成功');modalOpen.value=false;await load();}
  catch(error:any){message.error(error?.response?.data?.message||'余额调整失败');}
  finally{saving.value=false;}
 }
