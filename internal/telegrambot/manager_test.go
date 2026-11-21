@@ -472,3 +472,46 @@ func TestDeliveryUncertainOwnerAlertIsClaimedOncePerOrder(t *testing.T) {
 	if calls!=1{t.Fatalf("owner must receive exactly one uncertainty alert per order, got %d",calls)}
 	if event!="risk_alert"||!strings.Contains(details,order.OrderNo)||!strings.Contains(details,"Telegram 请求超时"){t.Fatalf("unexpected owner alert: event=%q details=%q",event,details)}
 }
+
+
+// TestOwnerMediaReplyRejectsOverlongCaptionBeforeTelegramDelivery ensures an
+// overlong caption is rejected before any customer-facing media API call.
+func TestOwnerMediaReplyRejectsOverlongCaptionBeforeTelegramDelivery(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := database.Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	product, err := database.CreateProduct(ctx, db, "sqlite", database.Product{Name: "Owner media reply", PriceMinor: 100, Currency: "USDT", DeliveryType: "text", Status: 1})
+	if err != nil { t.Fatal(err) }
+	order, err := database.CreateOrder(ctx, db, "sqlite", "bot-long-media", "user-long-media", "987655", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='paid' WHERE id=?", order.ID); err != nil { t.Fatal(err) }
+	ticket, err := database.CreateSupportTicket(ctx, db, "sqlite", "bot-long-media", "user-long-media", "987655", order.OrderNo, "other", "long media reply test")
+	if err != nil { t.Fatal(err) }
+	if err := database.SetSupportOwnerSession(ctx, db, "sqlite", "bot-long-media", "12345", "12345", ticket.ID, "reply", 30*time.Minute); err != nil { t.Fatal(err) }
+
+	var methods []string
+	var requestBodies []string
+	manager := &Manager{db: db, driver: "sqlite", client: &http.Client{Transport: telegramTestTransport(func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		methods = append(methods, req.URL.Path)
+		requestBodies = append(requestBodies, string(body))
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`)), Request: req}, nil
+	})}}
+	msg := Message{MessageID: 303, Caption: strings.Repeat("长", 901), Chat: Chat{ID: 12345}, From: &TelegramUser{ID: 12345}, Document: &TelegramDocument{FileID: "long-caption-file", FileName: "proof.pdf"}}
+	if !manager.handleActiveOwnerSupportMessage(ctx, Config{ID: "bot-long-media", Token: "test-token"}, msg) {
+		t.Fatal("Owner media reply was not handled")
+	}
+	if len(methods) != 1 || !strings.HasSuffix(methods[0], "/sendMessage") {
+		t.Fatalf("overlong caption must be rejected before sendDocument; only the Owner error notice is expected, got methods=%v bodies=%v", methods, requestBodies)
+	}
+	if strings.Contains(requestBodies[0], "long-caption-file") {
+		t.Fatalf("rejected media must not be sent to the customer: %s", requestBodies[0])
+	}
+	messages, err := database.ListSupportTicketMessages(ctx, db, "sqlite", ticket.ID)
+	if err != nil { t.Fatal(err) }
+	for _, item := range messages {
+		if item.SenderType == "admin" { t.Fatalf("rejected reply must not be persisted as delivered: %#v", item) }
+	}
+}
