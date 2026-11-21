@@ -2,6 +2,7 @@ package auth
 
 import (
 	"testing"
+	"strings"
 	"time"
 )
 
@@ -20,7 +21,7 @@ func TestTOTPCodeAndWindowVerification(t *testing.T) {
 
 func TestTOTPProvisioningURIContainsIssuerAndParameters(t *testing.T) {
 	uri:=TOTPProvisioningURI("JBSWY3DPEHPK3PXP","TG-Card","admin@example.com")
-	if uri==""||uri[:13]!="otpauth://totp"{t.Fatalf("unexpected provisioning URI: %s",uri)}
+	if uri==""||!strings.HasPrefix(uri,"otpauth://totp/"){t.Fatalf("unexpected provisioning URI: %s",uri)}
 	for _,part:=range []string{"secret=JBSWY3DPEHPK3PXP","issuer=TG-Card","algorithm=SHA1","digits=6","period=30"}{
 		if !containsString(uri,part){t.Fatalf("provisioning URI missing %q: %s",part,uri)}
 	}
