@@ -10,7 +10,7 @@
 - 上游设置页对 uncertain 采购订单改为仅显示“核实受理状态”，不再提供直接重试/退款按钮。
 - 复用既有人工核实 API：供应商确认已受理时登记上游订单 ID 并恢复查单；确认未受理/明确失败时记录核实依据，收敛为 failed 后再允许重试/退款。
 - 新增回归测试覆盖 not_accepted 核实后沿用原本地订单幂等键安全重试，且不创建退款流水。
-- 无新增 API、数据库迁移或环境变量；PR #92 Go/Admin/Security CI 全部通过并已合并；合并后 main 发布工作流待最终确认。PROJECT_STATUS 文档版本更新至 2.2.47。
+- 无新增 API、数据库迁移或环境变量；PR #92 Go/Admin/Security CI 与合并后 Docker Publish 均成功；GHCR manifest digest：`sha256:52fc62675515d150e3fdd1f12d72428099e0c60b36b3e3e4133676fa1551cf4c`。PROJECT_STATUS 文档版本更新至 2.2.47。
 
 ## 2026-11-21 — P0-4 不确定交付禁止盲目手动重试（PR #91 已合并）
 
