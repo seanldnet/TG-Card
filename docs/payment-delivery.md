@@ -61,7 +61,7 @@ Important operational limits:
 - A transfer detected only after order expiry is not automatically credited, even if its block timestamp is close to expiry; it requires manual reconciliation.
 - Unmatched, underpaid, overpaid, expired, or ambiguous transfers are not automatically refunded or credited. A dedicated transaction ledger and reconciliation UI are still future work.
 - No wallet signing, sweeping, withdrawals, or refunds are implemented.
-- GMpay and EPUSDT adapters are not implemented.
+- GMPay protocol client (HMAC-SHA256 signing, create-order request, and order query request) is implemented in PR #116. Epusdt merchant configuration (gateway URL, PID, encrypted Secret) is implemented in PR #117. Telegram checkout integration, provider callback verification, payment-state transition, delivery handoff, and live merchant acceptance are not implemented yet.
 
 Configure the following in the server .env before enabling real payments:
 
@@ -159,6 +159,6 @@ When a refund is blocked because an active re-delivery lease exists, the support
 
 ## Epusdt GMPay merchant configuration (in progress)
 
-The Epusdt GMPay merchant credentials are being added to the existing administrator payment settings. The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
+The Epusdt GMPay merchant credentials are managed in the existing administrator payment settings (merged in PR #117). The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
 
 Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. Those operations require a separate payment lifecycle implementation and independent acceptance.

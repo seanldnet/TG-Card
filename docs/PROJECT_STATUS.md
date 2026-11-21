@@ -1,3 +1,11 @@
+## 2026-11-22 — Epusdt GMPay 文档状态校准
+
+- PR #117 已合并，合并提交 `d7d607ddb068e02c47386391eabbdc4c800514fc`；Go Backend CI、Admin Frontend CI、Security Scan 均通过。
+- 已完成：后台 Epusdt 网关地址、GMPay PID、AES-GCM Secret 加密存储与读取脱敏；数据库迁移 0058。
+- 未完成：Telegram 商城 GMPay 下单入口、支付结果查询/回调验签、订单支付确认、自动发货和真实商户验收。配置页启用状态不代表支付通道已可收款。
+- 修正 `docs/payment-delivery.md` 中“GMpay 和 EPUSDT adapters are not implemented”的过时描述，区分已完成客户端/配置与未完成的支付生命周期。
+- 文档版本：2.2.70。
+
 ## 2026-11-22 — Epusdt GMPay 商户配置（开发中）
 
 - 独立分支：`feat/epusdt-gmpay-settings`；基于 main `b4b1f19`。
