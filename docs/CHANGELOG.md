@@ -3,7 +3,7 @@
 - 分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`；基线 main@`b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`。
 - 实现商城商品订单与购物车统一订单 GMPay 收银台入口；后台配置 HTTPS 异步回调地址；订单金额以 USD 表示并指定 USDT/TRON 收款。
 - 增加 Epusdt payment intent/event 持久化、GMPay HMAC-SHA256 回调验签、trade_id 状态查询、支付幂等与本地自动发货/上游采购交接。
-- 异常处理：错误签名拒绝；金额不符不确认；重复回调幂等；不同交易号的重复付款/意外交易转异常；订单取消后迟到付款不重开订单；创建超时进入 `create_uncertain`，禁止盲目重复创建。JSON 数字字段保留原始十进制文本，避免 float64 精度变化影响签名验算。
+- 异常处理：错误签名拒绝；金额或支付币种不符不确认；重复回调幂等；不同交易号的重复付款/意外交易转异常；订单取消后迟到付款不重开订单；创建超时进入 `create_uncertain`，禁止盲目重复创建。JSON 数字字段保留原始十进制文本，避免 float64 精度变化影响签名验算。
 - 本阶段 Go/Admin/Security CI 与合并后 Docker Publish 尚未完成；发布记录待 CI/合并/镜像 digest 后补充。
 
 ## 2026-11-22 — 文档基线彻底校准（PR #119，PROJECT_STATUS 2.2.71）
