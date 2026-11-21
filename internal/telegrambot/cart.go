@@ -80,7 +80,7 @@ func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query Callba
 		{{"text":"💳 使用站内余额一次支付","callback_data":"shop:walletpay:"+order.ID}},
 		{{"text":"💵 使用 TRC20 USDT 一次支付","callback_data":"shop:chainpay:"+order.ID}},
 	}
-	if _,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
+	if _,_,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
 	buttons=append(buttons,[]map[string]string{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}})
 	buttons=append(buttons,[]map[string]string{{"text":"📦 查看我的订单","callback_data":"menu:orders"}})
 	keyboard:=map[string]any{"inline_keyboard":buttons}
