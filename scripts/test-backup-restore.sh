@@ -112,11 +112,20 @@ docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE
 docker compose exec -T app sh -c 'printf "%s" "corrupted-key" > /app/data/jwt-secret && rm -f /app/data/uploads/fixture.bin && printf "%s" "unexpected" > /app/data/extra.txt'
 SIMULATED_FAILURE_AT="$(date +%s)"
 
-echo "[5/6] Restoring with the production restore script and measuring elapsed time..."
+echo "[5/7] Verifying a wrong passphrase cannot begin destructive restore..."
+if BACKUP_ENCRYPTION_PASSPHRASE="wrong-ci-passphrase-that-is-long-enough-to-pass-validation" bash scripts/restore.sh "$BACKUP_PATH" --yes; then
+  echo "restore unexpectedly accepted the wrong passphrase" >&2
+  exit 1
+fi
+ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\r')"
+test "$ORDER_STATUS" = "refunded"
+docker compose ps --status running | grep -q 'app'
+
+echo "[6/7] Restoring with the production restore script and measuring elapsed time..."
 RESTORE_STARTED="$(date +%s)"
 bash scripts/restore.sh "$BACKUP_PATH" --yes
 
-echo "[6/6] Verifying database rows, key files, uploads, and running app container..."
+echo "[7/7] Verifying database rows, key files, uploads, and running app container..."
 ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\r')"
 STOCK_COUNT="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT COUNT(*) FROM product_keys WHERE id='stock-1' AND secret_ciphertext='encrypted-stock-secret'" | tr -d '\r')"
 CAP_ENABLED="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT value FROM settings WHERE key='cap_enabled'" | tr -d '\r')"
