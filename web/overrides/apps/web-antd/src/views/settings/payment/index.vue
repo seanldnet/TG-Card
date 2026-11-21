@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface BonusTier { minAmountAtomic: number; bonusType: 'fixed' | 'percent'; bonusValue: number; }
 interface BonusRule { enabled: boolean; tiers: BonusTier[]; }
@@ -33,7 +34,7 @@ async function loadBonusRule(){
 }
 async function saveBonusRule(){
   bonusSaving.value=true;
-  try { const data=await requestClient.put<BonusRule>('/settings/recharge-bonus',bonusRule); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; message.success('充值赠送规则已保存'); }
+  try { const payload={enabled:bonusRule.enabled,tiers:bonusRule.tiers}; const data=await withAdminActionConfirmation({actionKey:'settings.recharge-bonus.update',method:'PUT',path:'/api/settings/recharge-bonus',payload,run:(token)=>requestClient.put<BonusRule>('/settings/recharge-bonus',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)}); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; message.success('充值赠送规则已保存'); }
   catch(error:any){ message.error(error?.response?.data?.message||'保存充值赠送规则失败'); }
   finally { bonusSaving.value=false; }
 }
@@ -55,12 +56,19 @@ async function loadSettings() {
 async function saveSettings() {
   saving.value = true;
   try {
-    const data = await requestClient.put<PaymentSettings>('/settings/payment', {
+    const payload = {
       apiKey: apiKey.value,
       clearApiKey: clearApiKey.value,
       receiveAddress: settings.receiveAddress,
       usdtContract: settings.usdtContract,
       enabled: settings.enabled,
+    };
+    const data = await withAdminActionConfirmation({
+      actionKey: 'settings.payment.update',
+      method: 'PUT',
+      path: '/api/settings/payment',
+      payload,
+      run: (token) => requestClient.put<PaymentSettings>('/settings/payment', payload, token ? { headers: { 'X-Admin-Action-Confirmation': token } } : undefined),
     });
     Object.assign(settings, data);
     apiKey.value = '';
