@@ -92,7 +92,7 @@ async function saveGateway(provider: 'epusdt' | 'gmpay') {
     apiKey.value = ''; clearApiKey.value = false;
     epusdtSecret.value = ''; clearEpusdtSecret.value = false;
     gmpaySecret.value = ''; clearGmpaySecret.value = false;
-    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存 TRC20 配置' : 'GMPay Edge 配置已保存并应用');
+    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存并应用' : 'GMPay Edge 配置已保存并应用');
   } catch (error: any) { message.error(error?.response?.data?.message || '支付网关配置保存失败'); }
   finally { saving.value = false; }
 }
@@ -180,9 +180,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
       </a-form>
     </a-card>
     <a-card :bordered="false" :loading="loading" title="Epusdt 网关">
-      <template #extra><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag></template>
-      
-      <template #extra><a-switch v-model:checked="settings.epusdtEnabled" /></template>
+      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.epusdtEnabled" /></div></template>
       <a-form layout="vertical">
         <a-form-item label="Epusdt 服务地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
         <a-form-item label="Epusdt 商户 PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
@@ -191,8 +189,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
       </a-form>
     </a-card>
     <a-card :bordered="false" :loading="loading" title="GMPay Edge 网关">
-      <template #extra><a-tag :color="settings.gmpayEnabled ? 'success' : 'default'">{{ settings.gmpayEnabled ? '已启用' : '未启用' }}</a-tag></template>
-      <template #extra><a-switch v-model:checked="settings.gmpayEnabled" /></template>
+      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.gmpayEnabled ? 'success' : 'default'">{{ settings.gmpayEnabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.gmpayEnabled" /></div></template>
       <a-form layout="vertical">
         <a-form-item label="GMPay Edge 服务地址" required><a-input v-model:value="settings.gmpayBaseUrl" placeholder="https://gmpay.example.com" autocomplete="url"/></a-form-item>
         <a-form-item label="GMPay Edge 商户 PID" required><a-input v-model:value="settings.gmpayPid" autocomplete="off"/></a-form-item>
