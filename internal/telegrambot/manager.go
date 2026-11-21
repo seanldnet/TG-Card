@@ -1144,6 +1144,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	}
 	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID); if m.db!=nil { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(chatID,10),strconv.FormatInt(query.From.ID,10)) } }
 	if m.db != nil {
+		if !strings.HasPrefix(query.Data,"shop:manualstart:") { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(chatID,10),strconv.FormatInt(query.From.ID,10)) }
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
 		if !m.isOwner(cfg,query.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",query.From.ID,banErr);_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法验证账号状态");return };if banned { _ = m.answerCallback(ctx,cfg.Token,query.ID,"账号已被限制使用");return } }
 	}
