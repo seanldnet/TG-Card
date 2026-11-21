@@ -1,10 +1,19 @@
-## 2026-11-21 — P1 业务风险 Owner 主动告警（开发中）
+## 2026-11-21 — P1 管理员 TOTP 双重验证（开发中）
 
-- 当前 main 基线：`bf4b5a1b36f780b5e0ca1c4695d5cbcb35f48c1f`（PR #93 已合并）；独立分支：`feat/business-owner-alert-thresholds-p1`。
+- 当前 main 基线：`c02ad8fc2db50212affcfa948226dfb79f5b9ba7`（PR #94 已合并）；独立分支：`feat/admin-totp-two-factor-p1`。
+- 新增 RFC 6238 TOTP（6 位、30 秒周期、±1 时间步），启用需当前密码 + 验证器确认；已启用管理员登录需密码 + Cap（如启用）+ TOTP。
+- TOTP 密钥使用现有 AES-GCM Secret Manager 加密存储；数据库只存密文，绑定采用 pending→confirm→enabled 状态转换；关闭需当前密码与 TOTP。
+- 新增安全设置页面、登录动态码输入、独立限流和管理员审计；迁移 0054_admin_totp.sql，无新增环境变量。
+- 当前限制：暂未提供一次性恢复码，生产启用前需确认验证器备份/账户恢复流程。
+- 当前状态：代码、迁移、测试和文档已提交独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未生产验收。
+
+## 2026-11-21 — P1 业务风险 Owner 主动告警（PR #94 已合并）
+
+- PR #94 已 Squash Merge 至 main，merge commit `c02ad8fc2db50212affcfa948226dfb79f5b9ba7`；独立分支：`feat/business-owner-alert-thresholds-p1`。
 - 新增每分钟业务告警巡检：最近三笔终态交付连续失败、退款账本冲突达到 3 笔、delivery/procurement uncertain 最久等待达到 15 分钟、Cap 连续失败 3 次、API P95 达到 1500ms（至少 20 个样本）、数据库连接池耗尽。
 - 告警复用站点 `risk_alert` Telegram 配置，并通过 `finance_exception_alerts` 按告警类型/小时幂等去重；通知只含风险计数与处理提示。
 - 不自动重发交付、不自动退款、不修改余额或采购状态；无数据库迁移、无新增环境变量/后台配置。
-- 当前状态：代码、测试与阈值文档已提交独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未生产验收。
+- PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security/Docker Publish workflows 待最终确认。Owner 真实 Telegram 通知验收仍待执行。
 
 ## 2026-11-21 — P1 业务数据大盘与运行指标（PR #93 已合并）
 
@@ -217,9 +226,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.49
-> - 源码核对基线：main 分支，commit `bf4b5a1b36f780b5e0ca1c4695d5cbcb35f48c1f`；PR #93 已合并
-> - 本次文档更新：记录 P1 业务风险 Owner 主动告警阈值
+> - 文档版本：2.2.50
+> - 源码核对基线：main 分支，commit `c02ad8fc2db50212affcfa948226dfb79f5b9ba7`；PR #94 已合并
+> - 本次文档更新：记录 P1 管理员 TOTP 双重验证
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
