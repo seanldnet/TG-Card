@@ -124,13 +124,17 @@ func (m *Manager) CreateGMPayEdgeCheckout(ctx context.Context, order database.Or
 
 func (m *Manager) createGMPayCheckoutForProvider(ctx context.Context, order database.Order, provider string) (string,error) {
 	m.mu.RLock()
-	client,notifyURL:=m.gateway,m.gatewayNotifyURL
-	if provider == "gmpay_edge" { client,notifyURL=m.gmpayEdge,m.gmpayEdgeNotifyURL }
+	client,notifyURL,providerEnabled:=m.gateway,m.gatewayNotifyURL,m.gatewayEnabled
+	if provider == "gmpay_edge" { client,notifyURL,providerEnabled=m.gmpayEdge,m.gmpayEdgeNotifyURL,m.gmpayEdgeEnabled }
 	m.mu.RUnlock()
 	if client==nil || notifyURL=="" { return "",ErrGatewayDisabled }
 	if order.ID=="" || order.OrderNo=="" || len(order.OrderNo)>32 || order.Status!="pending_payment" || order.AmountMinor<=1 || order.Currency!="USDT" {
 		return "",errors.New("order is not eligible for GMPay checkout (USDT amount must exceed 0.01 and order number must be at most 32 characters)")
 	}
+	existingIntent, existingErr := database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,order.OrderNo)
+	if existingErr != nil && !errors.Is(existingErr,sql.ErrNoRows) { return "",existingErr }
+	if existingErr == nil && existingIntent.Provider != provider { return "",fmt.Errorf("order is already assigned to provider %q",existingIntent.Provider) }
+	if !providerEnabled && (existingErr != nil || existingIntent.ProviderTradeID == "") { return "",ErrGatewayDisabled }
 	intent,created,err:=database.CreatePaymentIntentForProvider(ctx,m.db,m.driver,order.ID,provider)
 	if err!=nil{return "",err}
 	if intent.Status=="paid"{return "",errors.New("order is already paid")}
