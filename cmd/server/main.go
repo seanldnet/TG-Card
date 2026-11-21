@@ -666,11 +666,11 @@ func (a *application) sendAdminEmailCode(w http.ResponseWriter,r *http.Request) 
 	password,err:=a.secrets.Decrypt(settings.SMTPPasswordCiphertext);if err!=nil{writeError(w,http.StatusInternalServerError,"无法读取 SMTP 密码");return}
 	n,err:=rand.Int(rand.Reader,big.NewInt(900000));if err!=nil{writeError(w,http.StatusInternalServerError,"无法生成验证码");return}
 	code:=fmt.Sprintf("%06d",100000+n.Int64())
+	hash:=sha256.Sum256([]byte(code))
+	if err:=database.SaveAdminEmailCode(r.Context(),a.db,a.driver,claims.AdminID,input.Email,hex.EncodeToString(hash[:] ),time.Now().Add(10*time.Minute));err!=nil{log.Printf("save admin email verification code: %v",err);writeError(w,http.StatusInternalServerError,"验证码保存失败");return}
 	body:="To: "+input.Email+"\r\nFrom: "+settings.SMTPFromName+" <"+settings.SMTPFromEmail+">\r\nSubject: TG-Card 邮箱绑定验证码\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n你的邮箱绑定验证码是："+code+"，10 分钟内有效。若非本人操作，请忽略此邮件。"
 	port:=settings.SMTPPort;if port==0{port=587}
 	if err:=sendSMTPMessage(r.Context(),settings.SMTPHost,port,settings.SMTPUsername,password,settings.SMTPFromEmail,[]string{input.Email},[]byte(body),settings.SMTPUseTLS);err!=nil{log.Printf("send admin email verification: %v",err);writeError(w,http.StatusBadGateway,"验证码邮件发送失败："+err.Error());return}
-	hash:=sha256.Sum256([]byte(code))
-	if err:=database.SaveAdminEmailCode(r.Context(),a.db,a.driver,claims.AdminID,input.Email,hex.EncodeToString(hash[:] ),time.Now().Add(10*time.Minute));err!=nil{log.Printf("save admin email verification code: %v",err);writeError(w,http.StatusInternalServerError,"验证码已发送，但验证码状态保存失败，请重新发送");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.code.send","email:"+input.Email,a.clientIP(r),r.UserAgent(),"verification code sent")
 	writeSuccess(w,http.StatusOK,map[string]int{"expiresInSeconds":600})
 }
