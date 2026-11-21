@@ -61,7 +61,7 @@ Important operational limits:
 - A transfer detected only after order expiry is not automatically credited, even if its block timestamp is close to expiry; it requires manual reconciliation.
 - Unmatched, underpaid, overpaid, expired, or ambiguous transfers are not automatically refunded or credited. A dedicated transaction ledger and reconciliation UI are still future work.
 - No wallet signing, sweeping, withdrawals, or refunds are implemented.
-- GMPay protocol client (HMAC-SHA256 signing, create-order request, and order query request) is implemented in PR #116. Epusdt merchant configuration (gateway URL, PID, encrypted Secret) is implemented in PR #117. Telegram checkout integration, provider callback verification, payment-state transition, delivery handoff, and live merchant acceptance are not implemented yet.
+- GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) are merged. Telegram checkout, callback verification, order settlement and delivery handoff are implemented in PR #121 and remain subject to PR checks and release.
 
 Configure the following in the server .env before enabling real payments:
 
@@ -157,7 +157,7 @@ When a refund is blocked because an active re-delivery lease exists, the support
 - 拒绝退款不修改订单、卡密、钱包余额或资金流水。订单必须先由交付恢复/人工核实流程收敛到明确状态。
 
 
-## Epusdt GMPay merchant configuration (merged; checkout lifecycle pending)
+## Epusdt GMPay merchant configuration (PR #116/#117 merged)
 
 The GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) are merged. Merchant credentials are managed in the existing administrator payment settings. The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
 
