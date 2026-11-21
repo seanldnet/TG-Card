@@ -47,7 +47,7 @@
 - 迁移 0054_admin_totp.sql 为 admins 增加加密 active/pending secret、enabled 标志和启用时间；不新增环境变量。
 - 新增 TOTP 算法与 provisioning URI 单元测试、管理员 TOTP 状态持久化测试。
 - 绑定密钥只在初始化时显示一次；请在启用前先保存至验证器应用。PR #96 补充一次性恢复码，恢复码也只显示一次；生产启用前仍需完成真实绑定和恢复码登录验收。
-- PR #95 的 Go/Admin/Security CI 与真实登录验收待完成；未合并、未发布。
+- PR #95 已合并；Go/Admin/Security/Docker Publish 均通过，GHCR digest：`sha256:b51ec8ed881cf73d52e2038e6f68a3064b3c818b0e59132970df2339b77fa17a`。真实管理员绑定、动态码登录与恢复码登录仍待生产验收。
 
 # 安全加固记录
 
