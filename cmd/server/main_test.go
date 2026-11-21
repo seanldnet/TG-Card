@@ -120,7 +120,7 @@ func TestAdminLoginRequiresValidTOTPWhenEnabled(t *testing.T) {
 	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
 	ciphertext,err:=secrets.Encrypt(secretValue);if err!=nil{t.Fatal(err)}
 	if err:=database.SetAdminTOTPPendingSecret(ctx,db,"sqlite",admin.ID,ciphertext);err!=nil{t.Fatal(err)}
-	if err:=database.EnableAdminTOTP(ctx,db,"sqlite",created.ID);err!=nil{t.Fatal(err)}
+	if err:=database.EnableAdminTOTP(ctx,db,"sqlite",admin.ID);err!=nil{t.Fatal(err)}
 	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
 	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
 	login:=func(code string)int{
