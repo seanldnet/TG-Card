@@ -84,6 +84,7 @@ func TestFileCardUncertainManualClaimRequiresAllStepsResolved(t *testing.T) {
 		DeliveryType: "file_card", DeliveryConfigJSON: `{"fileId":"test-file"}`, Status: 1,
 	})
 	if err != nil { t.Fatal(err) }
+	if _,err:=ImportProductKeys(ctx,db,driver,product.ID,[]StockSecret{{Ciphertext:"test-ciphertext",Fingerprint:"test-fingerprint-"+suffix}});err!=nil{t.Fatal(err)}
 	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM products WHERE id="+placeholder(driver,1), product.ID) }()
 	order, err := CreateOrder(ctx, db, driver, "file-card-bot-"+suffix, "file-card-user-"+suffix, "12345", product.ID, time.Minute)
 	if err != nil { t.Fatal(err) }
