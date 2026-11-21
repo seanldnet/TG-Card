@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -116,6 +117,11 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
 		return "",errors.New("Epusdt response is missing or mismatches order_id, trade_id or payment_url; duplicate create blocked")
 	}
+	if err:=validateGMPayCheckoutURL(data.PaymentURL);err!=nil {
+		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
+		m.bots.Notify("risk_alert","GMPay 返回了不安全的收银台链接，已阻止向用户展示。订单："+order.OrderNo+"\n请在 Epusdt 商户后台核对原支付单。","")
+		return "",fmt.Errorf("Epusdt returned an unsafe payment URL: %w",err)
+	}
 	if data.Status!=1 && data.Status!=2 {
 		state:="create_uncertain"
 		if data.Status==3{state="expired"}
@@ -144,6 +150,15 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		if status=="paid"{return "",errors.New("order payment has already been confirmed")}
 	}
 	return data.PaymentURL,nil
+}
+
+
+func validateGMPayCheckoutURL(raw string) error {
+	parsed,err:=url.Parse(strings.TrimSpace(raw))
+	if err!=nil || parsed.Scheme!="https" || parsed.Host=="" || parsed.User!=nil {
+		return errors.New("cashier URL must be an absolute HTTPS URL without embedded credentials")
+	}
+	return nil
 }
 
 func formatMinor(value int64) string {
