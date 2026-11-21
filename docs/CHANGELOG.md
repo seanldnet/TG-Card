@@ -1,3 +1,15 @@
+## 2026-11-22 — Epusdt GMPay 商户配置（开发中）
+
+- 状态：开发中，等待 PR 审查与 CI。
+- PR / Commit：分支 `feat/epusdt-gmpay-settings`，基于 main `b4b1f19`。
+- 影响模块：支付设置 API、Admin 支付设置页面、`payment_settings` 数据表。
+- 变更内容：增加网关地址、PID、加密 Secret、启用状态；读取接口不返回密钥明文或密文；保留 TRC20 字段与行为。
+- 数据库迁移：0058，旧数据以空值/关闭默认兼容。
+- 配置/部署影响：无需环境变量；升级启动时自动迁移。需管理员在支付设置页手工填写 Epusdt 商户参数。
+- 兼容性与已知限制：本 PR 不接通下单、回调、订单支付确认或发货；启用开关仅保存配置状态。
+- 验证：待 PR CI；无真实支付验收。
+- 发布镜像：未发布。
+
 ## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（PR #114 已合并并发布镜像）\n\n- 新增每日调度器，默认每日 03:00（服务器本地时区）执行；后台网站设置可启用/停用并调整时间。\n- 使用容器内 `pg_dump` 导出 PostgreSQL，连同 `/app/data` 持久化文件打包为 `.tar.gz`，通过 Telegram Bot `sendDocument` 发送给主人，附带 SHA-256 校验值。\n- Docker runtime 增加 `postgresql-client`；现有手动备份/恢复脚本不变；无数据库迁移、无新增环境变量。\n- 独立分支 `feat/scheduled-backup-owner-delivery`；CI 与生产验收待完成。\n- PROJECT_STATUS 文档版本更新至 2.2.68。\n\n## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
 
 - 状态：项目所有者已确认本轮测试均无问题。
