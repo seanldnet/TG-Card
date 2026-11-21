@@ -744,7 +744,7 @@ func TestAdminTOTPRecoveryCodesAreSingleUse(t *testing.T) {
 	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"recovery-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
 	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
 	if err:=SetAdminTOTPPendingSecret(ctx,db,cfg.DBDriver,admin.ID,"encrypted-pending-secret");err!=nil{t.Fatal(err)}
-	codes:=[]string{"JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP","MZXW6YTBOI======MZXW6YTBOI======"}
+	codes:=[]string{"JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP","MZXW6YTBOI======MZXW6YTBOI======","KRSXG5DSNFXGOIDB","ONSWG4TFOQ======","IFBEGRCFIZDUQ==="}
 	if err:=EnableAdminTOTPWithRecoveryCodes(ctx,db,cfg.DBDriver,admin.ID,codes);err!=nil{t.Fatal(err)}
 	loaded,err:=FindAdminByID(ctx,db,cfg.DBDriver,admin.ID);if err!=nil{t.Fatal(err)}
 	if loaded.TOTPRecoveryCodeHashes==""||loaded.TOTPRecoveryCodeHashes=="[]"{t.Fatal("recovery code hashes were not persisted")}
