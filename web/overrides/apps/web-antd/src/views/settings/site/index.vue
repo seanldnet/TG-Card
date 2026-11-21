@@ -11,13 +11,33 @@ interface SiteSettings {
  telegramAdminChatId:string;telegramGroupChatId:string;telegramNotifyOrderCreated:boolean;telegramNotifyPaymentSuccess:boolean;telegramNotifyDeliverySuccess:boolean;telegramNotifySupportCreated:boolean;telegramNotifyStockLow:boolean;telegramNotifyDailyReport:boolean;telegramNotifyRiskAlert:boolean;stockAutoUnlistOnZero:boolean;stockAutoRelistOnRestock:boolean;
  capEnabled:boolean;capDomain:string;capSiteKey:string;capSecret:string;backupEnabled:boolean;backupTime:string;
 }
-const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),capSecretConfigured=ref(false),activeTab=ref('basic');
+const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),capSecretConfigured=ref(false),backupEncryptionKeyConfigured=ref(false),backupEncryptionKeySaving=ref(false),activeTab=ref('basic');
+const backupEncryptionPassphrase=ref('');
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false,capEnabled:false,capDomain:'',capSiteKey:'',capSecret:'',backupEnabled:true,backupTime:'03:00'});
-async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.smtpPassword='';form.capSecret='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
+async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean;backupEncryptionPassphraseConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;backupEncryptionKeyConfigured.value=!!data.backupEncryptionPassphraseConfigured;form.smtpPassword='';form.capSecret='';backupEncryptionPassphrase.value='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
 async function save(){saving.value=true;try{const payload={...form};const data=await withAdminActionConfirmation({actionKey:'settings.site.update',method:'PUT',path:'/api/settings/site',payload,run:(token)=>requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.capSecret='';message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
 async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error('无法读取图标文件');return false;}if(image.size>20*1024*1024){message.warning('网站图标不能超过 20 MB');return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body,{headers:{'Content-Type':'multipart/form-data'}});form.siteLogo=result.siteLogo;message.success('网站图标上传成功，请保存设置');}catch(error:any){message.error(error?.response?.data?.message||'网站图标上传失败');}finally{logoUploading.value=false;}return false;}
+function generateBackupEncryptionKey(){
+ try{
+  const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const bytes=crypto.getRandomValues(new Uint8Array(32));
+  backupEncryptionPassphrase.value=Array.from(bytes,(byte)=>alphabet[byte&63]).join('');
+  message.success('已生成 32 位随机备份密钥，请保存后妥善保管');
+ }catch{message.error('当前浏览器无法安全生成随机密钥');}
+}
+async function saveBackupEncryptionKey(){
+ if(backupEncryptionPassphrase.value.length<32){message.warning('备份加密密钥至少需要 32 个字符');return;}
+ backupEncryptionKeySaving.value=true;
+ const payload={passphrase:backupEncryptionPassphrase.value};
+ try{
+  await withAdminActionConfirmation({actionKey:'settings.site.backup_encryption.update',method:'PUT',path:'/api/settings/site/backup-encryption-key',payload,run:(token)=>requestClient.put('/settings/site/backup-encryption-key',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
+  backupEncryptionKeyConfigured.value=true;backupEncryptionPassphrase.value='';
+  message.success('数据库备份加密密钥已保存');
+ }catch(error:any){message.error(error?.response?.data?.message||'保存备份加密密钥失败');}
+ finally{backupEncryptionKeySaving.value=false;}
+}
 async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success('测试邮件已发送，请检查收件箱');}catch(error:any){message.error(error?.response?.data?.message||'测试邮件发送失败');}finally{testing.value=false;}}
 async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success('Telegram 测试通知已发送');}catch(error:any){message.error(error?.response?.data?.message||'Telegram 测试通知失败');}finally{testing.value=false;}}
 onMounted(load);
@@ -117,7 +137,22 @@ onMounted(load);
       <a-form layout="vertical">
        <a-form-item label="每日备份时间"><a-time-picker v-model:value="form.backupTime" format="HH:mm" value-format="HH:mm" class="w-full" :minute-step="5" /></a-form-item>
       </a-form>
-      <div class="text-xs text-gray-500">备份发送失败时会记录服务端错误日志，并尝试向主人发送失败通知。备份文件通过 Telegram 文档消息发送。</div>
+      <a-divider />
+      <div class="mb-2 text-sm font-semibold">数据库备份加密密钥</div>
+      <a-form layout="vertical">
+       <a-form-item label="32 位备份加密密钥">
+        <a-input-password v-model:value="backupEncryptionPassphrase" autocomplete="new-password" :maxlength="128" placeholder="请输入密钥，或点击生成密钥" />
+       </a-form-item>
+      </a-form>
+      <a-space wrap>
+       <a-button size="small" @click="generateBackupEncryptionKey">生成密钥</a-button>
+       <a-button size="small" type="primary" :loading="backupEncryptionKeySaving" :disabled="backupEncryptionPassphrase.length<32" @click="saveBackupEncryptionKey">保存密钥</a-button>
+       <a-tag v-if="backupEncryptionKeyConfigured" color="success">已配置</a-tag>
+       <a-tag v-else color="warning">未配置</a-tag>
+      </a-space>
+      <a-alert class="mt-3" type="warning" show-icon message="密钥至少 32 个字符。请在保存后立即复制并存入密码管理器或离线安全位置；丢失密钥将无法解密备份。更换密钥只影响之后生成的备份，旧备份仍必须使用原密钥恢复。" />
+      <div class="mt-3 text-xs text-gray-500">网站保存的密钥用于每日自动备份。服务器命令行手动备份/恢复仍需在运行命令的环境中提供 BACKUP_ENCRYPTION_PASSPHRASE。</div>
+      <div class="mt-3 text-xs text-gray-500">备份发送失败时会记录服务端错误日志，并尝试向主人发送失败通知。备份文件通过 Telegram 文档消息发送。</div>
      </div>
     </a-tab-pane>
     <a-tab-pane key="cap">
