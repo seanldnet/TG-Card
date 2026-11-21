@@ -1,4 +1,20 @@
-## 当前状态摘要（2026-11-22；文档版本 2.2.72）
+## 当前状态摘要（2026-11-22；文档版本 2.2.73）
+
+## 2026-11-22 — 后台菜单与三支付通道整合（PR 待创建；独立分支开发中）
+
+- 独立分支：`feat/admin-menu-payment-provider-ux`；基线为 PR #121 合并后的 main。
+- 已完成的界面调整：侧边菜单按仪表盘、运营管理、商品管理、财务管理、系统设置分组；支付设置增加统一支付方式选择卡，包含内置 TRC20 USDT、GMPay Edge、Epusdt 三个独立开关；商户凭证表单拆分；清理已识别的非必要信息提示。
+- 已完成的后端基础：GMPay Edge 独立凭证加密存储、启动/保存时独立加载；独立回调入口；签名查单 `GET /payments/gmpay/v1/order/query`；支付意图保存 provider 快照，拒绝同一订单切换服务商；Epusdt 与 GMPay Edge 托管收银台目前可按启用通道轮询分配。
+- 尚未完成：三种通道（包括内置 TRC20）的统一三路轮询、完整 Telegram 端支付选择/恢复路径、跨服务商交易事件隔离审查、Go/Admin/Security CI。当前分支代码不得视为已发布或生产可用。
+- 数据库迁移 0060 新增 GMPay Edge 独立配置及支付意图 provider 字段；需通过 SQLite 与 PostgreSQL 迁移/回归测试。
+- PR #121 已合并：merge commit `e0961fe4dd9a45dc203a91da2274c19ae9af0bc1`；main Go/Admin/Security CI 均成功；Docker Publish run `44944468809` 成功，镜像 digest：`sha256:6b5a98cafdcff3ab75201834c18c82d4f1033a717ec912b6f788e19562ef04e8`。
+
+## 2026-11-22 — Epusdt + GMPay 商城支付闭环（PR #121 已合并并发布；文档版本 2.2.72）
+
+- 独立分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`；PR #121 已合并，merge commit `e0961fe4dd9a45dc203a91da2274c19ae9af0bc1`。
+- Go 后端 CI、Admin 前端 CI、安全扫描均通过；Docker Publish run `44944468809` 成功。
+- 镜像：`ghcr.io/seanldnet/tg-card:latest`；OCI digest：`sha256:6b5a98cafdcff3ab75201834c18c82d4f1033a717ec912b6f788e19562ef04e8`。
+- 已完成商品/购物车收银台、Epusdt GMPay 回调验签、查单、订单支付确认与交付交接、幂等及异常保护。支付配置完成与真实通道收款验收仍分别记录。
 
 ## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；文档版本 2.2.72）
 
