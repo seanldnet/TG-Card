@@ -133,11 +133,11 @@ func (c *GatewayClient) CreateGMPayOrder(ctx context.Context, fields map[string]
 	payload["pid"] = c.pid
 	delete(payload, "signature")
 	payload["signature"] = SignGMPay(payload, c.secret)
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
+	values := url.Values{}
+	for key, value := range payload {
+		values.Set(key, value)
 	}
-	return c.doJSON(ctx, http.MethodPost, "/payments/gmpay/v1/order/create-transaction", body)
+	return c.doFormJSON(ctx, "/payments/gmpay/v1/order/create-transaction", values.Encode())
 }
 
 // QueryGMPayOrder queries exactly one merchant order_id or provider trade_id.
@@ -166,41 +166,68 @@ func (c *GatewayClient) CreateEPayOrder(ctx context.Context, fields map[string]s
 	for key, value := range payload {
 		values.Set(key, value)
 	}
-	return c.doJSON(ctx, http.MethodPost, "/payments/epay/v1/order/create-transaction/submit.php", []byte(values.Encode()))
+	return c.doEPayRedirect(ctx, "/payments/epay/v1/order/create-transaction/submit.php", values.Encode())
+}
+
+func (c *GatewayClient) doFormJSON(ctx context.Context, path, form string) (map[string]json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form))
+	if err != nil { return nil, err }
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	return c.executeJSON(req)
+}
+
+// EPay submit.php responds with HTTP 302, not JSON. Capture its cashier URL.
+func (c *GatewayClient) doEPayRedirect(ctx context.Context, path, form string) (map[string]json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form))
+	if err != nil { return nil, err }
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "text/plain")
+	client := *c.http
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
+	if err != nil { return nil, fmt.Errorf("payment gateway request: %w", err) }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return nil, fmt.Errorf("EPay gateway returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	location := strings.TrimSpace(resp.Header.Get("Location"))
+	if location == "" { return nil, errors.New("EPay gateway redirect did not include Location") }
+	checkoutURL, err := url.Parse(location)
+	if err != nil { return nil, fmt.Errorf("invalid EPay checkout redirect: %w", err) }
+	base, _ := url.Parse(c.baseURL)
+	checkoutURL = base.ResolveReference(checkoutURL)
+	if checkoutURL.Scheme != "https" && checkoutURL.Scheme != "http" { return nil, errors.New("EPay checkout redirect has an unsupported scheme") }
+	encoded, _ := json.Marshal(checkoutURL.String())
+	return map[string]json.RawMessage{"payment_url": encoded}, nil
 }
 
 func (c *GatewayClient) doJSON(ctx context.Context, method, path string, body []byte) (map[string]json.RawMessage, error) {
 	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
+	if body != nil { reader = bytes.NewReader(body) }
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
-	if err != nil {
-		return nil, err
-	}
-	if method == http.MethodPost {
-		if strings.HasSuffix(path, "submit.php") {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		} else {
-			req.Header.Set("Content-Type", "application/json")
-		}
-	}
+	if err != nil { return nil, err }
 	req.Header.Set("Accept", "application/json")
+	return c.executeJSON(req)
+}
+
+func (c *GatewayClient) executeJSON(req *http.Request) (map[string]json.RawMessage, error) {
 	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("payment gateway request: %w", err)
-	}
+	if err != nil { return nil, fmt.Errorf("payment gateway request: %w", err) }
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("payment gateway returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
 	var result map[string]json.RawMessage
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("decode payment gateway response: %w", err)
+	}
+	var status struct { StatusCode int `json:"status_code"`; Message string `json:"message"` }
+	if err := json.Unmarshal(data, &status); err == nil && status.StatusCode != 0 && status.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("payment gateway business error %d: %s", status.StatusCode, status.Message)
 	}
 	return result, nil
 }
