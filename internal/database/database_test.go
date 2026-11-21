@@ -772,3 +772,16 @@ func TestAdminRefreshTokenRotationAndReplayRevokesFamily(t *testing.T) {
 	if _,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-hash-1","refresh-hash-3","access-hash-3",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenReplay{t.Fatalf("reuse of old refresh token should detect replay, got %v",err)}
 	if _,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-hash-2","refresh-hash-4","access-hash-4",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenReplay{t.Fatalf("replay must revoke successor in the same family, got %v",err)}
 }
+
+
+func TestAdminRefreshTokenRejectsChangedTokenVersion(t *testing.T) {
+	ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"refresh-version-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
+	now:=time.Now()
+	if err:=CreateAdminRefreshSession(ctx,db,"sqlite",admin.ID,admin.TokenVersion,"refresh-version-hash","refresh-version-family",now.Add(7*24*time.Hour));err!=nil{t.Fatal(err)}
+	if err:=UpdateAdminPassword(ctx,db,"sqlite",admin.ID,"new-password-hash");err!=nil{t.Fatal(err)}
+	if _,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-version-hash","refresh-version-new","refresh-version-access",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenVersionMismatch{t.Fatalf("changed admin token version must invalidate refresh session, got %v",err)}
+}
