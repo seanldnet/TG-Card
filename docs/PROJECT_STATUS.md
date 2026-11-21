@@ -9,22 +9,22 @@
 - 当前状态：独立 PR 开发中；Go/Admin/Security CI、真实浏览器二次确认验收待完成；未合并、未发布。
 - 文档版本：2.2.54。
 
-## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
+## 2026-11-21 — 管理员登出即时撤销 Access Session（PR #99 已合并并发布）
 
-- 当前 main 基线：`6fda2ab7c18a8b0f90ace3c7da9672ab0a60bd27`（PR #97 已合并）；本项独立分支：`fix/admin-logout-revoke-access-session-p1`。
+- PR #99 已 Squash Merge 至 main，merge commit `cdba7015b67b87a29a30b1bad946c91ec7701bdd`；独立分支：`fix/admin-logout-revoke-access-session-p1`。
 - 审查 PR #97 后发现 Vben Admin 上游 `logoutApi` 使用 `baseRequestClient`，只携带 HttpOnly refresh cookie，不携带 Authorization Bearer；服务端因此只能撤销 refresh family，当前浏览器的 access session 会在最多 15 分钟内继续有效。
 - 新增 Vben auth API override，登出改用认证 `requestClient`，同时携带 Bearer 与 HttpOnly Cookie；新增 HTTP 回归测试验证登出后原 Bearer 立即返回 401。
-- 无数据库迁移、无新增环境变量；Go/Admin/Security CI 待本 PR 验证。真实浏览器登录/刷新/登出验收待执行。未合并、未发布。
+- PR #99 Go/Admin/Security/Docker Publish 全部通过；GHCR manifest digest：`sha256:a425567f2d947a85aa5cb950974cc99e69420fe2f7a03f7b4eff0c780866bbe5`。无数据库迁移、无新增环境变量；真实浏览器登录/刷新/登出验收仍待部署后执行。
 - 文档版本：2.2.53。
 
-## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（开发中）
+## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（PR #97 已合并并发布）
 
-- 当前 main 基线：`45dda335062f5ae8a5b053f92b98588006a9ce3e`（PR #96 已合并）；独立分支：`feat/admin-refresh-token-rotation-p1`。
+- PR #97 已 Squash Merge 至 main，merge commit `6fda2ab7c18a8b0f90ace3c7da9672ab0a60bd27`；独立分支：`feat/admin-refresh-token-rotation-p1`。
 - Access Token 缩短为 15 分钟；Refresh Token 有效期 7 天，通过 HttpOnly、SameSite=Lax Cookie（`/api/auth`）下发，不返回给前端 JS。
 - 刷新接口与 Vben Admin 既有 `refreshTokenApi` 协议兼容；每次刷新轮换 refresh token，并在数据库仅存 SHA-256 token hash。
 - 检测已撤销 refresh token 重放时，撤销整个 token family 并记录管理员审计与全局异常；密码/TOTP 状态变化通过 token_version 使旧 refresh session 失效。
 - 登出可通过 HttpOnly refresh cookie 撤销会话族；新增迁移 `0056_admin_refresh_sessions.sql`，无新增环境变量。
-- 当前状态：独立 PR 开发中；Go/Admin/Security CI、SQLite/PostgreSQL 轮换/重放测试及真实浏览器刷新验收待完成；未合并、未发布。
+- PR #97 Go/Admin/Security/Docker Publish 全部通过；GHCR manifest digest：`sha256:69947b55083b12bfe18e0952687ebab792ad1728493f394eb1ad6ec918c944f5`。SQLite 轮换/重放测试通过；PostgreSQL 专项测试在 CI 未配置 `TEST_POSTGRES_DSN` 时会跳过；真实浏览器刷新验收仍待执行。
 
 ## 2026-11-21 — P1 TOTP 一次性恢复码（PR #96 已合并）
 
