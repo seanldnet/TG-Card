@@ -6,13 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
-BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_ENCRYPTION_PASSPHRASE:-}"
 case "$BACKUP_KEEP" in ''|*[!0-9]*) echo "BACKUP_KEEP must be a positive integer" >&2; exit 2;; esac
 if [ "$BACKUP_KEEP" -lt 1 ]; then echo "BACKUP_KEEP must be at least 1" >&2; exit 2; fi
-if [ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 32 ]; then
-  echo "BACKUP_ENCRYPTION_PASSPHRASE must be configured with at least 32 characters; refusing plaintext backup" >&2
-  exit 2
-fi
 mkdir -p "$BACKUP_DIR"
 BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
 chmod 700 "$BACKUP_DIR"
@@ -22,15 +17,25 @@ final_dir="$BACKUP_DIR/tg-card-$timestamp"
 cleanup(){ [ ! -d "$tmp_dir" ] || rm -rf "$tmp_dir"; }
 trap cleanup EXIT
 
+validate_backup_secret() {
+  if [ -n "${BACKUP_CRYPT_BIN:-}" ]; then
+    "$BACKUP_CRYPT_BIN" validate
+  else
+    docker compose run --rm --no-deps -T --entrypoint /app/backup-crypt app validate
+  fi
+}
+
 backup_crypt() {
   local action="$1" input="$2" output="$3"
   if [ -n "${BACKUP_CRYPT_BIN:-}" ]; then
-    BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_ENCRYPTION_PASSPHRASE" "$BACKUP_CRYPT_BIN" "$action" "$input" "$output"
+    BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_ENCRYPTION_PASSPHRASE:-}" "$BACKUP_CRYPT_BIN" "$action" "$input" "$output"
   else
-    docker compose run --rm --no-deps -T -v "$tmp_dir:/backup" -e BACKUP_ENCRYPTION_PASSPHRASE --entrypoint /app/backup-crypt app \
+    docker compose run --rm --no-deps -T -v "$tmp_dir:/backup" --entrypoint /app/backup-crypt app \
       "$action" "/backup/$(basename "$input")" "/backup/$(basename "$output")"
   fi
 }
+
+validate_backup_secret
 
 echo "[1/4] Dumping PostgreSQL database..."
 docker compose exec -T db pg_dump -U tgcard -d tgcard --format=custom --no-owner > "$tmp_dir/postgres.dump"
