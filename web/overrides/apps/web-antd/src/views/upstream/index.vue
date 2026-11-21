@@ -71,7 +71,7 @@ function openResolve(item:ProcurementItem){
 }
 async function submitResolve(){
  if(!resolveNote.value.trim()){message.warning('请填写供应商侧核实依据');return;}
- if(resolveResolution.value==='accepted'&&!/^\\d+$/.test(resolveExternalOrderID.value.trim())){message.warning('供应商已受理时必须填写有效的上游订单 ID');return;}
+ if(resolveResolution.value==='accepted'&&!/^\d+$/.test(resolveExternalOrderID.value.trim())){message.warning('供应商已受理时必须填写有效的上游订单 ID');return;}
  actionLoading.value=resolveOrderId.value;
  try{
   await requestClient.post('/upstream/procurements/'+resolveOrderId.value+'/resolve',{
