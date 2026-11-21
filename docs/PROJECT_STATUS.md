@@ -13,7 +13,7 @@
 - TOTP 密钥使用现有 AES-GCM Secret Manager 加密存储；数据库只存密文，绑定采用 pending→confirm→enabled 状态转换；关闭需当前密码与 TOTP。
 - 新增安全设置页面、登录动态码输入、独立限流和管理员审计；迁移 0054_admin_totp.sql，无新增环境变量。
 - 后续 PR #96 补充一次性恢复码，生产启用前仍需完成真实管理员验证器绑定与恢复码登录验收。
-- PR #95 Go/Admin/Security CI 全部通过并已合并；合并后 Go/Admin/Security/Docker Publish 工作流正在执行。生产验收待完成。
+- PR #95 Go/Admin/Security/Docker Publish 全部通过；GHCR manifest digest：`sha256:b51ec8ed881cf73d52e2038e6f68a3064b3c818b0e59132970df2339b77fa17a`。真实管理员绑定验收待完成。
 
 ## 2026-11-21 — P1 业务风险 Owner 主动告警（PR #94 已合并）
 
