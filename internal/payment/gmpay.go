@@ -63,7 +63,7 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	intent,created,err:=database.CreateEpusdtPaymentIntent(ctx,m.db,m.driver,order.ID)
 	if err!=nil{return "",err}
 	if intent.Status=="paid"{return "",errors.New("order is already paid")}
-	if intent.Status=="late_payment" || intent.Status=="amount_mismatch" || intent.Status=="duplicate_payment" {return "",errors.New("payment requires manual reconciliation")}
+	if intent.Status=="late_payment" || intent.Status=="amount_mismatch" || intent.Status=="asset_mismatch" || intent.Status=="duplicate_payment" {return "",errors.New("payment requires manual reconciliation")}
 	if intent.Status=="expired" {return "",errors.New("Epusdt payment order has expired")}
 	if !created {
 		if intent.ProviderTradeID=="" {
@@ -266,6 +266,16 @@ func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]strin
 		return nil
 	}
 	if intent.ProviderTradeID=="" { if err:=database.SetEpusdtPaymentIntentTradeID(ctx,m.db,m.driver,intent.OrderID,tradeID);err!=nil{return err} }
+	if !strings.EqualFold(strings.TrimSpace(fields["token"]), "USDT") {
+		amount, _ := parseMinor(fields["amount"])
+		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"asset_mismatch",PayloadJSON:payloadJSON})
+		if recordErr!=nil{return recordErr}
+		if inserted {
+			_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,intent.OrderID,"asset_mismatch",fields["block_transaction_id"])
+			m.bots.Notify("risk_alert","GMPay 回调支付币种与订单要求不一致，已阻止自动入账。订单："+orderNo+"\n要求：USDT/TRON\n回调币种："+fields["token"]+"\n交易："+tradeID,"")
+		}
+		return nil
+	}
 	amount,amountErr:=parseMinor(fields["amount"])
 	if amountErr!=nil || amount!=intent.AmountMinor {
 		if amountErr!=nil{amount=0}
