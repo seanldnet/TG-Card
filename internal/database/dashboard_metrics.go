@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -16,6 +17,8 @@ type DashboardBusinessMetrics struct {
 	DeliveryUncertainOldestAt string `json:"deliveryUncertainOldestAt"`
 	DeliveryUncertainOldestAgeSeconds int64 `json:"deliveryUncertainOldestAgeSeconds"`
 	ProcurementUncertainCount int64 `json:"procurementUncertainCount"`
+	ProcurementUncertainOldestAt string `json:"procurementUncertainOldestAt"`
+	ProcurementUncertainOldestAgeSeconds int64 `json:"procurementUncertainOldestAgeSeconds"`
 	RefundConflictCount int64 `json:"refundConflictCount"`
 }
 
@@ -40,7 +43,32 @@ func GetDashboardBusinessMetrics(ctx context.Context, db *sql.DB, driver string,
 			if out.DeliveryUncertainOldestAgeSeconds<0 {out.DeliveryUncertainOldestAgeSeconds=0}
 		}
 	}
-	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM upstream_procurements WHERE status='uncertain'").Scan(&out.ProcurementUncertainCount);err!=nil{return out,err}
+	var procurementOldest sql.NullString
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1),MIN(updated_at) FROM upstream_procurements WHERE status='uncertain'").Scan(&out.ProcurementUncertainCount,&procurementOldest);err!=nil{return out,err}
+	if procurementOldest.Valid {
+		out.ProcurementUncertainOldestAt=procurementOldest.String
+		if parsed,err:=time.Parse(time.RFC3339Nano,procurementOldest.String);err==nil {
+			out.ProcurementUncertainOldestAgeSeconds=int64(now.UTC().Sub(parsed).Seconds())
+			if out.ProcurementUncertainOldestAgeSeconds<0 {out.ProcurementUncertainOldestAgeSeconds=0}
+		}
+	}
 	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM system_exceptions WHERE category='refund_ledger' AND status IN ('open','processing')").Scan(&out.RefundConflictCount);err!=nil{return out,err}
 	return out,nil
+}
+
+// RecentDeliveryFailureStreak returns the consecutive failed outcomes among the latest terminal delivery orders.
+func RecentDeliveryFailureStreak(ctx context.Context,db *sql.DB,limit int)(int,string,error){
+	if limit<1||limit>20{limit=3}
+	rows,err:=db.QueryContext(ctx,"SELECT status,updated_at FROM orders WHERE status IN ('delivered','delivery_failed') ORDER BY updated_at DESC,created_at DESC LIMIT "+fmt.Sprint(limit))
+	if err!=nil{return 0,"",err}
+	defer rows.Close()
+	streak:=0;latestAt:=""
+	for rows.Next(){
+		var status,updatedAt string
+		if err:=rows.Scan(&status,&updatedAt);err!=nil{return 0,"",err}
+		if latestAt==""{latestAt=updatedAt}
+		if status!="delivery_failed"{break}
+		streak++
+	}
+	return streak,latestAt,rows.Err()
 }
