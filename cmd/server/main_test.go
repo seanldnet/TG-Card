@@ -12,6 +12,7 @@ import (
  "github.com/seanldnet/TG-Card/internal/auth"
  "github.com/seanldnet/TG-Card/internal/config"
  "github.com/seanldnet/TG-Card/internal/database"
+ "github.com/seanldnet/TG-Card/internal/secret"
 )
 
 func TestLogoutRevokesOnlyCurrentAdminBearerSession(t *testing.T) {
@@ -106,4 +107,28 @@ func TestRetryOrderDeliveryBlocksUnsafeExternalSideEffectRetries(t *testing.T) {
    if saved.Status!=tc.status{t.Fatalf("blocked retry changed order state to %q, want %q",saved.Status,tc.status)}
   })
  }
+}
+
+
+func TestAdminLoginRequiresValidTOTPWhenEnabled(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"});if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	created,err:=database.EnsureAdmin(ctx,db,"sqlite","totp-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	secretValue,err:=auth.GenerateTOTPSecret();if err!=nil{t.Fatal(err)}
+	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
+	ciphertext,err:=secrets.Encrypt(secretValue);if err!=nil{t.Fatal(err)}
+	if err:=database.SetAdminTOTPPendingSecret(ctx,db,"sqlite",created.ID,ciphertext);err!=nil{t.Fatal(err)}
+	if err:=database.EnableAdminTOTP(ctx,db,"sqlite",created.ID);err!=nil{t.Fatal(err)}
+	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
+	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
+	login:=func(code string)int{
+		body,_:=json.Marshal(loginRequest{Username:"totp-admin",Password:"a-strong-test-password",TOTPCode:code})
+		req:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body));req.RemoteAddr="192.0.2.11:12345"
+		response:=httptest.NewRecorder();app.login(response,req);return response.Code
+	}
+	if status:=login("");status!=http.StatusUnauthorized{t.Fatalf("missing TOTP code status=%d want 401",status)}
+	if status:=login("123456");status!=http.StatusUnauthorized{t.Fatalf("invalid TOTP code status=%d want 401",status)}
+	code,err:=auth.TOTPCode(secretValue,time.Now());if err!=nil{t.Fatal(err)}
+	if status:=login(code);status!=http.StatusOK{t.Fatalf("valid TOTP login status=%d want 200",status)}
 }
