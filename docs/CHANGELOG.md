@@ -9,7 +9,7 @@
 
 <!-- 历史记录说明：本文件按时间倒序。下方旧条目中的“开发中/待验收/CI pending”等仅描述对应日期的阶段状态；若与顶部最新记录冲突，以顶部最新记录及 PROJECT_STATUS.md 当前状态为准。 -->
 
-## 2026-11-22 — 后台菜单与三支付通道整合及验收状态校准（PR #122 已合并并发布；PROJECT_STATUS 2.2.76）
+## 2026-11-22 — 后台菜单与三支付通道整合（历史阶段记录；PROJECT_STATUS 当时版本 2.2.76）
 
 - 分支/PR：`feat/admin-menu-payment-provider-ux` / #122；已 Squash Merge，merge commit `0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`。
 - 后台侧边栏已按仪表盘、运营管理、商品管理、财务管理、系统设置分类；支付设置分别配置内置 TRC20 USDT、GMPay Edge、Epusdt，凭据相互独立。
@@ -200,35 +200,35 @@
 - 新增 SQLite/PostgreSQL 共用回归测试，断言活动交付期间退款不改变订单状态、钱包余额或退款流水。
 - 无数据库迁移、环境变量或 API 契约变化；PR #89 Go/Admin/Security CI 及合并后 Docker Publish 均成功；GHCR manifest digest：`sha256:ecbcb456eb6e2eb19057d3338b2705ac09e7d0e6a563a338096340eff6d71eb9`。PROJECT_STATUS 文档版本更新至 2.2.44。
 
-## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
+## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（当日开发阶段快照；后续状态见后续合并记录）
 
 - 新增只读核验：已退款且来源快照明确为 upstream 的订单，必须存在对应 `upstream_procurements` 生命周期记录。
 - 若缺少采购生命周期记录，登记 critical 财务异常，提示无法核对供应商退款状态。
 - 新增回归测试，确认检测器不补建采购记录、不修改订单状态。
 - PROJECT_STATUS 文档版本更新至 2.2.43；PR CI 待验证。
 
-## 2026-11-21 — P0-4 退款状态一致性核对（开发中）
+## 2026-11-21 — P0-4 退款状态一致性核对（当日开发阶段快照；后续状态见后续合并记录）
 
 - 扩展只读退款完整性检查：检查本地订单与上游采购队列是否同时标记为 `refunded`。
 - 检测订单已退款但采购队列未退款，以及采购队列已退款但订单未退款两类状态分裂，并写入财务异常中心。
 - 新增回归测试覆盖双向状态不一致，并验证检查器不会修改订单或采购状态。
 - 文档版本：PROJECT_STATUS 2.2.42；PR CI 待验证。
 
-## 2026-11-21 — P0-4 交付结果不确定 Owner 告警（开发中）
+## 2026-11-21 — P0-4 交付结果不确定 Owner 告警（当日开发阶段快照；后续状态见后续合并记录）
 
 - Telegram 交付请求已发出但网络/响应不确定时，继续将订单保持在 `delivery_uncertain` 隔离状态，并更新异常原因。
 - 新增按订单 ID 唯一认领的一次性 Owner 风险告警；复用现有 `risk_alert` 通知配置，不在租约恢复或重复扫描时重复发送。
 - 告警包含本地订单号、结果不确定原因和人工核实提示；不包含卡密、支付凭据或 Telegram Bot Token。
 - 新增测试验证同一订单重复触发只通知一次。真实 Telegram 网络响应丢失场景待部署验收。
 
-## 2026-11-21 — 订单与资金补偿机制 P0-4（开发中）
+## 2026-11-21 — 订单与资金补偿机制 P0-4（当日开发阶段快照；后续状态见后续合并记录）
 
 - 新增 `ReconcileMissingUpstreamProcurements`：只恢复已付款、状态仍为 `procurement_pending`、来源快照为 upstream 且缺少采购队列行的订单。
 - 恢复队列沿用本地订单号/订单 ID 幂等键，并以原始 `paid_at` 加采购超时配置计算 deadline；不会因恢复操作延长采购期限。
 - 调度器每轮领取采购任务前先执行缺失队列扫描；仅补建队列，不修改订单支付信息、钱包余额或资金账本。
 - 新增回归测试覆盖恢复、重复扫描幂等、支付信息不变和钱包账本不变。PR head CI 结果待验证。
 
-## 2026-11-21 — 分步骤交付状态机 P0-3（开发中）
+## 2026-11-21 — 分步骤交付状态机 P0-3（当日开发阶段快照；后续状态见后续合并记录）
 
 - 状态：独立分支 `feat/stepwise-delivery-state-machine-p0-3`，基于 main@0a8895d54bbac02a78743b8692192c8ed66ea072。
 - 背景：PR #71 已阻止不确定 file_card 整单重试，防止重复发送已成功文件，但也导致前一步成功、后一步明确失败时只能整单人工介入。
@@ -481,7 +481,7 @@
 - 项目所有者确认：售后附件转发相关测试已亲自完成且无异常；将“用户提交图片/文件后由对应 Bot 转发给 Owner，Owner 收到原始媒体”这一子项记录为所有者实测通过。
 - 证据边界：本次未提供测试镜像 digest、设备、订单/工单号或截图；不将本次确认绑定到 PR #38 镜像，也不补造测试证据。
 - PR #27 C1–C4 其余交互验收、菜单全链路、补发/退款全分支、CDN Network 检查仍待完成；阶段一尚未清零。
-- 同步纠正 PR #38 状态：已合并并发布，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署/验收未确认，Dujiao-Next 正常对接已由项目所有者确认完成。
+- 同步纠正 PR #38 状态：已合并并发布，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；项目所有者已确认 Dujiao-Next 正常对接完成，不再追加 PR E 真实商户验收。
 - 本次为验收记录修订，不代表阶段完成；文档版本号待阶段一全部完成后按强制规则递增。
 
 ## 2026-11-19 — Dujiao-Next PR D 资金安全深化（PR #38 已合并并发布）
@@ -522,7 +522,7 @@
 - 状态：PR #30（PR2）已合并至 main；Go CI、Admin CI、安全扫描、Docker Publish 全部成功。项目所有者确认生产已更新至 PR2 镜像，PR #19、#26、#28 与 PR2 验收按默认通过处理，验收日期 2026-11-19。
 - PR2 merge commit：`75a635a6c5e9c68e8fc23c229f932119dca46a93`；Publish Run [#44324284760](https://github.com/seanldnet/TG-Card/actions/runs/44324284760)；GHCR multi-platform manifest digest：`sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。
 - Go CI [#44324284650](https://github.com/seanldnet/TG-Card/actions/runs/44324284650)、Admin CI [#44324284642](https://github.com/seanldnet/TG-Card/actions/runs/44324284642)、Security [#44324284777](https://github.com/seanldnet/TG-Card/actions/runs/44324284777) 均成功。
-- PR #19/#26/#28 与 PR2 的本次验收项均使用生产 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录为已验收。PR #27 Owner Bot C1–C4 未被本次明确列入验收范围，继续待验收。
+- PR #19/#26/#28 与 PR2 的本次验收项均使用生产 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录为已验收。该阶段未覆盖 PR #27 Owner Bot C1–C4；项目所有者已于 2026-11-22 后续确认 C1–C4 全部验收通过。
 - 采购转发、供应商扣款、异步查单/回调、失败人工队列、退款审计现进入独立 PR C；PR D 资金安全已合并；Dujiao-Next 正常对接已由项目所有者确认完成。
 
 ## 2026-11-18 — PR2 资金与库存安全（已合并、发布并验收）
@@ -628,7 +628,7 @@
   - 后台本地旧商品在上游启用时置灰保留；上游商品禁止本地编辑、删除和导入卡密。
 - 数据库迁移：新增 0030–0034；兼容 SQLite/PostgreSQL。
 - 配置/部署影响：无新增环境变量；汇率、加价和同步间隔在后台配置；图片使用现有 DATA_DIR 持久化卷。
-- 兼容性与已知限制：当前订单结算为 USDT；非 USDT 上游币种必须人工配置“1 单位上游币种 = ? USDT”的汇率。每个 SKU 单独映射为商品；最多下载每商品前 5 张图片。上游采购/付款转发尚未实现，必须等待 PR C。
+- 兼容性与已知限制：当前订单结算为 USDT；非 USDT 上游币种必须人工配置“1 单位上游币种 = ? USDT”的汇率。每个 SKU 单独映射为商品；最多下载每商品前 5 张图片。该阶段上游采购/付款转发尚未实现；后续已由 PR C（PR #32）实现并合并，资金安全深化由 PR D（PR #38）实现并发布。
 - 验证：
   - 新增官方响应 JSON 结构、价格解析/汇率/加价、SKU 规格名称单元测试。
   - 新增 SQLite 源切换、事务回滚、缺失商品隐藏、图片失败保留、stale 标志和设置持久化测试。
@@ -674,7 +674,7 @@
 
 ## 2026-11-18 — 附件下载、静态资源与 PC 内容区修复
 
-- 状态：已合并至 main（PR #19）；镜像已发布（Publish Run #327 成功，digest 见下方发布核验记录）；真实环境验收未完成。
+- 历史状态：该 PR 合并并发布时，真实环境验收尚未完成；项目所有者随后于 2026-11-19 确认生产更新及对应验收通过，详见 PROJECT_STATUS.md 第 19.5 节。
 - 复现条件：售后附件端点依赖内存 Bot worker，下载失败日志不足；Vben 默认 Logo/头像使用 unpkg static-source；后台外层容器 max-width 限制大屏宽度。
 - 附件：`internal/telegrambot/manager.go` 从 `bots.token_ciphertext` 读取工单所属 Bot Token 并使用既有 decrypt 函数解密，不再依赖运行 worker；getFile 与下载链路分别设置超时；20 MiB 限制。
 - 附件错误与日志：`cmd/server/support.go` 区分附件失效、文件过大、Telegram 异常、未知错误；结构化记录 ticket/message/bot、脱敏 file_id 前缀、Telegram 错误码/描述和成功字节数，不记录 Token。
