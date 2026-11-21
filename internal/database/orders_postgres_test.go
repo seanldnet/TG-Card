@@ -347,12 +347,14 @@ func TestPostgresAdminActionConfirmationConcurrentSingleUse(t *testing.T) {
 	defer db.Close()
 	if err := Migrate(ctx, db, "postgres"); err != nil { t.Fatal(err) }
 
-	var adminID string
-	if err := db.QueryRowContext(ctx, "SELECT id FROM admins ORDER BY created_at LIMIT 1").Scan(&adminID); err != nil {
-		t.Fatal("PostgreSQL integration database must contain a bootstrap administrator:", err)
-	}
 	suffix, err := randomID()
 	if err != nil { t.Fatal(err) }
+	adminID := "step-up-admin-" + suffix
+	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(ctx, "INSERT INTO admins(id,username,password_hash,real_name,role,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", adminID, "step-up-pg-"+suffix, "test-hash", "Step-up Test", "super", 1, createdAt, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM admins WHERE id=$1", adminID) }()
 	tokenHash := "step-up-pg-" + suffix
 	if err := CreateAdminActionConfirmation(ctx, db, "postgres", adminID, "order.cleanup", "request-"+suffix, tokenHash, time.Now().Add(time.Minute)); err != nil {
 		t.Fatal(err)
