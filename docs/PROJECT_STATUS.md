@@ -1,4 +1,11 @@
-## 2026-11-21 — 订单与资金补偿机制 P0-4（开发中）
+## 2026-11-21 — 订单与资金补偿机制 P0-4（持续开发）
+
+- 最新 main 基线：`1a6f05cde287ecfd5ac52a33e02698d70d75bc63`（PR #85 已合并）；后续独立分支：`feat/procurement-reconciliation-owner-alerts-p0-4b`。
+- P0-4 第一项已交付：PR #85 的已付款上游订单缺失采购队列自动恢复。Go Backend CI、Admin Frontend CI、安全扫描均通过；合并后 Docker Publish 与 Go/Admin/Security push workflows 正在执行，待确认最新镜像结果。
+- 队列恢复只处理仍为 `procurement_pending`、已确认付款、来源明确为 upstream 且采购队列行缺失的订单；按原始付款时间恢复 deadline，幂等补建，不修改支付信息、钱包余额或资金流水。
+- P0-4 后续项：Telegram 交付请求出现网络/响应不确定时，订单已进入隔离状态，但此前缺少直接 Owner 通知。本分支增加按订单唯一键的一次性告警认领，复用 `risk_alert` 通知通道，避免每次租约/重试循环重复轰炸。
+- 新增回归测试验证同一订单不确定告警仅触发一次；Go/Admin/Security CI 待本分支验证。真实 Telegram 发送失败/响应丢失仍需真机验收。
+- 资金安全边界保持不变：不自动改余额、不自动退款、不盲目重发不确定交付；Owner 必须先核实 Telegram 是否已送达，再在后台处理异常订单。
 
 - 开发分支：`feat/order-fund-compensation-reconciliation-p0-4`，基于 main@c56d6322a6a16bd5ce71977e52152a82eeb9d1c1。
 - P0-3 分步骤 file_card 交付恢复 PR #84 已合并；Go CI、Admin CI、安全扫描与 Docker Publish 均成功。GHCR manifest digest：`sha256:50530060864b7ac04c8a5839e40b086e78049f3b7db4547103a2926eea001a75`。
@@ -139,9 +146,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.40
+> - 文档版本：2.2.41
 > - 源码核对基线：main 分支，commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；PR #83 已合并
-> - 本次文档更新：记录 P0-3 发布及 P0-4 订单采购队列缺失恢复开发进度
+> - 本次文档更新：记录 PR #85 采购队列恢复合并及 P0-4 交付不确定告警开发进度
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
