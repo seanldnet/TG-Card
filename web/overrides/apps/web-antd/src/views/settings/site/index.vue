@@ -49,7 +49,8 @@ onMounted(load);
        <a-col :xs="24" :md="12"><a-form-item label="SMTP 密码"><a-input-password v-model:value="form.smtpPassword" autocomplete="new-password" :placeholder="passwordConfigured?'已配置，留空保持不变':'请输入 SMTP 密码'" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="发件人名称"><a-input v-model:value="form.smtpFromName" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="发件人邮箱"><a-input v-model:value="form.smtpFromEmail" type="email" /></a-form-item></a-col>
-      </a-row><a-form-item label="SMTP TLS"><a-switch v-model:checked="form.smtpUseTLS" /></a-form-item></a-form>
+      </a-row><a-form-item label="SMTP TLS"><a-switch v-model:checked="form.smtpUseTLS" /></a-form-item>
+      <a-alert class="mb-4" type="info" show-icon message="加密连接说明：465 端口自动使用 SSL/TLS；587 端口自动使用 STARTTLS。开启 SMTP TLS 后，如果服务器不支持加密连接，系统会拒绝发送。邮箱用户名请填写完整邮箱地址，密码请填写邮箱 SMTP 授权码，而不是网页登录密码。" /></a-form>
       <a-form-item label="邮件通知收件邮箱（用于测试邮件及业务邮件通知）"><a-input v-model:value="form.contactEmail" type="email" placeholder="可选，填写接收通知的邮箱" /></a-form-item>
       <a-space wrap><a-button size="small" :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件</a-button></a-space>
      </div>
