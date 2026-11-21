@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/backupcrypto"
 )
 
 const scheduledBackupLastRunKey = "scheduled_backup_last_run_date"
@@ -110,6 +111,8 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if dsn == "" { return fmt.Errorf("DATABASE_URL is not configured") }
 	u, err := url.Parse(dsn); if err != nil { return fmt.Errorf("parse database URL: %w", err) }
+	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
+	if err := backupcrypto.ValidatePassphrase(passphrase); err != nil { return err }
 	tmp, err := os.MkdirTemp("", "tg-card-backup-*"); if err != nil { return err }
 	defer os.RemoveAll(tmp)
 	dumpPath := filepath.Join(tmp, "database.dump")
@@ -118,14 +121,18 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	if output, err := cmd.CombinedOutput(); err != nil { return fmt.Errorf("pg_dump failed: %w: %s", err, strings.TrimSpace(string(output))) }
 	archivePath := filepath.Join(tmp, "tg-card-backup-"+date+".tar.gz")
 	if err := writeBackupArchive(archivePath, dumpPath, a.dataDir); err != nil { return err }
-	file, err := os.Open(archivePath); if err != nil { return err }
+	if err := os.Remove(dumpPath); err != nil { return fmt.Errorf("remove plaintext database dump: %w", err) }
+	encryptedPath := archivePath + ".age"
+	if err := backupcrypto.EncryptFile(archivePath, encryptedPath, passphrase); err != nil { return err }
+	if err := os.Remove(archivePath); err != nil { return fmt.Errorf("remove plaintext backup archive: %w", err) }
+	file, err := os.Open(encryptedPath); if err != nil { return err }
 	defer file.Close()
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil { return err }
 	checksum := hex.EncodeToString(hash.Sum(nil))
 	if _, err := file.Seek(0, io.SeekStart); err != nil { return err }
-	caption := fmt.Sprintf("TG-Card 每日备份\n日期：%s\n内容：PostgreSQL 数据库 + 应用持久化文件\nSHA-256：%s", date, checksum)
-	return a.sendOwnerDocument(ctx, settings.TelegramOwnerID, archivePath, caption)
+	caption := fmt.Sprintf("TG-Card 每日加密备份（age）\n日期：%s\n内容：PostgreSQL 数据库 + 应用持久化文件\nSHA-256（密文）：%s", date, checksum)
+	return a.sendOwnerDocument(ctx, settings.TelegramOwnerID, encryptedPath, caption)
 }
 
 func passwordFromURL(u *url.URL) string { if u.User == nil { return "" }; p, _ := u.User.Password(); return p }

@@ -1,3 +1,26 @@
+## 2026-11-22 — 本地与每日备份 age 加密（PR #132 开发中；文档版本 2.2.84）
+
+- PR #132：`feat: encrypt local and scheduled backups with age`，独立分支 `feat/encrypted-backup-restore`，当前开放审查，未合并。
+- 本地 PostgreSQL dump 与 `/app/data` 归档在保留前使用 age scrypt 流式加密；清除明文中间文件，对密文生成 SHA-256 清单。
+- 每日 Telegram Owner 备份先加密再投递；未配置或口令不足 32 个非空白字符时 fail closed，沿用失败通知和 30 分钟重试。
+- 新增镜像内 `/app/backup-crypt` 工具；恢复流程先校验密文并解密到私有临时目录，成功后才停止应用并覆盖数据库/数据卷。
+- 保留旧版明文备份恢复兼容；新增隔离 Compose 测试覆盖密文备份、无明文归档、加密恢复和旧备份恢复。
+- 新增外部环境变量 `BACKUP_ENCRYPTION_PASSPHRASE`：至少 32 个非空白字符，必须保存在部署主机的外部秘密管理位置，不得写入 `/app/data`、数据库、仓库或备份文件。部署时需在未提交的 `.env` 中配置；未配置时新备份将拒绝以明文生成。
+- 数据库迁移：无。升级前的旧备份仍可恢复；新加密备份必须保留对应口令，否则无法解密。
+- PR #132 隔离 Docker Compose 加密备份/恢复集成测试已通过；Admin CI 与 Security Scan 已通过；Go CI 正在执行 go vet、完整 go test 和 build，最终结果待核对。镜像发布及 digest 尚未产生。
+- 生产部署、口令托管与真实生产恢复演练尚未验收。
+- 文档版本：2.2.84。
+
+## 2026-11-22 — 支付查单资金核验修复（PR #131 已合并；文档版本 2.2.83）
+
+- PR #131：`fix: verify provider query amount and asset before settlement`，独立分支 `fix/payment-query-amount-asset-verification`，已 Squash Merge；merge commit：`a0e878dbb43f796a8ca6aefa676b3d5be27dcc59`。
+- Epusdt 状态查询接口仅返回交易号与状态；查询状态为已支付后，额外读取 checkout-counter-resp 订单快照，并核对交易号、USDT 资产、USD 法币币种及订单金额，全部匹配才允许结算。
+- GMPay Edge 已支付查单结果同样核对交易号、USDT 资产、USD 法币币种及精确订单金额；缺失或不一致时记录支付事件、将支付意图标记为待人工核对并通知 Owner，不自动入账、不自动退款。
+- 新增 Epusdt 查单恢复成功、错误/缺失金额、错误/缺失资产的生命周期回归测试。
+- PR head Go CI run `44957507879`、Admin CI run `44957507876`、Security Scan run `44957507900` 全部成功；合并后 main Go CI run `44958227409`、Admin CI run `44958227483`、Security Scan run `44958227459`、Docker Publish run `44958227425` 全部成功。GHCR `latest` 与 commit tag `a0e878dbb43f796a8ca6aefa676b3d5be27dcc59` 已发布，OCI digest：`sha256:c47448cb5f32a1539e5bdab8f2e2caedae474d917e1cc82e2f77944e2550b8e8`。
+- 生产环境 Epusdt/GMPay Edge 真实商户查单和回调验收仍需目标环境确认；代码合并不代表生产验收。
+- 文档版本：2.2.83。
+
 ## 2026-11-22 — PR #129 manual 商品买家自助购买已合并并发布（文档版本 2.2.82）
 
 - PR #129：`feat: support single-item upstream manual fulfillment checkout`，独立分支 `feat/upstream-manual-buyer-checkout`，已 Squash Merge；merge commit：`8a55d5959bb30bbec03006e0121298dc51c6294f`。
@@ -789,11 +812,13 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 | TRON_RECEIVE_ADDRESS | 空字符串 | 否 | 旧配置/首次启动 TRON 收款地址导入；运行期配置以数据库为准。 |
 | TRON_USDT_CONTRACT | TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t | 否 | 首次导入时的 TRON USDT 合约默认值；后台保存后数据库配置为准。 |
 | DISABLE_CAP | false | 否 | 紧急禁用 Cap 人机验证；true 覆盖数据库 cap_enabled，Compose 需重建 app 容器加载新值。 |
+| BACKUP_ENCRYPTION_PASSPHRASE | 未设置时为空；每日备份与新建本地备份 fail closed | 使用加密备份时必填 | age scrypt 备份加密口令，至少 32 个非空白字符；必须在部署主机环境/.env 外部保管，不得放入 DATA_DIR 或备份归档。用于自动 Telegram 备份、本地 backup.sh 和 restore.sh 解密。 |
 | POSTGRES_PASSWORD | 无默认值；Compose 要求在环境或 .env 中提供 | **是（Compose 部署）** | PostgreSQL 密码，并用于拼接应用 DATABASE_URL。 |
 | POSTGRES_DB | Compose 固定 tgcard | 否（Compose 已设置） | PostgreSQL 初始化数据库名。 |
 | POSTGRES_USER | Compose 固定 tgcard | 否（Compose 已设置） | PostgreSQL 初始化用户名。 |
 
 补充说明：
+- BACKUP_ENCRYPTION_PASSPHRASE 由 docker-compose.yml 透传给 app，不由通用配置加载器读取；每日备份与 backup-crypt 工具直接读取该变量。未设置或长度不足时拒绝生成/投递明文备份。
 - SMTP_HOST、SMTP_PORT、BOT_TOKEN_ENCRYPTION_KEY 等变量不由当前配置加载器读取；SMTP 在后台站点设置配置，Bot Token 加密密钥由数据目录中的持久化密钥文件管理。
 - TRONGRID_API_KEY、TRON_RECEIVE_ADDRESS、TRON_USDT_CONTRACT 在 Compose 中仅作为旧配置导入入口；支付初始化后数据库配置为准。
 - 未在上述配置加载器和 Compose 文件中发现其他应用级环境变量。
@@ -832,7 +857,7 @@ CI 通过仅代表对应自动化检查通过；不能代替真实 Telegram Bot�
 - 保留升级前一致性数据库备份，以及 tg_card_data、postgres_data 持久化卷。
 - tg_card_data 包含 jwt-secret、bot-token.key 和上传文件。丢失或替换密钥可能导致现有会话失效、已加密 Bot Token/支付密钥无法解密。
 - 不要通过删除 Docker volumes 回滚。
-- Compose 备份/恢复脚本已存在并有专项说明；隔离 Docker Compose 自动恢复测试已随 PR #101 合并并通过 CI，镜像已发布。生产停机窗口、PostgreSQL PITR 和逐版本回滚矩阵仍待补充/验证；真实生产恢复演练尚未执行。
+- Compose 备份/恢复脚本已存在并有专项说明；隔离 Docker Compose 自动恢复测试已随 PR #101 合并并通过 CI，镜像已发布。加密备份实现以 PR #132 为准；生产停机窗口、PostgreSQL PITR 和逐版本回滚矩阵仍待补充/验证；真实生产恢复演练尚未执行。
 
 ## 16. API 接口索引
 

@@ -25,12 +25,13 @@ COPY go.mod ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /src/web/vben-admin/apps/web-antd/dist ./web/dist
-RUN go mod tidy && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server
+RUN go mod tidy && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/backup-crypt ./cmd/backup-crypt
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata postgresql-client && addgroup -S tgcard && adduser -S -G tgcard tgcard
 WORKDIR /app
 COPY --from=go-builder /out/tg-card /app/tg-card
+COPY --from=go-builder /out/backup-crypt /app/backup-crypt
 COPY --from=go-builder /src/web/dist /app/web/dist
 RUN mkdir -p /app/data && chown -R tgcard:tgcard /app
 USER tgcard

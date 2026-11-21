@@ -9,6 +9,16 @@ PROJECT="tg-card-backup-test-$$"
 export COMPOSE_PROJECT_NAME="$PROJECT"
 export COMPOSE_FILE="$TMP_DIR/docker-compose.yml"
 export POSTGRES_PASSWORD="isolated-backup-test-password"
+export BACKUP_ENCRYPTION_PASSPHRASE="isolated-ci-backup-passphrase-with-more-than-32-chars"
+export BACKUP_CRYPT_BIN="$TMP_DIR/backup-crypt"
+go build -o "$BACKUP_CRYPT_BIN" ./cmd/backup-crypt
+printf "%s" "preflight" > "$TMP_DIR/preflight.txt"
+if BACKUP_ENCRYPTION_PASSPHRASE="short" "$BACKUP_CRYPT_BIN" encrypt "$TMP_DIR/preflight.txt" "$TMP_DIR/should-not-exist.age"; then
+  echo "backup encryption unexpectedly accepted a weak passphrase" >&2
+  exit 1
+fi
+test ! -e "$TMP_DIR/should-not-exist.age"
+rm -f "$TMP_DIR/preflight.txt"
 BACKUP_DIR="$TMP_DIR/backups"
 RESTORE_STARTED=0
 
@@ -98,17 +108,31 @@ BACKUP_DIR="$BACKUP_DIR" BACKUP_KEEP=2 bash scripts/backup.sh
 BACKUP_FINISHED="$(date +%s)"
 BACKUP_PATH="$(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name 'tg-card-*' | head -n 1)"
 test -n "$BACKUP_PATH"
+test -f "$BACKUP_PATH/postgres.dump.age"
+test -f "$BACKUP_PATH/tg_card_data.tar.gz.age"
+test ! -e "$BACKUP_PATH/postgres.dump"
+test ! -e "$BACKUP_PATH/tg_card_data.tar.gz"
+if grep -a -q "test-encryption-key" "$BACKUP_PATH/tg_card_data.tar.gz.age"; then echo "encrypted backup unexpectedly contains plaintext key" >&2; exit 1; fi
 
 echo "[4/6] Mutating database and persistent files to simulate data loss..."
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE orders SET status='refunded' WHERE id='order-1'; DELETE FROM product_keys WHERE id='stock-1'; UPDATE settings SET value='false' WHERE key='cap_enabled';"
 docker compose exec -T app sh -c 'printf "%s" "corrupted-key" > /app/data/jwt-secret && rm -f /app/data/uploads/fixture.bin && printf "%s" "unexpected" > /app/data/extra.txt'
 SIMULATED_FAILURE_AT="$(date +%s)"
 
-echo "[5/6] Restoring with the production restore script and measuring elapsed time..."
+echo "[5/7] Verifying a wrong passphrase cannot begin destructive restore..."
+if BACKUP_ENCRYPTION_PASSPHRASE="wrong-ci-passphrase-that-is-long-enough-to-pass-validation" bash scripts/restore.sh "$BACKUP_PATH" --yes; then
+  echo "restore unexpectedly accepted the wrong passphrase" >&2
+  exit 1
+fi
+ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\r')"
+test "$ORDER_STATUS" = "refunded"
+docker compose ps --status running | grep -q 'app'
+
+echo "[6/7] Restoring with the production restore script and measuring elapsed time..."
 RESTORE_STARTED="$(date +%s)"
 bash scripts/restore.sh "$BACKUP_PATH" --yes
 
-echo "[6/6] Verifying database rows, key files, uploads, and running app container..."
+echo "[7/7] Verifying database rows, key files, uploads, and running app container..."
 ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\r')"
 STOCK_COUNT="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT COUNT(*) FROM product_keys WHERE id='stock-1' AND secret_ciphertext='encrypted-stock-secret'" | tr -d '\r')"
 CAP_ENABLED="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT value FROM settings WHERE key='cap_enabled'" | tr -d '\r')"
@@ -117,5 +141,17 @@ test "$STOCK_COUNT" = "1"
 test "$CAP_ENABLED" = "true"
 docker compose exec -T app sh -c 'test "$(cat /app/data/jwt-secret)" = "test-jwt-signing-key" && test "$(cat /app/data/bot-token.key)" = "test-encryption-key" && test "$(cat /app/data/uploads/fixture.bin)" = "original-upload" && test ! -e /app/data/extra.txt'
 docker compose ps --status running | grep -q 'app'
+
+echo "[7/7] Verifying backward compatibility with legacy plaintext backups..."
+LEGACY_BACKUP="$BACKUP_DIR/legacy-plaintext"
+mkdir -p "$LEGACY_BACKUP"
+"$BACKUP_CRYPT_BIN" decrypt "$BACKUP_PATH/postgres.dump.age" "$LEGACY_BACKUP/postgres.dump"
+"$BACKUP_CRYPT_BIN" decrypt "$BACKUP_PATH/tg_card_data.tar.gz.age" "$LEGACY_BACKUP/tg_card_data.tar.gz"
+(cd "$LEGACY_BACKUP" && sha256sum postgres.dump tg_card_data.tar.gz > SHA256SUMS)
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE orders SET status='refunded' WHERE id='order-1';"
+bash scripts/restore.sh "$LEGACY_BACKUP" --yes
+ORDER_STATUS="$(docker compose exec -T db psql -At -U tgcard -d tgcard -c "SELECT status FROM orders WHERE order_no='TG-BACKUP-ORDER-1'" | tr -d '\r')"
+test "$ORDER_STATUS" = "paid"
+
 RESTORE_FINISHED="$(date +%s)"
-echo "Isolated backup/restore integration test passed. Simulated data-loss window (RPO): $((SIMULATED_FAILURE_AT - BACKUP_FINISHED)) seconds. Restore-to-container-running RTO: $((RESTORE_FINISHED - RESTORE_STARTED)) seconds."
+echo "Encrypted and legacy backup/restore integration test passed. Simulated data-loss window (RPO): $((SIMULATED_FAILURE_AT - BACKUP_FINISHED)) seconds. Restore-to-container-running RTO: $((RESTORE_FINISHED - RESTORE_STARTED)) seconds."
