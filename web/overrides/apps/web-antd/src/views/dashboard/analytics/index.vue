@@ -10,6 +10,15 @@ interface Bot { id: string; name: string; username: string; status: number; }
 interface Product { id: string; name: string; status: number; stockCount: number; priceMinor: number; currency: string; }
 interface Order { id: string; orderNo: string; productName: string; amountMinor: number; currency: string; status: string; createdAt: string; }
 interface Ticket { id: string; status: string; }
+interface DashboardMetrics {
+  checkedAt: string;
+  delivery: { deliveredCount: number; deliveryFailedCount: number; deliveryUncertainWindowCount: number; deliverySuccessRate: number; deliveryUncertainCount: number; deliveryUncertainOldestAt: string; deliveryUncertainOldestAgeSeconds: number; procurementUncertainCount: number; refundConflictCount: number; };
+  upstreamSync: { enabled?: boolean; status: string; job?: { status: string; totalItems: number; processedItems: number; currentPage: number; errorCount: number; progressPercent: number; lastError: string; }; };
+  cap: { success: number; failure: number; total: number; successRatePercent: number; window: string; };
+  api: { p95Milliseconds: number; sampleCount: number; window: string; };
+  databasePool: { open: number; inUse: number; idle: number; maxOpen: number; waitCount: number; waitDurationMilliseconds: number; };
+  alerts: { refundConflicts: number; deliveryUncertain: number; procurementUncertain: number; };
+}
 const router = useRouter();
 const { width } = useWindowSize();
 const isMobile = computed(() => width.value < 768);
@@ -18,6 +27,7 @@ const bots = ref<Bot[]>([]);
 const products = ref<Product[]>([]);
 const orders = ref<Order[]>([]);
 const tickets = ref<Ticket[]>([]);
+const metrics = ref<DashboardMetrics | null>(null);
 const loadedAt = ref('');
 
 const activeBots = computed(() => bots.value.filter((x) => x.status === 1).length);
@@ -36,13 +46,15 @@ async function loadDashboard() {
       requestClient.get<Product[]>('/catalog/products'),
       requestClient.get<Order[]>('/orders'),
       requestClient.get<Ticket[]>('/support/tickets'),
+      requestClient.get<DashboardMetrics>('/dashboard/metrics'),
     ]);
     if (results[0].status === 'fulfilled') bots.value = results[0].value;
     if (results[1].status === 'fulfilled') products.value = results[1].value;
     if (results[2].status === 'fulfilled') orders.value = results[2].value;
     if (results[3].status === 'fulfilled') tickets.value = results[3].value;
+    if (results[4].status === 'fulfilled') metrics.value = results[4].value;
     const failures = results.filter((x) => x.status === 'rejected').length;
-    if (failures === 4) message.error('经营数据加载失败，请检查登录状态和服务日志');
+    if (failures === 5) message.error('经营数据加载失败，请检查登录状态和服务日志');
     else if (failures > 0) message.warning('部分经营数据暂时无法加载，已显示可获取的数据');
     loadedAt.value = new Date().toLocaleString();
   } finally {
@@ -60,6 +72,16 @@ function statusColor(status: string) {
   if (['delivery_failed','failed'].includes(status)) return 'error';
   return 'default';
 }
+function formatDuration(seconds: number) {
+  if (!seconds || seconds < 0) return '—';
+  if (seconds < 3600) return Math.floor(seconds / 60) + ' 分钟';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + ' 小时';
+  return Math.floor(seconds / 86400) + ' 天';
+}
+function syncStatusText(value: string) {
+  const labels: Record<string,string> = { not_started:'尚未同步', idle:'空闲', queued:'排队中', running:'同步中', cleaning:'清理中', success:'同步成功', failed:'同步失败', paused:'已暂停', cancelled:'已取消' };
+  return labels[value] || value || '未知';
+}
 function open(path: string) { void router.push(path); }
 function formatTime(value: string) { const d = new Date(value); return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString(); }
 onMounted(loadDashboard);
@@ -75,6 +97,50 @@ onMounted(loadDashboard);
       <a-button :loading="loading" @click="loadDashboard">刷新数据</a-button>
     </div>
 
+    <a-row v-if="metrics" :gutter="[12,12]">
+      <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">24 小时交付成功率</div>
+        <div class="mt-1 text-2xl font-semibold">{{ (metrics.delivery.deliverySuccessRate * 100).toFixed(1) }}%</div>
+        <a-progress class="mt-2" :percent="Math.round(metrics.delivery.deliverySuccessRate * 100)" :show-info="false"/>
+        <div class="mt-1 text-xs text-gray-500">成功 {{ metrics.delivery.deliveredCount }} · 失败 {{ metrics.delivery.deliveryFailedCount }}</div>
+      </a-card></a-col>
+      <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">待核实交付</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.delivery.deliveryUncertainCount }}</div>
+        <div class="mt-2 text-xs text-gray-500">最久等待 {{ formatDuration(metrics.delivery.deliveryUncertainOldestAgeSeconds) }}</div>
+        <div class="mt-1 text-xs text-gray-500">24 小时新增不确定 {{ metrics.delivery.deliveryUncertainWindowCount }}</div>
+      </a-card></a-col>
+      <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">退款账本冲突</div>
+        <div class="mt-1 text-2xl font-semibold" :class="metrics.alerts.refundConflicts ? 'text-red-600' : ''">{{ metrics.alerts.refundConflicts }}</div>
+        <div class="mt-2 text-xs text-gray-500">上游受理不确定 {{ metrics.alerts.procurementUncertain }} 笔</div>
+        <div class="mt-1 text-xs text-gray-500">交付不确定 {{ metrics.alerts.deliveryUncertain }} 笔</div>
+      </a-card></a-col>
+      <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">上游目录同步</div>
+        <div class="mt-1 text-lg font-semibold">{{ syncStatusText(metrics.upstreamSync.job?.status || metrics.upstreamSync.status) }}</div>
+        <a-progress v-if="metrics.upstreamSync.job" class="mt-2" :percent="Math.round(metrics.upstreamSync.job.progressPercent)" :show-info="false"/>
+        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} 项 · 第 {{ metrics.upstreamSync.job.currentPage }} 页</div>
+        <div v-else class="mt-2 text-xs text-gray-500">当前没有运行中的同步任务</div>
+      </a-card></a-col>
+    </a-row>
+    <a-row v-if="metrics" :gutter="[12,12]">
+      <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">Cap 验证成功率</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.cap.total ? metrics.cap.successRatePercent.toFixed(1) + '%' : '暂无样本' }}</div>
+        <div class="mt-2 text-xs text-gray-500">成功 {{ metrics.cap.success }} · 失败 {{ metrics.cap.failure }}（进程启动以来）</div>
+      </a-card></a-col>
+      <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">API P95 延迟</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.api.sampleCount ? metrics.api.p95Milliseconds.toFixed(1) + ' ms' : '暂无样本' }}</div>
+        <div class="mt-2 text-xs text-gray-500">最近 {{ metrics.api.sampleCount }} 次 API 请求</div>
+      </a-card></a-col>
+      <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
+        <div class="text-xs text-gray-500">数据库连接池</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.databasePool.inUse }} / {{ metrics.databasePool.maxOpen || '∞' }}</div>
+        <div class="mt-2 text-xs text-gray-500">空闲 {{ metrics.databasePool.idle }} · 等待次数 {{ metrics.databasePool.waitCount }}</div>
+      </a-card></a-col>
+    </a-row>
     <a-row :gutter="[12,12]">
       <a-col v-for="metric in [
         { title: '机器人', value: bots.length, hint: `运行中 ${activeBots} 个`, path: '/bots', icon: 'mdi:robot-outline', tone: 'text-blue-600 bg-transparent' },
