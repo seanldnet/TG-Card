@@ -69,21 +69,31 @@ async function loadSettings() {
   }
 }
 
-function settingsPayload() {
+async function settingsPayload(scope: 'tron' | 'epusdt' | 'gmpay') {
+  const saved = await requestClient.get<PaymentSettings>('/settings/payment');
   return {
-    apiKey: apiKey.value, clearApiKey: clearApiKey.value,
-    receiveAddress: settings.receiveAddress, usdtContract: settings.usdtContract, enabled: settings.enabled,
-    epusdtBaseUrl: settings.epusdtBaseUrl, epusdtPid: settings.epusdtPid,
-    epusdtSecret: epusdtSecret.value, clearEpusdtSecret: clearEpusdtSecret.value, epusdtEnabled: settings.epusdtEnabled,
-    gmpayBaseUrl: settings.gmpayBaseUrl, gmpayPid: settings.gmpayPid,
-    gmpaySecret: gmpaySecret.value, clearGmpaySecret: clearGmpaySecret.value, gmpayEnabled: settings.gmpayEnabled,
+    apiKey: scope === 'tron' ? apiKey.value : '',
+    clearApiKey: scope === 'tron' ? clearApiKey.value : false,
+    receiveAddress: scope === 'tron' ? settings.receiveAddress : saved.receiveAddress,
+    usdtContract: scope === 'tron' ? settings.usdtContract : saved.usdtContract,
+    enabled: scope === 'tron' ? settings.enabled : saved.enabled,
+    epusdtBaseUrl: scope === 'epusdt' ? settings.epusdtBaseUrl : saved.epusdtBaseUrl,
+    epusdtPid: scope === 'epusdt' ? settings.epusdtPid : saved.epusdtPid,
+    epusdtSecret: scope === 'epusdt' ? epusdtSecret.value : '',
+    clearEpusdtSecret: scope === 'epusdt' ? clearEpusdtSecret.value : false,
+    epusdtEnabled: scope === 'epusdt' ? settings.epusdtEnabled : saved.epusdtEnabled,
+    gmpayBaseUrl: scope === 'gmpay' ? settings.gmpayBaseUrl : saved.gmpayBaseUrl,
+    gmpayPid: scope === 'gmpay' ? settings.gmpayPid : saved.gmpayPid,
+    gmpaySecret: scope === 'gmpay' ? gmpaySecret.value : '',
+    clearGmpaySecret: scope === 'gmpay' ? clearGmpaySecret.value : false,
+    gmpayEnabled: scope === 'gmpay' ? settings.gmpayEnabled : saved.gmpayEnabled,
   };
 }
 
 async function saveGateway(provider: 'epusdt' | 'gmpay') {
   saving.value = true;
   try {
-    const payload = settingsPayload();
+    const payload = await settingsPayload(provider);
     const data = await withAdminActionConfirmation({
       actionKey: 'settings.payment.update', method: 'PUT', path: '/api/settings/payment', payload,
       run: (token) => requestClient.put<PaymentSettings>('/settings/payment', payload, token ? { headers: { 'X-Admin-Action-Confirmation': token } } : undefined),
@@ -92,7 +102,7 @@ async function saveGateway(provider: 'epusdt' | 'gmpay') {
     apiKey.value = ''; clearApiKey.value = false;
     epusdtSecret.value = ''; clearEpusdtSecret.value = false;
     gmpaySecret.value = ''; clearGmpaySecret.value = false;
-    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存并应用' : 'GMPay Edge 配置已保存并应用');
+    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存 TRC20 配置' : 'GMPay Edge 配置已保存并应用');
   } catch (error: any) { message.error(error?.response?.data?.message || '支付网关配置保存失败'); }
   finally { saving.value = false; }
 }
@@ -100,7 +110,7 @@ async function saveGateway(provider: 'epusdt' | 'gmpay') {
 async function saveSettings() {
   saving.value = true;
   try {
-    const payload = settingsPayload();
+    const payload = await settingsPayload('tron');
     const data = await withAdminActionConfirmation({
       actionKey: 'settings.payment.update',
       method: 'PUT',
