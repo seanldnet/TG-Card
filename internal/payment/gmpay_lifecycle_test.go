@@ -153,3 +153,37 @@ func TestGMPayStatusQueryCanRecoverMissingCallback(t *testing.T){
 	got,err:=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
 	if got.PaymentReference!="trade-query"{t.Fatalf("query recovery did not confirm payment: %+v",got)}
 }
+
+func TestGMPayCheckoutCreatesAndReusesOneProviderOrder(t *testing.T){
+	var creates atomic.Int32
+	var queries atomic.Int32
+	server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+		switch {
+		case r.Method==http.MethodPost&&r.URL.Path=="/payments/gmpay/v1/order/create-transaction":
+			creates.Add(1)
+			if err:=r.ParseForm();err!=nil{t.Error(err);return}
+			fields:=map[string]string{};for key:=range r.Form{fields[key]=r.Form.Get(key)}
+			if !VerifyGMPay(fields,"merchant-secret"){t.Error("create request signature is invalid")}
+			for key,want:=range map[string]string{"currency":"usd","token":"usdt","network":"tron","amount":"12.50","notify_url":"https://merchant.example/api/payment/epusdt/notify"}{if fields[key]!=want{t.Errorf("%s=%q want %q",key,fields[key],want)}}
+			w.Header().Set("Content-Type","application/json")
+			_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-created","order_id":"`+fields["order_id"]+`","amount":12.5,"currency":"USD","status":1,"expiration_time":1794700000,"payment_url":"https://checkout.example/pay-created"}}`)
+		case r.Method==http.MethodGet&&r.URL.Path=="/pay/check-status/trade-created":
+			queries.Add(1)
+			w.Header().Set("Content-Type","application/json")
+			_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-created","status":1}}`)
+		default:http.NotFound(w,r)
+		}
+	}))
+	defer server.Close()
+	m,db,order:=newGMPayTestManager(t);defer db.Close();defer m.bots.Stop()
+	configureTestGateway(t,m,server.URL)
+	paymentURL,err:=m.CreateGMPayCheckout(context.Background(),order)
+	if err!=nil{t.Fatal(err)}
+	if paymentURL!="https://checkout.example/pay-created"{t.Fatalf("payment URL=%q",paymentURL)}
+	paymentURL2,err:=m.CreateGMPayCheckout(context.Background(),order)
+	if err!=nil{t.Fatal(err)}
+	if paymentURL2!=paymentURL{t.Fatalf("reused payment URL=%q want %q",paymentURL2,paymentURL)}
+	if creates.Load()!=1||queries.Load()!=1{t.Fatalf("create calls=%d status queries=%d",creates.Load(),queries.Load())}
+	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
+	if intent.ProviderTradeID!="trade-created"||intent.Status!="pending"{t.Fatalf("unexpected persisted payment intent: %+v",intent)}
+}
