@@ -257,6 +257,7 @@ func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]strin
 		if inserted{m.bots.Notify("risk_alert","GMPay 回调交易号与本地支付单不一致，已阻止自动入账。订单："+orderNo+"\n本地交易："+intent.ProviderTradeID+"\n回调交易："+tradeID,"")}
 		return nil
 	}
+	if intent.ProviderTradeID=="" { if err:=database.SetEpusdtPaymentIntentTradeID(ctx,m.db,m.driver,intent.OrderID,tradeID);err!=nil{return err} }
 	amount,amountErr:=parseMinor(fields["amount"])
 	if amountErr!=nil || amount!=intent.AmountMinor {
 		if amountErr!=nil{amount=0}
