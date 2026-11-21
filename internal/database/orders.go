@@ -40,6 +40,7 @@ type Order struct {
 	DeliveryType string `json:"deliveryType"`
 	DeliveryConfigSnapshot string `json:"deliveryConfigSnapshot,omitempty"`
 	DeliveryPayloadJSON string `json:"deliveryPayloadJson,omitempty"`
+	UpstreamManualFormDataCiphertext string `json:"-"`
 	PromotionID string `json:"promotionId,omitempty"`
 	PromotionCode string `json:"promotionCode,omitempty"`
 	PromotionDiscountMinor int64 `json:"promotionDiscountMinor"`
@@ -64,6 +65,16 @@ func CreateOrderWithQuantity(ctx context.Context, db *sql.DB, driver, botID, tel
 }
 
 func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, quantity int, promotionCode string, ttl time.Duration) (Order, error) {
+	return createOrderWithPromotion(ctx,db,driver,botID,telegramUserID,telegramChatID,productID,quantity,promotionCode,"",ttl)
+}
+
+// CreateManualUpstreamOrderWithPromotion stores only authenticated ciphertext for buyer-supplied fulfillment data.
+func CreateManualUpstreamOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, promotionCode, formDataCiphertext string, ttl time.Duration) (Order,error) {
+	if strings.TrimSpace(formDataCiphertext)=="" || len(formDataCiphertext)>24000 { return Order{},fmt.Errorf("manual fulfillment data is missing or too large") }
+	return createOrderWithPromotion(ctx,db,driver,botID,telegramUserID,telegramChatID,productID,1,promotionCode,formDataCiphertext,ttl)
+}
+
+func createOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, telegramUserID, telegramChatID, productID string, quantity int, promotionCode, manualFormDataCiphertext string, ttl time.Duration) (Order, error) {
 	if quantity < 1 || quantity > 100 { return Order{}, fmt.Errorf("购买数量必须为 1-100") }
 	if ttl <= 0 { ttl = 20 * time.Minute }
 	tx, err := db.BeginTx(ctx, nil)
@@ -77,6 +88,9 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 	if err := tx.QueryRowContext(ctx, query, productID).Scan(&productName, &price, &currency, &status, &discountJSON, &deliveryType, &deliveryConfig, &sourceType, &upstreamProductID, &upstreamSKUID, &upstreamFulfillmentType); err != nil { return Order{}, err }
 	if status != 1 { return Order{}, fmt.Errorf("product is unavailable") }
 	if deliveryType == "" { deliveryType = "card" }
+	if sourceType=="upstream" && upstreamFulfillmentType=="manual" {
+		if quantity!=1 || manualFormDataCiphertext=="" { return Order{},fmt.Errorf("manual upstream orders require one item and validated buyer form data") }
+	} else if manualFormDataCiphertext!="" { return Order{},fmt.Errorf("manual form data is allowed only for manual upstream products") }
 	needsKeys := deliveryType == "card" || deliveryType == "file_card"
 	if !needsKeys && quantity != 1 { return Order{}, fmt.Errorf("该交付方式每笔订单仅支持购买 1 件") }
 	if price <= 0 { return Order{}, fmt.Errorf("product price must be greater than zero") }
@@ -139,7 +153,7 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 		AmountMinor:amount, PaymentAmountAtomic:paymentAmountAtomic, Currency:currency, Status:"pending_payment",
 		ExpiresAt:expires.Format(time.RFC3339Nano), CreatedAt:now.Format(time.RFC3339Nano),
 		UpdatedAt:now.Format(time.RFC3339Nano), DeliveryType:deliveryType, DeliveryConfigSnapshot:deliveryConfig, DeliveryPayloadJSON:"{}",
-		PromotionID:promotion.ID, PromotionCode:promotion.Code, PromotionDiscountMinor:promotionDiscount,
+		PromotionID:promotion.ID, PromotionCode:promotion.Code, PromotionDiscountMinor:promotionDiscount, UpstreamManualFormDataCiphertext:manualFormDataCiphertext,
 	}
 	update := "UPDATE product_keys SET status=1,order_id=" + placeholder(driver,1) + " WHERE id=" + placeholder(driver,2) + " AND status=0"
 	for _, keyID := range keyIDs {
@@ -150,10 +164,10 @@ func CreateOrderWithPromotion(ctx context.Context, db *sql.DB, driver, botID, te
 		if affected != 1 { return Order{}, fmt.Errorf("stock reservation conflict") }
 	}
 
-	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json,promotion_id,promotion_code,promotion_discount_minor,upstream_source_snapshot,upstream_product_id_snapshot,upstream_sku_id_snapshot,upstream_fulfillment_type_snapshot) VALUES("
-	for i:=1;i<=26;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
+	insert := "INSERT INTO orders(id,order_no,bot_id,telegram_user_id,telegram_chat_id,product_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at,payment_amount_atomic,delivery_type,delivery_config_snapshot,delivery_payload_json,promotion_id,promotion_code,promotion_discount_minor,upstream_source_snapshot,upstream_product_id_snapshot,upstream_sku_id_snapshot,upstream_fulfillment_type_snapshot,upstream_manual_form_data_ciphertext) VALUES("
+	for i:=1;i<=27;i++ { if i>1 { insert += "," }; insert += placeholder(driver,i) }
 	insert += ")"
-	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON,order.PromotionID,order.PromotionCode,order.PromotionDiscountMinor,sourceType,upstreamProductID,upstreamSKUID,upstreamFulfillmentType)
+	_, err = tx.ExecContext(ctx, insert, order.ID,order.OrderNo,order.BotID,order.TelegramUserID,order.TelegramChatID,order.ProductID,order.ProductName,order.UnitPriceMinor,order.Quantity,order.AmountMinor,order.Currency,order.Status,order.ExpiresAt,order.CreatedAt,order.UpdatedAt,order.PaymentAmountAtomic,order.DeliveryType,order.DeliveryConfigSnapshot,order.DeliveryPayloadJSON,order.PromotionID,order.PromotionCode,order.PromotionDiscountMinor,sourceType,upstreamProductID,upstreamSKUID,upstreamFulfillmentType,manualFormDataCiphertext)
 	if err != nil { return Order{}, err }
 	if promotion.ID != "" { if err := ReservePromotion(ctx, tx, driver, promotion, order.ID, telegramUserID, promotionDiscount, now); err != nil { return Order{}, err } }
 	if err := tx.Commit(); err != nil { return Order{}, err }
