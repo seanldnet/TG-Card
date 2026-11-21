@@ -3,7 +3,7 @@
 - Access Token 有效期缩短至 15 分钟；7 天 Refresh Token 使用 HttpOnly、SameSite=Lax Cookie。
 - 新增 refresh endpoint，兼容 Vben Admin 内置刷新客户端；每次刷新轮换令牌，数据库仅存哈希。
 - 检测 refresh token 重放后撤销整个会话族；登出撤销 refresh family，密码/TOTP 状态变更通过 token_version 使旧 refresh token 失效。
-- 新增迁移 `0056_admin_refresh_sessions.sql`，无新增环境变量。Go/Admin/Security CI 与浏览器验收待完成；PROJECT_STATUS 文档版本更新至 2.2.52。
+- 新增迁移 `0056_admin_refresh_sessions.sql`，无新增环境变量。Go/Admin/Security CI 已通过；修复 Vben logout 未携带 Bearer 导致 access session 不能即时撤销的问题，并修正 PostgreSQL 测试 fixture。PostgreSQL 专项测试在 CI 未配置 `TEST_POSTGRES_DSN` 时会跳过；真实浏览器刷新验收待执行。PROJECT_STATUS 文档版本更新至 2.2.52。
 
 ## 2026-11-21 — P1 TOTP 一次性恢复码（PR #96 已合并）
 
