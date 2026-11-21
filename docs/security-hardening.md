@@ -4,9 +4,10 @@
 - Refresh token 以 SHA-256 哈希保存；每次刷新旧 token 原子作废并创建新 token，同时创建短效 access session。
 - 已撤销 token 再次使用视为重放，撤销同一 family 下全部 refresh token，并写管理员审计和全局异常。
 - 密码/TOTP 修改导致 token_version 递增，refresh 时校验版本，旧 refresh family 随即失效。
-- 登出接口兼容 Vben Admin 通过 `withCredentials` 发送 refresh cookie 的调用方式。
+- Vben Admin refresh 使用 `baseRequestClient` + `withCredentials`，按其既有 `{ data, status }` 响应协议返回新 access token；登出改用认证 `requestClient`，同时提交 Bearer 与 HttpOnly refresh cookie，确保服务端即时撤销当前 access session 和 refresh family。
+- PostgreSQL 集成测试要求 `TEST_POSTGRES_DSN`；未配置时会显式 Skip，不将 SQLite 通过误报为 PostgreSQL 实测。
 
-## TOTP 一次性恢复码（PR #96 开发中）
+## TOTP 一次性恢复码（PR #96 已合并）
 
 - TOTP 绑定确认时生成 10 个 80-bit 随机 Base32 恢复码；每个仅可使用一次。
 - 恢复码明文只在启用成功响应中返回一次，响应设置 `Cache-Control: no-store`；数据库仅保存 SHA-256 哈希，不保存明文。
@@ -14,7 +15,7 @@
 - 关闭 TOTP 时清空全部恢复码；丢失验证器时可用一枚恢复码登录后重新配置验证器。
 - 用户必须在绑定完成页面复制并安全保存；离开页面后无法再次查看。剩余恢复码数量当前不向页面暴露。
 
-## 管理员 TOTP 双重验证（P1，PR #95 开发中）
+## 管理员 TOTP 双重验证（P1，PR #95 已合并）
 
 ### 设计
 
@@ -30,7 +31,7 @@
 - 迁移 0054_admin_totp.sql 为 admins 增加加密 active/pending secret、enabled 标志和启用时间；不新增环境变量。
 - 新增 TOTP 算法与 provisioning URI 单元测试、管理员 TOTP 状态持久化测试。
 - 绑定密钥只在初始化时显示一次；请在启用前先保存至验证器应用。PR #96 补充一次性恢复码，恢复码也只显示一次；生产启用前仍需完成真实绑定和恢复码登录验收。
-- PR #95 的 Go/Admin/Security CI 与真实登录验收待完成；未合并、未发布。
+- PR #95 Go/Admin/Security/Docker Publish 已通过并合并；真实管理员验证器绑定与恢复码登录验收仍待完成。
 
 # 安全加固记录
 
