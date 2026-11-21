@@ -129,6 +129,13 @@ func TestGMPayCreateTimeoutDoesNotRetryAndMarksUncertain(t *testing.T){
 	if intent.Status!="create_uncertain"{t.Fatalf("intent status=%q want create_uncertain",intent.Status)}
 	if _,err:=m.CreateGMPayCheckout(context.Background(),order);err==nil{t.Fatal("a second click must not retry an uncertain provider create")}
 	if creates.Load()!=1{t.Fatalf("duplicate provider create attempted: %d",creates.Load())}
+	// If Epusdt accepted the timed-out request, its later signed callback can
+	// still settle the reserved local order and bind the previously unknown trade ID.
+	if err:=m.HandleGMPayCallback(context.Background(),signedCallback(order,"trade-after-timeout","12.50"),"{}");err!=nil{t.Fatal(err)}
+	got,err:=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
+	if got.PaymentReference!="trade-after-timeout"{t.Fatalf("late callback did not settle uncertain create: %+v",got)}
+	intent,err=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
+	if intent.ProviderTradeID!="trade-after-timeout"||intent.Status!="paid"{t.Fatalf("uncertain intent was not reconciled: %+v",intent)}
 }
 
 func TestGMPayStatusQueryCanRecoverMissingCallback(t *testing.T){
