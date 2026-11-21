@@ -139,3 +139,11 @@ When a refund is blocked because an active re-delivery lease exists, the support
 - Migration 0053 backfills pre-existing `delivery_uncertain` `file_card` orders as two `uncertain` steps; an operator must verify the file and card-message outcomes separately before either can be retried.
 - The order can become `delivered` only after all persisted steps are `succeeded`. Re-delivery of an already delivered `file_card` remains blocked; this state machine is for completing the original paid delivery, not duplicating a delivered entitlement.
 - This improves stage-level recovery but does not provide Telegram exactly-once semantics. A step with an ambiguous remote outcome still requires human verification.
+
+
+## 退款与首次交付并发边界
+
+- `RefundOrderToWallet` 与首次交付领取使用同一订单行作为并发仲裁点。
+- 订单处于 `delivering` 时，代表首次交付请求正在执行或其结果尚未完成恢复核实；退款必须拒绝，不能仅因为钱包退款事务能够取得订单锁就继续入账。
+- 只有订单明确处于 `paid`、`delivery_failed` 或 `delivered` 等允许人工退款的状态时，才继续执行现有退款流程；`delivery_uncertain`、`delivering`、已退款及其他非法状态均拒绝。
+- 拒绝退款不修改订单、卡密、钱包余额或资金流水。订单必须先由交付恢复/人工核实流程收敛到明确状态。

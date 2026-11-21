@@ -1,3 +1,10 @@
+## 2026-11-21 — P0-4 首次交付期间退款保护（独立修复 PR）
+
+- 收紧 `RefundOrderToWallet` 状态门禁：`delivering` 不再允许退款，避免首次 Telegram 交付执行期间并发给买家余额入账。
+- 退款仅允许在 `paid`、`delivery_failed`、`delivered` 等明确状态继续；`delivery_uncertain`、`delivering`、`refunded` 和其他非法状态拒绝。
+- 新增 SQLite/PostgreSQL 共用回归测试，断言活动交付期间退款不改变订单状态、钱包余额或退款流水。
+- 无数据库迁移、环境变量或 API 契约变化；PROJECT_STATUS 文档版本更新至 2.2.44。CI 待 PR 验证。
+
 ## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
 
 - 新增只读核验：已退款且来源快照明确为 upstream 的订单，必须存在对应 `upstream_procurements` 生命周期记录。
