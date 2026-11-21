@@ -298,3 +298,21 @@ func TestPostgresOrderRedeliveryLeaseConcurrency(t *testing.T) {
 		t.Fatalf("an expired re-delivery lease should be reclaimable: claimed=%v err=%v", claimed, err)
 	}
 }
+
+
+func TestPostgresAdminTOTPRecoveryCodeIsSingleUse(t *testing.T) {
+	dsn:=os.Getenv("TEST_POSTGRES_DSN");if dsn==""{t.Skip("TEST_POSTGRES_DSN is not configured")}
+	ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
+	db,err:=Open(ctx,config.Config{DBDriver:"postgres",DatabaseDSN:dsn});if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,"postgres");err!=nil{t.Fatal(err)}
+	suffix,err:=randomID();if err!=nil{t.Fatal(err)}
+	adminID,err:=randomID();if err!=nil{t.Fatal(err)}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	if _,err:=db.ExecContext(ctx,"INSERT INTO admins(id,username,password_hash,real_name,role,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",adminID,"totp-pg-"+suffix,"test-hash","TOTP Test","super",1,now,now);err!=nil{t.Fatal(err)}
+	defer func(){_,_=db.ExecContext(context.Background(),"DELETE FROM admins WHERE id=$1",adminID)}()
+	if err:=SetAdminTOTPPendingSecret(ctx,db,"postgres",adminID,"encrypted-test-secret");err!=nil{t.Fatal(err)}
+	code:="JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+	if err:=EnableAdminTOTPWithRecoveryCodes(ctx,db,"postgres",adminID,[]string{code});err!=nil{t.Fatal(err)}
+	consumed,err:=ConsumeAdminTOTPRecoveryCode(ctx,db,"postgres",adminID,code);if err!=nil||!consumed{t.Fatalf("first recovery code use: consumed=%v err=%v",consumed,err)}
+	consumed,err=ConsumeAdminTOTPRecoveryCode(ctx,db,"postgres",adminID,code);if err!=nil||consumed{t.Fatalf("second recovery code use must fail: consumed=%v err=%v",consumed,err)}
+}
