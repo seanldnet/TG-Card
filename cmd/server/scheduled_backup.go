@@ -24,6 +24,8 @@ import (
 )
 
 const scheduledBackupLastRunKey = "scheduled_backup_last_run_date"
+const scheduledBackupLastAttemptKey = "scheduled_backup_last_attempt_at"
+const scheduledBackupRetryInterval = 30 * time.Minute
 
 func (a *application) runScheduledBackupScheduler(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
@@ -50,19 +52,57 @@ func (a *application) checkScheduledBackup(ctx context.Context) {
 	if err != nil { log.Printf("scheduled backup: invalid configured time %q", settings.BackupTime); return }
 	if now.Hour()*60+now.Minute() < scheduled.Hour()*60+scheduled.Minute() { return }
 	date := now.Format("2006-01-02")
-	last, err := database.GetSetting(ctx, a.db, a.driver, scheduledBackupLastRunKey)
-	if err != nil || last == date { return }
-	// Persist the attempt before running so restarts or multiple scheduler ticks cannot
-	// create repeated multi-gigabyte archives or send duplicate documents.
-	if err := database.SaveSettings(ctx, a.db, a.driver, map[string]string{scheduledBackupLastRunKey: date}); err != nil {
-		log.Printf("scheduled backup: persist run date: %v", err); return
+	lastSuccess, err := database.GetSetting(ctx, a.db, a.driver, scheduledBackupLastRunKey)
+	if err != nil {
+		log.Printf("scheduled backup: load last successful run: %v", err)
+		return
+	}
+	lastAttempt, err := database.GetSetting(ctx, a.db, a.driver, scheduledBackupLastAttemptKey)
+	if err != nil {
+		log.Printf("scheduled backup: load last attempt: %v", err)
+		return
+	}
+	if !scheduledBackupRetryDue(now, lastSuccess, lastAttempt) {
+		return
+	}
+	// Record the attempt separately from the successful run. A failed pg_dump or
+	// Telegram upload must remain retryable instead of suppressing backups all day.
+	attemptedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := database.SaveSettings(ctx, a.db, a.driver, map[string]string{scheduledBackupLastAttemptKey: attemptedAt}); err != nil {
+		log.Printf("scheduled backup: persist attempt timestamp: %v", err)
+		return
 	}
 	if err := a.createAndDeliverBackup(ctx, settings, date); err != nil {
 		log.Printf("scheduled backup failed for %s: %v", date, err)
-		_ = a.sendOwnerText(ctx, settings.TelegramOwnerID, "TG-Card 每日备份失败（"+date+"）：\n"+err.Error())
+		_ = a.sendOwnerText(ctx, settings.TelegramOwnerID, "TG-Card 每日备份失败（"+date+"），系统将在重试间隔后自动重试：\n"+err.Error())
+		return
+	}
+	if err := database.SaveSettings(ctx, a.db, a.driver, map[string]string{
+		scheduledBackupLastRunKey: date,
+		scheduledBackupLastAttemptKey: "",
+	}); err != nil {
+		log.Printf("scheduled backup delivered but success state could not be persisted for %s: %v", date, err)
+		_ = a.sendOwnerText(ctx, settings.TelegramOwnerID, "TG-Card 每日备份已发送，但成功状态写入数据库失败；请检查备份记录，避免重复投递。")
 		return
 	}
 	log.Printf("scheduled backup delivered to Owner for %s", date)
+}
+
+
+// scheduledBackupRetryDue separates the last successful backup date from the last
+// attempt. Failures are retried after a bounded delay; success suppresses further
+// attempts for the local calendar day.
+func scheduledBackupRetryDue(now time.Time, lastSuccessDate, lastAttemptAt string) bool {
+	if lastSuccessDate == now.Format("2006-01-02") {
+		return false
+	}
+	if strings.TrimSpace(lastAttemptAt) != "" {
+		attemptedAt, err := time.Parse(time.RFC3339Nano, lastAttemptAt)
+		if err == nil && now.Sub(attemptedAt) < scheduledBackupRetryInterval {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *application) createAndDeliverBackup(ctx context.Context, settings siteSettings, date string) error {
