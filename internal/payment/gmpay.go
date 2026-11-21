@@ -355,10 +355,10 @@ func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]strin
 }
 
 func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[string]string, payloadJSON, provider string) error {
-	eventTradeID := tradeID
-	if provider == "gmpay_edge" { eventTradeID = "gmpay_edge:" + tradeID }
 	orderNo:=strings.TrimSpace(fields["order_id"])
 	tradeID:=strings.TrimSpace(fields["trade_id"])
+	eventTradeID := tradeID
+	if provider == "gmpay_edge" { eventTradeID = "gmpay_edge:" + tradeID }
 	if orderNo==""||tradeID==""{return errors.New("GMPay payment is missing order_id or trade_id")}
 	status,err:=strconv.Atoi(fields["status"])
 	if err!=nil||status!=2{return errors.New("GMPay payment is not successful")}
