@@ -163,25 +163,27 @@ func TestProcurementCallbackSignatureFailureIsRejected(t *testing.T){
 
 func strconvFormat(v int64)string{return fmt.Sprintf("%d",v)}
 
-func TestUncertainProcurementManualRetryReusesIdempotencyKey(t *testing.T){
-	var mu sync.Mutex
-	created:=map[string]upstream.DujiaoProcurementResult{}
+func TestUncertainProcurementCannotBeRetriedOrRefunded(t *testing.T) {
 	callCount:=0
 	api:=&fakeProcurementAPI{createFn:func(_ context.Context,r upstream.ProcurementRequest)(upstream.DujiaoProcurementResult,error){
-		mu.Lock();defer mu.Unlock();callCount++
-		if existing,ok:=created[r.DownstreamOrderNo];ok{return existing,nil}
-		result:=upstream.DujiaoProcurementResult{OK:true,OrderID:202,OrderNo:"UP-202",Status:"paid"}
-		created[r.DownstreamOrderNo]=result
-		if callCount==1{return upstream.DujiaoProcurementResult{},errors.New("network timeout after request write")}
-		return result,nil
+		callCount++
+		return upstream.DujiaoProcurementResult{},errors.New("network timeout after request write")
 	}}
 	f:=newProcurementFixture(t,api)
 	if err:=f.app.processUpstreamProcurement(context.Background(),claimOne(t,f));err!=nil{t.Fatal(err)}
 	assertProcurementLedger(t,f,"procurement_failed",1)
-	if err:=database.RetryUpstreamProcurement(context.Background(),f.db,"sqlite",f.orderID,"admin-1");err!=nil{t.Fatal(err)}
-	if err:=f.app.processUpstreamProcurement(context.Background(),claimOne(t,f));err!=nil{t.Fatal(err)}
-	if callCount!=2||len(created)!=1{t.Fatalf("same downstream idempotency key must resolve one upstream order: calls=%d created=%d",callCount,len(created))}
-	assertProcurementLedger(t,f,"procurement_pending",2)
+	var queueStatus string
+	if err:=f.db.QueryRow("SELECT status FROM upstream_procurements WHERE local_order_id=?",f.orderID).Scan(&queueStatus);err!=nil{t.Fatal(err)}
+	if queueStatus!="uncertain"{t.Fatalf("queue status=%s want uncertain",queueStatus)}
+	if err:=database.RetryUpstreamProcurement(context.Background(),f.db,"sqlite",f.orderID,"admin-1");err==nil{t.Fatal("uncertain procurement must not be retried before supplier-side verification")}
+	if _,err:=database.RefundUpstreamProcurementToWallet(context.Background(),f.db,"sqlite",f.orderID,"admin-1","未核实供应商受理状态");err==nil{t.Fatal("uncertain procurement must not be refunded before supplier-side verification")}
+	if callCount!=1{t.Fatalf("uncertain procurement must not trigger a second upstream create request, calls=%d",callCount)}
+	var ledgerCount int
+	if err:=f.db.QueryRow("SELECT COUNT(1) FROM wallet_transactions WHERE note LIKE '上游采购失败退款：%'").Scan(&ledgerCount);err!=nil{t.Fatal(err)}
+	if ledgerCount!=0{t.Fatalf("uncertain procurement must not create refund ledger, got %d",ledgerCount)}
+	var orderStatus string
+	if err:=f.db.QueryRow("SELECT status FROM orders WHERE id=?",f.orderID).Scan(&orderStatus);err!=nil{t.Fatal(err)}
+	if orderStatus!="procurement_failed"{t.Fatalf("order status changed unexpectedly: %s",orderStatus)}
 }
 
 func TestProcurementQueueSkipsOrderNoLongerPending(t *testing.T){
