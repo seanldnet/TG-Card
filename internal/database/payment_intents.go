@@ -57,7 +57,7 @@ func CreatePaymentIntentForProvider(ctx context.Context, db *sql.DB, driver, ord
 	id,err := randomID()
 	if err != nil { return EpusdtPaymentIntent{},false,err }
 	insert := "INSERT INTO epusdt_payment_intents(id,order_id,amount_minor,currency,status,created_at,updated_at,provider) VALUES("+
-		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'creating',"+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+") ON CONFLICT(order_id) DO NOTHING"
+		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'reserved',"+placeholder(driver,5)+","+placeholder(driver,6)+","+placeholder(driver,7)+") ON CONFLICT(order_id) DO NOTHING"
 	result,err := tx.ExecContext(ctx,insert,id,orderID,amount,currency,now,now,provider); if err != nil { return EpusdtPaymentIntent{},false,err }; inserted,err:=result.RowsAffected();if err!=nil{return EpusdtPaymentIntent{},false,err}
 	var item EpusdtPaymentIntent
 	query := "SELECT id,order_id,provider,provider_trade_id,payment_url,amount_minor,currency,status,expiration_time,block_transaction_id FROM epusdt_payment_intents WHERE order_id="+placeholder(driver,1)
@@ -66,6 +66,17 @@ func CreatePaymentIntentForProvider(ctx context.Context, db *sql.DB, driver, ord
 	if item.Provider != provider { return EpusdtPaymentIntent{}, false, fmt.Errorf("order payment intent is already assigned to provider %q", item.Provider) }; if item.AmountMinor != amount || item.Currency != currency { return EpusdtPaymentIntent{},false,fmt.Errorf("existing Epusdt payment intent amount does not match the order") }
 	if err := tx.Commit(); err != nil { return EpusdtPaymentIntent{},false,err }
 	return item,inserted==1,nil
+}
+
+// ClaimReservedPaymentIntent atomically marks the first provider-creation attempt.
+ // A retry cannot claim an already-creating intent, preventing duplicate upstream orders.
+func ClaimReservedPaymentIntent(ctx context.Context, db *sql.DB, driver, orderID string) (bool,error) {
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	query:="UPDATE epusdt_payment_intents SET status='creating',updated_at="+placeholder(driver,1)+" WHERE order_id="+placeholder(driver,2)+" AND status='reserved' AND provider_trade_id=''"
+	result,err:=db.ExecContext(ctx,query,now,orderID)
+	if err!=nil{return false,err}
+	n,err:=result.RowsAffected()
+	return n==1,err
 }
 
 func GetEpusdtPaymentIntentByOrderNo(ctx context.Context, db *sql.DB, driver, orderNo string) (EpusdtPaymentIntent,error) {
