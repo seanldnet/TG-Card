@@ -78,23 +78,32 @@ func (m *Manager) GatewayEnabled() bool {
 // local order. Epusdt order_id values cannot be reused; ambiguous timeouts are
 // quarantined instead of blindly creating a second provider transaction.
 func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order) (string,error) {
+	return m.createGMPayCheckoutForProvider(ctx, order, "epusdt")
+}
+
+func (m *Manager) CreateGMPayEdgeCheckout(ctx context.Context, order database.Order) (string,error) {
+	return m.createGMPayCheckoutForProvider(ctx, order, "gmpay_edge")
+}
+
+func (m *Manager) createGMPayCheckoutForProvider(ctx context.Context, order database.Order, provider string) (string,error) {
 	m.mu.RLock()
 	client,notifyURL:=m.gateway,m.gatewayNotifyURL
+	if provider == "gmpay_edge" { client,notifyURL=m.gmpayEdge,m.gmpayEdgeNotifyURL }
 	m.mu.RUnlock()
 	if client==nil || notifyURL=="" { return "",ErrGatewayDisabled }
 	if order.ID=="" || order.OrderNo=="" || len(order.OrderNo)>32 || order.Status!="pending_payment" || order.AmountMinor<=1 || order.Currency!="USDT" {
 		return "",errors.New("order is not eligible for GMPay checkout (USDT amount must exceed 0.01 and order number must be at most 32 characters)")
 	}
-	intent,created,err:=database.CreateEpusdtPaymentIntent(ctx,m.db,m.driver,order.ID)
+	intent,created,err:=database.CreatePaymentIntentForProvider(ctx,m.db,m.driver,order.ID,provider)
 	if err!=nil{return "",err}
 	if intent.Status=="paid"{return "",errors.New("order is already paid")}
 	if intent.Status=="late_payment" || intent.Status=="amount_mismatch" || intent.Status=="asset_mismatch" || intent.Status=="duplicate_payment" {return "",errors.New("payment requires manual reconciliation")}
-	if intent.Status=="expired" {return "",errors.New("Epusdt payment order has expired")}
+	if intent.Status=="expired" {return "",errors.New("支付服务订单 has expired")}
 	if !created {
 		if intent.ProviderTradeID=="" {
 			return "",errors.New("GMPay order creation has an uncertain result; do not retry payment creation. Please contact support while the callback is reconciled.")
 		}
-		status,queryErr:=m.CheckGMPayPayment(ctx,order.ID)
+		status,queryErr:=m.checkGMPayPaymentForProvider(ctx,order.ID,provider)
 		if queryErr!=nil{return "",fmt.Errorf("query existing Epusdt trade before reopening checkout: %w",queryErr)}
 		if status=="paid"{return "",errors.New("order payment has already been confirmed")}
 		if status=="expired"{return "",errors.New("Epusdt payment order has expired")}
@@ -116,7 +125,7 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	cancel()
 	if createErr!=nil {
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
-		m.bots.Notify("risk_alert","GMPay 创建支付单请求结果不确定，系统已阻止重复创建。订单："+order.OrderNo+"\n请在 Epusdt 商户后台核对原请求，不要重新创建支付单。\n原因："+createErr.Error(),"")
+		m.bots.Notify("risk_alert","支付服务创建订单结果不确定，系统已阻止重复创建。订单："+order.OrderNo+"\n请在对应支付服务商后台核对原请求，不要重新创建支付单。\n原因："+createErr.Error(),"")
 		return "",fmt.Errorf("GMPay order creation outcome is uncertain; duplicate create was blocked: %w",createErr)
 	}
 	var envelope struct {
@@ -134,17 +143,17 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	}
 	if envelope.StatusCode!=0 && envelope.StatusCode!=http.StatusOK{
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
-		return "",fmt.Errorf("Epusdt order rejected (%d): %s",envelope.StatusCode,envelope.Message)
+		return "",fmt.Errorf("支付服务拒绝创建订单 (%d): %s",envelope.StatusCode,envelope.Message)
 	}
 	data:=envelope.Data
 	if data.OrderID!=order.OrderNo || data.TradeID=="" || data.PaymentURL=="" {
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
-		return "",errors.New("Epusdt response is missing or mismatches order_id, trade_id or payment_url; duplicate create blocked")
+		return "",errors.New("支付服务响应 is missing or mismatches order_id, trade_id or payment_url; duplicate create blocked")
 	}
 	if err:=validateGMPayCheckoutURL(data.PaymentURL);err!=nil {
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
 		m.bots.Notify("risk_alert","GMPay 返回了不安全的收银台链接，已阻止向用户展示。订单："+order.OrderNo+"\n请在 Epusdt 商户后台核对原支付单。","")
-		return "",fmt.Errorf("Epusdt returned an unsafe payment URL: %w",err)
+		return "",fmt.Errorf("支付服务返回 an unsafe payment URL: %w",err)
 	}
 	if data.Status!=1 && data.Status!=2 {
 		state:="create_uncertain"
@@ -156,7 +165,7 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 		providerAmount,amountErr:=parseMinor(data.Amount.String())
 		if amountErr!=nil||providerAmount!=order.AmountMinor {
 			_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"amount_mismatch","")
-			return "",errors.New("Epusdt create response amount does not match local order")
+			return "",errors.New("支付服务创建响应 amount does not match local order")
 		}
 	}
 	if data.Currency!=""&&!strings.EqualFold(data.Currency,"usd"){
@@ -166,10 +175,10 @@ func (m *Manager) CreateGMPayCheckout(ctx context.Context, order database.Order)
 	if err:=database.UpdateEpusdtPaymentOrder(ctx,m.db,m.driver,order.ID,data.TradeID,data.PaymentURL,data.ExpirationTime);err!=nil{
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"create_uncertain","")
 		m.bots.Notify("risk_alert","GMPay 支付单已在网关创建，但本地保存支付凭据失败。订单："+order.OrderNo+"\n交易："+data.TradeID+"\n请人工核对，禁止重复创建。","")
-		return "",fmt.Errorf("persist Epusdt trade after provider creation: %w",err)
+		return "",fmt.Errorf("persist provider trade after checkout creation: %w",err)
 	}
 	if data.Status==2 {
-		status,queryErr:=m.CheckGMPayPayment(ctx,order.ID)
+		status,queryErr:=m.checkGMPayPaymentForProvider(ctx,order.ID,provider)
 		if queryErr!=nil{return "",queryErr}
 		if status=="paid"{return "",errors.New("order payment has already been confirmed")}
 	}
