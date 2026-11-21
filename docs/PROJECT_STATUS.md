@@ -1,4 +1,4 @@
-## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #77 重整开发中）
+## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 开发中；原 PR #77 已关闭并由本 PR 替代）
 
 - 原 PR #77 的分支基于旧 main，落后当前主线 23 个提交且与主线存在分叉；未直接合并旧分支。本次在最新 main 上重新应用并审查同一范围，避免把旧主线上的历史改动带入。
 - 修复 Owner 媒体回复 caption 超过 900 个 Unicode 字符时先发送媒体、再发送剩余文字的双 API 副作用风险；现在超长 caption 在调用 sendPhoto/sendDocument 前拒绝，正常长度媒体只执行一次 Telegram 发送调用。
