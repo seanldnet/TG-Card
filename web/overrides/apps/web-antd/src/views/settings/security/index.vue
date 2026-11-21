@@ -7,6 +7,7 @@ const authStore=useAuthStore();
 
 const loading=ref(false),enabled=ref(false),enabledAt=ref('');
 const enrollment=ref(false),secret=ref(''),provisioningUri=ref('');
+const recoveryCodes=ref<string[]>([]);
 const currentPassword=ref(''),confirmCode=ref(''),disablePassword=ref(''),disableCode=ref('');
 async function loadStatus(){
   loading.value=true;
@@ -28,10 +29,9 @@ async function confirmEnrollment(){
   if(!/^\d{6}$/.test(confirmCode.value)){message.warning('请输入验证器当前显示的 6 位验证码');return;}
   loading.value=true;
   try{
-    await requestClient.post('/admin/security/totp/confirm',{code:confirmCode.value});
-    enabled.value=true;enrollment.value=false;secret.value='';provisioningUri.value='';currentPassword.value='';confirmCode.value='';
-    message.success('管理员双重验证已启用，请重新登录并输入动态验证码');
-    await authStore.logout();
+    const result=await requestClient.post<{enabled:boolean;recoveryCodes:string[]}>('/admin/security/totp/confirm',{code:confirmCode.value});
+    enabled.value=true;recoveryCodes.value=result.recoveryCodes||[];enrollment.value=false;secret.value='';provisioningUri.value='';currentPassword.value='';confirmCode.value='';
+    message.success('管理员双重验证已启用，请立即保存一次性恢复码');
   }catch(error:any){message.error(error?.response?.data?.message||'验证码确认失败');}
   finally{loading.value=false;}
 }
@@ -46,6 +46,7 @@ async function disableTOTP(){
   }catch(error:any){message.error(error?.response?.data?.message||'关闭双重验证失败');}
   finally{loading.value=false;}
 }
+async function finishRecoveryCodeSetup(){recoveryCodes.value=[];message.info('请使用新动态验证码重新登录');await authStore.logout();}
 async function copyValue(value:string){try{await navigator.clipboard.writeText(value);message.success('已复制');}catch{message.warning('复制失败，请手动选择文本复制');}}
 onMounted(loadStatus);
 </script>
@@ -55,6 +56,14 @@ onMounted(loadStatus);
     <a-card :bordered="false" title="管理员双重验证（TOTP）" :loading="loading">
       <a-alert class="mb-4" type="info" show-icon message="启用后，管理员每次登录除了密码，还必须输入验证器应用生成的 6 位动态验证码。请使用支持 TOTP 的验证器应用，并妥善保管绑定密钥。" />
       <div v-if="enabled" class="flex flex-col gap-3">
+        <div v-if="recoveryCodes.length" class="rounded-lg border border-amber-300 p-3">
+          <a-alert class="mb-3" type="warning" show-icon message="这些一次性恢复码只显示这一次。每个恢复码只能使用一次，请复制并保存在密码管理器等安全位置；关闭页面后无法再次查看。" />
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2"><div v-for="code in recoveryCodes" :key="code" class="rounded bg-gray-100 p-2 font-mono text-sm">{{ code }}</div></div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <a-button @click="copyValue(recoveryCodes.join('\n'))">复制全部恢复码</a-button>
+            <a-button type="primary" @click="finishRecoveryCodeSetup">已保存，重新登录</a-button>
+          </div>
+        </div>
         <a-tag color="success">双重验证已启用</a-tag>
         <div class="text-sm text-gray-500">启用时间：{{ enabledAt || '—' }}</div>
         <a-divider />
