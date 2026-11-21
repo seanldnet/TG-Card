@@ -455,3 +455,20 @@ func TestCartCommandInGroupReturnsPrivateChatNotice(t *testing.T) {
 		})
 	}
 }
+
+func TestDeliveryUncertainOwnerAlertIsClaimedOncePerOrder(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=database.Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=database.Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	manager:=&Manager{db:db,driver:"sqlite"}
+	var calls int
+	var event,details string
+	manager.notifier=func(gotEvent,gotDetails,userChatID string){calls++;event=gotEvent;details=gotDetails}
+	order:=database.Order{ID:"order-uncertain-1",OrderNo:"TG202611210001"}
+	manager.notifyDeliveryUncertainOnce(ctx,order,"Telegram 请求超时")
+	manager.notifyDeliveryUncertainOnce(ctx,order,"重复租约恢复检查")
+	if calls!=1{t.Fatalf("owner must receive exactly one uncertainty alert per order, got %d",calls)}
+	if event!="risk_alert"||!strings.Contains(details,order.OrderNo)||!strings.Contains(details,"Telegram 请求超时"){t.Fatalf("unexpected owner alert: event=%q details=%q",event,details)}
+}
