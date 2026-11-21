@@ -11,9 +11,9 @@
 - PR #101 已 Squash Merge 至 main，merge commit `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d`；独立分支 `test/isolated-backup-restore-p1`。
 - 新增 `scripts/test-backup-restore.sh`：在独立 Docker Compose project、临时 PostgreSQL 16 容器和独立命名卷中调用正式备份/恢复脚本。
 - 测试创建合成分类、商品、库存卡密、订单及站点设置记录，以及 JWT signing key、加密 key 和上传文件；备份后模拟订单状态污染、库存行丢失、设置被修改、密钥损坏和上传文件丢失，再恢复并断言订单/库存/设置/密钥/上传文件全部回到备份状态。
-- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部成功；合并后 main Go/Admin/Security CI 全部成功，Docker Publish 正在运行。测试实际通过并打印容器启动耗时；该值不是生产应用就绪 RTO。
+- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部成功；合并后 main Go/Admin/Security CI 全部成功，Docker Publish（run `44886025299`）已成功；GHCR `latest` 与 commit tag `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d` manifest digest：`sha256:ee2c1611a8d7635fe9ae5c1ea5d504d33168e9c5a34ff819a71ed853fb5020b6`。测试实际通过并打印容器启动耗时；该值不是生产应用就绪 RTO。
 - 无生产数据库迁移、无新增生产环境变量；不会连接或修改生产 Compose project、生产数据库或生产 volumes。
-- 当前状态：代码已合并，Docker Publish 待最终确认。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
+- 当前状态：代码已合并，Docker Publish 已成功；GHCR `latest` 与 commit tag `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d` manifest digest：`sha256:ee2c1611a8d7635fe9ae5c1ea5d504d33168e9c5a34ff819a71ed853fb5020b6`。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
 - 文档版本：2.2.56。
 
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并并发布）
