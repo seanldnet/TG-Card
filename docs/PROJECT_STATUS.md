@@ -1,8 +1,8 @@
 ## 2026-11-22 — 当前主线状态校准（文档版本 2.2.71）
 
-## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #120 开发中；文档版本 2.2.72）
+## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；文档版本 2.2.72）
 
-- 基线：main `b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`；代码分支：`feat/epusdt-gmpay-checkout-lifecycle`。
+- 基线：main `b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`；代码分支：`feat/epusdt-gmpay-checkout-lifecycle-v2`。
 - 已完成本阶段代码范围：Epusdt GMPay 商城商品订单/购物车统一订单收银台入口；支付单本地幂等占位；GMPay HMAC-SHA256 回调验签；按 trade_id 查询支付状态；订单支付确认与本地商品自动发货/上游采购交接；HTTPS 回调 URL 后台配置。
 - 安全策略：校验 PID、签名、订单号、trade_id 与金额；重复回调幂等；不同 trade_id 重复付款/意外交易、金额不符、取消订单后迟到付款均记为异常并阻止二次发货；支付创建超时进入 `create_uncertain`，因 Epusdt order_id 不可重复，不盲目重试创建。
 - 支付状态查询按 Epusdt 当前 API 使用 `GET /pay/check-status/{trade_id}`；创建交易使用 `POST /payments/gmpay/v1/order/create-transaction`；回调返回 HTTP 200 + `ok`。
@@ -504,7 +504,7 @@ flowchart LR
 | 购物车与多商品统一结算 | 已实现（PR #61 已合并，真机待验收） | main 已包含迁移 0049/0050、按 Bot/用户隔离的购物车、单笔多商品订单、库存事务预留、余额/TRC20 付款复用和逐商品卡密交付；仅本地 USDT card/file_card 商品可统一结算。Telegram 真机验收待项目所有者执行。 |
 | 订单管理 | 已实现（交付安全持续加固） | 订单列表、订单详情、支付状态与交付状态查看、清理入口、管理员重试发货；列表分页。PR #71 已阻止不确定 file_card 整单重试；PR #72 已阻止已交付 file_card 自动再次获取。 |
 | 支付流水 | 已实现 | 链上交易列表、状态筛选/搜索、已匹配/未匹配/需人工核对状态、人工匹配订单及备注。 |
-| 支付设置 | 已实现（TRC20 + Epusdt/GMPay） | Epusdt 网关地址、GMPay PID、Secret 加密存储/脱敏与 HTTPS 回调地址配置已实现；独立支付闭环 PR #120 正在实现商城下单、回调验签、状态查询、订单确认和自动发货，CI/合并/镜像发布待验证。 |
+| 支付设置 | 已实现（TRC20 + Epusdt/GMPay） | Epusdt 网关地址、GMPay PID、Secret 加密存储/脱敏与 HTTPS 回调地址配置已实现；独立支付闭环 PR #121 正在实现商城下单、回调验签、状态查询、订单确认和自动发货，CI/合并/镜像发布待验证。 |
 | 优惠券/促销 | 已实现 | 促销规则的查询、创建/更新、删除；具体类型与适用规则以当前页面/API为准。 |
 | 兑换码 | 已实现 | 兑换码规则的创建/更新/删除及用户兑换处理；以当前后台页面和数据库实现为准。 |
 | 对账与余额校验 | 已实现（PR2 生产验收通过） | 每日 UTC 对账日报、日报历史、余额流水一致性只读校验与异常明细；PR2 镜像已部署，2026-11-19 验收通过。 |
