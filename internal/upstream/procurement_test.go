@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -39,4 +40,13 @@ func TestDujiaoProcurementClientClassifiesHTTPOrderLookupErrors(t *testing.T) {
 	_,err:=client.GetOrder(context.Background(),"404")
 	var businessErr *ProcurementBusinessError
 	if !errors.As(err,&businessErr)||businessErr.Code!="order_not_found"{t.Fatalf("expected order_not_found business error, got %v",err)}
+}
+
+func TestManualFormDataIsForwardedInProcurementRequest(t *testing.T) {
+	request:=ProcurementRequest{SKUID:22,Quantity:1,DownstreamOrderNo:"LOCAL-MANUAL-1",ManualFormData:map[string]any{"account":"buyer-123","region":"asia"}}
+	payload,err:=json.Marshal(request);if err!=nil{t.Fatal(err)}
+	text:=string(payload)
+	if !strings.Contains(text,`"manual_form_data":{"account":"buyer-123","region":"asia"}`){t.Fatalf("manual form data missing from request: %s",text)}
+	autoPayload,err:=json.Marshal(ProcurementRequest{SKUID:23,Quantity:1,DownstreamOrderNo:"LOCAL-AUTO-1"});if err!=nil{t.Fatal(err)}
+	if strings.Contains(string(autoPayload),"manual_form_data"){t.Fatalf("auto procurement must omit manual form data: %s",autoPayload)}
 }
