@@ -36,6 +36,8 @@ func (a *application) enrollAdminTOTP(w http.ResponseWriter,r *http.Request) {
 	if err!=nil{writeError(w,http.StatusInternalServerError,"加密动态验证码密钥失败");return}
 	if err:=database.SetAdminTOTPPendingSecret(r.Context(),a.db,a.driver,admin.ID,ciphertext);err!=nil{writeError(w,http.StatusConflict,"无法开始 TOTP 绑定，请刷新后重试");return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,admin.ID,"admin.security.totp.enroll.start","admin:"+admin.ID,a.clientIP(r),r.UserAgent(),"TOTP enrollment started")
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
 	writeSuccess(w,http.StatusOK,map[string]string{"secret":secretValue,"provisioningUri":auth.TOTPProvisioningURI(secretValue,"TG-Card",admin.Username)})
 }
 
