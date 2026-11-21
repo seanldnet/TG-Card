@@ -467,6 +467,7 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	gatewaySecret := ""
 	if epusdtSecretCiphertext != "" { gatewaySecret, _ = a.secrets.Decrypt(epusdtSecretCiphertext) }
 	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt GMPay 配置应用失败："+err.Error()); return }
+	a.botManager.SetGMPayCheckout(a.paymentManager.CreateGMPayCheckout, a.paymentManager.GatewayEnabled())
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
 		APIKeyConfigured: apiKeyCiphertext != "",
