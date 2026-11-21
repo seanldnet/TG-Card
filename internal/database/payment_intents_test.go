@@ -25,7 +25,11 @@ func TestEpusdtPaymentIntentAndCallbackEventsAreIdempotent(t *testing.T) {
 	second,created,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
 	if err!=nil{t.Fatal(err)}
 	if created{t.Fatal("second intent must reuse the existing local intent")}
-	if first.ID!=second.ID||first.AmountMinor!=order.AmountMinor||first.Status!="creating"{t.Fatalf("intent not idempotent: first=%+v second=%+v",first,second)}
+	claimed,err:=ClaimReservedPaymentIntent(ctx,db,"sqlite",order.ID)
+	if err!=nil||!claimed{t.Fatalf("claim reserved intent: claimed=%t err=%v",claimed,err)}
+	second,_,err=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID)
+	if err!=nil{t.Fatal(err)}
+	if first.ID!=second.ID||first.AmountMinor!=order.AmountMinor||second.Status!="creating"{t.Fatalf("intent not idempotent: first=%+v second=%+v",first,second)}
 
 	if err:=UpdateEpusdtPaymentOrder(ctx,db,"sqlite",order.ID,"trade-123","https://checkout.example/pay/123",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
 	got,err:=GetEpusdtPaymentIntentByOrderNo(ctx,db,"sqlite",order.OrderNo)
