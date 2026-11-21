@@ -1,4 +1,4 @@
-## 管理员敏感操作二次确认（PR #100 开发中）
+## 管理员敏感操作二次确认（PR #100 已合并）
 
 - 目标操作必须先通过管理员当前密码再次认证；若管理员启用 TOTP，还必须提交有效动态码或消费一枚一次性恢复码。
 - 服务端签发 2 分钟有效的一次性随机凭证，数据库只保存 SHA-256 哈希；凭证绑定管理员、action key、HTTP method、精确 escaped path 与规范化 JSON body。
@@ -6,15 +6,16 @@
 - 前端收到 HTTP 428 challenge 后弹出统一密码/动态码对话框，确认成功后仅重放原始请求；二次确认失败或取消不会执行目标操作。
 - 覆盖余额变更、采购重试/退款/状态核实、支付人工核对、售后退款、订单交付恢复/步骤核实、订单清理、支付/站点/上游/充值赠送配置及上游数据清理。
 - 新增 migration 0057；不存储密码、TOTP 明文、恢复码明文或请求体内容；审计仅记录 action key 与目标路径。
+- PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；PR head 与合并后 Go/Admin/Security CI 全部通过。Docker Publish 仍在执行，镜像 digest 待确认；真实浏览器 step-up 流程待部署验收。
 
-## 管理员登出 Access Session 即时撤销补强（PR #99 开发中）
+## 管理员登出 Access Session 即时撤销补强（PR #99 已合并）
 
 - Vben Admin 上游 `logoutApi` 使用不附加 Authorization 的 baseRequestClient；仅靠 refresh cookie 登出时，服务端无法定位并撤销当前 access session。
 - 本项目覆盖 Vben `apps/web-antd/src/api/core/auth.ts`，登出改用认证 requestClient，并保留 withCredentials，使请求同时携带 Bearer 与 HttpOnly refresh cookie。
 - 服务端按当前 Bearer 撤销 access session，并按 cookie 撤销 refresh token family；新增 HTTP 回归测试验证旧 Bearer 立即被拒绝。
 - 无迁移、无新增配置；真实浏览器验收仍需执行。
 
-## 管理员短效 Access Token 与 Refresh Token 轮换（PR #97 开发中）
+## 管理员短效 Access Token 与 Refresh Token 轮换（PR #97 已合并）
 
 - Access Token 15 分钟；Refresh Token 7 天，HttpOnly、SameSite=Lax Cookie，Path 限定为 `/api/auth`。
 - Refresh token 以 SHA-256 哈希保存；每次刷新旧 token 原子作废并创建新 token，同时创建短效 access session。
@@ -22,7 +23,7 @@
 - 密码/TOTP 修改导致 token_version 递增，refresh 时校验版本，旧 refresh family 随即失效。
 - 登出接口兼容 Vben Admin 通过 `withCredentials` 发送 refresh cookie 的调用方式。
 
-## TOTP 一次性恢复码（PR #96 开发中）
+## TOTP 一次性恢复码（PR #96 已合并）
 
 - TOTP 绑定确认时生成 10 个 80-bit 随机 Base32 恢复码；每个仅可使用一次。
 - 恢复码明文只在启用成功响应中返回一次，响应设置 `Cache-Control: no-store`；数据库仅保存 SHA-256 哈希，不保存明文。
@@ -30,7 +31,7 @@
 - 关闭 TOTP 时清空全部恢复码；丢失验证器时可用一枚恢复码登录后重新配置验证器。
 - 用户必须在绑定完成页面复制并安全保存；离开页面后无法再次查看。剩余恢复码数量当前不向页面暴露。
 
-## 管理员 TOTP 双重验证（P1，PR #95 开发中）
+## 管理员 TOTP 双重验证（P1，PR #95 已合并）
 
 ### 设计
 
