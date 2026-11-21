@@ -115,19 +115,14 @@ func (c *GatewayClient) CreateGMPayOrder(ctx context.Context, fields map[string]
 	return c.doFormJSON(ctx, "/payments/gmpay/v1/order/create-transaction", values.Encode())
 }
 
-// QueryGMPayOrder queries exactly one merchant order_id or provider trade_id.
-func (c *GatewayClient) QueryGMPayOrder(ctx context.Context, identity map[string]string) (map[string]json.RawMessage, error) {
-	fields := cloneFields(identity)
-	if (fields["order_id"] == "") == (fields["trade_id"] == "") {
-		return nil, errors.New("exactly one of order_id or trade_id is required")
+// QueryGMPayOrder reads the public payment status for a known provider trade_id.
+// Epusdt exposes this as GET /pay/check-status/{trade_id}; it does not accept order_id.
+func (c *GatewayClient) QueryGMPayOrder(ctx context.Context, tradeID string) (map[string]json.RawMessage, error) {
+	tradeID = strings.TrimSpace(tradeID)
+	if tradeID == "" {
+		return nil, errors.New("provider trade_id is required")
 	}
-	fields["pid"] = c.pid
-	fields["signature"] = SignGMPay(fields, c.secret)
-	values := url.Values{}
-	for key, value := range fields {
-		values.Set(key, value)
-	}
-	return c.doJSON(ctx, http.MethodGet, "/payments/gmpay/v1/order/query?"+values.Encode(), nil)
+	return c.doJSON(ctx, http.MethodGet, "/pay/check-status/"+url.PathEscape(tradeID), nil)
 }
 
 func (c *GatewayClient) doFormJSON(ctx context.Context, path, form string) (map[string]json.RawMessage, error) {
