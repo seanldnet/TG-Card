@@ -713,3 +713,21 @@ func TestFailedOrderDeliveryUsesExponentialBackoffButManualRetryBypassesIt(t *te
 	if err != nil { t.Fatal(err) }
 	if len(ids) != 1 || ids[0] != order.ID { t.Fatalf("second retry should become eligible after 30 seconds, got %v", ids) }
 }
+
+
+func TestAdminTOTPEnrollmentPersistence(t *testing.T) {
+	ctx:=context.Background()
+	cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"totp-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	if err:=SetAdminTOTPPendingSecret(ctx,db,cfg.DBDriver,created.ID,"encrypted-pending-secret");err!=nil{t.Fatal(err)}
+	pending,err:=FindAdminByID(ctx,db,cfg.DBDriver,created.ID);if err!=nil{t.Fatal(err)}
+	if pending.TOTPEnabled||pending.TOTPPendingSecretCiphertext!="encrypted-pending-secret"{t.Fatalf("pending TOTP state not persisted: %+v",pending)}
+	if err:=EnableAdminTOTP(ctx,db,cfg.DBDriver,created.ID);err!=nil{t.Fatal(err)}
+	enabled,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
+	if !enabled.TOTPEnabled||enabled.TOTPSecretCiphertext!="encrypted-pending-secret"||enabled.TOTPPendingSecretCiphertext!=""||enabled.TOTPEnabledAt==""{t.Fatalf("TOTP was not enabled atomically: %+v",enabled)}
+	if err:=DisableAdminTOTP(ctx,db,cfg.DBDriver,created.ID);err!=nil{t.Fatal(err)}
+	disabled,err:=FindAdminByID(ctx,db,cfg.DBDriver,created.ID);if err!=nil{t.Fatal(err)}
+	if disabled.TOTPEnabled||disabled.TOTPSecretCiphertext!=""||disabled.TOTPPendingSecretCiphertext!=""{t.Fatalf("TOTP secrets were not cleared: %+v",disabled)}
+}
