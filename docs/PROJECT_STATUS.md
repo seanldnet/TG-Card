@@ -1,13 +1,13 @@
-## 2026-11-21 — P1 管理员敏感操作二次确认（开发中）
+## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并，发布检查中）
 
-- 当前 main 基线：`cdba7015b67b87a29a30b1bad946c91ec7701bdd`（PR #99 已合并）；独立分支：`feat/admin-sensitive-action-step-up-p1`。
-- 新增数据库迁移 0057 `admin_action_confirmations`：仅保存一次性凭证哈希、管理员、action key、请求指纹、过期时间和消费时间。
-- 二次确认需再次输入管理员密码；已启用 TOTP 时还必须输入动态验证码或一次性恢复码。恢复码若使用则立即消费。
-- 凭证有效期 2 分钟、一次性使用，并绑定 HTTP method、精确 API path 与规范化 JSON body；篡改金额、目标对象、路径、操作类型或重复使用均拒绝。
-- 已覆盖用户余额调整、上游采购重试/退款/人工核实、人工支付核对、售后退款、订单交付恢复/步骤核实、订单数据清理、支付/站点/上游/充值赠送配置更新与上游数据清理。
-- Admin UI 增加统一二次确认对话框；前端 428 challenge 后请求确认凭证并重放原请求，刷新/取消/无效凭证不会执行目标操作。
-- 当前状态：独立 PR 开发中；Go/Admin/Security CI、真实浏览器二次确认验收待完成；未合并、未发布。
-- 文档版本：2.2.54。
+- PR #100 已 Squash Merge 至 main，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；开发分支 `feat/admin-sensitive-action-step-up-p1`。
+- 新增迁移 `0057_admin_action_confirmations.sql`：数据库只保存一次性确认凭证 SHA-256 哈希；凭证有效期 2 分钟，绑定管理员、action key、HTTP method、精确路径和规范化请求体，并通过原子消费防止重放。
+- 二次确认要求管理员当前密码；启用 TOTP 时还需动态验证码或一次性恢复码。覆盖余额调整、采购/退款/核实、支付人工核对、售后退款、订单恢复/清理及敏感配置更新。
+- Admin UI 统一处理 HTTP 428 challenge，完成认证后重放原请求；恢复码如被使用则一次性消费。
+- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部通过；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部通过。Docker Publish 尚在运行，digest 待核实。
+- 真实浏览器端密码/TOTP/恢复码确认流程仍待部署验收；不能以 CI 通过代替生产验收。
+- 文档版本：2.2.55。
+
 
 ## 2026-11-21 — 管理员登出即时撤销 Access Session（PR #99 已合并并发布）
 
@@ -345,9 +345,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.37
-> - 源码核对基线：`main@791f3d43a623fdb3e59ba378626890083bf5aebd`；PR #81 已合并，PR #82 Cap 登录验证框布局修复开发中
-> - 本次文档更新：记录 PR #81 合并与 PR #82 Cap 登录验证框布局修复；按第 12 节同步专项文档与变更日志
+> - 文档版本：2.2.55
+> - 源码核对基线：`main@50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；PR #100 已合并，备份恢复隔离演练正在开发
+> - 本次文档更新：校准 PR #100 合并与发布状态；启动隔离 Docker Compose 备份恢复实测，并按第 12 节同步专项文档与变更日志
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
