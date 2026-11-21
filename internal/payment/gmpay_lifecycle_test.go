@@ -14,6 +14,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/config"
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
+	"github.com/seanldnet/TG-Card/internal/tron"
 )
 
 func newGMPayTestManager(t *testing.T)(*Manager,*sql.DB,database.Order){
@@ -226,4 +227,35 @@ func TestGMPayCheckoutCreatesAndReusesOneProviderOrder(t *testing.T){
 	if creates.Load()!=1||queries.Load()!=1{t.Fatalf("create calls=%d status queries=%d",creates.Load(),queries.Load())}
 	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
 	if intent.ProviderTradeID!="trade-created"||intent.Status!="pending"{t.Fatalf("unexpected persisted payment intent: %+v",intent)}
+}
+
+func TestEnabledPaymentProvidersRotateAcrossAllThreeAndSnapshotOrder(t *testing.T) {
+	m, db, first := newGMPayTestManager(t)
+	defer db.Close()
+	defer m.bots.Stop()
+	configureTestGateway(t,m,"https://epusdt.example")
+	if err:=m.SetGMPayEdgeConfig("https://gmpay-edge.example","2000","edge-secret","https://merchant.example/api/payment/gmpay/notify",true);err!=nil{t.Fatal(err)}
+	m.mu.Lock()
+	m.chain = &tron.Client{}
+	m.mu.Unlock()
+
+	orders := []database.Order{first}
+	for i:=0;i<2;i++ {
+		order,err:=database.CreateOrder(context.Background(),db,"sqlite","gmpay-test-bot","buyer-1","chat-1",first.ProductID,20*time.Minute)
+		if err!=nil{t.Fatal(err)}
+		orders=append(orders,order)
+	}
+	want:=[]string{"trc20","epusdt","gmpay_edge"}
+	for i,order:=range orders {
+		provider,err:=m.NextPaymentProviderForOrder(context.Background(),order)
+		if err!=nil{t.Fatal(err)}
+		if provider!=want[i]{t.Fatalf("order %d provider=%q want %q",i,provider,want[i])}
+		intent,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo)
+		if err!=nil{t.Fatal(err)}
+		if intent.Provider!=provider{t.Fatalf("provider snapshot=%q want %q",intent.Provider,provider)}
+	}
+	// A previously assigned order keeps its provider even after another round.
+	provider,err:=m.NextPaymentProviderForOrder(context.Background(),first)
+	if err!=nil{t.Fatal(err)}
+	if provider!="trc20"{t.Fatalf("existing order provider changed to %q",provider)}
 }
