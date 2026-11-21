@@ -32,6 +32,7 @@ func TestGetDashboardBusinessMetricsAggregatesSafetySignals(t *testing.T) {
 	if got.DeliverySuccessRate<0.666||got.DeliverySuccessRate>0.667{t.Fatalf("delivery success rate=%f want 2/3",got.DeliverySuccessRate)}
 	if got.DeliveryUncertainCount!=1||got.DeliveryUncertainOldestAt!=oldUncertain||got.DeliveryUncertainOldestAgeSeconds<3*60*60{t.Fatalf("unexpected delivery uncertain ageing: %+v",got)}
 	if got.ProcurementUncertainCount!=1{t.Fatalf("procurement uncertain count=%d want 1",got.ProcurementUncertainCount)}
+	if got.ProcurementUncertainOldestAgeSeconds<25*60{t.Fatalf("procurement uncertain age=%d seconds want at least 25 minutes",got.ProcurementUncertainOldestAgeSeconds)}
 	if got.RefundConflictCount!=1{t.Fatalf("open refund conflicts=%d want 1",got.RefundConflictCount)}
 }
 
