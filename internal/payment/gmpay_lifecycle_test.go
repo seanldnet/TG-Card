@@ -184,11 +184,16 @@ func TestGMPayCreateTimeoutDoesNotRetryAndMarksUncertain(t *testing.T){
 func TestGMPayStatusQueryCanRecoverMissingCallback(t *testing.T){
 	var queried atomic.Bool
 	server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-		if r.Method!=http.MethodGet||r.URL.Path!="/pay/check-status/trade-query"{http.NotFound(w,r);return}
-		if r.URL.RawQuery!=""{t.Error("public status query must not include merchant credentials")}
-		queried.Store(true)
 		w.Header().Set("Content-Type","application/json")
-		_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-query","status":2,"amount":"12.50","token":"USDT"}}`)
+		switch r.URL.Path {
+		case "/pay/check-status/trade-query":
+			if r.Method!=http.MethodGet||r.URL.RawQuery!=""{t.Error("public status query must be an unsigned GET")}
+			queried.Store(true)
+			_,_=io.WriteString(w,"{\"status_code\":200,\"message\":\"success\",\"data\":{\"trade_id\":\"trade-query\",\"status\":2}}")
+		case "/pay/checkout-counter-resp/trade-query":
+			_,_=io.WriteString(w,"{\"status_code\":200,\"message\":\"success\",\"data\":{\"trade_id\":\"trade-query\",\"amount\":\"12.50\",\"currency\":\"USD\",\"token\":\"USDT\"}}")
+		default: http.NotFound(w,r)
+		}
 	}))
 	defer server.Close()
 	m,db,order:=newGMPayTestManager(t);defer db.Close();defer m.bots.Stop()
@@ -283,7 +288,13 @@ func TestGMPayStatusQueryRejectsAssetOrAmountMismatch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = io.WriteString(w, `{"status_code":200,"message":"success","data":{"trade_id":"trade-query-mismatch","status":2,"amount":"`+tc.amount+`","token":"`+tc.token+`"}}`)
+				switch r.URL.Path {
+				case "/pay/check-status/trade-query-mismatch":
+					_, _ = io.WriteString(w, "{\"status_code\":200,\"message\":\"success\",\"data\":{\"trade_id\":\"trade-query-mismatch\",\"status\":2}}")
+				case "/pay/checkout-counter-resp/trade-query-mismatch":
+					_, _ = io.WriteString(w, "{\"status_code\":200,\"message\":\"success\",\"data\":{\"trade_id\":\"trade-query-mismatch\",\"amount\":\""+tc.amount+"\",\"currency\":\"USD\",\"token\":\""+tc.token+"\"}}")
+				default: http.NotFound(w,r)
+				}
 			}))
 			defer server.Close()
 			m, db, order := newGMPayTestManager(t)
