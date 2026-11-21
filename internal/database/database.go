@@ -239,6 +239,13 @@ type AdminRefreshSession struct {
 	TokenVersion int
 }
 
+func FindAdminRefreshSession(ctx context.Context,db *sql.DB,driver,tokenHash string)(AdminRefreshSession,error){
+	var session AdminRefreshSession
+	query:="SELECT admin_id,family_id,token_version FROM admin_refresh_sessions WHERE token_hash="+placeholder(driver,1)
+	err:=db.QueryRowContext(ctx,query,tokenHash).Scan(&session.AdminID,&session.FamilyID,&session.TokenVersion)
+	return session,err
+}
+
 func CreateAdminRefreshSession(ctx context.Context,db *sql.DB,driver,adminID string,tokenVersion int,tokenHash,familyID string,expiresAt time.Time)error{
 	if strings.TrimSpace(adminID)==""||strings.TrimSpace(tokenHash)==""||strings.TrimSpace(familyID)==""||!expiresAt.After(time.Now()){return fmt.Errorf("administrator, refresh token hash, family and future expiry are required")}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
