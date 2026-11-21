@@ -121,6 +121,7 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	if output, err := cmd.CombinedOutput(); err != nil { return fmt.Errorf("pg_dump failed: %w: %s", err, strings.TrimSpace(string(output))) }
 	archivePath := filepath.Join(tmp, "tg-card-backup-"+date+".tar.gz")
 	if err := writeBackupArchive(archivePath, dumpPath, a.dataDir); err != nil { return err }
+	if err := os.Remove(dumpPath); err != nil { return fmt.Errorf("remove plaintext database dump: %w", err) }
 	encryptedPath := archivePath + ".age"
 	if err := backupcrypto.EncryptFile(archivePath, encryptedPath, passphrase); err != nil { return err }
 	if err := os.Remove(archivePath); err != nil { return fmt.Errorf("remove plaintext backup archive: %w", err) }
