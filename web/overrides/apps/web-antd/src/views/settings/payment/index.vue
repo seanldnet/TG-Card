@@ -87,7 +87,7 @@ async function saveSettings() {
     clearApiKey.value = false;
     epusdtSecret.value = '';
     clearEpusdtSecret.value = false;
-    message.success('支付设置已保存，监听器已实时更新，无需重启服务');
+    message.success('支付设置已保存');
   } catch (error: any) {
     message.error(error?.response?.data?.message || '保存失败，请检查配置');
   } finally {
