@@ -1,3 +1,22 @@
+## 2026-11-22 — 本地与每日备份 age 加密（PR #132，开发中）
+
+- 状态：独立 PR 已创建，等待 Go CI、Admin CI 与 Security Scan；未合并、未发布镜像。
+- PR / Commit：PR #132；分支 `feat/encrypted-backup-restore`；当前 head `446fd6563ec81bc9fca381471102f743d10c48cc`。
+- 影响模块：本地 PostgreSQL/应用数据备份、每日 Telegram Owner 备份、恢复脚本与 Docker 镜像。
+- 变更内容：
+  - 使用 age scrypt 流式加密本地数据库与应用数据归档、每日 Telegram 备份；加密后删除明文中间文件。
+  - 增加镜像内 `backup-crypt` 工具；恢复前校验并解密到私有临时目录，之后才执行破坏性恢复。
+  - 兼容恢复旧版明文备份；隔离测试增加密文与旧备份恢复覆盖。
+- 数据库迁移：无。
+- 配置/部署影响：新增 `BACKUP_ENCRYPTION_PASSPHRASE`，至少 32 个非空白字符；必须外部保管并在部署主机 .env 配置。缺失/过短时拒绝新建明文备份。
+- 兼容性与已知限制：旧备份可恢复；丢失加密口令则新备份不可恢复。生产恢复演练尚未执行。
+- 验证：
+  - 自动化测试：PR CI 运行中，待结果。
+  - 前端构建：Admin CI 运行中，待结果。
+  - 安全扫描：运行中，待结果。
+  - 隔离恢复：包含在 Go CI 中，待结果。
+- 发布镜像：尚未发布。
+
 ## 2026-11-22 — 支付查单资金核验修复（PR #131）
 
 - 状态：已合并；PR head Go CI、Admin CI、Security Scan 全部通过；合并后 main CI 与 Docker Publish 已触发，最终结果/镜像 digest 待确认。
