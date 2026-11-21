@@ -766,7 +766,7 @@ func RefundOrderToWallet(ctx context.Context,db *sql.DB,driver,orderID,adminID,n
 	var activeRedeliveryLeases int
 	if err := tx.QueryRowContext(ctx, leaseQuery, orderID, leaseNow).Scan(&activeRedeliveryLeases); err != nil { return 0, err }
 	if activeRedeliveryLeases > 0 { return 0, ErrOrderRedeliveryInProgress }
-	switch status{case "paid","delivering","delivery_failed","delivered":default:return 0,fmt.Errorf("order status %s cannot be refunded",status)}
+	switch status{case "paid","delivery_failed","delivered":default:return 0,fmt.Errorf("order status %s cannot be refunded while delivery is active or unresolved",status)}
 	if !strings.EqualFold(currency,"USDT"){ return 0,fmt.Errorf("仅支持 USDT 订单退款，当前订单币种为 %s",currency) }
 	if amountMinor<=0||amountMinor>922337203685477{ return 0,fmt.Errorf("order refund amount is invalid") }
 	amountAtomic:=amountMinor*10000
