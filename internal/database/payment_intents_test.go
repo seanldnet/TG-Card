@@ -58,3 +58,15 @@ func TestCreateEpusdtPaymentIntentRejectsCancelledOrder(t *testing.T) {
 	if err:=ClosePendingOrder(ctx,db,"sqlite",order.OrderNo);err!=nil{t.Fatal(err)}
 	if _,err:=CreateEpusdtPaymentIntent(ctx,db,"sqlite",order.ID);err==nil{t.Fatal("cancelled order must not create a provider payment intent")}
 }
+
+func TestPaymentSettingsPersistEpusdtNotifyURL(t *testing.T) {
+	ctx:=context.Background()
+	db,err:=Open(ctx,config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"})
+	if err!=nil{t.Fatal(err)}
+	defer db.Close()
+	if err:=Migrate(ctx,db,"sqlite");err!=nil{t.Fatal(err)}
+	want:=PaymentSettings{TronUSDTContract:"TRON-USDT",EpusdtBaseURL:"https://gateway.example",EpusdtPID:"1000",EpusdtSecretCiphertext:"ciphertext",EpusdtEnabled:true,EpusdtNotifyURL:"https://merchant.example/api/payment/epusdt/notify"}
+	if err:=SavePaymentSettings(ctx,db,"sqlite",want);err!=nil{t.Fatal(err)}
+	got,err:=GetPaymentSettings(ctx,db,"sqlite");if err!=nil{t.Fatal(err)}
+	if got.EpusdtNotifyURL!=want.EpusdtNotifyURL||got.EpusdtPID!=want.EpusdtPID||!got.EpusdtEnabled{t.Fatalf("payment settings mismatch: got=%+v want=%+v",got,want)}
+}
