@@ -1,6 +1,6 @@
 ## 2026-11-22 — 本地与每日备份 age 加密（PR #132，开发中）
 
-- 状态：独立 PR 已创建，等待 Go CI、Admin CI 与 Security Scan；未合并、未发布镜像。
+- 状态：独立 PR 已创建；隔离 Docker Compose 加密备份/恢复集成测试通过，Admin CI 与 Security Scan 通过；Go CI 的 go vet、完整测试和 build 尚在执行；未合并、未发布镜像。
 - PR / Commit：PR #132；分支 `feat/encrypted-backup-restore`；当前 head `446fd6563ec81bc9fca381471102f743d10c48cc`。
 - 影响模块：本地 PostgreSQL/应用数据备份、每日 Telegram Owner 备份、恢复脚本与 Docker 镜像。
 - 变更内容：
@@ -11,9 +11,9 @@
 - 配置/部署影响：新增 `BACKUP_ENCRYPTION_PASSPHRASE`，至少 32 个非空白字符；必须外部保管并在部署主机 .env 配置。缺失/过短时拒绝新建明文备份。
 - 兼容性与已知限制：旧备份可恢复；丢失加密口令则新备份不可恢复。生产恢复演练尚未执行。
 - 验证：
-  - 自动化测试：PR CI 运行中，待结果。
-  - 前端构建：Admin CI 运行中，待结果。
-  - 安全扫描：运行中，待结果。
+  - 自动化测试：隔离 Docker Compose 加密/解密恢复、错误口令拒绝破坏性恢复、旧版明文恢复均已通过；完整 Go vet/test/build 仍在运行。
+  - 前端构建：Admin CI 通过。
+  - 安全扫描：通过。
   - 隔离恢复：包含在 Go CI 中，待结果。
 - 发布镜像：尚未发布。
 
