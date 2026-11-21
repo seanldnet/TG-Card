@@ -8,7 +8,7 @@
 - 当前状态：独立 PR 开发中，待 CI 验证。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
 - 文档版本：2.2.56。
 
-## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并，发布检查中）
+## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并并发布）
 
 - PR #100 已 Squash Merge 至 main，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；开发分支 `feat/admin-sensitive-action-step-up-p1`。
 - 新增迁移 `0057_admin_action_confirmations.sql`：数据库只保存一次性确认凭证 SHA-256 哈希；凭证有效期 2 分钟，绑定管理员、action key、HTTP method、精确路径和规范化请求体，并通过原子消费防止重放。
