@@ -1,3 +1,22 @@
+## 2026-11-22 — 支付查单资金核验修复（PR #131）
+
+- 状态：已合并；PR head Go CI、Admin CI、Security Scan 全部通过；合并后 main CI 与 Docker Publish 已触发，最终结果/镜像 digest 待确认。
+- PR / Commit：PR #131；merge commit `a0e878dbb43f796a8ca6aefa676b3d5be27dcc59`。
+- 影响模块：Epusdt、GMPay Edge 支付状态查单与订单结算。
+- 变更内容：
+  - Epusdt 查询到已支付后，继续读取 checkout-counter-resp 快照并核对交易号、USDT、USD 和精确金额。
+  - GMPay Edge 查单同样核验交易号、资产、法币币种和精确金额。
+  - 资金字段缺失或不一致时记录异常、隔离支付意图并通知 Owner，不自动入账/退款。
+- 数据库迁移：无。
+- 配置/部署影响：无新增配置；无手工迁移。
+- 兼容性与已知限制：真实商户环境的支付回调/查单验收仍需目标环境执行。
+- 验证：
+  - 自动化测试：PR head Go CI 通过，覆盖成功查单恢复及金额/资产错误与缺失场景。
+  - 前端构建：Admin CI 通过。
+  - 安全扫描：通过。
+  - 生产支付端到端：未验收。
+- 发布镜像：合并后 Docker Publish 已触发，digest 待 Actions 完成后补记。
+
 ## 2026-11-22 — PR #129 manual 商品买家自助购买已合并并发布（PROJECT_STATUS 2.2.82）
 
 - PR #129 已 Squash Merge，merge commit `8a55d5959bb30bbec03006e0121298dc51c6294f`；实现 Telegram manual SKU 动态表单、私聊填写、20 分钟持久化会话、取消/重启恢复，以及 AES-GCM 加密订单表单快照。
