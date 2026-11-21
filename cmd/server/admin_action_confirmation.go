@@ -41,6 +41,8 @@ var protectedAdminActionKeys = map[string]bool{
 	"order.delivery.resolve-step":    true,
 	"order.cleanup":                  true,
 	"settings.payment.update":        true,
+	"settings.recharge-bonus.update": true,
+	"settings.site.update":           true,
 	"settings.upstream.update":       true,
 	"settings.upstream.disable":      true,
 }
