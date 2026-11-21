@@ -1,3 +1,12 @@
+## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #77 重整开发中）
+
+- 原 PR #77 的分支基于旧 main，落后当前主线 23 个提交且与主线存在分叉；未直接合并旧分支。本次在最新 main 上重新应用并审查同一范围，避免把旧主线上的历史改动带入。
+- 修复 Owner 媒体回复 caption 超过 900 个 Unicode 字符时先发送媒体、再发送剩余文字的双 API 副作用风险；现在超长 caption 在调用 sendPhoto/sendDocument 前拒绝，正常长度媒体只执行一次 Telegram 发送调用。
+- 新增回归测试：超长 caption 只能向 Owner 发送拒绝提示，不得调用 sendPhoto/sendDocument，不得把未送达内容写入工单管理员回复时间线。
+- 更新 `docs/support-tickets.md` 说明限制；无数据库迁移、无新增环境变量，不改变普通文本回复或用户提交媒体流程。
+- PR head Go Backend CI、Admin Frontend CI、Security Scan 待验证；真实 Telegram Owner 回复验收仍待项目所有者执行。
+- 文档版本：2.2.59。
+
 ## 2026-11-21 — 备份恢复测试补充模拟 RPO/RTO 计时（PR #102 已合并并发布）
 
 - PR #102 已 Squash Merge 至 main，merge commit `a3e26c5ea4402b6f79876c7aa5ac4f43fed6e337`；独立分支 `test/backup-restore-rpo-metrics`。
@@ -282,9 +291,14 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.52
-> - 源码核对基线：main 分支，commit `c02ad8fc2db50212affcfa948226dfb79f5b9ba7`；PR #94 已合并
-> - 本次文档更新：记录 PR #102 合并、main CI 与 Docker Publish digest，统一 PR #101/#102 发布状态nc-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
+> - 文档版本：2.2.59
+> - 源码核对基线：main 分支，commit `2bf6643d218710439f9e848e37cf9a882e699ec1`；PR #103 已合并
+> - 本次文档更新：记录 PR #102 合并及 GHCR 发布 digest；修复历史元信息与 PR #56 章节边界；跟踪基于最新 main 重整的 PR #77 媒体回复安全修复
+>
+> ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
+>
+> - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
+
 - 已写入分支的实现：Dujiao 商品分页拉取（后台可配置 20–50 条/批、250–10000ms 间隔，默认 25/1000ms）；每批独立数据库事务；商品/分类指纹包含上游目录字段及本地加价/汇率策略；未变化商品/分类只标记本轮已见，跳过 SKU 重写和图片下载。
 - 同步入口改为后台任务：手动与定时同步共用任务锁；数据库唯一活动任务索引阻止多实例重复执行；持久化进度、批次、错误数和取消请求；单页最多重试 3 次，失败页记录后继续扫描，连续 3 页失败暂停并通知 Owner；取消保留已提交批次且不执行缺失商品下架收尾。进程重启时将未结束任务标记为 interrupted/failed。
 - 目录写入在同步期间标记 stale，使 Bot 暂时只展示本地目录，避免向用户暴露新旧混合的上游目录；全量页成功后统一执行缺失商品/分类收尾，再恢复上游来源。
