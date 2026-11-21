@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -204,7 +205,7 @@ func (m *Manager) HandleGMPayCallback(ctx context.Context,fields map[string]stri
 	if !claimed{return nil}
 	item,loadErr:=database.GetOrderDelivery(ctx,m.db,m.driver,order.ID)
 	if loadErr!=nil{return loadErr}
-	if err:=m.bots.DeliverPaidOrder(ctx,item);err!=nil{return fmt.Errorf("GMPay payment confirmed but automatic delivery failed: %w",err)}
+	if err:=m.bots.DeliverPaidOrder(ctx,item);err!=nil{log.Printf("GMPay payment confirmed but automatic delivery failed; retry queue will handle it: order_id=%s error=%v",order.ID,err)}
 	return nil
 }
 
