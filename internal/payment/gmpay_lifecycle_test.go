@@ -85,6 +85,14 @@ func TestGMPayCallbackRejectsWrongSignatureAndAmountMismatch(t *testing.T){
 	saved,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
 	if saved.Status!="amount_mismatch"{t.Fatalf("intent status=%q want amount_mismatch",saved.Status)}
 	if intent.ID!=saved.ID{t.Fatal("callback must update the existing intent")}
+	// A later correctly signed callback for the same provider trade must reconcile
+	// the event and settle exactly once rather than leaving stale mismatch history.
+	if err:=m.HandleGMPayCallback(context.Background(),signedCallback(order,"trade-amount","12.50"),"{\"corrected\":true}");err!=nil{t.Fatal(err)}
+	got,err=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
+	if got.Status!="paid"||got.PaymentReference!="trade-amount"{t.Fatalf("valid retry did not settle after mismatch: %+v",got)}
+	var eventStatus string
+	if err:=db.QueryRow("SELECT status FROM epusdt_payment_events WHERE provider_trade_id='trade-amount'").Scan(&eventStatus);err!=nil{t.Fatal(err)}
+	if eventStatus!="paid"{t.Fatalf("event status=%q want paid after reconciliation",eventStatus)}
 }
 
 func TestGMPayDuplicateCallbackAndSecondPaymentAreIdempotent(t *testing.T){
