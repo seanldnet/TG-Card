@@ -9,7 +9,7 @@
 - 新增管理员鉴权的经营指标 API：交付成功率/不确定订单 ageing、退款账本冲突、上游同步进度、Cap 成功失败计数、API P95、数据库连接池。
 - 经营概览新增对应指标卡片，基础业务概览保留。
 - Cap 与 API 延迟使用进程内计数/采样；进程重启后重置。长期趋势与 Owner 告警阈值后续独立实现。
-- 新增聚合查询回归测试；无数据库迁移、无新增配置。PR #93 Go/Admin/Security CI 全部通过并已合并，合并后 Docker Publish 待最终确认。PROJECT_STATUS 文档版本更新至 2.2.48。
+- 新增聚合查询回归测试；无数据库迁移、无新增配置。PR #93 Go/Admin/Security CI 与合并后 Docker Publish 均成功；GHCR manifest digest：`sha256:a4faef34507ff02cb73bf058f5261846d27714e9fa96456905413f6d5881da9c`。PROJECT_STATUS 文档版本更新至 2.2.48。
 
 ## 2026-11-21 — P0-4 上游采购 uncertain 人工核实入口（PR #92 已合并）
 
