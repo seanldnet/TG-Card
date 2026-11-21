@@ -1,10 +1,23 @@
+## 2026-11-22 — 本地与每日备份 age 加密（PR #132 开发中；文档版本 2.2.84）
+
+- PR #132：`feat: encrypt local and scheduled backups with age`，独立分支 `feat/encrypted-backup-restore`，当前开放审查，未合并。
+- 本地 PostgreSQL dump 与 `/app/data` 归档在保留前使用 age scrypt 流式加密；清除明文中间文件，对密文生成 SHA-256 清单。
+- 每日 Telegram Owner 备份先加密再投递；未配置或口令不足 32 个非空白字符时 fail closed，沿用失败通知和 30 分钟重试。
+- 新增镜像内 `/app/backup-crypt` 工具；恢复流程先校验密文并解密到私有临时目录，成功后才停止应用并覆盖数据库/数据卷。
+- 保留旧版明文备份恢复兼容；新增隔离 Compose 测试覆盖密文备份、无明文归档、加密恢复和旧备份恢复。
+- 新增外部环境变量 `BACKUP_ENCRYPTION_PASSPHRASE`：至少 32 个非空白字符，必须保存在部署主机的外部秘密管理位置，不得写入 `/app/data`、数据库、仓库或备份文件。部署时需在未提交的 `.env` 中配置；未配置时新备份将拒绝以明文生成。
+- 数据库迁移：无。升级前的旧备份仍可恢复；新加密备份必须保留对应口令，否则无法解密。
+- PR #132 Go CI、Admin CI、Security Scan 已触发，最终结果待核对；镜像发布及 digest 尚未产生。
+- 生产部署、口令托管与真实生产恢复演练尚未验收。
+- 文档版本：2.2.84。
+
 ## 2026-11-22 — 支付查单资金核验修复（PR #131 已合并；文档版本 2.2.83）
 
 - PR #131：`fix: verify provider query amount and asset before settlement`，独立分支 `fix/payment-query-amount-asset-verification`，已 Squash Merge；merge commit：`a0e878dbb43f796a8ca6aefa676b3d5be27dcc59`。
 - Epusdt 状态查询接口仅返回交易号与状态；查询状态为已支付后，额外读取 checkout-counter-resp 订单快照，并核对交易号、USDT 资产、USD 法币币种及订单金额，全部匹配才允许结算。
 - GMPay Edge 已支付查单结果同样核对交易号、USDT 资产、USD 法币币种及精确订单金额；缺失或不一致时记录支付事件、将支付意图标记为待人工核对并通知 Owner，不自动入账、不自动退款。
 - 新增 Epusdt 查单恢复成功、错误/缺失金额、错误/缺失资产的生命周期回归测试。
-- PR head Go CI、Admin CI、Security Scan 全部成功；合并后 main workflow 已触发，Docker Publish 与主线检查状态以 Actions 实际结果为准，镜像 digest 尚未确认。
+- PR head Go CI run `44957507879`、Admin CI run `44957507876`、Security Scan run `44957507900` 全部成功；合并后 main Go CI run `44958227409`、Admin CI run `44958227483`、Security Scan run `44958227459`、Docker Publish run `44958227425` 全部成功。GHCR `latest` 与 commit tag `a0e878dbb43f796a8ca6aefa676b3d5be27dcc59` 已发布，OCI digest：`sha256:c47448cb5f32a1539e5bdab8f2e2caedae474d917e1cc82e2f77944e2550b8e8`。
 - 生产环境 Epusdt/GMPay Edge 真实商户查单和回调验收仍需目标环境确认；代码合并不代表生产验收。
 - 文档版本：2.2.83。
 
