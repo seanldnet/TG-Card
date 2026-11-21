@@ -1,6 +1,6 @@
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并）
 
-- 状态：PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；合并后 Go/Admin/Security CI 全部成功，Docker Publish 正在运行，镜像 digest 待确认。
+- 状态：PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；合并后 Go/Admin/Security CI 全部成功，Docker Publish run `44885024397` 已成功；GHCR `latest` 与 commit tag `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34` manifest digest：`sha256:1ef5ec7d1ef7cc75b9b764bcbea972b83687798468f705e0a4da3664704493a2`。
 - 影响模块：管理员安全认证、余额/采购/退款/支付/订单敏感 API、Admin UI。
 - 变更内容：二次确认需当前管理员密码；启用 TOTP 时还需动态验证码或一次性恢复码。2 分钟一次性凭证仅存 SHA-256 哈希，绑定管理员、action key、method、path 与规范化请求体；后端原子消费防重放；前端处理 428 challenge 并重放原请求。
 - 数据库迁移：新增 `0057_admin_action_confirmations.sql`；启动时自动迁移，无手工 SQL。
