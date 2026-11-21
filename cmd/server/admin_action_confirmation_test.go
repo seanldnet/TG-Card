@@ -23,6 +23,9 @@ func TestAdminActionRequestHashCanonicalizesAndBindsTarget(t *testing.T) {
 	changedPayload,err:=adminActionRequestHash(http.MethodPost,"/api/users/u1/balance",[]byte(`{"amountAtomic":101,"direction":"credit"}`));if err!=nil{t.Fatal(err)}
 	if first==changedPayload{t.Fatal("changed action payload must produce a different hash")}
 	changedPath,err:=adminActionRequestHash(http.MethodPost,"/api/users/u2/balance",[]byte(`{"amountAtomic":100,"direction":"credit"}`));if err!=nil{t.Fatal(err)}
+	largeA,err:=adminActionRequestHash(http.MethodPost,"/api/users/u1/balance",[]byte(`{"amountAtomic":9007199254740992}`));if err!=nil{t.Fatal(err)}
+	largeB,err:=adminActionRequestHash(http.MethodPost,"/api/users/u1/balance",[]byte(`{"amountAtomic":9007199254740993}`));if err!=nil{t.Fatal(err)}
+	if largeA==largeB{t.Fatal("large integer payloads must retain exact numeric precision")}
 	if first==changedPath{t.Fatal("changed target path must produce a different hash")}
 	if _,err:=adminActionRequestHash(http.MethodGet,"/api/users/u1/balance",nil);err==nil{t.Fatal("GET must not be eligible for step-up confirmation")}
 }
