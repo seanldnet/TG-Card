@@ -423,6 +423,9 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 Epusdt Secret"); return }
 	}
 	if input.EpusdtEnabled {
+		if !strings.HasPrefix(strings.ToLower(input.EpusdtBaseURL), "https://") {
+			writeError(w, http.StatusBadRequest, "Epusdt 网关必须使用 HTTPS 地址"); return
+		}
 		if input.EpusdtBaseURL == "" || input.EpusdtPID == "" || epusdtSecretCiphertext == "" {
 			writeError(w, http.StatusBadRequest, "启用 Epusdt GMPay 前必须配置网关地址、PID 和 Secret"); return
 		}
