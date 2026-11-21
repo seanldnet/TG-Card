@@ -44,7 +44,7 @@ func TestAdminLoginTOTPRequirementOnlyReportsAfterValidCredentials(t *testing.T)
 	if enabled, _ := data["enabled"].(bool); enabled { t.Fatal("new administrator must not require TOTP") }
 
 	if err := database.SetAdminTOTPPendingSecret(ctx, db, "sqlite", admin.ID, "test-encrypted-secret"); err != nil { t.Fatal(err) }
-	if err := database.EnableAdminTOTPWithRecoveryCodes(ctx, db, "sqlite", bootstrap.Admin.ID, []string{"unused-recovery-code"}); err != nil { t.Fatal(err) }
+	if err := database.EnableAdminTOTPWithRecoveryCodes(ctx, db, "sqlite", bootstrap.Admin.ID, []string{"unused-recovery-code-1", "unused-recovery-code-2", "unused-recovery-code-3", "unused-recovery-code-4", "unused-recovery-code-5"}); err != nil { t.Fatal(err) }
 	resp, data = call("totp-preflight-admin", "a-strong-test-password")
 	if resp.Code != http.StatusOK { t.Fatalf("enabled TOTP status=%d body=%s", resp.Code, resp.Body.String()) }
 	if enabled, _ := data["enabled"].(bool); !enabled { t.Fatal("enabled administrator must require TOTP") }
