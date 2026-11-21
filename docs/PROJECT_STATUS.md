@@ -1,3 +1,12 @@
+## 2026-11-21 — P0-4 阻止首次交付执行期间退款（独立修复 PR）
+
+- 开发基线：main@4ee33774a6bc136f3360728a91a58d5dfd43f4eb；独立分支 `fix/block-refund-during-active-delivery-p0-4e`。
+- 审查发现 `RefundOrderToWallet` 虽与再次获取租约共享订单行锁，但仍允许 `orders.status='delivering'`，未将正在执行/尚未核实的首次交付排除在退款状态之外。
+- 本分支将本地订单退款允许状态收紧为 `paid`、`delivery_failed`、`delivered`；`delivering`、`delivery_uncertain`、`refunded` 和其他状态均拒绝。这样退款与领取首次交付使用同一订单行并发仲裁，避免交付请求执行期间同时给买家入账。
+- 新增 SQLite/PostgreSQL 共用回归测试：活动首次交付期间退款必须失败，订单保持 delivering，钱包余额与退款 credit 流水均不变。
+- 不新增数据库迁移、环境变量或 API 参数；不改变已交付订单退款与已明确失败订单退款流程。
+- Go/Admin/Security CI 与 Docker Publish 待 PR 验证；生产部署和真实 Telegram 交付/退款并发验收仍需单独确认。
+
 ## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
 
 - 当前 main 基线：`ccb1803a6418a930c1cdf091607c41a31e508b07`（PR #87 已合并）；本项独立分支：`feat/refunded-upstream-order-orphan-audit-p0-4d`。
@@ -164,9 +173,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.43
-> - 源码核对基线：main 分支，commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；PR #83 已合并
-> - 本次文档更新：记录 PR #87 合并及 P0-4 上游退款生命周期孤立订单检测
+> - 文档版本：2.2.44
+> - 源码核对基线：main 分支，commit `4ee33774a6bc136f3360728a91a58d5dfd43f4eb`；PR #88 已合并
+> - 本次文档更新：记录 P0-4 首次交付期间退款保护独立修复
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
