@@ -44,7 +44,7 @@ jobs:
       TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/tgcard_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
-      - run: bash -n scripts/backup.sh scripts/restore.sh
+      - name: Run isolated Docker Compose backup/restore integration test\n        run: bash scripts/test-backup-restore.sh
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
