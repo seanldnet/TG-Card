@@ -1,3 +1,11 @@
+## 2026-11-21 — SMTP STARTTLS 成功投递集成测试（PR #111 开发中）
+
+- 补充本地 SMTP 协议集成测试，覆盖 EHLO/STARTTLS 协商、TLS 握手、加密后 AUTH、MAIL、RCPT、DATA 与服务器接受邮件正文。
+- 新增内部 TLS 配置注入 seam，仅用于信任测试用临时证书；生产仍使用系统根证书与 TLS 1.2 最低版本。
+- 保留明文拒绝与 465 implicit TLS / 587 STARTTLS 模式选择测试。
+- 无数据库迁移、无新增环境变量或后台配置；真实网易/QQ 邮箱投递仍需部署后实发验收。
+- PR #111 Go/Admin/Security CI、合并与镜像发布待验证；PROJECT_STATUS 文档版本更新至 2.2.65。
+
 ## 2026-11-21 — P0-3/P0-4 分步骤交付与资金保护状态校准（PR #84–#89 已合并）
 
 - PR #84：分步骤 file_card 交付状态机已合并，merge commit `c56d6322a6a16bd5ce71977e52152a82eeb9d1c1`。
