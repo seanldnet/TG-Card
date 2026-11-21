@@ -1,3 +1,9 @@
+## 2026-11-22 — 上游 manual 商品单件自助购买（开发中；PROJECT_STATUS 2.2.81）
+
+- 新建独立分支 `feat/upstream-manual-buyer-checkout`，开始实现 Telegram 买家动态表单、AES-GCM 加密会话/订单快照，以及付款后采购请求的 `manual_form_data` 转发。
+- 新增数据库迁移 0061：订单加密表单字段与有时效的表单会话表；新增 schema 解析测试。
+- 当前状态为开发中，尚未完成 Go/Admin/Security/Docker CI，也未合并或发布；不代表生产功能已启用。
+
 ## 2026-11-22 — main 状态校准（PR #125/#127 已合并；文档版本 2.2.80）
 
 - PR #125 已合并，merge commit `830541e2c506875e0b92336dd06b92f31f04821e`；每日备份失败后按 30 分钟冷却重试，只有成功才记录当日完成。
