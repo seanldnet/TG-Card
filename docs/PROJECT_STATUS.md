@@ -1,3 +1,11 @@
+## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
+
+- 当前 main 基线：`6fda2ab7c18a8b0f90ace3c7da9672ab0a60bd27`（PR #97 已合并）；本项独立分支：`fix/admin-logout-revoke-access-session-p1`。
+- 审查 PR #97 后发现 Vben Admin 上游 `logoutApi` 使用 `baseRequestClient`，只携带 HttpOnly refresh cookie，不携带 Authorization Bearer；服务端因此只能撤销 refresh family，当前浏览器的 access session 会在最多 15 分钟内继续有效。
+- 新增 Vben auth API override，登出改用认证 `requestClient`，同时携带 Bearer 与 HttpOnly Cookie；新增 HTTP 回归测试验证登出后原 Bearer 立即返回 401。
+- 无数据库迁移、无新增环境变量；Go/Admin/Security CI 待本 PR 验证。真实浏览器登录/刷新/登出验收待执行。未合并、未发布。
+- 文档版本：2.2.53。
+
 ## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（开发中）
 
 - 当前 main 基线：`45dda335062f5ae8a5b053f92b98588006a9ce3e`（PR #96 已合并）；独立分支：`feat/admin-refresh-token-rotation-p1`。

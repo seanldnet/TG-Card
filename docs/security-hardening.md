@@ -1,3 +1,10 @@
+## 管理员登出 Access Session 即时撤销补强（PR #99 开发中）
+
+- Vben Admin 上游 `logoutApi` 使用不附加 Authorization 的 baseRequestClient；仅靠 refresh cookie 登出时，服务端无法定位并撤销当前 access session。
+- 本项目覆盖 Vben `apps/web-antd/src/api/core/auth.ts`，登出改用认证 requestClient，并保留 withCredentials，使请求同时携带 Bearer 与 HttpOnly refresh cookie。
+- 服务端按当前 Bearer 撤销 access session，并按 cookie 撤销 refresh token family；新增 HTTP 回归测试验证旧 Bearer 立即被拒绝。
+- 无迁移、无新增配置；真实浏览器验收仍需执行。
+
 ## 管理员短效 Access Token 与 Refresh Token 轮换（PR #97 开发中）
 
 - Access Token 15 分钟；Refresh Token 7 天，HttpOnly、SameSite=Lax Cookie，Path 限定为 `/api/auth`。
