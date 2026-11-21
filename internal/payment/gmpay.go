@@ -234,6 +234,7 @@ func (m *Manager) CheckGMPayPayment(ctx context.Context,orderID string)(string,e
 			"order_id":order.OrderNo,
 			"trade_id":intent.ProviderTradeID,
 			"amount":formatMinor(intent.AmountMinor),
+			"token":"USDT",
 			"status":"2",
 		}
 		if fields["block_transaction_id"]!=""{settlement["block_transaction_id"]=fields["block_transaction_id"]}
