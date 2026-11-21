@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import { useAuthStore } from '#/store';
+const authStore=useAuthStore();
 
 const loading=ref(false),enabled=ref(false),enabledAt=ref('');
 const enrollment=ref(false),secret=ref(''),provisioningUri=ref('');
@@ -28,7 +30,8 @@ async function confirmEnrollment(){
   try{
     await requestClient.post('/admin/security/totp/confirm',{code:confirmCode.value});
     enabled.value=true;enrollment.value=false;secret.value='';provisioningUri.value='';currentPassword.value='';confirmCode.value='';
-    message.success('管理员双重验证已启用');
+    message.success('管理员双重验证已启用，请重新登录并输入动态验证码');
+    await authStore.logout();
   }catch(error:any){message.error(error?.response?.data?.message||'验证码确认失败');}
   finally{loading.value=false;}
 }
@@ -38,7 +41,8 @@ async function disableTOTP(){
   try{
     await requestClient.post('/admin/security/totp/disable',{password:disablePassword.value,code:disableCode.value});
     enabled.value=false;enabledAt.value='';disablePassword.value='';disableCode.value='';
-    message.success('双重验证已关闭');
+    message.success('双重验证已关闭，请重新登录');
+    await authStore.logout();
   }catch(error:any){message.error(error?.response?.data?.message||'关闭双重验证失败');}
   finally{loading.value=false;}
 }
