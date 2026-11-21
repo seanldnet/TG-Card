@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -107,53 +106,46 @@ func TestGMPayCallbackForCancelledOrderIsRecordedAsLatePayment(t *testing.T){
 	if intent.Status!="late_payment"{t.Fatalf("intent status=%q want late_payment",intent.Status)}
 }
 
-func TestGMPayCreateTimeoutQueriesExistingOrderBeforeRetry(t *testing.T){
-	var queries atomic.Int32
+func TestGMPayCreateTimeoutDoesNotRetryAndMarksUncertain(t *testing.T){
 	var creates atomic.Int32
+	var queries atomic.Int32
 	server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
 		switch {
-		case r.Method==http.MethodGet && r.URL.Path=="/payments/gmpay/v1/order/query":
-			queries.Add(1)
-			if queries.Load()==1{http.Error(w,"not found",http.StatusNotFound);return}
-			w.Header().Set("Content-Type","application/json")
-			_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-timeout","order_id":"TC-ORDER","amount":12.50,"payment_url":"https://checkout.example/pay","status":1,"expiration_time":1794700000}}`)
 		case r.Method==http.MethodPost && r.URL.Path=="/payments/gmpay/v1/order/create-transaction":
 			creates.Add(1)
-			if err:=r.ParseForm();err!=nil{t.Error(err);return}
-			fields:=map[string]string{};for key:=range r.Form{fields[key]=r.Form.Get(key)}
-			if !VerifyGMPay(fields,"merchant-secret"){t.Error("create request signature invalid")}
 			http.Error(w,"gateway timed out",http.StatusGatewayTimeout)
+		case r.Method==http.MethodGet:
+			queries.Add(1)
+			http.NotFound(w,r)
 		default:http.NotFound(w,r)
 		}
 	}))
 	defer server.Close()
 	m,db,order:=newGMPayTestManager(t);defer db.Close();defer m.bots.Stop()
 	configureTestGateway(t,m,server.URL)
-	// The provider returns the merchant's existing order after the create call
-	// times out. The same order_id is queried; a second create is never sent.
-	order.OrderNo="TC-ORDER"
-	if _,err:=db.Exec("UPDATE orders SET order_no=? WHERE id=?",order.OrderNo,order.ID);err!=nil{t.Fatal(err)}
-	url,err:=m.CreateGMPayCheckout(context.Background(),order)
-	if err!=nil{t.Fatal(err)}
-	if url!="https://checkout.example/pay"{t.Fatalf("payment URL=%q",url)}
-	if creates.Load()!=1||queries.Load()!=2{t.Fatalf("create calls=%d query calls=%d",creates.Load(),queries.Load())}
+	if _,err:=m.CreateGMPayCheckout(context.Background(),order);err==nil{t.Fatal("uncertain provider create must be reported")}
+	if creates.Load()!=1||queries.Load()!=0{t.Fatalf("create calls=%d status queries=%d; uncertain create must never be repeated",creates.Load(),queries.Load())}
+	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
+	if intent.Status!="create_uncertain"{t.Fatalf("intent status=%q want create_uncertain",intent.Status)}
+	if _,err:=m.CreateGMPayCheckout(context.Background(),order);err==nil{t.Fatal("a second click must not retry an uncertain provider create")}
+	if creates.Load()!=1{t.Fatalf("duplicate provider create attempted: %d",creates.Load())}
 }
 
 func TestGMPayStatusQueryCanRecoverMissingCallback(t *testing.T){
 	var queried atomic.Bool
 	server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-		if r.Method!=http.MethodGet||r.URL.Path!="/payments/gmpay/v1/order/query"{http.NotFound(w,r);return}
-		if r.URL.Query().Get("pid")!="1000"||r.URL.Query().Get("signature")==""{t.Error("query request is not signed")}
+		if r.Method!=http.MethodGet||r.URL.Path!="/pay/check-status/trade-query"{http.NotFound(w,r);return}
+		if r.URL.RawQuery!=""{t.Error("public status query must not include merchant credentials")}
 		queried.Store(true)
 		w.Header().Set("Content-Type","application/json")
-		_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-query","order_id":"ORDER-QUERY","amount":12.50,"actual_amount":12.50,"status":2,"block_transaction_id":"chain-query"}}`)
+		_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-query","status":2}}`)
 	}))
 	defer server.Close()
 	m,db,order:=newGMPayTestManager(t);defer db.Close();defer m.bots.Stop()
 	configureTestGateway(t,m,server.URL)
 	order.OrderNo="ORDER-QUERY"
 	if _,err:=db.Exec("UPDATE orders SET order_no=? WHERE id=?",order.OrderNo,order.ID);err!=nil{t.Fatal(err)}
-	if _,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
+	if _,_,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
 	if err:=database.UpdateEpusdtPaymentOrder(context.Background(),db,"sqlite",order.ID,"trade-query","https://checkout.example/pay",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
 	status,err:=m.CheckGMPayPayment(context.Background(),order.ID)
 	if err!=nil{t.Fatal(err)}
@@ -161,16 +153,3 @@ func TestGMPayStatusQueryCanRecoverMissingCallback(t *testing.T){
 	got,err:=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
 	if got.PaymentReference!="trade-query"{t.Fatalf("query recovery did not confirm payment: %+v",got)}
 }
-
-func TestGMPayQueryUsesOrderIdentitySignature(t *testing.T){
-	server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-		values:=r.URL.Query();fields:=map[string]string{};for key:=range values{fields[key]=values.Get(key)}
-		if fields["order_id"]!="ORDER-1"||fields["pid"]!="1000"||!VerifyGMPay(fields,"merchant-secret"){t.Errorf("invalid signed query: %v",fields)}
-		_,_=fmt.Fprint(w,`{"status_code":200,"data":{"order_id":"ORDER-1","trade_id":"trade-1","status":1}}`)
-	}))
-	defer server.Close()
-	client,err:=NewGatewayClient(server.URL,"1000","merchant-secret",server.Client());if err!=nil{t.Fatal(err)}
-	_,err=client.QueryGMPayOrder(context.Background(),map[string]string{"order_id":"ORDER-1"})
-	if err!=nil{t.Fatal(err)}
-}
-
