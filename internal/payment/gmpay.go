@@ -400,7 +400,7 @@ func (m *Manager) checkGMPayPaymentForProvider(ctx context.Context, orderID, pro
 			inserted,recordErr := database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:paymentFields["block_transaction_id"],Status:"asset_mismatch",PayloadJSON:paymentPayload})
 			if recordErr != nil { return "",recordErr }
 			if err := database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"asset_mismatch",paymentFields["block_transaction_id"]); err != nil { return "",err }
-			if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付资产与订单要求不一致，已阻止自动入账。订单："+order.OrderNo+"\\n返回资产："+paymentFields["token"],"") }
+			if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付资产与订单要求不一致，已阻止自动入账。订单："+order.OrderNo+"\n返回资产："+paymentFields["token"],"") }
 			return "",errors.New("provider status response asset does not match USDT order")
 		}
 		queriedAmount,amountErr := parseMinor(paymentFields["amount"])
@@ -409,7 +409,7 @@ func (m *Manager) checkGMPayPaymentForProvider(ctx context.Context, orderID, pro
 			inserted,recordErr := database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:paymentFields["block_transaction_id"],AmountMinor:queriedAmount,Status:"amount_mismatch",PayloadJSON:paymentPayload})
 			if recordErr != nil { return "",recordErr }
 			if err := database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"amount_mismatch",paymentFields["block_transaction_id"]); err != nil { return "",err }
-			if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付金额或法币币种与订单不一致，已阻止自动入账。订单："+order.OrderNo+"\\n应付："+formatMinor(intent.AmountMinor)+" USD\\n查单返回："+paymentFields["amount"]+" "+paymentFields["currency"],"") }
+			if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付金额或法币币种与订单不一致，已阻止自动入账。订单："+order.OrderNo+"\n应付："+formatMinor(intent.AmountMinor)+" USD\n查单返回："+paymentFields["amount"]+" "+paymentFields["currency"],"") }
 			return "",errors.New("provider status response amount or currency does not match local order")
 		}
 		settlement := map[string]string{"pid":client.pid,"order_id":order.OrderNo,"trade_id":intent.ProviderTradeID,"amount":formatMinor(intent.AmountMinor),"token":"USDT","status":"2"}
