@@ -111,14 +111,14 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if dsn == "" { return fmt.Errorf("DATABASE_URL is not configured") }
 	u, err := url.Parse(dsn); if err != nil { return fmt.Errorf("parse database URL: %w", err) }
+	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
+	if err := backupcrypto.ValidatePassphrase(passphrase); err != nil { return err }
 	tmp, err := os.MkdirTemp("", "tg-card-backup-*"); if err != nil { return err }
 	defer os.RemoveAll(tmp)
 	dumpPath := filepath.Join(tmp, "database.dump")
 	cmd := exec.CommandContext(ctx, "pg_dump", "--no-owner", "--no-acl", "--format=custom", "--file", dumpPath)
 	cmd.Env = append(os.Environ(), "PGHOST="+u.Hostname(), "PGDATABASE="+strings.TrimPrefix(u.Path, "/"), "PGUSER="+u.User.Username(), "PGPASSWORD="+passwordFromURL(u), "PGPORT="+portFromURL(u), "PGSSLMODE="+sslModeFromURL(u))
 	if output, err := cmd.CombinedOutput(); err != nil { return fmt.Errorf("pg_dump failed: %w: %s", err, strings.TrimSpace(string(output))) }
-	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
-	if err := backupcrypto.ValidatePassphrase(passphrase); err != nil { return err }
 	archivePath := filepath.Join(tmp, "tg-card-backup-"+date+".tar.gz")
 	if err := writeBackupArchive(archivePath, dumpPath, a.dataDir); err != nil { return err }
 	encryptedPath := archivePath + ".age"
