@@ -21,6 +21,8 @@ type Manager struct {
 	bots *telegrambot.Manager
 	mu sync.RWMutex
 	chain *tron.Client
+	gateway *GatewayClient
+	gatewayNotifyURL string
 	lastScanAt time.Time
 	lastError string
 	lastErrorAt time.Time
