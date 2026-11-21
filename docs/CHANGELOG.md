@@ -1,10 +1,23 @@
-## 2026-11-21 — P1 管理员敏感操作二次确认（开发中）
+## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并）
 
-- 新增管理员密码二次认证；启用 TOTP 时同时要求动态验证码或一次性恢复码。
-- 确认凭证仅保存 SHA-256 哈希，有效期 2 分钟，绑定 action key、HTTP method、精确路径及规范化请求体，并以数据库条件更新保证一次性消费。
-- 对余额调整、采购重试/退款/核实、支付人工核对、售后退款、订单恢复/清理及敏感配置变更启用后端强制校验。
-- Admin UI 新增可复用二次确认弹窗和 428 challenge 自动重试；新增 SQLite 数据库与 HTTP 测试。
-- 新增迁移 0057；无新增环境变量。PROJECT_STATUS 文档版本更新至 2.2.54；CI 待验证。
+- 状态：PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；合并后 Go/Admin/Security CI 全部成功，Docker Publish 正在运行，镜像 digest 待确认。
+- 影响模块：管理员安全认证、余额/采购/退款/支付/订单敏感 API、Admin UI。
+- 变更内容：二次确认需当前管理员密码；启用 TOTP 时还需动态验证码或一次性恢复码。2 分钟一次性凭证仅存 SHA-256 哈希，绑定管理员、action key、method、path 与规范化请求体；后端原子消费防重放；前端处理 428 challenge 并重放原请求。
+- 数据库迁移：新增 `0057_admin_action_confirmations.sql`；启动时自动迁移，无手工 SQL。
+- 配置/部署影响：无新增环境变量；需部署新镜像后才启用新接口与后台交互。
+- 兼容性与已知限制：真实浏览器密码/TOTP/恢复码确认流程仍待部署验收；CI 通过不代表生产验收。
+- 验证：PR head Go/Admin/Security 均成功；合并后 Go/Admin/Security 均成功；Docker Publish 尚未完成。
+
+## 2026-11-21 — 数据库备份/恢复隔离演练自动化（开发中）
+
+- 状态：独立分支 `test/isolated-backup-restore-p1`，基于 PR #100 合并后的 main。
+- 影响模块：Compose 备份脚本、恢复脚本、PostgreSQL 数据、应用持久化密钥与上传文件、Go CI。
+- 变更内容：新增隔离 Docker Compose 集成测试，调用正式 `scripts/backup.sh` 与 `scripts/restore.sh`；创建合成数据库记录、JWT/加密密钥文件和上传文件，备份后模拟数据库篡改、文件丢失/污染，再恢复并断言原数据完整且新增污染数据消失。
+- 数据库迁移：无生产 schema 迁移；测试使用临时 PostgreSQL 16 容器和独立命名卷。
+- 配置/部署影响：无生产环境变量；CI runner 需要 Docker Compose。
+- 兼容性与已知限制：本测试 RTO 只衡量隔离测试容器恢复到 running 的耗时，不代表生产应用就绪 RTO；生产 RPO/RTO 需按实际备份频率和业务验收单独测量。
+- 验证：Go CI 将执行该隔离测试；当前待 CI 验证。真实生产备份/恢复演练未执行。
+
 
 ## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
 
