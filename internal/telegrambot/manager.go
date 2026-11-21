@@ -608,6 +608,15 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
+	userID:=strconv.FormatInt(msg.From.ID,10);chatKey:=strconv.FormatInt(msg.Chat.ID,10)
+	if text=="/cancel" {
+		if m.db!=nil { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,chatKey,userID) }
+		_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已取消当前商品资料填写。")
+		return
+	}
+	if pending=="" && !strings.HasPrefix(text,"/") && m.db!=nil {
+		if _,sessionErr:=database.GetUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,chatKey,userID);sessionErr==nil { pending="upstream_manual_form" }
+	}
 	if pending=="" && !strings.HasPrefix(text,"/") && !m.isOwner(cfg,msg.From.ID) && m.db!=nil {
 		if latest,lookupErr:=database.GetLatestSupportTicketForUser(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10));lookupErr==nil && (latest.Status=="resolved" || latest.Status=="closed" || latest.Status=="rejected") {
 			m.handleUserSupportFollowup(ctx,cfg,msg,latest.ID,text,"","")
@@ -616,6 +625,8 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	if pending != "" && !strings.HasPrefix(text, "/") {
 		switch {
+		case pending=="upstream_manual_form":
+			m.handleUpstreamManualFormInput(ctx,cfg,msg,text);return
 		case strings.HasPrefix(pending,"owner_stockadd:"):
 			productID:=strings.TrimPrefix(pending,"owner_stockadd:");parts:=strings.FieldsFunc(text,func(r rune)bool{return r==','||r=='\n'||r=='\r'});if len(parts)==0||len(parts)>200{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"请提供 1 到 200 条卡密。");m.setPendingAction(cfg.ID,msg.Chat.ID,pending);return};m.mu.Lock();encrypt:=m.encrypt;m.mu.Unlock();if encrypt==nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"加密服务暂不可用。");return};secrets:=make([]database.StockSecret,0,len(parts));for _,key:=range parts{key=strings.TrimSpace(key);if key==""{continue};cipher,err:=encrypt(key);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"卡密加密失败，未导入。");return};fingerprint:=sha256.Sum256([]byte(key));secrets=append(secrets,database.StockSecret{Ciphertext:cipher,Fingerprint:hex.EncodeToString(fingerprint[:])})};inserted,err:=database.ImportProductKeys(ctx,m.db,m.driver,productID,secrets);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"库存导入失败："+err.Error());return};_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"库存导入完成：新增 "+strconv.Itoa(inserted)+" 条，重复跳过 "+strconv.Itoa(len(secrets)-inserted)+" 条。",ownerMenuKeyboard());return
 		case pending=="owner_broadcast":
@@ -1066,7 +1077,9 @@ func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, pro
  if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil&&len(discountTiers)>0{text+="\n批量优惠：";for _,tier:=range discountTiers{text+="\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%"}}
  buttons:=make([][]map[string]string,0)
  if p.SourceType=="upstream" {
-  if p.UpstreamFulfillmentType!="auto"||p.UpstreamStockStatus=="out_of_stock" {text+="\n\n⚠️ 该上游商品暂不支持自助购买或库存不足。"} else {buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})}
+  if p.UpstreamStockStatus=="out_of_stock" {text+="\n\n⚠️ 上游库存不足。"} else if p.UpstreamFulfillmentType=="manual" {
+   if _,formErr:=parseManualFormFields(p.UpstreamManualFormSchemaJSON);formErr!=nil {text+="\n\n⚠️ 该商品的资料表单暂不可用，请联系管理员。"} else {buttons=append(buttons,[]map[string]string{{"text":"填写资料并购买","callback_data":"shop:manualstart:"+p.ID}})}
+  } else if p.UpstreamFulfillmentType=="auto" {buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})} else {text+="\n\n⚠️ 该上游商品履约类型暂不支持自助购买。"}
  } else if keyBacked&&p.StockCount<1{buttons=append(buttons,[]map[string]string{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}})}else if keyBacked{for _,quantity:=range []int{1,2,3,5,10}{if quantity<=p.StockCount{buttons=append(buttons,[]map[string]string{{"text":"购买 "+strconv.Itoa(quantity)+" 件","callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}})}}}else{buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})}
  if p.SourceType=="local" && keyBacked && p.StockCount>0 {
   buttons=append(buttons,[]map[string]string{{"text":"🛒 加入购物车","callback_data":"cart:add:"+p.ID}})
@@ -1129,8 +1142,9 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车仅支持在机器人私聊中使用")
 		return
 	}
-	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID) }
+	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID); if m.db!=nil { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(chatID,10),strconv.FormatInt(query.From.ID,10)) } }
 	if m.db != nil {
+		if !strings.HasPrefix(query.Data,"shop:manualstart:") { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(chatID,10),strconv.FormatInt(query.From.ID,10)) }
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
 		if !m.isOwner(cfg,query.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",query.From.ID,banErr);_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法验证账号状态");return };if banned { _ = m.answerCallback(ctx,cfg.Token,query.ID,"账号已被限制使用");return } }
 	}
@@ -1303,6 +1317,10 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		quantity, parseErr := strconv.Atoi(parts[1])
 		if parseErr!=nil || quantity<1 || quantity>100 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买数量无效"); return }
 		m.createPurchaseOrder(ctx,cfg,query,chatID,parts[0],quantity)
+	case strings.HasPrefix(query.Data,"shop:manualstart:"):
+		if query.Message.Chat.Type!="private" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"资料表单仅支持机器人私聊，请先打开机器人私聊。");return }
+		productID:=strings.TrimPrefix(query.Data,"shop:manualstart:")
+		m.startUpstreamManualForm(ctx,cfg,query,chatID,productID)
 	case strings.HasPrefix(query.Data, "shop:buy:"):
 		productID := strings.TrimPrefix(query.Data, "shop:buy:")
 		m.createPurchaseOrder(ctx,cfg,query,chatID,productID,1)
