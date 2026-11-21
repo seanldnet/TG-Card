@@ -233,7 +233,7 @@ func main() {
 		if err != nil { log.Fatalf("decrypt saved GMPay Edge secret: %v", err) }
 	}
 	if err := paymentManager.SetGMPayEdgeConfig(paymentSettings.GMPayBaseURL, paymentSettings.GMPayPID, gmpayEdgeSecret, paymentSettings.GMPayNotifyURL, paymentSettings.GMPayEnabled); err != nil { log.Fatalf("initialize GMPay Edge checkout: %v", err) }
-	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.CheckGMPayPayment, paymentManager.GatewayEnabled())
+	botManager.SetGMPayCheckout(paymentManager.CreateHostedCheckoutRoundRobin, paymentManager.CheckHostedPayment, paymentManager.GatewayEnabled() || paymentManager.GMPayEdgeEnabled())
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
@@ -295,6 +295,7 @@ func main() {
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
 	api.HandleFunc("POST /api/payment/epusdt/notify", app.epusdtGMPayNotify)
+	api.HandleFunc("POST /api/payment/gmpay/notify", app.gmpayEdgeNotify)
 	api.HandleFunc("GET /api/reconciliation/reports", app.listReconciliationReports)
 	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
@@ -520,7 +521,7 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	if epusdtSecretCiphertext != "" { gatewaySecret, _ = a.secrets.Decrypt(epusdtSecretCiphertext) }
 	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt 配置应用失败："+err.Error()); return }
 	if err := a.paymentManager.SetGMPayEdgeConfig(input.GMPayBaseURL, input.GMPayPID, gmpayEdgeSecret, input.GMPayNotifyURL, input.GMPayEnabled); err != nil { writeError(w, http.StatusBadRequest, "GMPay Edge 配置应用失败："+err.Error()); return }
-	a.botManager.SetGMPayCheckout(a.paymentManager.CreateGMPayCheckout, a.paymentManager.CheckGMPayPayment, a.paymentManager.GatewayEnabled())
+	a.botManager.SetGMPayCheckout(a.paymentManager.CreateHostedCheckoutRoundRobin, a.paymentManager.CheckHostedPayment, a.paymentManager.GatewayEnabled() || a.paymentManager.GMPayEdgeEnabled())
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
 		APIKeyConfigured: apiKeyCiphertext != "",
@@ -540,6 +541,27 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+
+func (a *application) gmpayEdgeNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil { http.Error(w, "invalid callback body", http.StatusBadRequest); return }
+	fields, err := payment.DecodeGMPayCallback(body)
+	if err != nil { http.Error(w, "invalid callback payload", http.StatusBadRequest); return }
+	if err := a.paymentManager.HandleGMPayEdgeCallback(r.Context(), fields, string(body)); err != nil {
+		switch {
+		case errors.Is(err, payment.ErrInvalidSignature): http.Error(w, "invalid signature", http.StatusUnauthorized)
+		case errors.Is(err, payment.ErrGatewayDisabled): http.Error(w, "payment gateway unavailable", http.StatusServiceUnavailable)
+		default:
+			log.Printf("GMPay Edge callback processing failed: order_id=%s trade_id=%s error=%v", fields["order_id"], fields["trade_id"], err)
+			http.Error(w, "callback processing failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "ok")
+}
 
 func (a *application) epusdtGMPayNotify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
