@@ -6,14 +6,14 @@
 - 不改变生产备份/恢复脚本、数据库结构或部署配置；生产 RPO/RTO 仍需结合真实备份周期和应用健康检查实测。
 - 文档版本：2.2.57。
 
-## 2026-11-21 — P1 数据库备份/恢复隔离演练自动化（PR #101 开发中）
+## 2026-11-21 — P1 数据库备份/恢复隔离演练自动化（PR #101 已合并，发布检查中）
 
-- 当前开发基线：`main@50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；独立分支 `test/isolated-backup-restore-p1`。
+- PR #101 已 Squash Merge 至 main，merge commit `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d`；独立分支 `test/isolated-backup-restore-p1`。
 - 新增 `scripts/test-backup-restore.sh`：在独立 Docker Compose project、临时 PostgreSQL 16 容器和独立命名卷中调用正式备份/恢复脚本。
 - 测试创建合成分类、商品、库存卡密、订单及站点设置记录，以及 JWT signing key、加密 key 和上传文件；备份后模拟订单状态污染、库存行丢失、设置被修改、密钥损坏和上传文件丢失，再恢复并断言订单/库存/设置/密钥/上传文件全部回到备份状态。
-- Go Backend CI 将执行该集成测试；测试打印从恢复开始到隔离 app 容器 running 的耗时。该值不是生产应用就绪 RTO。
+- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部成功；合并后 main Go/Admin/Security CI 全部成功，Docker Publish 正在运行。测试实际通过并打印容器启动耗时；该值不是生产应用就绪 RTO。
 - 无生产数据库迁移、无新增生产环境变量；不会连接或修改生产 Compose project、生产数据库或生产 volumes。
-- 当前状态：独立 PR 开发中，待 CI 验证。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
+- 当前状态：代码已合并，Docker Publish 待最终确认。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
 - 文档版本：2.2.56。
 
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并并发布）
@@ -364,8 +364,8 @@
 > **文档元信息**
 > - 最后更新时间：2026-11-21
 > - 文档版本：2.2.57
-> - 源码核对基线：`main@50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；PR #100 已合并，备份恢复隔离演练正在开发
-> - 本次文档更新：补充模拟 RPO/RTO 计时口径，并按第 12 节同步专项文档与变更日志
+> - 源码核对基线：`main@bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d`；PR #101 已合并，补充模拟 RPO/RTO 计时
+> - 本次文档更新：补充模拟 RPO/RTO 计时口径；记录 PR #101 合并状态，并按第 12 节同步专项文档与变更日志
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
