@@ -755,3 +755,20 @@ func TestAdminTOTPRecoveryCodesAreSingleUse(t *testing.T) {
 	loaded,err=FindAdminByID(ctx,db,cfg.DBDriver,admin.ID);if err!=nil{t.Fatal(err)}
 	if loaded.TOTPRecoveryCodeHashes!="[]"{t.Fatalf("disabling TOTP should clear recovery codes, got %s",loaded.TOTPRecoveryCodeHashes)}
 }
+
+
+func TestAdminRefreshTokenRotationAndReplayRevokesFamily(t *testing.T) {
+	ctx:=context.Background();cfg:=config.Config{DBDriver:"sqlite",DatabaseDSN:":memory:"}
+	db,err:=Open(ctx,cfg);if err!=nil{t.Fatal(err)};defer db.Close()
+	if err:=Migrate(ctx,db,cfg.DBDriver);err!=nil{t.Fatal(err)}
+	created,err:=EnsureAdmin(ctx,db,cfg.DBDriver,"refresh-admin","a-strong-test-password");if err!=nil{t.Fatal(err)}
+	admin,err:=FindAdminByUsername(ctx,db,cfg.DBDriver,created.Username);if err!=nil{t.Fatal(err)}
+	now:=time.Now()
+	if err:=CreateAdminRefreshSession(ctx,db,"sqlite",admin.ID,admin.TokenVersion,"refresh-hash-1","family-1",now.Add(7*24*time.Hour));err!=nil{t.Fatal(err)}
+	rotated,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-hash-1","refresh-hash-2","access-hash-2",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now)
+	if err!=nil{t.Fatal(err)}
+	if rotated.AdminID!=admin.ID||rotated.FamilyID!="family-1"{t.Fatalf("unexpected rotated session: %+v",rotated)}
+	active,err:=IsAdminTokenSessionActive(ctx,db,"sqlite",admin.ID,"access-hash-2",now);if err!=nil||!active{t.Fatalf("new access token session should be active: active=%v err=%v",active,err)}
+	if _,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-hash-1","refresh-hash-3","access-hash-3",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenReplay{t.Fatalf("reuse of old refresh token should detect replay, got %v",err)}
+	if _,err:=RotateAdminRefreshSession(ctx,db,"sqlite","refresh-hash-2","refresh-hash-4","access-hash-4",now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenReplay{t.Fatalf("replay must revoke successor in the same family, got %v",err)}
+}
