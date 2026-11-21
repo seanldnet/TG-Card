@@ -1,3 +1,10 @@
+## Independent hosted payment providers (in progress)
+
+- Epusdt and GMPay Edge are configured as separate merchant endpoints with independent PID, encrypted Secret, HTTPS notify URL, and enable flags. Do not reuse credentials across providers.
+- A local payment intent stores an immutable `provider` value (`epusdt` or `gmpay_edge`). Reopening checkout must resume through that recorded provider; a later settings change must not migrate the existing order.
+- Epusdt status checks use its public `/pay/check-status/{trade_id}` endpoint. GMPay Edge status checks use the authenticated, signed `GET /payments/gmpay/v1/order/query` endpoint with exactly one of `trade_id` or `order_id`.
+- GMPay Edge callbacks are received at `/api/payment/gmpay/notify`, authenticated with the GMPay Edge PID/Secret, and acknowledged with plain-text `ok` only after local processing succeeds.
+- Current implementation stage: hosted Epusdt/GMPay Edge selection is round-robin; the requested unified three-way rotation including built-in TRC20 is not complete and must not be described as finished until implemented and covered by CI.
 ## P0-4 补充 — 不确定交付的手动重试边界
 
 - 普通单步骤交付（卡密、固定文本、上游内容等）进入 `delivery_uncertain` 后，后台不得直接重新发送；必须先人工核实 Telegram 是否已送达，避免同一权益/消息重复发送。
