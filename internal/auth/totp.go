@@ -3,8 +3,10 @@ package auth
 import (
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha1"
 	"encoding/base32"
+	"encoding/hex"
 	"encoding/binary"
 	"fmt"
 	"net/url"
@@ -53,4 +55,24 @@ func TOTPProvisioningURI(secret,issuer,account string)string{
 	query.Set("digits","6")
 	query.Set("period","30")
 	return "otpauth://totp/"+label+"?"+query.Encode()
+}
+
+func GenerateTOTPRecoveryCodes(count int)([]string,[]string,error){
+	if count<5||count>20{return nil,nil,fmt.Errorf("recovery code count must be between 5 and 20")}
+	codes:=make([]string,0,count)
+	hashes:=make([]string,0,count)
+	for i:=0;i<count;i++{
+		raw:=make([]byte,10)
+		if _,err:=rand.Read(raw);err!=nil{return nil,nil,fmt.Errorf("generate TOTP recovery code: %w",err)}
+		code:=base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw)
+		codes=append(codes,code)
+		hashes=append(hashes,HashTOTPRecoveryCode(code))
+	}
+	return codes,hashes,nil
+}
+
+func HashTOTPRecoveryCode(code string)string{
+	normalized:=strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(code),"-","")," ",""))
+	sum:=sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
 }
