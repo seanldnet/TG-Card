@@ -1,9 +1,16 @@
-## 2026-11-21 — P1 TOTP 一次性恢复码（开发中）
+## 2026-11-21 — P1 管理员短效 Access Token 与轮换 Refresh Token（开发中）
+
+- Access Token 有效期缩短至 15 分钟；7 天 Refresh Token 使用 HttpOnly、SameSite=Lax Cookie。
+- 新增 refresh endpoint，兼容 Vben Admin 内置刷新客户端；每次刷新轮换令牌，数据库仅存哈希。
+- 检测 refresh token 重放后撤销整个会话族；登出撤销 refresh family，密码/TOTP 状态变更通过 token_version 使旧 refresh token 失效。
+- 新增迁移 `0056_admin_refresh_sessions.sql`，无新增环境变量。Go/Admin/Security CI 与浏览器验收待完成；PROJECT_STATUS 文档版本更新至 2.2.52。
+
+## 2026-11-21 — P1 TOTP 一次性恢复码（PR #96 已合并）
 
 - 为管理员 TOTP 绑定增加 10 个一次性恢复码；仅在绑定确认时显示一次，数据库只存 SHA-256 哈希。
 - 登录可使用动态验证码或未使用的恢复码；恢复码采用并发安全的一次性消费，重复使用会拒绝并记录审计。
 - 关闭 TOTP 清空恢复码；安全设置页面显示一次性恢复码并提示安全保存。
-- 新增迁移 `0055_admin_totp_recovery_codes.sql`；Go/Admin/Security CI 与 PostgreSQL 验证待完成。PROJECT_STATUS 文档版本更新至 2.2.51。
+- 新增迁移 `0055_admin_totp_recovery_codes.sql`；PR #96 Go/Admin/Security CI、SQLite/PostgreSQL 测试全部通过并已合并。PROJECT_STATUS 文档版本更新至 2.2.51。
 
 ## 2026-11-21 — P1 管理员 TOTP 双重验证（PR #95 已合并）
 
