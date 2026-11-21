@@ -115,6 +115,23 @@ func (c *GatewayClient) CreateGMPayOrder(ctx context.Context, fields map[string]
 	return c.doFormJSON(ctx, "/payments/gmpay/v1/order/create-transaction", values.Encode())
 }
 
+// QueryGMPayEdgeOrder queries GMPay Edge using its authenticated merchant API.
+// Unlike the legacy Epusdt public status endpoint, this endpoint requires the
+// merchant PID and an HMAC signature and accepts exactly one order identifier.
+func (c *GatewayClient) QueryGMPayEdgeOrder(ctx context.Context, tradeID string) (map[string]json.RawMessage, error) {
+	tradeID = strings.TrimSpace(tradeID)
+	if tradeID == "" {
+		return nil, errors.New("GMPay Edge trade_id is required")
+	}
+	fields := map[string]string{"pid": c.pid, "trade_id": tradeID}
+	fields["signature"] = SignGMPay(fields, c.secret)
+	values := url.Values{}
+	for key, value := range fields {
+		values.Set(key, value)
+	}
+	return c.doJSON(ctx, http.MethodGet, "/payments/gmpay/v1/order/query?"+values.Encode(), nil)
+}
+
 // QueryGMPayOrder reads the public payment status for a known provider trade_id.
 // Epusdt exposes this as GET /pay/check-status/{trade_id}; it does not accept order_id.
 func (c *GatewayClient) QueryGMPayOrder(ctx context.Context, tradeID string) (map[string]json.RawMessage, error) {
