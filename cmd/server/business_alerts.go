@@ -21,7 +21,9 @@ func (a *application) monitorBusinessAlerts(ctx context.Context) {
 	}
 }
 
-func (a *application) checkBusinessAlerts(ctx context.Context) {
+func (a *application) checkBusinessAlerts(parent context.Context) {
+	ctx,cancel:=context.WithTimeout(parent,5*time.Second)
+	defer cancel()
 	now:=time.Now().UTC()
 	metrics,err:=database.GetDashboardBusinessMetrics(ctx,a.db,a.driver,now)
 	if err!=nil { log.Printf("business alert metrics query failed: %v",err); return }
