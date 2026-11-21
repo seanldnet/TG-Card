@@ -25,6 +25,7 @@ type Manager struct {
 	gatewayNotifyURL string
 	gmpayEdge *GatewayClient
 	gmpayEdgeNotifyURL string
+	checkoutCursor uint64
 	lastScanAt time.Time
 	lastError string
 	lastErrorAt time.Time
