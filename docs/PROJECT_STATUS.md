@@ -1,10 +1,12 @@
-## 2026-11-21 — 备份恢复测试补充模拟 RPO/RTO 计时（PR #102 开发中）
+## 2026-11-21 — 备份恢复测试补充模拟 RPO/RTO 计时（PR #102 已合并并发布）
 
-- 当前基线：PR #101 已合并至 main；独立分支 `test/backup-restore-rpo-metrics`。
-- 集成测试新增两项测量：模拟数据丢失时刻减去最近一次成功备份完成时刻，作为测试场景的模拟 RPO；从恢复脚本开始到隔离 app 容器恢复 running 的耗时，作为容器启动 RTO。
-- 该 RTO 不等于应用健康就绪 RTO；测试 RPO 仅反映 CI 中人为构造的时间窗口，不代表生产备份频率或真实可接受数据丢失窗口。
-- 不改变生产备份/恢复脚本、数据库结构或部署配置；生产 RPO/RTO 仍需结合真实备份周期和应用健康检查实测。
-- 文档版本：2.2.57。
+- PR #102 已 Squash Merge 至 main，merge commit `a3e26c5ea4402b6f79876c7aa5ac4f43fed6e337`；独立分支 `test/backup-restore-rpo-metrics`。
+- 集成测试记录两项指标：模拟数据丢失时刻减去最近一次成功备份完成时刻，作为测试场景模拟 RPO；从恢复脚本开始到隔离 app 容器恢复 running 的耗时，作为容器启动 RTO。
+- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部成功；合并后 main Go Backend CI run `44889690716`、Admin Frontend CI run `44889690674`、Security Scan run `44889690676`、Docker Publish run `44889690723` 全部成功。
+- GHCR `latest` 与 commit tag `a3e26c5ea4402b6f79876c7aa5ac4f43fed6e337` 已发布，OCI manifest digest：`sha256:aaba213e22f07fd64827ffd2046da4c69f14c1340df41616428c3cc7fbde4396`。
+- 该 RTO 仅到隔离 app 容器 running，不等于应用健康就绪 RTO；模拟 RPO 仅反映 CI 人为构造的时间窗口，不代表生产备份频率或真实可接受数据丢失窗口。生产 PostgreSQL PITR/恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
+- 无生产数据库迁移、无新增生产环境变量；不连接或修改生产 Compose project、数据库或 volumes。
+- 文档版本：2.2.58。
 
 ## 2026-11-21 — P1 数据库备份/恢复隔离演练自动化（PR #101 已合并并发布）
 
@@ -282,10 +284,7 @@
 > - 最后更新时间：2026-11-21
 > - 文档版本：2.2.52
 > - 源码核对基线：main 分支，commit `c02ad8fc2db50212affcfa948226dfb79f5b9ba7`；PR #94 已合并
-> - 本次文档更新：记录 P1 管理员 TOTP 双重验证
-## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
-
-- 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
+> - 本次文档更新：记录 PR #102 合并、main CI 与 Docker Publish digest，统一 PR #101/#102 发布状态nc-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
 - 已写入分支的实现：Dujiao 商品分页拉取（后台可配置 20–50 条/批、250–10000ms 间隔，默认 25/1000ms）；每批独立数据库事务；商品/分类指纹包含上游目录字段及本地加价/汇率策略；未变化商品/分类只标记本轮已见，跳过 SKU 重写和图片下载。
 - 同步入口改为后台任务：手动与定时同步共用任务锁；数据库唯一活动任务索引阻止多实例重复执行；持久化进度、批次、错误数和取消请求；单页最多重试 3 次，失败页记录后继续扫描，连续 3 页失败暂停并通知 Owner；取消保留已提交批次且不执行缺失商品下架收尾。进程重启时将未结束任务标记为 interrupted/failed。
 - 目录写入在同步期间标记 stale，使 Bot 暂时只展示本地目录，避免向用户暴露新旧混合的上游目录；全量页成功后统一执行缺失商品/分类收尾，再恢复上游来源。
