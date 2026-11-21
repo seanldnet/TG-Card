@@ -13,7 +13,7 @@
 - 经营概览改用聚合指标 API 展示上述指标；原机器人/商品/订单/售后基础卡片保留。
 - 新增数据库聚合查询测试；指标只读，不修改订单、钱包、采购状态或异常状态。
 - Cap 计数与 API P95 使用进程内窗口（Cap 自进程启动、API 最近 512 次请求），重启后重置；长期趋势与 Owner 告警阈值另列后续任务。
-- 无数据库迁移、无新增环境变量/后台配置；PR head Go/Admin/Security CI 全部通过，合并后 main 发布工作流待最终确认。Cap 与 API 采样重启后重置，长期趋势未持久化。
+- 无数据库迁移、无新增环境变量/后台配置；PR #93 Go/Admin/Security CI 与合并后 Docker Publish run `44876350720` 全部成功。GHCR `latest` 与提交标签 `bf4b5a1b36f780b5e0ca1c4695d5cbcb35f48c1f` 已发布，manifest digest：`sha256:a4faef34507ff02cb73bf058f5261846d27714e9fa96456905413f6d5881da9c`。Cap 与 API 采样重启后重置，长期趋势未持久化。
 
 ## 2026-11-21 — P0-4 上游采购 uncertain 人工核实入口（PR #92 已合并）
 
