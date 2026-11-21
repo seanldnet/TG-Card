@@ -5,6 +5,7 @@ import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
 import { useRoute } from 'vue-router';
 import { requestClient } from '#/api/request';
+import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface Order {
   id: string; orderNo: string; botId: string; telegramUserId: string; telegramChatId: string;
@@ -40,7 +41,7 @@ async function retryDelivery(order:Order){
   if(!window.confirm(prompt))return;
  }
  retryingId.value=order.id;
- try{await requestClient.post('/orders/'+order.id+'/retry-delivery');message.success('订单 '+order.orderNo+' 已触发发货恢复');await loadOrders();if(selectedDetail.value?.order.id===order.id)await openOrderDetail(order)}
+ try{const path='/api/orders/'+order.id+'/retry-delivery';await withAdminActionConfirmation({actionKey:'order.delivery.retry',method:'POST',path,run:(token)=>requestClient.post('/orders/'+order.id+'/retry-delivery',undefined,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('订单 '+order.orderNo+' 已触发发货恢复');await loadOrders();if(selectedDetail.value?.order.id===order.id)await openOrderDetail(order)}
  catch(error:any){message.error(error?.response?.data?.message||'发货恢复失败，请检查步骤状态及机器人状态');await loadOrders();if(selectedDetail.value?.order.id===order.id)await openOrderDetail(order)}
  finally{retryingId.value=''}
 }
@@ -53,11 +54,11 @@ async function resolveDeliveryStep(step:DeliveryStep,status:'succeeded'|'failed'
  let messageId='';
  if(status==='succeeded')messageId=window.prompt('Telegram message_id（如已知可填写；未知可留空）')?.trim()||'';
  try{
-  await requestClient.put('/orders/'+step.orderId+'/delivery-steps/'+encodeURIComponent(step.stepKey),{status,messageId,note:note.trim()});
+  const path='/api/orders/'+step.orderId+'/delivery-steps/'+encodeURIComponent(step.stepKey);const payload={status,messageId,note:note.trim()};await withAdminActionConfirmation({actionKey:'order.delivery.resolve-step',method:'PUT',path,payload,run:(token)=>requestClient.put('/orders/'+step.orderId+'/delivery-steps/'+encodeURIComponent(step.stepKey),payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   message.success('交付步骤核实结果已记录');if(selectedDetail.value)await openOrderDetail(selectedDetail.value.order);await loadOrders();
  }catch(error:any){message.error(error?.response?.data?.message||'记录步骤核实结果失败')}
 }
-async function clearAllOrderData(){if(cleanupPhrase.value.trim()!=='清空全部订单数据'){message.warning('请完整输入“清空全部订单数据”以确认');return;}cleanupLoading.value=true;try{const result=await requestClient.post<{orders:number;paymentTransactions:number;supportTickets:number;walletTransactions:number;walletRecharges:number}>('/orders/cleanup',{confirmation:'CLEAR_ALL_ORDERS'});message.success('清理完成：订单 '+result.orders+' 笔，支付流水 '+result.paymentTransactions+' 笔，充值 '+result.walletRecharges+' 笔');cleanupOpen.value=false;cleanupPhrase.value='';await loadOrders();}catch(error:any){message.error(error?.response?.data?.message||'清理失败');}finally{cleanupLoading.value=false;}}
+async function clearAllOrderData(){if(cleanupPhrase.value.trim()!=='清空全部订单数据'){message.warning('请完整输入“清空全部订单数据”以确认');return;}cleanupLoading.value=true;try{const path='/api/orders/cleanup';const payload={confirmation:'CLEAR_ALL_ORDERS'};const result=await withAdminActionConfirmation({actionKey:'order.cleanup',method:'POST',path,payload,run:(token)=>requestClient.post<{orders:number;paymentTransactions:number;supportTickets:number;walletTransactions:number;walletRecharges:number}>('/orders/cleanup',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});if(!result)return;message.success('清理完成：订单 '+result.orders+' 笔，支付流水 '+result.paymentTransactions+' 笔，充值 '+result.walletRecharges+' 笔');cleanupOpen.value=false;cleanupPhrase.value='';await loadOrders();}catch(error:any){message.error(error?.response?.data?.message||'清理失败');}finally{cleanupLoading.value=false;}}
 onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo||'');if(orderNo){const target=orders.value.find(item=>item.orderNo===orderNo);if(target)await openOrderDetail(target);}});
 </script>
 <template>

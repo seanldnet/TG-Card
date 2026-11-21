@@ -4,6 +4,7 @@ import { message, Modal } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { useWindowSize } from '@vueuse/core';
 import { requestClient } from '#/api/request';
+import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 interface Ticket{id:string;ticketNo:string;orderId:string;orderNo:string;botId:string;telegramUserId:string;category:string;description:string;status:string;adminReply:string;assignedTo?:string;slaDueAt?:string;createdAt:string;updatedAt:string;resolvedAt?:string}
 interface TicketMessage{id:string;ticketId:string;senderType:string;senderId:string;message:string;attachmentFileId?:string;attachmentName?:string;createdAt:string}
 const loading=ref(false),saving=ref(false),tickets=ref<Ticket[]>([]),selected=ref<Ticket|null>(null),ticketModalOpen=ref(false),editStatus=ref('open');
@@ -31,13 +32,13 @@ async function assignTicket(){
 }
 function refundTicket(item:Ticket){
  Modal.confirm({title:'确认退款至站内余额',content:'将订单金额退还到用户站内余额，并撤销已交付卡密记录。该操作不可重复，也无法自动撤回外部链上转账。',okType:'danger',okText:'确认退款',cancelText:'取消',onOk:async()=>{
-  try{const result=await requestClient.post<any>('/support/tickets/'+item.id+'/refund');message.success(result?.warning||'退款已入账并撤销卡密记录');await loadTickets()}
+  try{const path='/api/support/tickets/'+item.id+'/refund';const result=await withAdminActionConfirmation({actionKey:'support.ticket.refund',method:'POST',path,run:(token)=>requestClient.post<any>('/support/tickets/'+item.id+'/refund',undefined,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success(result?.warning||'退款已入账并撤销卡密记录');await loadTickets()}
   catch(error:any){message.error(error?.response?.data?.message||'退款失败')}
  }});
 }
 function resendOrder(item:Ticket){
  Modal.confirm({title:'重新发送商品',content:'系统将尝试重新交付该工单关联订单的商品。',okText:'重新发送',cancelText:'取消',onOk:async()=>{
-  try{await requestClient.post('/orders/'+item.orderId+'/retry-delivery');message.success('已提交重新交付任务')}
+  try{const path='/api/orders/'+item.orderId+'/retry-delivery';await withAdminActionConfirmation({actionKey:'order.delivery.retry',method:'POST',path,run:(token)=>requestClient.post('/orders/'+item.orderId+'/retry-delivery',undefined,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('已提交重新交付任务')}
   catch(error:any){message.error(error?.response?.data?.message||'重新交付失败')}
  }});
 }

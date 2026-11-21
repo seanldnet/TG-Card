@@ -333,3 +333,55 @@ func TestPostgresAdminRefreshTokenRotation(t *testing.T) {
 	if _,err:=RotateAdminRefreshSession(ctx,db,"postgres","pg-refresh-old-"+suffix,"pg-refresh-replay-"+suffix,"pg-access-replay-"+suffix,now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenReplay{t.Fatalf("expected refresh replay error, got %v",err)}
 	if _,err:=RotateAdminRefreshSession(ctx,db,"postgres","pg-refresh-new-"+suffix,"pg-refresh-next-"+suffix,"pg-access-next-"+suffix,now.Add(15*time.Minute),now.Add(7*24*time.Hour),now);err!=ErrAdminRefreshTokenReplay{t.Fatalf("replay should revoke the full family, got %v",err)}
 }
+
+
+func TestPostgresAdminActionConfirmationConcurrentSingleUse(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN is not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	db, err := Open(ctx, config.Config{DBDriver: "postgres", DatabaseDSN: dsn})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, "postgres"); err != nil { t.Fatal(err) }
+
+	suffix, err := randomID()
+	if err != nil { t.Fatal(err) }
+	adminID := "step-up-admin-" + suffix
+	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(ctx, "INSERT INTO admins(id,username,password_hash,real_name,role,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", adminID, "step-up-pg-"+suffix, "test-hash", "Step-up Test", "super", 1, createdAt, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM admins WHERE id=$1", adminID) }()
+	tokenHash := "step-up-pg-" + suffix
+	if err := CreateAdminActionConfirmation(ctx, db, "postgres", adminID, "order.cleanup", "request-"+suffix, tokenHash, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM admin_action_confirmations WHERE token_hash=$1", tokenHash) }()
+
+	const workers = 8
+	start := make(chan struct{})
+	results := make(chan bool, workers)
+	errs := make(chan error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			consumed, consumeErr := ConsumeAdminActionConfirmation(ctx, db, "postgres", adminID, "order.cleanup", "request-"+suffix, tokenHash, time.Now())
+			results <- consumed
+			errs <- consumeErr
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	close(errs)
+	winners := 0
+	for consumed := range results { if consumed { winners++ } }
+	for consumeErr := range errs { if consumeErr != nil { t.Fatal(consumeErr) } }
+	if winners != 1 { t.Fatalf("exactly one concurrent PostgreSQL request must consume the confirmation, got %d", winners) }
+}

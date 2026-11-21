@@ -6,6 +6,7 @@ import { useWindowSize } from '@vueuse/core';
 import { useVbenModal, VbenButton } from '@vben/common-ui';
 import { useVbenForm } from '#/adapter/form';
 import { requestClient } from '#/api/request';
+import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface OrderOption { id:string; orderNo:string; productName:string; status:string; paymentAmount:string; paymentReference?:string; }
 interface PaymentTransaction {
@@ -51,7 +52,7 @@ async function submitReconciliation(){
  const {valid}=await reconcileFormApi.validate();if(!valid)return;
  const values=await reconcileFormApi.getValues();if(!selectedTransaction.value||!values.orderId){message.warning('请选择匹配订单');return}
  reconcileLoading.value=true;
- try{await requestClient.post('/payment/transactions/'+selectedTransaction.value.transactionId+'/reconcile',{orderId:values.orderId,note:values.note||''});message.success('交易核对完成，系统已自动尝试发货');reconcileModalApi.close();await Promise.all([loadTransactions(),loadOrders()])}
+ try{const path='/api/payment/transactions/'+selectedTransaction.value.transactionId+'/reconcile';const payload={orderId:values.orderId,note:values.note||''};await withAdminActionConfirmation({actionKey:'payment.transaction.reconcile',method:'POST',path,payload,run:(token)=>requestClient.post('/payment/transactions/'+selectedTransaction.value!.transactionId+'/reconcile',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('交易核对完成，系统已自动尝试发货');reconcileModalApi.close();await Promise.all([loadTransactions(),loadOrders()])}
  catch{message.error('人工核对失败，请检查金额、收款地址、订单状态及库存')}
  finally{reconcileLoading.value=false}
 }
