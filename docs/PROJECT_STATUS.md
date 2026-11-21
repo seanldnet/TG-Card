@@ -1,11 +1,19 @@
-## 2026-11-21 — P0-4 不确定交付禁止盲目手动重试（开发中）
+## 2026-11-21 — P0-4 上游采购 uncertain 人工核实入口（开发中）
 
-- 当前 main 基线：`19ca3544baa4b79833b53cb56a65bf3c7007381c`（PR #90 已合并）；独立分支：`fix/block-uncertain-single-step-delivery-retry-p0-4`。
+- 当前 main 基线：`ff1f2d5c31daa848fc4ee34548b8423e283684c0`（PR #91 已合并）；独立分支：`feat/upstream-uncertain-resolution-ui-p0-4`。
+- 审计发现：后端已有 uncertain 采购人工核实接口，但上游设置页仍对 uncertain 订单展示直接重试/退款按钮，未提供 accepted / not_accepted 决策入口。
+- 本次补齐 UI：uncertain 只展示“核实受理状态”；供应商确认已受理时登记上游订单 ID/订单号，恢复 polling 并只查单；确认未受理/明确失败时记录核实依据，收敛为 failed 后才开放安全重试/退款。
+- 复用既有 `/api/upstream/procurements/{id}/resolve`，无新增 API、数据库迁移或环境变量；新增 not_accepted 状态回归测试，验证核实后可沿用原订单幂等键安全重试，且不创建退款流水。
+- 当前状态：前端、测试与专项文档已提交独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未进行生产验收。
+
+## 2026-11-21 — P0-4 不确定交付禁止盲目手动重试（PR #91 已合并）
+
+- PR #91 已 Squash Merge 至 main，merge commit `ff1f2d5c31daa848fc4ee34548b8423e283684c0`；独立分支：`fix/block-uncertain-single-step-delivery-retry-p0-4`。
 - 审计发现：自动恢复扫描虽排除 `delivery_uncertain`，管理员重试入口却只对 invite_link 与 file_card 做拦截，普通卡密、固定文本、上游内容等单步骤交付仍可直接重发。
 - 修复：普通单步骤交付处于 `delivery_uncertain` 时，管理员入口明确拒绝重试；数据库 `ClaimOrderDelivery` 也仅允许 file_card 在存在步骤记录且不存在 uncertain/sending 步骤时恢复，防止绕过 HTTP 入口直接 claim。
 - file_card 仍支持既有分步骤恢复：所有步骤经人工核实为 succeeded/failed 后，可跳过成功步骤，仅恢复失败步骤；缺失步骤证据或仍有不确定步骤时拒绝。
 - 新增 SQLite/PostgreSQL 回归测试覆盖单步骤不确定订单拒绝手动 claim，以及 file_card 缺失/未核实步骤拒绝、全部核实后允许恢复。
-- 无数据库迁移、无新增环境变量/后台配置；明确失败的 `delivery_failed` 重试流程不变。CI 待 PR 验证；未合并、未发布、未生产验收。
+- 无数据库迁移、无新增环境变量/后台配置；明确失败的 `delivery_failed` 重试流程不变。PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security CI 与 Docker Publish run `44873878925` 全部成功。GHCR `latest` 与提交标签 `ff1f2d5c31daa848fc4ee34548b8423e283684c0` 已发布，manifest digest：`sha256:9034d2f3ecbad205291345e84e34f6c9c9e499c3022f68d615b3b1a705bccadf`。真实 Telegram 分步骤恢复仍待验收。
 
 ## 2026-11-21 — P0-4 上游采购不确定状态资金保护（PR #90 已合并并发布）
 
@@ -192,9 +200,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.46
-> - 源码核对基线：main 分支，commit `4ee33774a6bc136f3360728a91a58d5dfd43f4eb`；PR #88 已合并
-> - 本次文档更新：记录 P0-4 首次交付期间退款保护独立修复
+> - 文档版本：2.2.47
+> - 源码核对基线：main 分支，commit `ff1f2d5c31daa848fc4ee34548b8423e283684c0`；PR #91 已合并
+> - 本次文档更新：记录 P0-4 uncertain 采购人工核实后台入口
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。

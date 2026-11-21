@@ -202,3 +202,26 @@ func TestRefundIntegrityDetectsUpstreamOrderWithoutProcurementRecord(t *testing.
  if err:=db.QueryRowContext(ctx,"SELECT status,upstream_source_snapshot FROM orders WHERE id=?",order.ID).Scan(&status,&source);err!=nil{t.Fatal(err)}
  if status!="refunded"||source!="upstream"{t.Fatalf("integrity check must not mutate order: status=%s source=%s",status,source)}
 }
+
+
+func TestUncertainProcurementNotAcceptedResolutionUnlocksSafeRetry(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	product,err:=CreateProduct(ctx,db,"sqlite",Product{Name:"upstream not accepted",PriceMinor:1000,Currency:"USDT",DeliveryType:"fixed_text",Status:1})
+	if err!=nil{t.Fatal(err)}
+	order,err:=CreateOrder(ctx,db,"sqlite","bot","uncertain-not-accepted-user","uncertain-not-accepted-chat",product.ID,time.Hour)
+	if err!=nil{t.Fatal(err)}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	if _,err:=db.ExecContext(ctx,"UPDATE orders SET status='procurement_failed' WHERE id=?",order.ID);err!=nil{t.Fatal(err)}
+	if _,err:=db.ExecContext(ctx,"INSERT INTO upstream_procurements(local_order_id,local_order_no,status,deadline_at,created_at,updated_at,last_error) VALUES(?,?,'uncertain',?,?,?,'response lost')",order.ID,order.OrderNo,now,now,now);err!=nil{t.Fatal(err)}
+	if err:=ResolveUncertainProcurement(ctx,db,"sqlite",order.ID,"admin-1","not_accepted","","","supplier portal confirms no order was accepted");err!=nil{t.Fatal(err)}
+	var orderStatus,queueStatus string
+	if err:=db.QueryRowContext(ctx,"SELECT o.status,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id=?",order.ID).Scan(&orderStatus,&queueStatus);err!=nil{t.Fatal(err)}
+	if orderStatus!="procurement_failed"||queueStatus!="failed"{t.Fatalf("not-accepted resolution should converge to failed: order=%s queue=%s",orderStatus,queueStatus)}
+	if err:=RetryUpstreamProcurement(ctx,db,"sqlite",order.ID,"admin-1");err!=nil{t.Fatalf("verified non-acceptance should unlock safe retry: %v",err)}
+	if err:=db.QueryRowContext(ctx,"SELECT o.status,p.status FROM orders o JOIN upstream_procurements p ON p.local_order_id=o.id WHERE o.id=?",order.ID).Scan(&orderStatus,&queueStatus);err!=nil{t.Fatal(err)}
+	if orderStatus!="procurement_pending"||queueStatus!="queued"{t.Fatalf("safe retry should queue the original local order: order=%s queue=%s",orderStatus,queueStatus)}
+	var credits int
+	if err:=db.QueryRowContext(ctx,"SELECT COUNT(1) FROM wallet_transactions WHERE note LIKE ?","上游采购失败退款："+order.OrderNo+"%").Scan(&credits);err!=nil{t.Fatal(err)}
+	if credits!=0{t.Fatalf("manual not-accepted resolution must not create a refund ledger, got %d",credits)}
+}
