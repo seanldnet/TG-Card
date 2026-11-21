@@ -17,6 +17,7 @@ interface PaymentSettings {
   epusdtPid: string;
   epusdtSecretConfigured: boolean;
   epusdtEnabled: boolean;
+  epusdtNotifyUrl: string;
 }
 
 const loading = ref(false);
@@ -32,7 +33,7 @@ const settings = reactive<PaymentSettings>({
   receiveAddress: '',
   usdtContract: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
   enabled: false,
-  epusdtBaseUrl: '', epusdtPid: '', epusdtSecretConfigured: false, epusdtEnabled: false,
+  epusdtBaseUrl: '', epusdtPid: '', epusdtSecretConfigured: false, epusdtEnabled: false, epusdtNotifyUrl: '',
 });
 
 async function loadBonusRule(){
@@ -74,6 +75,7 @@ async function saveSettings() {
       epusdtSecret: epusdtSecret.value,
       clearEpusdtSecret: clearEpusdtSecret.value,
       epusdtEnabled: settings.epusdtEnabled,
+      epusdtNotifyUrl: settings.epusdtNotifyUrl,
     };
     const data = await withAdminActionConfirmation({
       actionKey: 'settings.payment.update',
@@ -162,12 +164,13 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
     </a-card>
     <a-card :bordered="false" :loading="loading" title="Epusdt · GMPay 商户配置">
       <template #extra><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag></template>
-      <a-alert class="mb-4" type="info" show-icon message="此处配置 Epusdt 网关的 GMPay 商户接口。Secret 使用 AES-256-GCM 加密存储，接口不会回传密钥；留空保留原密钥。当前仅完成配置管理，支付下单、回调验签和自动发货尚未启用。"/>
+      <a-alert class="mb-4" type="info" show-icon message="此处配置 Epusdt GMPay 商户接口。Secret 使用 AES-256-GCM 加密存储且不会回传；启用后 Telegram 商城显示 GMPay 收银台入口，回调必须使用 HTTPS 并完成签名与订单金额核验。"/>
       <a-form layout="vertical">
         <a-form-item label="Epusdt 网关地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
         <a-form-item label="GMPay PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
+        <a-form-item label="GMPay 异步回调地址" required extra="填写当前 TG-Card 服务公网可访问的 HTTPS 地址，例如 https://你的域名/api/payment/epusdt/notify。请在 Epusdt 商户端允许此回调地址。"><a-input v-model:value="settings.epusdtNotifyUrl" placeholder="https://你的域名/api/payment/epusdt/notify" autocomplete="url"/></a-form-item>
         <a-form-item label="GMPay Secret" extra="不会回显；留空保持现有密钥，输入新值可轮换。"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 GMPay 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
-        <a-form-item label="启用 Epusdt GMPay 配置"><a-switch v-model:checked="settings.epusdtEnabled"/><span class="ml-3 text-sm text-gray-500">仅允许保存完整且格式有效的配置；不会因此自动开启真实收款。</span></a-form-item>
+        <a-form-item label="启用 Epusdt GMPay 配置"><a-switch v-model:checked="settings.epusdtEnabled"/><span class="ml-3 text-sm text-gray-500">开启后用户可在商城订单中选择 GMPay 托管收银台；回调验签、金额核验、幂等确认与自动发货由服务端处理。</span></a-form-item>
       </a-form>
     </a-card>
     <a-card :bordered="false" title="充值赠送规则">
