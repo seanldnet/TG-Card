@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/http"
 	"net/mail"
-	"net/smtp"
 	"encoding/base64"
 	"os"
 	"path/filepath"
