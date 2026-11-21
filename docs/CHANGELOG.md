@@ -18,15 +18,15 @@
 - 兼容性与已知限制：真实浏览器密码/TOTP/恢复码确认流程仍待部署验收；CI 通过不代表生产验收。
 - 验证：PR head Go/Admin/Security 均成功；合并后 Go/Admin/Security 均成功；Docker Publish 尚未完成。
 
-## 2026-11-21 — 数据库备份/恢复隔离演练自动化（开发中）
+## 2026-11-21 — 数据库备份/恢复隔离演练自动化（PR #101 已合并，发布检查中）
 
-- 状态：独立分支 `test/isolated-backup-restore-p1`，基于 PR #100 合并后的 main。
+- 状态：PR #101 已 Squash Merge 至 main，merge commit `bd1087fc92ea5dd0263ebaa62a6ea94cb8f12f6d`；基于 PR #100 合并后的 main。
 - 影响模块：Compose 备份脚本、恢复脚本、PostgreSQL 数据、应用持久化密钥与上传文件、Go CI。
 - 变更内容：新增隔离 Docker Compose 集成测试，调用正式 `scripts/backup.sh` 与 `scripts/restore.sh`；创建合成分类、商品、库存卡密、订单及站点设置记录，以及 JWT/加密密钥文件和上传文件；备份后模拟订单状态污染、库存行丢失、设置变更、密钥损坏和上传文件丢失，再恢复并断言所有状态回到备份值。
 - 数据库迁移：无生产 schema 迁移；测试使用临时 PostgreSQL 16 容器和独立命名卷。
 - 配置/部署影响：无生产环境变量；CI runner 需要 Docker Compose。
 - 兼容性与已知限制：本测试 RTO 只衡量隔离测试容器恢复到 running 的耗时，不代表生产应用就绪 RTO；生产 RPO/RTO 需按实际备份频率和业务验收单独测量。
-- 验证：Go CI 将执行该隔离测试；当前待 CI 验证。真实生产备份/恢复演练未执行。PROJECT_STATUS 文档版本更新至 2.2.56。
+- 验证：PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security CI 全部通过，Docker Publish 正在运行。隔离测试通过；真实生产备份/恢复演练未执行。PROJECT_STATUS 文档版本更新至 2.2.56。
 
 
 ## 2026-11-21 — 管理员登出即时撤销 Access Session（PR #99 已合并并发布）
