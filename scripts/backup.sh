@@ -14,6 +14,7 @@ if [ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 32 ]; then
   exit 2
 fi
 mkdir -p "$BACKUP_DIR"
+BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
 chmod 700 "$BACKUP_DIR"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 tmp_dir="$(mktemp -d "$BACKUP_DIR/.tg-card-backup.XXXXXX")"
