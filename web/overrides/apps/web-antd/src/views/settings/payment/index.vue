@@ -143,7 +143,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
       </template>
       
       <a-form layout="vertical">
-        <a-form-item label="TronGrid API Key" extra="密钥不会回显。留空表示保持现有密钥；如需更换，请输入新密钥。">
+        <a-form-item label="TronGrid API Key">
           <a-input-password
             v-model:value="apiKey"
             autocomplete="new-password"
@@ -156,14 +156,14 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
             <a-checkbox v-model:checked="clearApiKey">清除已保存的 API Key</a-checkbox>
           </div>
         </a-form-item>
-        <a-form-item label="TRON 收款地址" required extra="请输入商户控制的 TRON 主网地址，系统会校验 Base58Check 格式。">
+        <a-form-item label="TRON 收款地址" required>
           <a-input
             v-model:value="settings.receiveAddress"
             autocomplete="off"
             placeholder="T 开头的 TRON 主网地址"
           />
         </a-form-item>
-        <a-form-item label="USDT TRC20 合约地址" extra="默认是 TRON 主网官方 USDT 合约地址。">
+        <a-form-item label="USDT TRC20 合约地址">
           <a-input v-model:value="settings.usdtContract" autocomplete="off" />
         </a-form-item>
         <a-divider />
@@ -175,12 +175,6 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
           message="安全提醒"
           description="请只填写商户自己的收款地址。系统仅监听到账，不需要钱包私钥；少付、多付、过期转账仍需人工对账。"
         />
-        <div class="mt-7 border-t border-gray-100 pt-5">
-          <a-space wrap>
-            <a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button>
-            <a-button :disabled="saving" @click="loadSettings">重新加载</a-button>
-          </a-space>
-        </div>
       </a-form>
     </a-card>
     <a-card :bordered="false" :loading="loading" title="Epusdt 网关">
@@ -189,8 +183,8 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
       <a-form layout="vertical">
         <a-form-item label="Epusdt 服务地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
         <a-form-item label="Epusdt 商户 PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
-        <a-form-item label="Epusdt 异步回调地址" required extra="填写当前 TG-Card 服务公网可访问的 HTTPS 地址，例如 https://你的域名/api/payment/epusdt/notify。请在 Epusdt 商户端允许此回调地址。"><a-input v-model:value="settings.epusdtNotifyUrl" placeholder="https://你的域名/api/payment/epusdt/notify" autocomplete="url"/></a-form-item>
-        <a-form-item label="Epusdt Secret" extra="不会回显；留空保持现有密钥，输入新值可轮换。"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 Epusdt 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
+        <a-form-item label="Epusdt 异步回调地址" required><a-input v-model:value="settings.epusdtNotifyUrl" placeholder="https://你的域名/api/payment/epusdt/notify" autocomplete="url"/></a-form-item>
+        <a-form-item label="Epusdt Secret"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 Epusdt 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
         
       </a-form>
     </a-card>
