@@ -2157,13 +2157,16 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
 }
 
 func (m *Manager) sendSupportMedia(ctx context.Context,token string,chatID int64,fileID,fileName,caption string) error {
- runes:=[]rune(caption);mediaCaption:=caption;remainder:=""
- if len(runes)>900 {mediaCaption=string(runes[:900]);remainder=string(runes[900:])}
- var err error
- if strings.Contains(strings.ToLower(fileName),"图片") {err=m.sendPhotoByID(ctx,token,chatID,fileID,mediaCaption)} else {err=m.sendDocument(ctx,token,chatID,fileID,mediaCaption)}
- if err!=nil{return err}
- if strings.TrimSpace(remainder)!="" {return m.sendMessage(ctx,token,chatID,remainder)}
- return nil
+	// Keep a media reply to one Telegram side effect. A second message for an
+	// overlong caption could fail after the media was delivered, leaving the
+	// support timeline incomplete and making a retry duplicate the media.
+	if len([]rune(caption)) > 900 {
+		return fmt.Errorf("media reply caption exceeds 900 characters; shorten the reply and send it again")
+	}
+	if strings.Contains(strings.ToLower(fileName), "图片") {
+		return m.sendPhotoByID(ctx, token, chatID, fileID, caption)
+	}
+	return m.sendDocument(ctx, token, chatID, fileID, caption)
 }
 
 func (m *Manager) sendPhotoByID(ctx context.Context,token string,chatID int64,fileID,caption string) error {
