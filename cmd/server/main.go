@@ -214,7 +214,14 @@ func main() {
 	cfg.TronGridAPIKey, cfg.TronReceiveAddress, cfg.TronUSDTContract = "", "", paymentSettings.TronUSDTContract
 	if paymentsEnabled { cfg.TronGridAPIKey, cfg.TronReceiveAddress = apiKey, paymentSettings.TronReceiveAddress }
 	paymentManager, err := payment.NewManager(cfg, db, cfg.DBDriver, botManager)
-	if err != nil { log.Fatalf("initialize TRC20 payment watcher: %v", err) }
+	if err != nil { log.Fatalf("initialize payment manager: %v", err) }
+	gatewaySecret := ""
+	if paymentSettings.EpusdtSecretCiphertext != "" {
+		gatewaySecret, err = secrets.Decrypt(paymentSettings.EpusdtSecretCiphertext)
+		if err != nil { log.Fatalf("decrypt saved Epusdt GMPay secret: %v", err) }
+	}
+	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt GMPay checkout: %v", err) }
+	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.GatewayEnabled)
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
@@ -275,6 +282,7 @@ func main() {
 	api.HandleFunc("GET /api/users/{id}/wallet", app.listUserWalletLedger)
 	api.HandleFunc("GET /api/orders/{id}", app.getOrderDetail)
 	api.HandleFunc("GET /api/payment/transactions", app.listPaymentTransactions)
+	api.HandleFunc("POST /api/payment/epusdt/notify", app.epusdtGMPayNotify)
 	api.HandleFunc("GET /api/reconciliation/reports", app.listReconciliationReports)
 	api.HandleFunc("GET /api/reconciliation/balance-runs", app.listBalanceReconciliationRuns)
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
@@ -471,6 +479,39 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		EpusdtEnabled: input.EpusdtEnabled,
 		EpusdtNotifyURL: input.EpusdtNotifyURL,
 	})
+}
+
+
+func (a *application) epusdtGMPayNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil {
+		http.Error(w, "invalid callback body", http.StatusBadRequest)
+		return
+	}
+	fields, err := payment.DecodeGMPayCallback(body)
+	if err != nil {
+		http.Error(w, "invalid callback payload", http.StatusBadRequest)
+		return
+	}
+	if err := a.paymentManager.HandleGMPayCallback(r.Context(), fields, string(body)); err != nil {
+		switch {
+		case errors.Is(err, payment.ErrInvalidSignature):
+			http.Error(w, "invalid signature", http.StatusUnauthorized)
+		case errors.Is(err, payment.ErrGatewayDisabled):
+			http.Error(w, "payment gateway unavailable", http.StatusServiceUnavailable)
+		default:
+			log.Printf("Epusdt GMPay callback processing failed: order_id=%s trade_id=%s error=%v", fields["order_id"], fields["trade_id"], err)
+			http.Error(w, "callback processing failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "ok")
 }
 
 func (a *application) health(w http.ResponseWriter, r *http.Request) {
