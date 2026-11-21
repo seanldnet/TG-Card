@@ -461,11 +461,13 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 		verifyErr := verifyCapToken(verifyCtx, nil, capConfig.Domain, capConfig.SiteKey, capSecret, input.CapToken)
 		cancel()
 		if verifyErr != nil {
+			a.recordCapVerification(false)
 			log.Printf("Cap verification rejected login: %v", verifyErr)
 			_ = database.CreateSystemException(r.Context(), a.db, a.driver, "cap-verification:"+input.Username, "cap_verification", "warning", "admin_login", input.Username, "管理员登录 Cap 验证失败", "Cap 服务拒绝验证或验证请求未成功")
 			writeError(w, http.StatusForbidden, "人机验证失败或已过期，请重新验证")
 			return
 		}
+		a.recordCapVerification(true)
 	}
 
 	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
