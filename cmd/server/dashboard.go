@@ -14,7 +14,13 @@ import (
 func (a *application) recordCapVerification(success bool) {
 	a.capMetricsMu.Lock()
 	defer a.capMetricsMu.Unlock()
-	if success { a.capVerifySuccess++ } else { a.capVerifyFailure++ }
+	if success {
+		a.capVerifySuccess++
+		a.capFailureStreak=0
+	} else {
+		a.capVerifyFailure++
+		a.capFailureStreak++
+	}
 }
 
 func (a *application) apiLatencyP95() (float64,int) {

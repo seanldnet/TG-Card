@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -32,5 +33,24 @@ func TestGetDashboardBusinessMetricsAggregatesSafetySignals(t *testing.T) {
 	if got.DeliverySuccessRate<0.666||got.DeliverySuccessRate>0.667{t.Fatalf("delivery success rate=%f want 2/3",got.DeliverySuccessRate)}
 	if got.DeliveryUncertainCount!=1||got.DeliveryUncertainOldestAt!=oldUncertain||got.DeliveryUncertainOldestAgeSeconds<3*60*60{t.Fatalf("unexpected delivery uncertain ageing: %+v",got)}
 	if got.ProcurementUncertainCount!=1{t.Fatalf("procurement uncertain count=%d want 1",got.ProcurementUncertainCount)}
+	if got.ProcurementUncertainOldestAgeSeconds<25*60{t.Fatalf("procurement uncertain age=%d seconds want at least 25 minutes",got.ProcurementUncertainOldestAgeSeconds)}
 	if got.RefundConflictCount!=1{t.Fatalf("open refund conflicts=%d want 1",got.RefundConflictCount)}
+}
+
+
+func TestRecentDeliveryFailureStreakStopsAtSuccessfulDelivery(t *testing.T) {
+	ctx:=context.Background()
+	db:=reconciliationTestDB(t)
+	now:=time.Now().UTC()
+	for i:=0;i<3;i++ {
+		updated:=now.Add(-time.Duration(i)*time.Minute).Format(time.RFC3339Nano)
+		id:=fmt.Sprintf("streak-failed-%d",i)
+		if _,err:=db.ExecContext(ctx,"INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'delivery_failed','2099-01-01T00:00:00Z',?,?)",id,id,"streak-user","streak-chat","streak",100,1,100,"USDT",updated,updated);err!=nil{t.Fatal(err)}
+	}
+	streak,latest,err:=RecentDeliveryFailureStreak(ctx,db,3)
+	if err!=nil||streak!=3||latest==""{t.Fatalf("expected three consecutive failures: streak=%d latest=%s err=%v",streak,latest,err)}
+	updated:=now.Add(time.Minute).Format(time.RFC3339Nano)
+	if _,err:=db.ExecContext(ctx,"INSERT INTO orders(id,order_no,telegram_user_id,telegram_chat_id,product_name,unit_price_minor,quantity,amount_minor,currency,status,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'delivered','2099-01-01T00:00:00Z',?,?)","streak-success","streak-success","streak-user","streak-chat","streak",100,1,100,"USDT",updated,updated);err!=nil{t.Fatal(err)}
+	streak,_,err=RecentDeliveryFailureStreak(ctx,db,3)
+	if err!=nil||streak!=0{t.Fatalf("a successful delivery must reset the streak: streak=%d err=%v",streak,err)}
 }

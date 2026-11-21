@@ -12,7 +12,7 @@ interface Order { id: string; orderNo: string; productName: string; amountMinor:
 interface Ticket { id: string; status: string; }
 interface DashboardMetrics {
   checkedAt: string;
-  delivery: { deliveredCount: number; deliveryFailedCount: number; deliveryUncertainWindowCount: number; deliverySuccessRate: number; deliveryUncertainCount: number; deliveryUncertainOldestAt: string; deliveryUncertainOldestAgeSeconds: number; procurementUncertainCount: number; refundConflictCount: number; };
+  delivery: { deliveredCount: number; deliveryFailedCount: number; deliveryUncertainWindowCount: number; deliverySuccessRate: number; deliveryUncertainCount: number; deliveryUncertainOldestAt: string; deliveryUncertainOldestAgeSeconds: number; procurementUncertainCount: number; procurementUncertainOldestAt: string; procurementUncertainOldestAgeSeconds: number; refundConflictCount: number; };
   upstreamSync: { enabled?: boolean; status: string; job?: { status: string; totalItems: number; processedItems: number; currentPage: number; errorCount: number; progressPercent: number; lastError: string; }; };
   cap: { success: number; failure: number; total: number; successRatePercent: number; window: string; };
   api: { p95Milliseconds: number; sampleCount: number; window: string; };
@@ -113,7 +113,7 @@ onMounted(loadDashboard);
       <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
         <div class="text-xs text-gray-500">退款账本冲突</div>
         <div class="mt-1 text-2xl font-semibold" :class="metrics.alerts.refundConflicts ? 'text-red-600' : ''">{{ metrics.alerts.refundConflicts }}</div>
-        <div class="mt-2 text-xs text-gray-500">上游受理不确定 {{ metrics.alerts.procurementUncertain }} 笔</div>
+        <div class="mt-2 text-xs text-gray-500">上游受理不确定 {{ metrics.alerts.procurementUncertain }} 笔（最久 {{ formatDuration(metrics.delivery.procurementUncertainOldestAgeSeconds) }}）</div>
         <div class="mt-1 text-xs text-gray-500">交付不确定 {{ metrics.alerts.deliveryUncertain }} 笔</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
