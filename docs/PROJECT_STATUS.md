@@ -383,7 +383,7 @@
 
 - 在 PR #44 会话隔离修复基础上补齐 C1/C2 自动化回归：验证 Owner 点击“否，继续沟通”后会话恢复 reply 阶段；不再点击按钮直接连续发送两条消息时，两条回复均成功送达并写入时间线。
 - 新增图片与普通文件回复测试，验证图片使用 Telegram `sendPhoto`、文件使用 `sendDocument`，且 Telegram 确认成功后才保存对应附件时间线记录。
-- 本批次仅增加测试，不改变业务行为、数据库结构或部署配置。PR #47 head Go/Admin/Security 全部成功；合并后 main Go CI [#44575485326](https://github.com/seanldnet/TG-Card/actions/runs/44575485326)、Admin CI [#44575484730](https://github.com/seanldnet/TG-Card/actions/runs/44575484730)、Security [#44575484649](https://github.com/seanldnet/TG-Card/actions/runs/44575484649)、Docker Publish [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792) 全部成功；GHCR 多架构 latest manifest digest 为 `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。真实 Telegram C1/C2 仍需项目所有者实测。
+- 本批次仅增加测试，不改变业务行为、数据库结构或部署配置。PR #47 head Go/Admin/Security 全部成功；合并后 main Go CI [#44575485326](https://github.com/seanldnet/TG-Card/actions/runs/44575485326)、Admin CI [#44575484730](https://github.com/seanldnet/TG-Card/actions/runs/44575484730)、Security [#44575484649](https://github.com/seanldnet/TG-Card/actions/runs/44575484649)、Docker Publish [#44575484792](https://github.com/seanldnet/TG-Card/actions/runs/44575484792) 全部成功；GHCR 多架构 latest manifest digest 为 `sha256:3b763b2410a222c62ed864685ac2cba06c86fbc3942c69aa429d9b702cb02368`。该条形成时 C1/C2 尚待实测；项目所有者已于 2026-11-22 确认 C1–C4 全部验收通过。
 
 ## 2026-11-20 — Owner 工单确认回调会话隔离加固（PR #44 已合并）
 
@@ -395,7 +395,7 @@
 - 新增双工单旧按钮隔离、重复回调审计幂等、跨 Telegram chat 会话隔离回归测试。
 - PR head Go/Admin/Security 全部成功；Go CI [#44573219338](https://github.com/seanldnet/TG-Card/actions/runs/44573219338)、Admin CI [#44573220790](https://github.com/seanldnet/TG-Card/actions/runs/44573220790)、Security [#44573219439](https://github.com/seanldnet/TG-Card/actions/runs/44573219439)。
 - main Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 已成功；main Go CI [#44573663656](https://github.com/seanldnet/TG-Card/actions/runs/44573663656)、Admin CI [#44573663564](https://github.com/seanldnet/TG-Card/actions/runs/44573663564)、Security [#44573663686](https://github.com/seanldnet/TG-Card/actions/runs/44573663686) 全部成功；Docker Publish [#44573663703](https://github.com/seanldnet/TG-Card/actions/runs/44573663703) 成功，GHCR 多架构 latest manifest digest 为 `sha256:64cbbf218f0aff25d0eddf6e784929a134596f1ae7c85b13bec48ba89cf5d1fe`。
-- 生产部署与 Telegram C1–C4 真机验收未确认；不把 CI 结果视为生产验收。
+- 历史状态：该 PR 发布时生产部署与 Telegram C1–C4 真机验收未确认；项目所有者已于 2026-11-22 确认售后流程 C1–C4 真机验收通过。
 
 ## 2026-11-20 — 网页后台客服回复送达一致性修复（PR #42 已合并）
 
@@ -403,27 +403,27 @@
 - 网页后台文本客服回复改为先发送 Telegram，明确成功后才写入 admin 时间线并更新工单回复字段；明确发送失败仅记录 system 事件，工单状态/回复字段不变并返回 502。前端改为先提交回复、成功后再更新工单状态。
 - 新增成功/失败回归测试；PR head Go CI、Admin CI、Security 均成功；main Go CI、Admin CI、Security 均成功。
 - main Go CI [#44570069329](https://github.com/seanldnet/TG-Card/actions/runs/44570069329)、Admin CI [#44570069285](https://github.com/seanldnet/TG-Card/actions/runs/44570069285)、Security [#44570069428](https://github.com/seanldnet/TG-Card/actions/runs/44570069428) 均成功。Docker Publish [#44570069465](https://github.com/seanldnet/TG-Card/actions/runs/44570069465) 已成功，GHCR 多架构 latest manifest digest 为 `sha256:025a45cccf1895c17882e863b15bb524adc83200b2a7b77b891cee9e75a9182d`。
-- 生产部署及 Telegram 真机验收未确认；Telegram 无业务消息幂等键，网络超时/响应丢失仍不能保证 exactly-once。
+- 历史状态：该 PR 发布时生产部署及 Telegram 真机验收未确认；项目所有者已于 2026-11-22 确认售后交互流程验收通过。Telegram 无业务消息幂等键，网络超时/响应丢失仍不能保证 exactly-once。
 
 ## 2026-11-20 — Owner 回复发送状态一致性修复（PR #41 已合并）
 
 - 修复已合并至 main，merge commit `af53dad378bb8d1d89385246bd7d11a308e8b7e0`。
 - Owner 回复先发送 Telegram，确认成功后才写入客服时间线并切换至待结单确认阶段；发送失败只写系统失败事件并保留回复会话。
-- PR head Go/Admin/Security 与 main Go/Admin/Security/Docker Publish 均成功；Docker Publish Run [#44567512730](https://github.com/seanldnet/TG-Card/actions/runs/44567512730) 成功。该轮 GHCR digest 尚未独立核实，生产部署与 Telegram 真机验收未确认。
+- PR head Go/Admin/Security 与 main Go/Admin/Security/Docker Publish 均成功；Docker Publish Run [#44567512730](https://github.com/seanldnet/TG-Card/actions/runs/44567512730) 成功。该轮 GHCR digest 尚未独立核实；该条发布时的生产验收状态已由项目所有者 2026-11-22 对售后交互流程的后续验收覆盖。
 - Telegram 无业务消息幂等键；超时/响应丢失的远端送达状态仍不确定，不能宣称 exactly-once。
 
 ## 2026-11-20 — 售后 Owner Bot 工单列表跨 Bot 隔离修复（PR #40 已合并）
 
 - 修复已合并至 main，merge commit `69218784601f7d75b668b8047379d931c9a87564`。
 - PR head Go/Admin/Security 与 main Go/Admin/Security/Docker Publish 全部成功。
-- GHCR `latest` 镜像 digest：`sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`；Publish Run [#44565112822](https://github.com/seanldnet/TG-Card/actions/runs/44565112822)。生产部署与现场验收仍未确认。
+- GHCR `latest` 镜像 digest：`sha256:0a0ca07e37b42b46b6c6bfb6cc6a2519348066fc6ae62bf98eb4c5b09134b2d7`；Publish Run [#44565112822](https://github.com/seanldnet/TG-Card/actions/runs/44565112822)。该条发布时的生产部署/现场验收状态已由项目所有者 2026-11-22 对售后流程的后续验收覆盖。
 
 ## 2026-11-20 — 阶段一售后媒体转发子项按项目所有者实测确认
 
 - 项目所有者明确确认：用户提交的图片/文件由对应 Bot 转发至 Owner 私聊并收到原始媒体，媒体转发子项实测通过。
 - 验收边界：未提供本次测试使用的镜像 digest、测试设备、订单/工单号或截图；不将此结果绑定到 PR #38 镜像，也不补造证据。
 - 仍待验收：跟踪防护下静态资源零外部 CDN Network 检查仍需单独浏览器验收。自动化测试通过不能替代这些真机/浏览器验收。
-- PR #38（PR D）已合并并成功发布 GHCR，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；生产部署与该 digest 的生产验收未确认。Dujiao-Next 正常对接已由项目所有者确认完成。
+- PR #38（PR D）已合并并成功发布 GHCR，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；项目所有者已确认 Dujiao-Next 正常对接完成，不再追加 PR E 真实商户验收或额外扣款演练。
 
 # TG-Card 项目现状与功能总览
 
@@ -961,13 +961,13 @@ curl -fsS http://127.0.0.1:38647/api/health
 | [PR #19](https://github.com/seanldnet/TG-Card/pull/19) | 售后附件可靠性、Vben Logo/头像本地化、PC 宽屏内容布局修复；同步核对上游协议证据。 | 已合并至 main，merge commit `40cb88ea3e3b9e204f8a48b8c59cf15c8ace05fb`；后续 PR #28 镜像包含该提交。 | **已验收（2026-11-19）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 A1–A3 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
 | [PR #21](https://github.com/seanldnet/TG-Card/pull/21) | Dujiao-Next 上游基础设施：商户配置、双凭证加密、连接测试、动态菜单与配置 API。 | 已合并至 main，merge commit `2044fa5234ebfd62d3e30357220b192e3a10814b`；Go CI、Admin CI、安全扫描均通过。 | Dujiao-Next 正常对接已由项目所有者确认完成；镜像已发布：Publish Run #44291422271 成功，digest 见第 19.2 节。 | PR B 已合并；Dujiao-Next 正常对接已由项目所有者确认完成。 |
 | [PR #26](https://github.com/seanldnet/TG-Card/pull/26) | Dujiao-Next 商品目录同步、来源切换、价格策略与本地图片。 | 已合并至 main，merge commit `71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；PR #28 后代镜像包含该提交。 | **已验收（2026-11-19）**：项目所有者确认绑定商户、目录同步、加价展示与来源切换在生产正常；上游采购功能由 PR C 实现。 | 已通过；对应验收项 D1–D5 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
-| [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | Telegram 真机与 SMTP 验收待项目所有者执行；本次不含上游采购代码。 | PR1 补齐结单闭环；执行 Owner Bot 媒体/回复/结单验收。 |
+| [PR #27](https://github.com/seanldnet/TG-Card/pull/27) | 独立售后基础流程：Bot 转发 Owner、Inline Keyboard 回复/结单、后台文字时间线、通知与卡片间距。 | 已合并至 main，merge commit `abb6d62c8d215ff4bffd4151130adccf7d346b24`；Go CI、Admin CI、安全扫描成功；Publish Run `44308515206` 成功，latest digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`。 | 项目所有者于 2026-11-22 确认售后流程、Owner Bot C1–C4、媒体转发、补发/退款与通知验收通过。 | 已完成；后续仅对新增售后改动做回归验收。 |
 | [PR #31](https://github.com/seanldnet/TG-Card/pull/31) | PR2 生产验收与镜像 digest 记录补齐。 | 已合并，merge commit a9a01e6ef41a1047c37f1180501fcf30294a4cd0；文档-only，不产生业务镜像。 | PR #19/#26/#28/PR2 按项目所有者确认的 PR2 digest 记录验收；PR #26 的 D1–D5 后续验收日期更新为 2026-11-19。 | 已完成文档记录。 |
 | [PR #29](https://github.com/seanldnet/TG-Card/pull/29) | 交接文档校准、18 项验收表、Admin CI paths 过滤修复、Dujiao-Next PR B/C/D/E 边界。 | 已合并；Admin frontend CI Run #44321310277 成功；未改业务代码，不产生新业务镜像。 | 文档与 CI 触发修复完成；生产验收仍按第 19.3 节执行。 | 已完成；PR2 CI 强制要求 Go、Admin、Security、Publish 四类运行。 |
 | [PR #30](https://github.com/seanldnet/TG-Card/pull/30)（PR2） | 每日对账日报、库存归零自动下架/补货上架策略、余额流水一致性只读校验。 | 已合并，merge commit `75a635a6c5e9c68e8fc23c229f932119dca46a93`；Go CI #44324284650、Admin CI #44324284642、Security #44324284777、Publish #44324284760 全部成功；GHCR digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 | **已验收（2026-11-19）**：项目所有者确认生产已更新至该 digest，未收到异常反馈。 | 已通过；PR2 验收项 E1–E10 使用该 digest。 |
 | [PR #28](https://github.com/seanldnet/TG-Card/pull/28)（PR1） | 售后结单闭环：用户结单通知、确认/重开、终态消息守卫、自动新工单与 10 分钟限流。 | 已合并至 main，merge commit `6bbb749e0c89f95ee5e37aa21d92a14bd916a6c6`；Go CI、安全扫描成功；Publish Run #44317232482 成功。 | **已验收（2026-11-19）**：项目所有者确认生产更新后未反馈异常。 | 已通过；对应验收项 B1–B6 使用本次生产 PR2 镜像 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e`。 |
 | [PR #37](https://github.com/seanldnet/TG-Card/pull/37) | PR C 合并状态、CI/镜像与 PR D/E 边界文档记录。 | 已合并，merge commit 0b0f0514a1c5850aafec0018c95570d0bce8a39f；Admin CI #44338591754/#44338655437 与 main Admin CI #44338618618 成功；文档-only，不触发业务镜像发布。 | 已完成文档记录；PR C 镜像/CI证据见第 19.7 节。 | 已完成。 |
-| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，main 对应 CI 后续通过，流程瑕疵保留记录。 | 生产部署及该 digest 的生产验收尚未确认；Dujiao-Next 正常对接已由项目所有者确认完成。 | 先完成生产 digest 验收，再启动 PR E 独立联调。 |
+| [PR #38](https://github.com/seanldnet/TG-Card/pull/38)（PR D） | Dujiao-Next 供应商采购资金对账、退款账本巡检、uncertain ageing 与统一资金异常中心。 | 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功；GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。PR 分支 Admin CI 曾因 npmmirror 下载超时失败，main 对应 CI 后续通过，流程瑕疵保留记录。 | 项目所有者已确认 Dujiao-Next 正常对接完成；不再要求 PR E 真实商户验收或额外扣款演练。 | 已完成正常对接；后续仅处理实际发现的问题。 |
 | Dujiao-Next 目录同步/采购/资金安全 | 分类商品 SKU 同步、采购转发、异步查单、失败队列、退款及余额告警。 | PR A/B/C/D 已合并；PR D #38 已发布 GHCR，digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`；Dujiao-Next 正常对接已由项目所有者确认完成；本记录不额外要求生产商户扣款演练。 | PR C mock/CI、PR D 代码/CI/合并/镜像发布记录保留；项目所有者已确认 Dujiao-Next 正常对接完成，不再追加 PR E 商户验收。 | 已完成正常对接；后续仅修复实际发现的问题。 |
 
 ### 19.1 PR #19 镜像发布证据
