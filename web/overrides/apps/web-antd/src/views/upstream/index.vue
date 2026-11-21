@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface UpstreamSettings {
   provider: string;
@@ -53,7 +54,7 @@ async function loadProcurements(){
 }
 async function retryProcurement(item:ProcurementItem){
  actionLoading.value=item.localOrderId;
- try{await requestClient.post('/upstream/procurements/'+item.localOrderId+'/retry',{});message.success('已加入采购重试队列');await loadProcurements();}
+ try{const path='/api/upstream/procurements/'+item.localOrderId+'/retry';const payload={};await withAdminActionConfirmation({actionKey:'upstream.procurement.retry',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+item.localOrderId+'/retry',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('已加入采购重试队列');await loadProcurements();}
  catch(error:any){message.error(error?.response?.data?.message||'采购重试失败');}
  finally{actionLoading.value='';}
 }
@@ -61,7 +62,7 @@ function openRefund(item:ProcurementItem){refundOrderId.value=item.localOrderId;
 async function submitRefund(){
  if(!refundReason.value.trim()){message.warning('请填写退款原因');return;}
  actionLoading.value=refundOrderId.value;
- try{await requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',{reason:refundReason.value.trim()});message.success('退款已记入买家站内余额');refundVisible.value=false;await loadProcurements();}
+ try{const path='/api/upstream/procurements/'+refundOrderId.value+'/refund';const payload={reason:refundReason.value.trim()};await withAdminActionConfirmation({actionKey:'upstream.procurement.refund',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('退款已记入买家站内余额');refundVisible.value=false;await loadProcurements();}
  catch(error:any){message.error(error?.response?.data?.message||'采购退款失败');}
  finally{actionLoading.value='';}
 }
@@ -74,10 +75,9 @@ async function submitResolve(){
  if(resolveResolution.value==='accepted'&&!/^\d+$/.test(resolveExternalOrderID.value.trim())){message.warning('供应商已受理时必须填写有效的上游订单 ID');return;}
  actionLoading.value=resolveOrderId.value;
  try{
-  await requestClient.post('/upstream/procurements/'+resolveOrderId.value+'/resolve',{
-   resolution:resolveResolution.value,externalOrderId:resolveExternalOrderID.value.trim(),
-   externalOrderNo:resolveExternalOrderNo.value.trim(),note:resolveNote.value.trim(),
-  });
+  const path='/api/upstream/procurements/'+resolveOrderId.value+'/resolve';
+  const payload={resolution:resolveResolution.value,externalOrderId:resolveExternalOrderID.value.trim(),externalOrderNo:resolveExternalOrderNo.value.trim(),note:resolveNote.value.trim()};
+  await withAdminActionConfirmation({actionKey:'upstream.procurement.resolve',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+resolveOrderId.value+'/resolve',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   message.success(resolveResolution.value==='accepted'?'已登记上游订单，系统将继续查单，不会重复创建采购单':'已确认上游未受理/失败，现在可安全重试或退款');
   resolveVisible.value=false;await loadProcurements();
  }catch(error:any){message.error(error?.response?.data?.message||'采购状态核实提交失败');}
@@ -96,11 +96,13 @@ async function save():Promise<boolean>{
  saving.value=true;
  try{
   const requestedEnabled=settings.enabled;
-  const data=await requestClient.put<UpstreamSettings>('/upstream/config',{
+  const path='/api/upstream/config';
+  const payload={
    provider:settings.provider,baseUrl:settings.baseUrl,merchantId:merchantId.value,
    merchantSecret:merchantSecret.value,clearCredentials:clearCredentials.value,enabled:settings.enabled,
    markupPercent:settings.markupPercent,markupFixedMinor:settings.markupFixedMinor,syncIntervalMinutes:settings.syncIntervalMinutes,syncBatchSize:settings.syncBatchSize,syncBatchDelayMs:settings.syncBatchDelayMs,procurementPollIntervalSeconds:settings.procurementPollIntervalSeconds,procurementTimeoutMinutes:settings.procurementTimeoutMinutes,supplierLowBalanceThreshold:settings.supplierLowBalanceThreshold,callbackUrl:settings.callbackUrl,exchangeRateToUSDT:settings.exchangeRateToUSDT,
-  });
+  };
+  const data=await withAdminActionConfirmation({actionKey:'settings.upstream.update',method:'PUT',path,payload,run:(token)=>requestClient.put<UpstreamSettings>('/upstream/config',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
   if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
  }catch(error:any){message.error(error?.response?.data?.message||'上游配置保存失败');return false;}
@@ -131,7 +133,8 @@ async function syncNow(){
 async function disableUpstream(){
  syncing.value=true;syncProgress.status='cleaning';syncResult.value=null;
  try{
-  const started=await requestClient.post<any>('/upstream/disable',{});
+  const path='/api/upstream/disable';const payload={};
+  const started=await withAdminActionConfirmation({actionKey:'settings.upstream.disable',method:'POST',path,payload,run:(token)=>requestClient.post<any>('/upstream/disable',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   syncJobId.value=started.jobId;
   if(!syncJobId.value)throw new Error('清理任务未返回任务 ID');
   while(syncing.value){
