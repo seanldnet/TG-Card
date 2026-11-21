@@ -37,7 +37,7 @@ func configureTestGateway(t *testing.T,m *Manager,baseURL string){
 }
 
 func signedCallback(order database.Order,tradeID,amount string)map[string]string{
-	fields:=map[string]string{"pid":"1000","order_id":order.OrderNo,"trade_id":tradeID,"amount":amount,"actual_amount":amount,"status":"2","block_transaction_id":"chain-"+tradeID}
+	fields:=map[string]string{"pid":"1000","order_id":order.OrderNo,"trade_id":tradeID,"amount":amount,"actual_amount":amount,"token":"USDT","status":"2","block_transaction_id":"chain-"+tradeID}
 	fields["signature"]=SignGMPay(fields,"merchant-secret")
 	return fields
 }
@@ -53,6 +53,19 @@ func TestDecodeGMPayCallbackPreservesJSONNumbers(t *testing.T){
 	fields,err:=DecodeGMPayCallback([]byte(`{"pid":"1000","amount":12.50,"status":2,"actual_amount":12.3456}`))
 	if err!=nil{t.Fatal(err)}
 	if fields["amount"]!="12.50"||fields["status"]!="2"||fields["actual_amount"]!="12.3456"{t.Fatalf("numeric callback values changed: %#v",fields)}
+}
+
+func TestGMPayCallbackRejectsUnexpectedPaymentToken(t *testing.T) {
+	m,db,order:=newGMPayTestManager(t);defer db.Close();defer m.bots.Stop()
+	configureTestGateway(t,m,"https://gateway.example")
+	if _,_,err:=database.CreateEpusdtPaymentIntent(context.Background(),db,"sqlite",order.ID);err!=nil{t.Fatal(err)}
+	if err:=database.UpdateEpusdtPaymentOrder(context.Background(),db,"sqlite",order.ID,"trade-token","https://checkout.example/pay",time.Now().Add(20*time.Minute).Unix());err!=nil{t.Fatal(err)}
+	fields:=signedCallback(order,"trade-token","12.50");fields["token"]="TRX";fields["signature"]=SignGMPay(fields,"merchant-secret")
+	if err:=m.HandleGMPayCallback(context.Background(),fields,"{}");err!=nil{t.Fatal(err)}
+	got,err:=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
+	if got.Status!="pending_payment"||got.PaymentReference!=""{t.Fatalf("unexpected token must not settle order: %+v",got)}
+	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(context.Background(),db,"sqlite",order.OrderNo);if err!=nil{t.Fatal(err)}
+	if intent.Status!="asset_mismatch"{t.Fatalf("intent status=%q want asset_mismatch",intent.Status)}
 }
 
 func TestGMPayCallbackRejectsWrongSignatureAndAmountMismatch(t *testing.T){
