@@ -2,7 +2,7 @@
 
 - 当前开发基线：`main@50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；独立分支 `test/isolated-backup-restore-p1`。
 - 新增 `scripts/test-backup-restore.sh`：在独立 Docker Compose project、临时 PostgreSQL 16 容器和独立命名卷中调用正式备份/恢复脚本。
-- 测试先创建合成数据库记录、JWT signing key、加密 key 和上传文件；备份后模拟数据库污染、密钥损坏、上传文件丢失及额外文件，再恢复并断言原值/文件完整、污染消失。
+- 测试创建合成分类、商品、库存卡密、订单及站点设置记录，以及 JWT signing key、加密 key 和上传文件；备份后模拟订单状态污染、库存行丢失、设置被修改、密钥损坏和上传文件丢失，再恢复并断言订单/库存/设置/密钥/上传文件全部回到备份状态。
 - Go Backend CI 将执行该集成测试；测试打印从恢复开始到隔离 app 容器 running 的耗时。该值不是生产应用就绪 RTO。
 - 无生产数据库迁移、无新增生产环境变量；不会连接或修改生产 Compose project、生产数据库或生产 volumes。
 - 当前状态：独立 PR 开发中，待 CI 验证。真实生产恢复演练、业务健康检查和生产 RPO/RTO 仍待单独执行。
