@@ -102,7 +102,7 @@ async function saveGateway(provider: 'epusdt' | 'gmpay') {
     apiKey.value = ''; clearApiKey.value = false;
     epusdtSecret.value = ''; clearEpusdtSecret.value = false;
     gmpaySecret.value = ''; clearGmpaySecret.value = false;
-    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存 TRC20 配置' : 'GMPay Edge 配置已保存并应用');
+    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存并应用' : 'GMPay Edge 配置已保存并应用');
   } catch (error: any) { message.error(error?.response?.data?.message || '支付网关配置保存失败'); }
   finally { saving.value = false; }
 }
@@ -145,7 +145,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
           <a-switch v-model:checked="settings.enabled" />
         </div>
       </div>
-      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button></div>
+      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveSettings">保存 TRC20 配置</a-button></div>
     </a-card>
     <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
       <template #extra>
