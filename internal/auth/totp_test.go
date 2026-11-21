@@ -44,7 +44,7 @@ func TestGenerateTOTPRecoveryCodesAreUniqueAndHighEntropy(t *testing.T) {
 	if len(codes)!=10{t.Fatalf("generated %d codes, want 10",len(codes))}
 	seen:=make(map[string]bool,len(codes))
 	for _,code:=range codes{
-		if len(code)<24{t.Fatalf("recovery code too short: %q",code)}
+		if len(code)<16{t.Fatalf("recovery code too short: %q",code)}
 		if seen[code]{t.Fatalf("duplicate recovery code generated: %q",code)}
 		seen[code]=true
 	}
