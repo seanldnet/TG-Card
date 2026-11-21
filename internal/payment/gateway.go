@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -23,7 +22,6 @@ type GatewayProtocol string
 
 const (
 	ProtocolGMPay GatewayProtocol = "gmpay"
-	ProtocolEPay  GatewayProtocol = "epay"
 )
 
 var (
@@ -51,29 +49,6 @@ func VerifyGMPay(fields map[string]string, secret string) bool {
 		return false
 	}
 	want, _ := hex.DecodeString(SignGMPay(fields, secret))
-	return hmac.Equal(expected, want)
-}
-
-// SignEPay signs non-empty fields using the legacy EPay MD5 boundary.
-func SignEPay(fields map[string]string, secret string) string {
-	sum := md5.Sum([]byte(canonicalFields(fields, "sign", "sign_type") + secret))
-	return hex.EncodeToString(sum[:])
-}
-
-// VerifyEPay verifies an EPay callback in constant time and requires MD5.
-func VerifyEPay(fields map[string]string, secret string) bool {
-	if !strings.EqualFold(strings.TrimSpace(fields["sign_type"]), "MD5") {
-		return false
-	}
-	got := strings.ToLower(strings.TrimSpace(fields["sign"]))
-	if len(got) != md5.Size*2 {
-		return false
-	}
-	expected, err := hex.DecodeString(got)
-	if err != nil {
-		return false
-	}
-	want, _ := hex.DecodeString(SignEPay(fields, secret))
 	return hmac.Equal(expected, want)
 }
 
@@ -105,7 +80,7 @@ func canonicalFields(fields map[string]string, excluded ...string) string {
 	return b.String()
 }
 
-// GatewayClient calls an Epusdt/GMPay-compatible merchant API.
+// GatewayClient calls an Epusdt GMPay merchant API.
 type GatewayClient struct {
 	baseURL string
 	pid     string
@@ -155,52 +130,12 @@ func (c *GatewayClient) QueryGMPayOrder(ctx context.Context, identity map[string
 	return c.doJSON(ctx, http.MethodGet, "/payments/gmpay/v1/order/query?"+values.Encode(), nil)
 }
 
-// CreateEPayOrder submits the legacy EPay-compatible form request.
-func (c *GatewayClient) CreateEPayOrder(ctx context.Context, fields map[string]string) (map[string]json.RawMessage, error) {
-	payload := cloneFields(fields)
-	payload["pid"] = c.pid
-	payload["sign_type"] = "MD5"
-	delete(payload, "sign")
-	payload["sign"] = SignEPay(payload, c.secret)
-	values := url.Values{}
-	for key, value := range payload {
-		values.Set(key, value)
-	}
-	return c.doEPayRedirect(ctx, "/payments/epay/v1/order/create-transaction/submit.php", values.Encode())
-}
-
 func (c *GatewayClient) doFormJSON(ctx context.Context, path, form string) (map[string]json.RawMessage, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form))
 	if err != nil { return nil, err }
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	return c.executeJSON(req)
-}
-
-// EPay submit.php responds with HTTP 302, not JSON. Capture its cashier URL.
-func (c *GatewayClient) doEPayRedirect(ctx context.Context, path, form string) (map[string]json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form))
-	if err != nil { return nil, err }
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "text/plain")
-	client := *c.http
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := client.Do(req)
-	if err != nil { return nil, fmt.Errorf("payment gateway request: %w", err) }
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return nil, fmt.Errorf("EPay gateway returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
-	}
-	location := strings.TrimSpace(resp.Header.Get("Location"))
-	if location == "" { return nil, errors.New("EPay gateway redirect did not include Location") }
-	checkoutURL, err := url.Parse(location)
-	if err != nil { return nil, fmt.Errorf("invalid EPay checkout redirect: %w", err) }
-	base, _ := url.Parse(c.baseURL)
-	checkoutURL = base.ResolveReference(checkoutURL)
-	if checkoutURL.Scheme != "https" && checkoutURL.Scheme != "http" { return nil, errors.New("EPay checkout redirect has an unsupported scheme") }
-	encoded, _ := json.Marshal(checkoutURL.String())
-	return map[string]json.RawMessage{"payment_url": encoded}, nil
 }
 
 func (c *GatewayClient) doJSON(ctx context.Context, method, path string, body []byte) (map[string]json.RawMessage, error) {
