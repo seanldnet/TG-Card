@@ -66,8 +66,8 @@
 - 影响模块：Owner Bot 售后媒体回复、客服工单时间线。
 - 变更内容：caption 超过 900 个 Unicode 字符时，在任何客户侧媒体发送前拒绝；移除媒体发送后再补发剩余文本的第二次 Telegram API 调用。
 - 数据库迁移：无；配置/部署影响：无新增环境变量。
-- 验证：PR head Go/Admin/Security CI 已通过；真实 Telegram Owner 回复验收仍待项目所有者执行。
-- 兼容性与验收边界：普通文本回复和用户提交媒体不变；真实 Telegram Owner 回复验收仍待项目所有者执行。
+- 验证：PR head Go/Admin/Security CI 已通过；项目所有者已确认 Telegram、售后与 Owner Bot C1–C4 测试通过（2026-11-22）。
+- 兼容性与验收边界：普通文本回复和用户提交媒体不变；项目所有者已确认 Telegram、售后与 Owner Bot C1–C4 测试通过（2026-11-22）。
 
 ## 2026-11-21 — 备份恢复集成测试补充模拟 RPO/RTO 计时（PR #102 已合并并发布）
 
@@ -258,7 +258,7 @@
 - 变更内容：对活动再次获取租约导致的退款拒绝返回 HTTP 409，并写入 `support.refund.blocked` 审计事件；其他退款失败写入 `support.refund.failed`。使用数据库 sentinel error 做精确分类。
 - 数据库迁移：无；配置/部署影响：无新增环境变量。
 - 兼容性与已知限制：活动租约结束后管理员可重新发起退款；不改变钱包退款业务逻辑。
-- 验证：PR head Go/Admin/Security 均成功；合并后 main Go #44814346690、Admin #44814346681、Security #44814346722、Docker Publish #44814346693 全部成功。生产售后验收待项目所有者执行。
+- 验证：PR head Go/Admin/Security 均成功；合并后 main Go #44814346690、Admin #44814346681、Security #44814346722、Docker Publish #44814346693 全部成功。项目所有者已确认售后测试通过（2026-11-22）。
 - 发布镜像：GHCR 多架构标签 `latest` 与提交标签 `35e20d5810ce140e57c2dde96f9b0b4af4f10fc9` 已发布；manifest digest：`sha256:902cfecbc14e8d2d6eaed5c05ff1b01019343b4d456e1b24e17224e06b5a4dd8`。
 
 ## 2026-11-21 — 退款与订单再次获取租约互斥（PR #74 已合并并发布）
@@ -468,23 +468,23 @@
 - 实际合并内容：新增迁移 0039_finance_safety.sql、供应商采购前后余额对照、退款账本一致性检查、uncertain ageing 与 Owner 核实 API、统一资金异常 API/后台页面和定时巡检。检测只生成异常与通知，不自动调整余额。
 - 新增 SQLite 测试覆盖供应商余额差异、退款账本损坏检测、重复退款拒绝、uncertain ageing/Owner 恢复；需以 PR Actions 最终结果为准。
 - 资金红线：退款仅一条独立账本并关联唯一 wallet credit；采购重试沿用原本地订单幂等键；采购失败不改变原始支付记录；不自动修改买家或供应商余额。
-- Dujiao-Next 正常对接已由项目所有者确认完成；PR #27 C1–C4 继续待验收。
+- Dujiao-Next 正常对接已由项目所有者确认完成；PR #27 Owner Bot C1–C4 已由项目所有者确认测试通过（2026-11-22）。
 
 ## 2026-11-19 — PR B 上游商品同步验收通过
 
 - 项目所有者确认后台绑定商户、目录同步、加价展示和来源切换均正常；PR B（PR #26）D1–D5 验收状态更新为已验收，日期 2026-11-19。
-- 验收镜像仍为生产 PR2 digest sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e。PR #27 C1–C4 未测试，保持待验收。
+- 验收镜像仍为生产 PR2 digest sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e。PR #27 Owner Bot C1–C4 已由项目所有者确认测试通过（2026-11-22）。
 
 ## 2026-11-18 — Dujiao-Next PR C 采购转发（PR #32 已合并，CI/Mock 通过）
 
-- 状态：独立 PR #32 已合并，merge commit `4f712e6ecb2299abd1eb782a439dee56b760578c`；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 全部成功；十项 mock 测试通过。未执行真实上游联调。
+- 状态：独立 PR #32 已合并，merge commit `4f712e6ecb2299abd1eb782a439dee56b760578c`；PR head Go/Admin/Security 与 main Go/Admin/Security/Publish 全部成功；十项 mock 测试通过。项目所有者已确认 Dujiao-Next 正常对接完成；该确认不改变 PR #32 mock 测试的实际覆盖范围。
 - 分支：`feat/dujiao-purchase-forwarding`，基线 `main@2e7f91cfe772c3a87b3c0c40d8542bff59b9c9be`。
 - 实现：支付确认事务登记采购任务；采购前复核订单/商品；本地订单号幂等创建、上游订单 ID/订单号映射；查单轮询、回调验签/幂等；加密交付；失败人工队列、手动恢复、站内余额退款独立账本与审计；供应商余额快照/阈值告警/日报。
 - 资金安全：采购失败和重试不修改原支付记录、不自动退款买家余额；管理员手动退款使用独立钱包 credit 流水和退款审计。
 - 协议限制：官方 API 未提供按 `downstream_order_no` 查单接口。首次 POST 网络异常且未获得上游订单 ID 时进入 `uncertain`，暂停自动重发；人工恢复仍使用原幂等键。已获得上游订单 ID 时才调用 `GET /orders/:id`。
 - 当前限制：后台必须配置公网 HTTPS 回调地址才允许上游自助下单；只开放 auto 自动交付 SKU，manual 表单 SKU 暂不开放。Dujiao-Next 正常对接已由项目所有者确认完成，不再要求额外 PR E 验收。
 - Mock 测试：同步交付、异步查单成功、查单超时、采购失败、重复回调、验签失败、超时后同幂等键恢复、已退款订单跳过、HTTP 402/404 错误分类共 10 项通过。
-- PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。PR #32 merge Publish digest：`sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 重建 Publish Run #44338105044 成功，当前 latest digest：`sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。生产验收仍按 PR2 digest `sha256:bca6cc3c12df3bd667c8ee269f0ab9794d39a6dda47d1d185ad0894203c4796e` 记录；PR D 与 PR E 仍未完成。
+- PR：[PR #32](https://github.com/seanldnet/TG-Card/pull/32)。PR #32 merge Publish digest：`sha256:206c0ca3a12526aaeeb6ec85e17adbbc155803a8f3dc64d9f76667ac8f1fa0cf`；main 重建 Publish Run #44338105044 成功，当前 latest digest：`sha256:1228783d3d8c9c7fab302cc86f60a17866c783d52cf26f27000bcc56e2a55be8`。PR2 生产验收记录保留；PR D 已合并发布，Dujiao-Next 正常对接已由项目所有者确认完成。
 
 ## 2026-11-19 — PR2 生产验收通过；Dujiao-Next PR C 已合并
 
@@ -532,7 +532,7 @@
 
 ## 2026-11-18 — 售后工单改为 Bot 转发 Owner 与交互式回复（独立 PR #27）
 
-- 状态：已合并至 main（PR #27）；Go CI、Admin CI、安全扫描成功；Docker latest 已推送（Publish Run `44308515206`，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`）。真实 Telegram/SMTP 验收待项目所有者执行；后续 PR #28 最新生产验收镜像 digest 见本文顶部记录。
+- 状态：已合并至 main（PR #27）；Go CI、Admin CI、安全扫描成功；Docker latest 已推送（Publish Run `44308515206`，digest `sha256:78b216140715964bf201f398e492c8f636091525a1ca327bcfaaa426532bfba2`）。Telegram/SMTP 实际投递已由项目所有者确认测试通过；后续 PR #28 最新生产验收镜像 digest 见本文顶部记录。
 - 分支：`feat/support-owner-bot-workflow`；基线 `main@71c0b1b75cbe01fb0a13986cffb58cd4e394e0ee`；合并提交 `abb6d62c8d215ff4bffd4151130adccf7d346b24`。
 - 影响模块：`internal/telegrambot/manager.go`、`internal/database/support.go`、`internal/database/support_owner.go`、`cmd/server/main.go`、售后后台页面、上游/支付页面布局、售后专项文档。
 - 变更内容：
@@ -601,7 +601,7 @@
 - 验证：
   - 新增官方响应 JSON 结构、价格解析/汇率/加价、SKU 规格名称单元测试。
   - 新增 SQLite 源切换、事务回滚、缺失商品隐藏、图片失败保留、stale 标志和设置持久化测试。
-  - PR #26 Go CI、Admin CI、安全扫描均成功；真实上游账号同步待项目所有者执行。
+  - PR #26 Go CI、Admin CI、安全扫描均成功；Dujiao-Next 正常对接已由项目所有者确认完成。
   - 官方协议依据：`docs/upstream-integration.md` 所列 Dujiao-Next Open API 文档。
 - 发布镜像：PR #26 已发布；Publish Run #44299965343 成功，digest `sha256:c805ce4a8aa2ee6f2adcf01d16122d15117c9e813457a740c00f2d31e7ec66ae`；后续 latest 已由 PR #27/#28 更新。
 
