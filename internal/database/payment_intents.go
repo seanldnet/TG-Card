@@ -41,7 +41,7 @@ func CreateEpusdtPaymentIntent(ctx context.Context, db *sql.DB, driver, orderID 
 // an unpaid order. Once created, the order cannot silently switch providers.
 func CreatePaymentIntentForProvider(ctx context.Context, db *sql.DB, driver, orderID, provider string) (EpusdtPaymentIntent, bool, error) {
 	provider = strings.TrimSpace(strings.ToLower(provider))
-	if provider != "epusdt" && provider != "gmpay_edge" { return EpusdtPaymentIntent{}, false, fmt.Errorf("unsupported payment provider %q", provider) }
+	if provider != "epusdt" && provider != "gmpay_edge" && provider != "trc20" { return EpusdtPaymentIntent{}, false, fmt.Errorf("unsupported payment provider %q", provider) }
 	if orderID == "" { return EpusdtPaymentIntent{}, false, fmt.Errorf("order ID is required") }
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil { return EpusdtPaymentIntent{}, false, err }
