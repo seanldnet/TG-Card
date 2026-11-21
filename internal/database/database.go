@@ -34,6 +34,10 @@ type Admin struct {
 	Role string
 	Status int
 	TokenVersion int
+	TOTPSecretCiphertext string
+	TOTPPendingSecretCiphertext string
+	TOTPEnabled bool
+	TOTPEnabledAt string
 }
 
 type BootstrapResult struct {
@@ -132,9 +136,9 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, driver, username, password str
 }
 
 func FindAdminByUsername(ctx context.Context, db *sql.DB, driver, username string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version FROM admins WHERE username = "+placeholder(driver,1)
+	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version, totp_secret_ciphertext, totp_pending_secret_ciphertext, totp_enabled, totp_enabled_at FROM admins WHERE username = "+placeholder(driver,1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion)
+	err := db.QueryRowContext(ctx, query, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion, &admin.TOTPSecretCiphertext, &admin.TOTPPendingSecretCiphertext, &admin.TOTPEnabled, &admin.TOTPEnabledAt)
 	return admin, err
 }
 
@@ -188,9 +192,9 @@ func nullableString(value string) any {
 
 
 func FindAdminByID(ctx context.Context, db *sql.DB, driver, adminID string) (Admin, error) {
-	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version FROM admins WHERE id = " + placeholder(driver, 1)
+	query := "SELECT id, username, password_hash, real_name, avatar_url, role, status, token_version, totp_secret_ciphertext, totp_pending_secret_ciphertext, totp_enabled, totp_enabled_at FROM admins WHERE id = " + placeholder(driver, 1)
 	var admin Admin
-	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion)
+	err := db.QueryRowContext(ctx, query, adminID).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.RealName, &admin.AvatarURL, &admin.Role, &admin.Status, &admin.TokenVersion, &admin.TOTPSecretCiphertext, &admin.TOTPPendingSecretCiphertext, &admin.TOTPEnabled, &admin.TOTPEnabledAt)
 	return admin, err
 }
 
@@ -551,4 +555,29 @@ func IsTelegramUserBanned(ctx context.Context, db *sql.DB, driver, telegramUserI
 	var value int
 	err:=db.QueryRowContext(ctx,"SELECT is_banned FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1),telegramUserID).Scan(&value)
 	if err==sql.ErrNoRows{return false,nil};return value!=0,err
+}
+
+func SetAdminTOTPPendingSecret(ctx context.Context,db *sql.DB,driver,adminID,ciphertext string)error{
+	if strings.TrimSpace(adminID)==""||strings.TrimSpace(ciphertext)==""{return fmt.Errorf("administrator and pending TOTP secret are required")}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_pending_secret_ciphertext="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND totp_enabled=0",ciphertext,now,adminID)
+	if err!=nil{return err}
+	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("TOTP cannot be enrolled for this administrator")}
+	return nil
+}
+
+func EnableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,token_version=token_version+1,totp_enabled_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",now,now,adminID)
+	if err!=nil{return err}
+	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("TOTP enrollment is not pending")}
+	return nil
+}
+
+func DisableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext='',totp_pending_secret_ciphertext='',totp_enabled=0,token_version=token_version+1,totp_enabled_at='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,adminID)
+	if err!=nil{return err}
+	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("administrator not found")}
+	return nil
 }

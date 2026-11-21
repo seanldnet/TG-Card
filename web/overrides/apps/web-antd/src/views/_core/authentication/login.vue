@@ -140,6 +140,13 @@ const formSchema = computed((): VbenFormSchema[] => [
     label: $t('authentication.password'),
     rules: z.string().min(1, { message: $t('authentication.passwordTip') }),
   },
+  {
+    component: 'VbenInput',
+    componentProps: { placeholder: '已启用双重验证时，输入 6 位动态验证码' },
+    fieldName: 'totpCode',
+    label: '动态验证码（可选）',
+    rules: z.string().optional(),
+  },
   ...(capEnabled.value
     ? [{
         component: markRaw(CapWidgetField),
