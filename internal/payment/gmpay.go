@@ -132,6 +132,12 @@ func (m *Manager) createGMPayCheckoutForProvider(ctx context.Context, order data
 	if intent.Status=="paid"{return "",errors.New("order is already paid")}
 	if intent.Status=="late_payment" || intent.Status=="amount_mismatch" || intent.Status=="asset_mismatch" || intent.Status=="duplicate_payment" {return "",errors.New("payment requires manual reconciliation")}
 	if intent.Status=="expired" {return "",errors.New("payment provider order has expired")}
+	if intent.Status=="reserved" {
+		claimed,claimErr:=database.ClaimReservedPaymentIntent(ctx,m.db,m.driver,order.ID)
+		if claimErr!=nil{return "",claimErr}
+		if !claimed{return "",errors.New("payment provider order creation is already in progress or uncertain; duplicate creation was blocked")}
+		created=true
+	}
 	if !created {
 		if intent.ProviderTradeID=="" {
 			return "",errors.New("GMPay order creation has an uncertain result; do not retry payment creation. Please contact support while the callback is reconciled.")
