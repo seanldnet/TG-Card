@@ -1098,7 +1098,7 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 		{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}},
 		{{"text":"💵 使用 TRC20 USDT 付款","callback_data":"shop:chainpay:"+order.ID}},
 	}
-	if _,_,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用 Epusdt GMPay 收银台","callback_data":"shop:gmpay:"+order.ID}}) }
+	if _,_,enabled:=m.gmpayCheckoutConfig();enabled { buttons=append(buttons,[]map[string]string{{"text":"🌐 使用在线支付收银台","callback_data":"shop:gmpay:"+order.ID}}) }
 	buttons=append(buttons,[]map[string]string{{"text":"💰 充值余额","callback_data":"wallet:recharge:10000000"}})
 	keyboard := map[string]any{"inline_keyboard":buttons}
 	if query.ID!=""{_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单已创建")}
@@ -1342,7 +1342,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建 GMPay 收银台，请稍后重试；如已提交过请求，系统会先查询原支付单，避免重复创建。")
 			return
 		}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的 GMPay 收银台已准备好。请在支付有效期内完成付款，系统收到签名验证通过的回调后会自动确认并发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开 GMPay 收银台","url":paymentURL}},{{"text":"🔄 我已付款，刷新状态","callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的在线收银台已准备好。请在支付有效期内完成付款，系统收到签名验证通过的回调后会自动确认并发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开 GMPay 收银台","url":paymentURL}},{{"text":"🔄 我已付款，刷新状态","callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
 	case strings.HasPrefix(query.Data,"shop:gmpaycheck:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:gmpaycheck:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
@@ -1366,7 +1366,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "paid":
 			_ = m.sendMessage(ctx,cfg.Token,chatID,"✅ 支付网关已确认到账，订单已进入自动发货流程。请在“我的订单”查看最新状态。")
 		case "expired":
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"该 GMPay 支付单已过期，请联系管理员处理或重新创建订单。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,"该支付单已过期，请联系管理员处理或重新创建订单。")
 		default:
 			_ = m.sendMessage(ctx,cfg.Token,chatID,"支付网关暂未确认到账。请勿重复转账，稍后可再次刷新状态。")
 		}
