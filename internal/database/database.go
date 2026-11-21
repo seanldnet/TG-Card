@@ -587,10 +587,12 @@ func DisableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error
 }
 
 
+func normalizeTOTPRecoveryCode(code string)string{return strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(code),"-","")," ",""))}
+
 func EnableAdminTOTPWithRecoveryCodes(ctx context.Context,db *sql.DB,driver,adminID string,codes []string)error{
 	if len(codes)<5{return fmt.Errorf("at least five recovery codes are required")}
 	hashes:=make([]string,0,len(codes))
-	for _,code:=range codes{sum:=sha256.Sum256([]byte(strings.ToUpper(strings.TrimSpace(code))));hashes=append(hashes,hex.EncodeToString(sum[:]))}
+	for _,code:=range codes{sum:=sha256.Sum256([]byte(normalizeTOTPRecoveryCode(code)));hashes=append(hashes,hex.EncodeToString(sum[:]))}
 	encoded,err:=json.Marshal(hashes);if err!=nil{return err}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
 	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,totp_recovery_code_hashes="+placeholder(driver,1)+",token_version=token_version+1,totp_enabled_at="+placeholder(driver,2)+",updated_at="+placeholder(driver,3)+" WHERE id="+placeholder(driver,4)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",string(encoded),now,now,adminID)
@@ -598,7 +600,7 @@ func EnableAdminTOTPWithRecoveryCodes(ctx context.Context,db *sql.DB,driver,admi
 }
 
 func ConsumeAdminTOTPRecoveryCode(ctx context.Context,db *sql.DB,driver,adminID,code string)(bool,error){
-	code=strings.ToUpper(strings.TrimSpace(code));if len(code)<16||len(code)>64{return false,nil}
+	code=normalizeTOTPRecoveryCode(code);if len(code)<16||len(code)>64{return false,nil}
 	sum:=sha256.Sum256([]byte(code));wanted:=hex.EncodeToString(sum[:])
 	for attempt:=0;attempt<5;attempt++{
 		var raw string
