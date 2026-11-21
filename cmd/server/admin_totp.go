@@ -51,9 +51,13 @@ func (a *application) confirmAdminTOTP(w http.ResponseWriter,r *http.Request) {
 	secretValue,err:=a.secrets.Decrypt(admin.TOTPPendingSecretCiphertext)
 	if err!=nil{writeError(w,http.StatusServiceUnavailable,"待绑定动态验证码密钥无法解密");return}
 	if !auth.VerifyTOTPCode(secretValue,input.Code,time.Now()){writeError(w,http.StatusBadRequest,"动态验证码不正确或已过期");return}
-	if err:=database.EnableAdminTOTP(r.Context(),a.db,a.driver,admin.ID);err!=nil{writeError(w,http.StatusConflict,"启用 TOTP 失败，请重新开始绑定");return}
-	database.RecordAdminAudit(r.Context(),a.db,a.driver,admin.ID,"admin.security.totp.enabled","admin:"+admin.ID,a.clientIP(r),r.UserAgent(),"TOTP enabled")
-	writeSuccess(w,http.StatusOK,map[string]bool{"enabled":true})
+	codes,codeErr:=auth.GenerateTOTPRecoveryCodes(10)
+	if codeErr!=nil{writeError(w,http.StatusInternalServerError,"生成恢复码失败");return}
+	if err:=database.EnableAdminTOTPWithRecoveryCodes(r.Context(),a.db,a.driver,admin.ID,codes);err!=nil{writeError(w,http.StatusConflict,"启用 TOTP 失败，请重新开始绑定");return}
+	database.RecordAdminAudit(r.Context(),a.db,a.driver,admin.ID,"admin.security.totp.enabled","admin:"+admin.ID,a.clientIP(r),r.UserAgent(),"TOTP enabled; 10 one-time recovery codes issued")
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
+	writeSuccess(w,http.StatusOK,map[string]any{"enabled":true,"recoveryCodes":codes})
 }
 
 func (a *application) disableAdminTOTP(w http.ResponseWriter,r *http.Request) {
