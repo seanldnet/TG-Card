@@ -10,7 +10,7 @@
 - 普通卡密、固定文本、上游内容等单步骤交付处于 `delivery_uncertain` 时，管理员重试入口拒绝再次发送。
 - 数据库 claim 层增加保护：只有所有步骤均已明确核实的 file_card 订单可恢复；缺少步骤记录或仍有 uncertain/sending 步骤时拒绝。
 - 新增 SQLite/PostgreSQL 回归测试覆盖普通单步骤不确定订单拒绝手动 claim，以及 file_card 步骤核实前后恢复边界。
-- 无数据库迁移、无新增配置；PR #91 Go/Admin/Security CI 全部通过并已合并；main 发布工作流待最终确认。PROJECT_STATUS 文档版本更新至 2.2.46。
+- 无数据库迁移、无新增配置；PR #91 Go/Admin/Security CI 与合并后 Docker Publish 均成功；GHCR manifest digest：`sha256:9034d2f3ecbad205291345e84e34f6c9c9e499c3022f68d615b3b1a705bccadf`。PROJECT_STATUS 文档版本更新至 2.2.46。
 
 ## 2026-11-21 — P0-4 上游采购不确定状态资金保护（PR #90 已合并并发布）
 
