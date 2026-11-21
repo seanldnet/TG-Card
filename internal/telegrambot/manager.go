@@ -1317,6 +1317,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		if parseErr!=nil || quantity<1 || quantity>100 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购买数量无效"); return }
 		m.createPurchaseOrder(ctx,cfg,query,chatID,parts[0],quantity)
 	case strings.HasPrefix(query.Data,"shop:manualstart:"):
+		if query.Message.Chat.Type!="private" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"资料表单仅支持机器人私聊，请先打开机器人私聊。");return }
 		productID:=strings.TrimPrefix(query.Data,"shop:manualstart:")
 		m.startUpstreamManualForm(ctx,cfg,query,chatID,productID)
 	case strings.HasPrefix(query.Data, "shop:buy:"):
