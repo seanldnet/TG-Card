@@ -1,3 +1,11 @@
+## 2026-11-21 — SMTP TLS 发送修复（PR #107 已合并；主分支发布中）
+
+- 根因：站点配置中的 `SMTPUseTLS` 未应用到测试邮件、管理员邮箱验证码和业务通知的 SMTP 发送路径。
+- 修复：统一 SMTP 客户端；465 隐式 TLS、支持 STARTTLS 的端口先协商加密；启用 TLS 但服务器不支持加密时 fail closed；禁止 SMTP 凭据通过明文连接认证。
+- 后台补充网易 yeah.net/163 与 QQ SMTP 地址、完整邮箱账号及授权码说明。
+- PR head Go/Admin/Security CI 全部成功；合并后 main Go/Admin/Security/Docker Publish 已触发，待核验最终结果与 digest。
+- 无数据库迁移、无新增环境变量；真实邮箱投递验收待部署后执行。PROJECT_STATUS 文档版本更新至 2.2.62。
+
 ## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（开发中）
 
 - 状态：基于 main@354f73499ce23cafee598e8ec66683e196993ee2 建立独立分支 `fix/login-totp-conditional-cap-compact`。
