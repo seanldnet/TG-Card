@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"database/sql"
 	"embed"
+	"errors"
 	"encoding/base64"
 	"fmt"
 	"math/big"
@@ -223,6 +224,71 @@ func UpdateAdminPassword(ctx context.Context, db *sql.DB, driver, adminID, passw
 	if err != nil { return err }
 	if affected != 1 { return fmt.Errorf("administrator not found") }
 	return nil
+}
+
+var (
+	ErrInvalidAdminRefreshToken = errors.New("invalid administrator refresh token")
+	ErrAdminRefreshTokenReplay = errors.New("administrator refresh token replay detected")
+	ErrExpiredAdminRefreshToken = errors.New("administrator refresh token expired")
+	ErrAdminRefreshTokenVersionMismatch = errors.New("administrator refresh token version changed")
+)
+
+type AdminRefreshSession struct {
+	AdminID string
+	FamilyID string
+	TokenVersion int
+}
+
+func CreateAdminRefreshSession(ctx context.Context,db *sql.DB,driver,adminID string,tokenVersion int,tokenHash,familyID string,expiresAt time.Time)error{
+	if strings.TrimSpace(adminID)==""||strings.TrimSpace(tokenHash)==""||strings.TrimSpace(familyID)==""||!expiresAt.After(time.Now()){return fmt.Errorf("administrator, refresh token hash, family and future expiry are required")}
+	now:=time.Now().UTC().Format(time.RFC3339Nano)
+	query:="INSERT INTO admin_refresh_sessions(token_hash,admin_id,family_id,token_version,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
+	_,err:=db.ExecContext(ctx,query,tokenHash,adminID,familyID,tokenVersion,expiresAt.Unix(),now)
+	return err
+}
+
+// RotateAdminRefreshSession atomically consumes the old token, creates its successor,
+// and registers the corresponding short-lived access-token session.
+func RotateAdminRefreshSession(ctx context.Context,db *sql.DB,driver,oldHash,newHash,accessHash string,accessExpiresAt,refreshExpiresAt,now time.Time)(AdminRefreshSession,error){
+	var session AdminRefreshSession
+	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return session,err};defer tx.Rollback()
+	query:="SELECT admin_id,family_id,token_version,expires_at,revoked_at FROM admin_refresh_sessions WHERE token_hash="+placeholder(driver,1)
+	if driver!="sqlite"{query+=" FOR UPDATE"}
+	var expires int64;var revoked string
+	if err:=tx.QueryRowContext(ctx,query,oldHash).Scan(&session.AdminID,&session.FamilyID,&session.TokenVersion,&expires,&revoked);err!=nil{if errors.Is(err,sql.ErrNoRows){return session,ErrInvalidAdminRefreshToken};return session,err}
+	nowText:=now.UTC().Format(time.RFC3339Nano)
+	if revoked!=""{
+		if _,err:=tx.ExecContext(ctx,"UPDATE admin_refresh_sessions SET revoked_at="+placeholder(driver,1)+" WHERE family_id="+placeholder(driver,2)+" AND revoked_at=''",nowText,session.FamilyID);err!=nil{return session,err}
+		if err:=tx.Commit();err!=nil{return session,err}
+		return session,ErrAdminRefreshTokenReplay
+	}
+	if expires<=now.Unix(){
+		if _,err:=tx.ExecContext(ctx,"UPDATE admin_refresh_sessions SET revoked_at="+placeholder(driver,1)+" WHERE family_id="+placeholder(driver,2)+" AND revoked_at=''",nowText,session.FamilyID);err!=nil{return session,err}
+		if err:=tx.Commit();err!=nil{return session,err}
+		return session,ErrExpiredAdminRefreshToken
+	}
+	var currentVersion,currentStatus int
+	if err:=tx.QueryRowContext(ctx,"SELECT token_version,status FROM admins WHERE id="+placeholder(driver,1),session.AdminID).Scan(&currentVersion,&currentStatus);err!=nil{return session,err}
+	if currentStatus!=1||currentVersion!=session.TokenVersion{
+		if _,err:=tx.ExecContext(ctx,"UPDATE admin_refresh_sessions SET revoked_at="+placeholder(driver,1)+" WHERE family_id="+placeholder(driver,2)+" AND revoked_at=''",nowText,session.FamilyID);err!=nil{return session,err}
+		if err:=tx.Commit();err!=nil{return session,err}
+		return session,ErrAdminRefreshTokenVersionMismatch
+	}
+	res,err:=tx.ExecContext(ctx,"UPDATE admin_refresh_sessions SET revoked_at="+placeholder(driver,1)+",replaced_by_hash="+placeholder(driver,2)+" WHERE token_hash="+placeholder(driver,3)+" AND revoked_at=''",nowText,newHash,oldHash)
+	if err!=nil{return session,err};affected,err:=res.RowsAffected();if err!=nil{return session,err};if affected!=1{return session,ErrAdminRefreshTokenReplay}
+	created:=now.UTC().Format(time.RFC3339Nano)
+	if _,err:=tx.ExecContext(ctx,"INSERT INTO admin_refresh_sessions(token_hash,admin_id,family_id,token_version,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")",newHash,session.AdminID,session.FamilyID,session.TokenVersion,refreshExpiresAt.Unix(),created);err!=nil{return session,err}
+	if _,err:=tx.ExecContext(ctx,"INSERT INTO admin_token_sessions(token_hash,admin_id,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+")",accessHash,session.AdminID,accessExpiresAt.Unix(),created);err!=nil{return session,err}
+	if err:=tx.Commit();err!=nil{return session,err}
+	return session,nil
+}
+
+func RevokeAdminRefreshFamilyByTokenHash(ctx context.Context,db *sql.DB,driver,tokenHash string)error{
+	var familyID string
+	err:=db.QueryRowContext(ctx,"SELECT family_id FROM admin_refresh_sessions WHERE token_hash="+placeholder(driver,1),tokenHash).Scan(&familyID)
+	if errors.Is(err,sql.ErrNoRows){return nil};if err!=nil{return err}
+	_,err=db.ExecContext(ctx,"UPDATE admin_refresh_sessions SET revoked_at="+placeholder(driver,1)+" WHERE family_id="+placeholder(driver,2)+" AND revoked_at=''",time.Now().UTC().Format(time.RFC3339Nano),familyID)
+	return err
 }
 
 // CreateAdminTokenSession stores only a one-way token hash; raw bearer tokens are never persisted.
