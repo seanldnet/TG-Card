@@ -197,7 +197,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <a-card :bordered="false" :loading="loading" title="上游对接">
    <template #extra><a-tag :color="settings.enabled&&!settings.catalogStale?'success':'default'">{{settings.enabled&&!settings.catalogStale?'上游售卖中':'本地商品售卖'}}</a-tag></template>
-   <a-alert class="mb-5" type="info" show-icon message="当前仅开放 Dujiao-Next 官方 Open API。异次元和萌次元尚无已核实的第三方商户采购协议，因此不提供可调用配置。" />
+   
    <a-form layout="vertical">
     <a-form-item label="上游类型">
      <a-select v-model:value="settings.provider" disabled>
@@ -249,7 +249,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
     <a-form-item label="采购查单轮询间隔（秒）"><a-input-number v-model:value="settings.procurementPollIntervalSeconds" class="w-full" :min="5" :max="3600" :step="5"/></a-form-item>
     <a-form-item label="采购等待超时（分钟）"><a-input-number v-model:value="settings.procurementTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></a-form-item>
     <a-form-item label="供应商余额低于此值时告警" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" placeholder="例如 100.00"/></a-form-item>
-    <a-alert class="mb-4" type="info" show-icon message="采购将在本地订单支付确认后异步执行；上游回调与查单轮询共同推进交付。采购失败只进入人工处理队列，不自动退款或修改买家已支付资金。" />
+    
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
      <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
@@ -278,7 +278,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
      </div><span v-else class="text-xs text-gray-400">—</span>
     </template></a-table-column>
    </a-table>
-   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。受理状态不确定的订单必须先在供应商后台核实：确认已受理时登记上游订单 ID 后只恢复查单；确认未受理/失败后才可安全重试或退款。普通失败记录使用原本地订单号作为幂等键。" />
+   
   </a-card>
   <a-modal v-model:open="resolveVisible" title="核实上游采购受理状态" :confirm-loading="actionLoading===resolveOrderId" @ok="submitResolve">
    <a-alert class="mb-4" type="warning" show-icon message="请先在供应商后台按本地订单号核实。不要仅凭本地超时判断供应商未受理；本操作会决定订单后续是恢复查单，还是开放重试/退款。" />
