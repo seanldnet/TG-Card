@@ -249,7 +249,7 @@ func FindAdminRefreshSession(ctx context.Context,db *sql.DB,driver,tokenHash str
 func CreateAdminRefreshSession(ctx context.Context,db *sql.DB,driver,adminID string,tokenVersion int,tokenHash,familyID string,expiresAt time.Time)error{
 	if strings.TrimSpace(adminID)==""||strings.TrimSpace(tokenHash)==""||strings.TrimSpace(familyID)==""||!expiresAt.After(time.Now()){return fmt.Errorf("administrator, refresh token hash, family and future expiry are required")}
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	_,_=db.ExecContext(ctx,"DELETE FROM admin_refresh_sessions WHERE expires_at<="+placeholder(driver,1),time.Now().Unix())
+	if _,err:=db.ExecContext(ctx,"DELETE FROM admin_refresh_sessions WHERE expires_at<="+placeholder(driver,1),time.Now().Unix());err!=nil{return err}
 	query:="INSERT INTO admin_refresh_sessions(token_hash,admin_id,family_id,token_version,expires_at,created_at) VALUES("+placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+","+placeholder(driver,5)+","+placeholder(driver,6)+")"
 	_,err:=db.ExecContext(ctx,query,tokenHash,adminID,familyID,tokenVersion,expiresAt.Unix(),now)
 	return err
