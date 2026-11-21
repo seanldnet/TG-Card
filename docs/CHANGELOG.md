@@ -1,4 +1,4 @@
-## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（开发中）\n\n- 新增每日调度器，默认每日 03:00（服务器本地时区）执行；后台网站设置可启用/停用并调整时间。\n- 使用容器内 `pg_dump` 导出 PostgreSQL，连同 `/app/data` 持久化文件打包为 `.tar.gz`，通过 Telegram Bot `sendDocument` 发送给主人，附带 SHA-256 校验值。\n- Docker runtime 增加 `postgresql-client`；现有手动备份/恢复脚本不变；无数据库迁移、无新增环境变量。\n- 独立分支 `feat/scheduled-backup-owner-delivery`；CI 与生产验收待完成。\n- PROJECT_STATUS 文档版本更新至 2.2.68。\n\n## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
+## 2026-11-22 — 每日自动备份与 Telegram Owner 投递（PR #114 已合并并发布镜像）\n\n- 新增每日调度器，默认每日 03:00（服务器本地时区）执行；后台网站设置可启用/停用并调整时间。\n- 使用容器内 `pg_dump` 导出 PostgreSQL，连同 `/app/data` 持久化文件打包为 `.tar.gz`，通过 Telegram Bot `sendDocument` 发送给主人，附带 SHA-256 校验值。\n- Docker runtime 增加 `postgresql-client`；现有手动备份/恢复脚本不变；无数据库迁移、无新增环境变量。\n- 独立分支 `feat/scheduled-backup-owner-delivery`；CI 与生产验收待完成。\n- PROJECT_STATUS 文档版本更新至 2.2.68。\n\n## 2026-11-22 — 项目所有者确认 Telegram、售后、邮件与移动端测试通过
 
 - 状态：项目所有者已确认本轮测试均无问题。
 - 验收范围：Telegram 菜单/按钮、售后补发与退款状态分支、Owner Bot C1–C4 和失败场景、移动端真实设备回归、SMTP 实际邮件投递。
