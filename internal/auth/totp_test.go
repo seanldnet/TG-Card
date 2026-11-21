@@ -40,7 +40,7 @@ func TestTOTPCodeMatchesRFC6238SHA1Vector(t *testing.T) {
 
 
 func TestGenerateTOTPRecoveryCodesAreUniqueAndHighEntropy(t *testing.T) {
-	codes,err:=GenerateTOTPRecoveryCodes(10);if err!=nil{t.Fatal(err)}
+	codes,_,err:=GenerateTOTPRecoveryCodes(10);if err!=nil{t.Fatal(err)}
 	if len(codes)!=10{t.Fatalf("generated %d codes, want 10",len(codes))}
 	seen:=make(map[string]bool,len(codes))
 	for _,code:=range codes{
@@ -48,5 +48,5 @@ func TestGenerateTOTPRecoveryCodesAreUniqueAndHighEntropy(t *testing.T) {
 		if seen[code]{t.Fatalf("duplicate recovery code generated: %q",code)}
 		seen[code]=true
 	}
-	if _,err:=GenerateTOTPRecoveryCodes(4);err==nil{t.Fatal("must reject too few recovery codes")}
+	if _,_,err:=GenerateTOTPRecoveryCodes(4);err==nil{t.Fatal("must reject too few recovery codes")}
 }
