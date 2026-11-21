@@ -12,6 +12,13 @@ export POSTGRES_PASSWORD="isolated-backup-test-password"
 export BACKUP_ENCRYPTION_PASSPHRASE="isolated-ci-backup-passphrase-with-more-than-32-chars"
 export BACKUP_CRYPT_BIN="$TMP_DIR/backup-crypt"
 go build -o "$BACKUP_CRYPT_BIN" ./cmd/backup-crypt
+printf "%s" "preflight" > "$TMP_DIR/preflight.txt"
+if BACKUP_ENCRYPTION_PASSPHRASE="short" "$BACKUP_CRYPT_BIN" encrypt "$TMP_DIR/preflight.txt" "$TMP_DIR/should-not-exist.age"; then
+  echo "backup encryption unexpectedly accepted a weak passphrase" >&2
+  exit 1
+fi
+test ! -e "$TMP_DIR/should-not-exist.age"
+rm -f "$TMP_DIR/preflight.txt"
 BACKUP_DIR="$TMP_DIR/backups"
 RESTORE_STARTED=0
 
