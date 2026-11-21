@@ -3,7 +3,7 @@
 - 分支：`feat/admin-menu-payment-provider-ux`。
 - 菜单按仪表盘、运营管理、商品管理、财务管理、系统设置分组；支付设置增加三通道统一开关卡，Epusdt 与 GMPay Edge 凭证独立展示。
 - GMPay Edge 增加独立加密凭证、独立回调入口、签名查单和支付意图 provider 快照；托管通道按已启用 Epusdt/GMPay Edge 轮询。
-- 当前尚未完成 TRC20 + 两个托管通道的统一三路轮询与完整验收；Go/Admin/Security CI 待 PR 验证，不得视为已发布。
+- Telegram 商城统一支付选择已接入 TRC20、Epusdt、GMPay Edge 三路轮询；订单支付意图固定 provider，链上监听拒绝与快照通道不一致的转账。Go/Admin/Security CI 待 PR 验证，不得视为已发布。
 
 ## 2026-11-22 — Epusdt GMPay 支付闭环实现（PR #121 开发中；PROJECT_STATUS 2.2.72）
 
