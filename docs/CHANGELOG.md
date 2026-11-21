@@ -5,20 +5,20 @@
 - 新增 SQLite/PostgreSQL 回归测试覆盖普通单步骤不确定订单拒绝手动 claim，以及 file_card 步骤核实前后恢复边界。
 - 无数据库迁移、无新增配置；PROJECT_STATUS 文档版本更新至 2.2.46。CI 待验证。
 
-## 2026-11-21 — P0-4 上游采购不确定状态资金保护（开发中）
+## 2026-11-21 — P0-4 上游采购不确定状态资金保护（PR #90 已合并并发布）
 
 - 禁止对供应商受理状态不确定（`uncertain`）的订单直接手动重试，避免供应商已受理时重复采购。
 - 禁止对 `uncertain` 订单直接执行钱包退款，避免供应商已履约与买家退款并存。
 - 只有采购队列明确为 `failed` 的订单才能进入现有手动重试/退款流程；uncertain 必须先由 Owner/管理员在供应商侧核实。
 - 新增回归测试验证重试、退款均拒绝且不触发第二次上游创建、不产生退款账本。
-- 无数据库迁移、无新增配置；PROJECT_STATUS 文档版本更新至 2.2.45。CI 待验证。
+- 无数据库迁移、无新增配置；PR #90 Go/Admin/Security CI 及合并后 Docker Publish 均成功；GHCR manifest digest：`sha256:23a5aa26f511a5f07609a262d4c1e7a451e84c30a98e83041b61d66e26be109c`。PROJECT_STATUS 文档版本更新至 2.2.45。
 
-## 2026-11-21 — P0-4 首次交付期间退款保护（独立修复 PR）
+## 2026-11-21 — P0-4 首次交付期间退款保护（PR #89 已合并并发布）
 
 - 收紧 `RefundOrderToWallet` 状态门禁：`delivering` 不再允许退款，避免首次 Telegram 交付执行期间并发给买家余额入账。
 - 退款仅允许在 `paid`、`delivery_failed`、`delivered` 等明确状态继续；`delivery_uncertain`、`delivering`、`refunded` 和其他非法状态拒绝。
 - 新增 SQLite/PostgreSQL 共用回归测试，断言活动交付期间退款不改变订单状态、钱包余额或退款流水。
-- 无数据库迁移、环境变量或 API 契约变化；PROJECT_STATUS 文档版本更新至 2.2.44。CI 待 PR 验证。
+- 无数据库迁移、环境变量或 API 契约变化；PR #89 Go/Admin/Security CI 及合并后 Docker Publish 均成功；GHCR manifest digest：`sha256:ecbcb456eb6e2eb19057d3338b2705ac09e7d0e6a563a338096340eff6d71eb9`。PROJECT_STATUS 文档版本更新至 2.2.44。
 
 ## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
 
