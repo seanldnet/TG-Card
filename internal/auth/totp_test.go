@@ -37,3 +37,16 @@ func TestTOTPCodeMatchesRFC6238SHA1Vector(t *testing.T) {
 	if err!=nil{t.Fatal(err)}
 	if code!="287082"{t.Fatalf("RFC 6238 6-digit SHA1 code=%s want 287082",code)}
 }
+
+
+func TestGenerateTOTPRecoveryCodesAreUniqueAndHighEntropy(t *testing.T) {
+	codes,err:=GenerateTOTPRecoveryCodes(10);if err!=nil{t.Fatal(err)}
+	if len(codes)!=10{t.Fatalf("generated %d codes, want 10",len(codes))}
+	seen:=make(map[string]bool,len(codes))
+	for _,code:=range codes{
+		if len(code)<24{t.Fatalf("recovery code too short: %q",code)}
+		if seen[code]{t.Fatalf("duplicate recovery code generated: %q",code)}
+		seen[code]=true
+	}
+	if _,err:=GenerateTOTPRecoveryCodes(4);err==nil{t.Fatal("must reject too few recovery codes")}
+}
