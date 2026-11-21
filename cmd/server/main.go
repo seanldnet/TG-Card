@@ -226,6 +226,7 @@ func main() {
 	api.HandleFunc("GET /api/dashboard/metrics", app.dashboardMetrics)
 	api.HandleFunc("GET /api/auth/cap-config", app.getCapConfig)
 	api.HandleFunc("POST /api/auth/login", app.login)
+	api.HandleFunc("POST /api/auth/totp-required", app.adminLoginTOTPRequirement)
 	api.HandleFunc("POST /api/auth/refresh", app.sensitiveRateLimit("admin-refresh", 30, 5*time.Minute, app.refresh))
 	api.HandleFunc("POST /api/admin/security/confirm-action", app.sensitiveRateLimit("admin-action-confirm", 10, 5*time.Minute, app.confirmAdminAction))
 	api.HandleFunc("POST /api/auth/logout", app.logout)

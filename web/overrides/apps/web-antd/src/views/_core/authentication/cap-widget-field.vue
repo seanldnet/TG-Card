@@ -34,6 +34,12 @@ function mountWidget() {
   widget.setAttribute('data-cap-i18n-verified-aria-label', '已完成安全验证');
   widget.setAttribute('data-cap-i18n-error-aria-label', '验证失败，请重试');
   widget.style.setProperty('--cap-widget-width', '100%');
+  widget.style.setProperty('--cap-widget-height', '30px');
+  widget.style.setProperty('--cap-widget-padding', '5px');
+  widget.style.setProperty('--cap-gap', '8px');
+  widget.style.setProperty('--cap-checkbox-size', '20px');
+  widget.style.setProperty('--cap-checkbox-margin', '0px');
+  widget.style.setProperty('--cap-border-radius', '10px');
   widget.addEventListener('solve', (event) => {
     const token = (event as CustomEvent<{ token?: string }>).detail?.token || '';
     emit('tokenChange', token);
@@ -64,7 +70,7 @@ onBeforeUnmount(() => widget?.remove());
     <div class="mb-2 text-sm font-medium text-foreground">安全验证</div>
     <div
       ref="container"
-      class="cap-widget-field flex min-h-[58px] w-full items-center"
+      class="cap-widget-field flex min-h-[38px] w-full items-center"
     />
     <p v-if="error" class="mt-1 text-xs text-red-500">{{ error }}</p>
     <p v-else-if="!ready" class="mt-1 text-xs text-red-500">人机验证暂不可用，请刷新页面或联系管理员</p>

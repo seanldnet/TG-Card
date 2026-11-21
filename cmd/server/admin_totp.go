@@ -15,6 +15,43 @@ type totpEnrollRequest struct { Password string `json:"password"` }
 type totpCodeRequest struct { Code string `json:"code"` }
 type totpDisableRequest struct { Password string `json:"password"`; Code string `json:"code"` }
 
+
+type totpLoginRequirementRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// adminLoginTOTPRequirement confirms the submitted credentials before revealing
+// whether a second factor is required. It does not create a session or consume
+// a TOTP/recovery code; the regular login endpoint remains authoritative.
+func (a *application) adminLoginTOTPRequirement(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	ip := a.clientIP(r)
+	if !a.allowLoginAttempt(ip) {
+		writeError(w, http.StatusTooManyRequests, "登录尝试过于频繁，请 15 分钟后再试")
+		return
+	}
+	var input totpLoginRequirementRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "请求内容无效")
+		return
+	}
+	input.Username = strings.TrimSpace(input.Username)
+	if input.Username == "" || input.Password == "" || len(input.Username) > 64 || len(input.Password) > 256 {
+		writeError(w, http.StatusBadRequest, "用户名和密码不能为空")
+		return
+	}
+	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
+	if err != nil || admin.Status != 1 || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.Password)) != nil {
+		a.recordLoginFailure(ip)
+		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
+		return
+	}
+	a.clearLoginFailures(ip)
+	writeSuccess(w, http.StatusOK, map[string]bool{"enabled": admin.TOTPEnabled})
+}
+
 func (a *application) adminTOTPStatus(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
 	admin,err:=database.FindAdminByID(r.Context(),a.db,a.driver,claims.AdminID)

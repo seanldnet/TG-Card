@@ -1,3 +1,10 @@
+## 2026-11-21 — 登录双重验证按账户状态显示与 Cap 验证组件紧凑化（开发中）
+
+- 状态：基于 main@354f73499ce23cafee598e8ec66683e196993ee2 建立独立分支 `fix/login-totp-conditional-cap-compact`。
+- 变更：凭据验证通过后再确认账户 TOTP 状态；未启用不显示二次验证输入框，启用后只显示一个动态验证码输入框；恢复码通过切换入口复用该输入框。
+- Cap：通过官方 CSS 变量将 widget 高度缩至 30px，并缩小内边距、间距和复选框，保持全宽对齐。
+- 测试与发布：新增后端预检测试；Go/Admin/Security CI 待验证；无数据库迁移、无新增环境变量；合并后镜像 digest 待核验。
+
 ## 2026-11-21 — Owner Bot 媒体回复限制为单次 Telegram 副作用（PR #104 开发中；原 PR #77 已关闭并由本 PR 替代）
 
 - 状态：基于 PR #103 合并后的 main 新建独立分支 `fix/owner-media-reply-single-side-effect-rebased`，不沿用落后主线的旧 PR 分支。
