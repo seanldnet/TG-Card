@@ -6,7 +6,7 @@
 - 前端收到 HTTP 428 challenge 后弹出统一密码/动态码对话框，确认成功后仅重放原始请求；二次确认失败或取消不会执行目标操作。
 - 覆盖余额变更、采购重试/退款/状态核实、支付人工核对、售后退款、订单交付恢复/步骤核实、订单清理、支付/站点/上游/充值赠送配置及上游数据清理。
 - 新增 migration 0057；不存储密码、TOTP 明文、恢复码明文或请求体内容；审计仅记录 action key 与目标路径。
-- PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；PR head 与合并后 Go/Admin/Security CI 全部通过。Docker Publish 仍在执行，镜像 digest 待确认；真实浏览器 step-up 流程待部署验收。
+- PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；PR head 与合并后 Go/Admin/Security CI 全部通过。Docker Publish run `44885024397` 已成功；GHCR manifest digest：`sha256:1ef5ec7d1ef7cc75b9b764bcbea972b83687798468f705e0a4da3664704493a2`。真实浏览器 step-up 流程待部署验收。
 
 ## 管理员登出 Access Session 即时撤销补强（PR #99 已合并）
 
