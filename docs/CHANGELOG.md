@@ -1,3 +1,10 @@
+## 2026-11-21 — P0-4 交付结果不确定 Owner 告警（开发中）
+
+- Telegram 交付请求已发出但网络/响应不确定时，继续将订单保持在 `delivery_uncertain` 隔离状态，并更新异常原因。
+- 新增按订单 ID 唯一认领的一次性 Owner 风险告警；复用现有 `risk_alert` 通知配置，不在租约恢复或重复扫描时重复发送。
+- 告警包含本地订单号、结果不确定原因和人工核实提示；不包含卡密、支付凭据或 Telegram Bot Token。
+- 新增测试验证同一订单重复触发只通知一次。真实 Telegram 网络响应丢失场景待部署验收。
+
 ## 2026-11-21 — 订单与资金补偿机制 P0-4（开发中）
 
 - 新增 `ReconcileMissingUpstreamProcurements`：只恢复已付款、状态仍为 `procurement_pending`、来源快照为 upstream 且缺少采购队列行的订单。
