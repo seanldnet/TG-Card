@@ -9,7 +9,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/config"
 )
 
-func TestDeliveryUncertainIsExcludedFromAutomaticRetryButAllowsManualClaim(t *testing.T) {
+func TestSingleStepDeliveryUncertainIsExcludedFromAutomaticAndManualRetry(t *testing.T) {
 	dsn := os.Getenv("TEST_POSTGRES_DSN")
 	driver := "sqlite"
 	if dsn == "" {
@@ -57,12 +57,54 @@ func TestDeliveryUncertainIsExcludedFromAutomaticRetryButAllowsManualClaim(t *te
 	}
 
 	manual, err := ClaimOrderDelivery(ctx, db, driver, order.ID, time.Minute)
-	if err != nil || !manual { t.Fatalf("explicit admin claim should be allowed: claimed=%v err=%v", manual, err) }
-	item, err := GetOrderDelivery(ctx, db, driver, order.ID)
-	if err != nil { t.Fatalf("load manually claimed uncertain delivery: %v", err) }
-	if item.Order.Status != "delivering" { t.Fatalf("manual claim should move order to delivering, got %q", item.Order.Status) }
+	if err != nil || manual { t.Fatalf("single-step uncertain delivery must reject manual claim: claimed=%v err=%v", manual, err) }
+	if err := db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id="+placeholder(driver,1), order.ID).Scan(&status); err != nil { t.Fatal(err) }
+	if status != "delivery_uncertain" { t.Fatalf("blocked manual retry must preserve delivery_uncertain, got %q", status) }
 
 	var events int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM order_delivery_events WHERE order_id="+placeholder(driver,1)+" AND event_type='delivery_uncertain'", order.ID).Scan(&events); err != nil { t.Fatal(err) }
 	if events != 1 { t.Fatalf("expected one uncertainty event, got %d", events) }
+}
+
+
+func TestFileCardUncertainManualClaimRequiresAllStepsResolved(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	driver := "sqlite"
+	if dsn == "" { dsn = ":memory:" } else { driver = "postgres" }
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	db, err := Open(ctx, config.Config{DBDriver: driver, DatabaseDSN: dsn})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, driver); err != nil { t.Fatal(err) }
+	suffix, err := randomID()
+	if err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, driver, Product{
+		Name: "File card uncertain " + suffix, PriceMinor: 100, Currency: "USDT",
+		DeliveryType: "file_card", DeliveryConfigJSON: `{"fileId":"test-file"}`, Status: 1,
+	})
+	if err != nil { t.Fatal(err) }
+	if _,err:=ImportProductKeys(ctx,db,driver,product.ID,[]StockSecret{{Ciphertext:"test-ciphertext",Fingerprint:"test-fingerprint-"+suffix}});err!=nil{t.Fatal(err)}
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM products WHERE id="+placeholder(driver,1), product.ID) }()
+	order, err := CreateOrder(ctx, db, driver, "file-card-bot-"+suffix, "file-card-user-"+suffix, "12345", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	defer func() { _, _ = db.ExecContext(context.Background(), "DELETE FROM orders WHERE id="+placeholder(driver,1), order.ID) }()
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='paid' WHERE id="+placeholder(driver,1), order.ID); err != nil { t.Fatal(err) }
+	if claimed, err := ClaimOrderDelivery(ctx, db, driver, order.ID, time.Minute); err != nil || !claimed { t.Fatalf("initial claim: claimed=%v err=%v", claimed, err) }
+	if err := MarkOrderDeliveryUncertain(ctx, db, driver, order.ID, "simulated lost Telegram response"); err != nil { t.Fatal(err) }
+	if err := UpdateOrderDeliveryUncertainError(ctx, db, driver, order.ID, "manual review required"); err != nil { t.Fatal(err) }
+	if claimed, err := ClaimOrderDelivery(ctx, db, driver, order.ID, time.Minute); err != nil || claimed { t.Fatalf("file-card with no step evidence must be blocked: claimed=%v err=%v", claimed, err) }
+	fileStep, err := BeginOrderDeliveryStep(ctx, db, driver, order.ID, "file", 1)
+	if err != nil { t.Fatal(err) }
+	if err := FinishOrderDeliveryStep(ctx, db, driver, order.ID, "file", "tg-file-1"); err != nil { t.Fatal(err) }
+	cardStep, err := BeginOrderDeliveryStep(ctx, db, driver, order.ID, "card_message", 2)
+	if err != nil { t.Fatal(err) }
+	if err := FailOrderDeliveryStep(ctx, db, driver, order.ID, "card_message", "verified not delivered"); err != nil { t.Fatal(err) }
+	_ = fileStep
+	_ = cardStep
+	claimed, err := ClaimOrderDelivery(ctx, db, driver, order.ID, time.Minute)
+	if err != nil || !claimed { t.Fatalf("file-card with all steps resolved should allow failed-step recovery: claimed=%v err=%v", claimed, err) }
+	var status string
+	if err := db.QueryRowContext(ctx, "SELECT status FROM orders WHERE id="+placeholder(driver,1), order.ID).Scan(&status); err != nil { t.Fatal(err) }
+	if status != "delivering" { t.Fatalf("resolved file-card claim should set delivering, got %q", status) }
 }

@@ -1,21 +1,30 @@
-## 2026-11-21 — P0-4 上游采购不确定状态资金保护（开发中）
+## 2026-11-21 — P0-4 不确定交付禁止盲目手动重试（开发中）
 
-- 当前 main 基线：`f3e09ba7637f683494a8675b3f7e928df59059b9`（PR #89 已合并）；独立分支：`fix/block-uncertain-procurement-retry-p0-4`。
+- 当前 main 基线：`19ca3544baa4b79833b53cb56a65bf3c7007381c`（PR #90 已合并）；独立分支：`fix/block-uncertain-single-step-delivery-retry-p0-4`。
+- 审计发现：自动恢复扫描虽排除 `delivery_uncertain`，管理员重试入口却只对 invite_link 与 file_card 做拦截，普通卡密、固定文本、上游内容等单步骤交付仍可直接重发。
+- 修复：普通单步骤交付处于 `delivery_uncertain` 时，管理员入口明确拒绝重试；数据库 `ClaimOrderDelivery` 也仅允许 file_card 在存在步骤记录且不存在 uncertain/sending 步骤时恢复，防止绕过 HTTP 入口直接 claim。
+- file_card 仍支持既有分步骤恢复：所有步骤经人工核实为 succeeded/failed 后，可跳过成功步骤，仅恢复失败步骤；缺失步骤证据或仍有不确定步骤时拒绝。
+- 新增 SQLite/PostgreSQL 回归测试覆盖单步骤不确定订单拒绝手动 claim，以及 file_card 缺失/未核实步骤拒绝、全部核实后允许恢复。
+- 无数据库迁移、无新增环境变量/后台配置；明确失败的 `delivery_failed` 重试流程不变。CI 待 PR 验证；未合并、未发布、未生产验收。
+
+## 2026-11-21 — P0-4 上游采购不确定状态资金保护（PR #90 已合并并发布）
+
+- PR #90 已 Squash Merge 至 main，merge commit `19ca3544baa4b79833b53cb56a65bf3c7007381c`；独立分支：`fix/block-uncertain-procurement-retry-p0-4`。
 - 审计发现：采购请求网络超时/响应丢失后，系统将采购队列标记为 `uncertain`、订单标记为 `procurement_failed` 以进入人工队列；原手动重试和退款入口仍接受该组合状态。
 - 风险：供应商可能已经受理并扣款；此时直接重试可能重复采购，直接退款可能造成供应商已履约且买家同时获退款。
 - 修复：手动重试和钱包退款都只接受采购队列明确为 `failed` 的订单；`uncertain` 状态必须先由 Owner/管理员在供应商侧核实，确认未受理/失败后才可进入既有失败处理流程。
 - 新增回归测试覆盖 uncertain 状态下重试、退款双双拒绝，并验证不会再次调用上游创建接口、不产生退款流水、不改变订单状态。
 - 无数据库迁移、无环境变量/后台配置变化；旧 uncertain 订单升级后立即受到保护。回滚代码会重新开放此前的重复采购/重复退款风险，不建议回滚。
-- 当前状态：代码与文档已提交至独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未进行生产验收。
+- PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security CI 与 Docker Publish run `44873276614` 全部成功。GHCR `latest` 与提交标签 `19ca3544baa4b79833b53cb56a65bf3c7007381c` 已发布，manifest digest：`sha256:23a5aa26f511a5f07609a262d4c1e7a451e84c30a98e83041b61d66e26be109c`。生产部署与真实供应商核验流程仍待验收。
 
-## 2026-11-21 — P0-4 阻止首次交付执行期间退款（独立修复 PR）
+## 2026-11-21 — P0-4 阻止首次交付执行期间退款（PR #89 已合并并发布）
 
-- 开发基线：main@4ee33774a6bc136f3360728a91a58d5dfd43f4eb；独立分支 `fix/block-refund-during-active-delivery-p0-4e`。
+- PR #89 已 Squash Merge 至 main，merge commit `f3e09ba7637f683494a8675b3f7e928df59059b9`；独立分支 `fix/block-refund-during-active-delivery-p0-4e`。
 - 审查发现 `RefundOrderToWallet` 虽与再次获取租约共享订单行锁，但仍允许 `orders.status='delivering'`，未将正在执行/尚未核实的首次交付排除在退款状态之外。
 - 本分支将本地订单退款允许状态收紧为 `paid`、`delivery_failed`、`delivered`；`delivering`、`delivery_uncertain`、`refunded` 和其他状态均拒绝。这样退款与领取首次交付使用同一订单行并发仲裁，避免交付请求执行期间同时给买家入账。
 - 新增 SQLite/PostgreSQL 共用回归测试：活动首次交付期间退款必须失败，订单保持 delivering，钱包余额与退款 credit 流水均不变。
 - 不新增数据库迁移、环境变量或 API 参数；不改变已交付订单退款与已明确失败订单退款流程。
-- Go/Admin/Security CI 与 Docker Publish 待 PR 验证；生产部署和真实 Telegram 交付/退款并发验收仍需单独确认。
+- PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security CI 与 Docker Publish run `44872936750` 全部成功。GHCR `latest` 与提交标签 `f3e09ba7637f683494a8675b3f7e928df59059b9` 已发布，manifest digest：`sha256:ecbcb456eb6e2eb19057d3338b2705ac09e7d0e6a563a338096340eff6d71eb9`。生产部署和真实 Telegram 交付/退款并发验收仍需单独确认。
 
 ## 2026-11-21 — P0-4 上游退款生命周期孤立订单检测（开发中）
 
@@ -183,7 +192,7 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.45
+> - 文档版本：2.2.46
 > - 源码核对基线：main 分支，commit `4ee33774a6bc136f3360728a91a58d5dfd43f4eb`；PR #88 已合并
 > - 本次文档更新：记录 P0-4 首次交付期间退款保护独立修复
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）

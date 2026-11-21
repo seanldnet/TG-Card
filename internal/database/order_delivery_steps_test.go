@@ -70,7 +70,7 @@ func TestMigrationQuarantinesLegacyUncertainFileCardOrders(t *testing.T) {
 }
 
 
-func TestUncertainOrderCannotBeReclaimedWhileDeliveryLeaseIsActive(t *testing.T) {
+func TestUncertainSingleStepOrderCannotBeReclaimedAfterLeaseExpiry(t *testing.T) {
  ctx:=context.Background()
  db:=reconciliationTestDB(t)
  orderID:="delivery-steps-lease-order"
@@ -83,5 +83,5 @@ func TestUncertainOrderCannotBeReclaimedWhileDeliveryLeaseIsActive(t *testing.T)
  past:=time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
  if _,err:=db.ExecContext(ctx,"UPDATE orders SET delivery_lease_until=? WHERE id=?",past,orderID);err!=nil{t.Fatal(err)}
  claimed,err=ClaimOrderDelivery(ctx,db,"sqlite",orderID,time.Minute)
- if err!=nil||!claimed{t.Fatalf("expired lease should allow recovery, claimed=%v err=%v",claimed,err)}
+ if err!=nil||claimed{t.Fatalf("expired lease must not authorize blind single-step retry, claimed=%v err=%v",claimed,err)}
 }

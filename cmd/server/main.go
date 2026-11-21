@@ -1180,10 +1180,10 @@ func (a *application) retryOrderDelivery(w http.ResponseWriter, r *http.Request)
 
 	// Delivered orders use a separate idempotent re-delivery lease. The normal
 	// delivery lease intentionally rejects delivered orders to prevent duplicate fulfillment.
-	if order.Status == "delivery_uncertain" && order.DeliveryType == "invite_link" {
-		reason := "uncertain delivery requires manual verification: " + order.DeliveryType
+	if order.Status == "delivery_uncertain" && order.DeliveryType != "file_card" {
+		reason := "uncertain delivery requires manual verification before retry: " + order.DeliveryType
 		database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "order.delivery.retry.blocked", "order:"+orderID, a.clientIP(r), r.UserAgent(), reason)
-		writeError(w, http.StatusConflict, "该订单包含可能已成功执行的外部交付步骤，当前结果不确定。为避免重复发送，系统已禁止整单重试，请人工核实并处理。")
+		writeError(w, http.StatusConflict, "该订单交付结果尚未核实。为避免重复发送，已禁止自动重试；请先人工核实 Telegram 是否已送达，再按售后流程处理。")
 		return
 	}
 
