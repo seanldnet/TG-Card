@@ -155,3 +155,10 @@ When a refund is blocked because an active re-delivery lease exists, the support
 - 订单处于 `delivering` 时，代表首次交付请求正在执行或其结果尚未完成恢复核实；退款必须拒绝，不能仅因为钱包退款事务能够取得订单锁就继续入账。
 - 只有订单明确处于 `paid`、`delivery_failed` 或 `delivered` 等允许人工退款的状态时，才继续执行现有退款流程；`delivery_uncertain`、`delivering`、已退款及其他非法状态均拒绝。
 - 拒绝退款不修改订单、卡密、钱包余额或资金流水。订单必须先由交付恢复/人工核实流程收敛到明确状态。
+
+
+## Epusdt GMPay merchant configuration (in progress)
+
+The Epusdt GMPay merchant credentials are being added to the existing administrator payment settings. The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
+
+Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. Those operations require a separate payment lifecycle implementation and independent acceptance.
