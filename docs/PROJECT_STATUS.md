@@ -5,7 +5,7 @@
 - 刷新接口与 Vben Admin 既有 `refreshTokenApi` 协议兼容；每次刷新轮换 refresh token，并在数据库仅存 SHA-256 token hash。
 - 检测已撤销 refresh token 重放时，撤销整个 token family 并记录管理员审计与全局异常；密码/TOTP 状态变化通过 token_version 使旧 refresh session 失效。
 - 登出可通过 HttpOnly refresh cookie 撤销会话族；新增迁移 `0056_admin_refresh_sessions.sql`，无新增环境变量。
-- 当前状态：独立 PR 开发中；Go/Admin/Security CI、SQLite/PostgreSQL 轮换/重放测试及真实浏览器刷新验收待完成；未合并、未发布。
+- 当前状态：独立 PR 开发中；Go/Admin/Security CI 已通过；补充 Vben logout 使用认证客户端撤销当前 access session，并修正 PostgreSQL 测试 fixture 的 token_version。SQLite 测试通过；PostgreSQL 专项测试受 `TEST_POSTGRES_DSN` 环境变量控制，当前 CI 未提供该 DSN 时会跳过；真实浏览器刷新验收仍待执行。未合并、未发布。
 
 ## 2026-11-21 — P1 TOTP 一次性恢复码（PR #96 已合并）
 
