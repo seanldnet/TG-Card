@@ -1,3 +1,14 @@
+## 2026-11-21 — P1 管理员敏感操作二次确认（开发中）
+
+- 当前 main 基线：`cdba7015b67b87a29a30b1bad946c91ec7701bdd`（PR #99 已合并）；独立分支：`feat/admin-sensitive-action-step-up-p1`。
+- 新增数据库迁移 0057 `admin_action_confirmations`：仅保存一次性凭证哈希、管理员、action key、请求指纹、过期时间和消费时间。
+- 二次确认需再次输入管理员密码；已启用 TOTP 时还必须输入动态验证码或一次性恢复码。恢复码若使用则立即消费。
+- 凭证有效期 2 分钟、一次性使用，并绑定 HTTP method、精确 API path 与规范化 JSON body；篡改金额、目标对象、路径、操作类型或重复使用均拒绝。
+- 已覆盖用户余额调整、上游采购重试/退款/人工核实、人工支付核对、售后退款、订单交付恢复/步骤核实、订单数据清理、支付/站点/上游/充值赠送配置更新与上游数据清理。
+- Admin UI 增加统一二次确认对话框；前端 428 challenge 后请求确认凭证并重放原请求，刷新/取消/无效凭证不会执行目标操作。
+- 当前状态：独立 PR 开发中；Go/Admin/Security CI、真实浏览器二次确认验收待完成；未合并、未发布。
+- 文档版本：2.2.54。
+
 ## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
 
 - 当前 main 基线：`6fda2ab7c18a8b0f90ace3c7da9672ab0a60bd27`（PR #97 已合并）；本项独立分支：`fix/admin-logout-revoke-access-session-p1`。
