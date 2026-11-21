@@ -9,12 +9,12 @@ interface SiteSettings {
  siteName:string;siteLogo:string;contactEmail:string;smtpHost:string;smtpPort:number;smtpUsername:string;smtpPassword:string;smtpFromName:string;smtpFromEmail:string;smtpUseTLS:boolean;
  emailOrderCreated:boolean;emailPaymentSuccess:boolean;emailDeliverySuccess:boolean;emailSupportCreated:boolean;
  telegramAdminChatId:string;telegramGroupChatId:string;telegramNotifyOrderCreated:boolean;telegramNotifyPaymentSuccess:boolean;telegramNotifyDeliverySuccess:boolean;telegramNotifySupportCreated:boolean;telegramNotifyStockLow:boolean;telegramNotifyDailyReport:boolean;telegramNotifyRiskAlert:boolean;stockAutoUnlistOnZero:boolean;stockAutoRelistOnRestock:boolean;
- capEnabled:boolean;capDomain:string;capSiteKey:string;capSecret:string;
+ capEnabled:boolean;capDomain:string;capSiteKey:string;capSecret:string;backupEnabled:boolean;backupTime:string;
 }
 const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),capSecretConfigured=ref(false),activeTab=ref('basic');
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
-const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false,capEnabled:false,capDomain:'',capSiteKey:'',capSecret:''});
+const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false,capEnabled:false,capDomain:'',capSiteKey:'',capSecret:'',backupEnabled:true,backupTime:'03:00'});
 async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.smtpPassword='';form.capSecret='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
 async function save(){saving.value=true;try{const payload={...form};const data=await withAdminActionConfirmation({actionKey:'settings.site.update',method:'PUT',path:'/api/settings/site',payload,run:(token)=>requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.capSecret='';message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
 async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error('无法读取图标文件');return false;}if(image.size>20*1024*1024){message.warning('网站图标不能超过 20 MB');return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body,{headers:{'Content-Type':'multipart/form-data'}});form.siteLogo=result.siteLogo;message.success('网站图标上传成功，请保存设置');}catch(error:any){message.error(error?.response?.data?.message||'网站图标上传失败');}finally{logoUploading.value=false;}return false;}
@@ -103,6 +103,21 @@ onMounted(load);
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">支付风险提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyRiskAlert" /></div></a-col>
       </a-row>
       <a-button class="mt-4" size="small" :loading="testing" @click="testTelegram">发送 Telegram 测试通知</a-button>
+     </div>
+    </a-tab-pane>
+    <a-tab-pane key="backup">
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:database-clock-outline" />自动备份</span></template>
+     <div class="max-w-3xl">
+      <div class="mb-3 text-sm font-semibold">每日数据库自动备份</div>
+      <a-alert class="mb-4" type="info" show-icon message="每天按服务器时区执行一次。备份包含 PostgreSQL 数据库及 /app/data 持久化文件，完成后通过 Telegram Bot 将压缩备份文件发送给主人。请先配置 Telegram 主人 ID，并确保至少有一个启用的 Bot。" />
+      <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
+       <div class="pr-4"><div class="text-sm font-medium">启用每日自动备份</div><div class="mt-1 text-xs text-gray-500">关闭后不再自动创建或发送备份；现有手动备份/恢复脚本不受影响。</div></div>
+       <a-switch v-model:checked="form.backupEnabled" />
+      </div>
+      <a-form layout="vertical">
+       <a-form-item label="每日备份时间"><a-time-picker v-model:value="form.backupTime" format="HH:mm" value-format="HH:mm" class="w-full" :minute-step="5" /></a-form-item>
+      </a-form>
+      <div class="text-xs text-gray-500">备份发送失败时会记录服务端错误日志，并尝试向主人发送失败通知。备份文件通过 Telegram 文档消息发送。</div>
      </div>
     </a-tab-pane>
     <a-tab-pane key="cap">
