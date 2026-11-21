@@ -77,7 +77,7 @@
 - 修复 Owner 媒体回复 caption 超过 900 个 Unicode 字符时先发送媒体、再发送剩余文字的双 API 副作用风险；现在超长 caption 在调用 sendPhoto/sendDocument 前拒绝，正常长度媒体只执行一次 Telegram 发送调用。
 - 新增回归测试：超长 caption 只能向 Owner 发送拒绝提示，不得调用 sendPhoto/sendDocument，不得把未送达内容写入工单管理员回复时间线。
 - 更新 `docs/support-tickets.md` 说明限制；无数据库迁移、无新增环境变量，不改变普通文本回复或用户提交媒体流程。
-- PR #104 已 Squash Merge，merge commit `354f73499ce23cafee598e8ec66683e196993ee2`；真实 Telegram Owner 回复验收仍待项目所有者执行。
+- PR #104 已 Squash Merge，merge commit `354f73499ce23cafee598e8ec66683e196993ee2`；该条形成时真实 Telegram Owner 回复验收仍待执行，项目所有者已于 2026-11-22 确认 Owner Bot C1–C4 相关交互验收通过。
 - 文档版本：2.2.59。
 
 ## 2026-11-21 — 备份恢复测试补充模拟 RPO/RTO 计时（PR #102 已合并并发布）
@@ -341,7 +341,7 @@
 - GHCR 多架构镜像已发布：ghcr.io/seanldnet/tg-card:latest 与固定提交标签 59337349d36937a467e673e427f571ec276c17ce；manifest digest 为 sha256:09f9b2c7ee23037ad9c03e26d1b490bdb853988958e6e7804e224bc855039f7d。生产服务器是否已拉取/部署该镜像未由 CI 证明。
 - PR #62 PostgreSQL 并发集成测试仍在开发：Go CI 增加临时 PostgreSQL 16 服务，验证两个独立 Bot/用户争抢同一件卡密时只允许一个结算成功，失败方购物车保留。CI 验证完成前不合并。
 - 数据库影响：PR #61 新增迁移 0049/0050，随应用启动自动执行；PR #62 不新增迁移、不改运行时逻辑、不增加生产环境变量或手工 SQL。
-- 专项文档边界：Dujiao-Next 正常对接已由项目所有者确认完成；Owner C1–C4、生产部署和真实 Telegram 验收分别跟踪，不以 CI 或镜像发布代替。
+- 专项文档边界：Dujiao-Next 正常对接已由项目所有者确认完成；Owner C1–C4 已于 2026-11-22 确认验收通过；生产部署和支付到账等其他目标环境验收仍分别跟踪，不以 CI 或镜像发布代替。
 
 > **文档元信息**
 > - 最后更新时间：2026-11-22
@@ -431,9 +431,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-22
-> - 文档版本：2.2.71
-> - 源码核对基线：`main@b96252cb7ea6fc0ee88badea7bb3dfaa029d7c16`；本次在独立文档分支校准
-> - 本次文档更新：清理 PR #114/#117 历史过期状态，统一支付与 Dujiao-Next 专项文档；版本更新至 2.2.71
+> - 文档版本：2.2.77
+> - 源码核对基线：`main@0f916ffbbac1e95d38d6b96ecaf4d6afd9a0f5f8`；本次在独立文档分支校准
+> - 本次文档更新：全仓 Markdown 状态复核；同步支付、上游采购、售后验收、产品范围和历史状态；版本更新至 2.2.77
 
 - 项目：TG-Card
 - 仓库：https://github.com/seanldnet/TG-Card
