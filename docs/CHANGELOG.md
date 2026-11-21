@@ -1,3 +1,11 @@
+## 2026-11-21 — P1 管理员敏感操作二次确认（开发中）
+
+- 新增管理员密码二次认证；启用 TOTP 时同时要求动态验证码或一次性恢复码。
+- 确认凭证仅保存 SHA-256 哈希，有效期 2 分钟，绑定 action key、HTTP method、精确路径及规范化请求体，并以数据库条件更新保证一次性消费。
+- 对余额调整、采购重试/退款/核实、支付人工核对、售后退款、订单恢复/清理及敏感配置变更启用后端强制校验。
+- Admin UI 新增可复用二次确认弹窗和 428 challenge 自动重试；新增 SQLite 数据库与 HTTP 测试。
+- 新增迁移 0057；无新增环境变量。PROJECT_STATUS 文档版本更新至 2.2.54；CI 待验证。
+
 ## 2026-11-21 — 管理员登出即时撤销 Access Session（开发中）
 
 - 修复 Vben Admin 默认登出请求未携带 Authorization Bearer 的问题；现在同时发送 Bearer 与 HttpOnly Refresh Cookie。
