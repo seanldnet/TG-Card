@@ -1,8 +1,10 @@
-## 2026-11-22 — 上游 manual 商品单件自助购买（开发中；PROJECT_STATUS 2.2.81）
+## 2026-11-22 — PR #129 manual 商品买家自助购买已合并并发布（PROJECT_STATUS 2.2.82）
 
-- 新建独立分支 `feat/upstream-manual-buyer-checkout`，开始实现 Telegram 买家动态表单、AES-GCM 加密会话/订单快照，以及付款后采购请求的 `manual_form_data` 转发。
-- 新增数据库迁移 0061：订单加密表单字段与有时效的表单会话表；新增 schema 解析测试。
-- 当前状态为开发中，尚未完成 Go/Admin/Security/Docker CI，也未合并或发布；不代表生产功能已启用。
+- PR #129 已 Squash Merge，merge commit `8a55d5959bb30bbec03006e0121298dc51c6294f`；实现 Telegram manual SKU 动态表单、私聊填写、20 分钟持久化会话、取消/重启恢复，以及 AES-GCM 加密订单表单快照。
+- 付款后仅 manual 订单向 Dujiao-Next 转发 `manual_form_data`；auto 采购与本地商品购物车保持原样。当前只支持单件直购，manual 商品暂不支持购物车与优惠码。
+- PR head Go/Admin/Security CI 全部成功；合并后 main Go/Admin/Security/Docker Publish 全部成功（runs：`44956658630`、`44956658628`、`44956658547`、`44956658620`）。
+- GHCR 镜像标签：`latest` 与合并 commit SHA；OCI digest：`sha256:a1e26577afb22d7d285b4d69dfc7f61d235eb26c70a26122cee29dbaa4e47c02`。
+- 生产部署、数据库迁移执行及真实 Telegram 买家购买验收仍待目标环境确认；CI 和镜像推送不等于生产验收。
 
 ## 2026-11-22 — main 状态校准（PR #125/#127 已合并；文档版本 2.2.80）
 
