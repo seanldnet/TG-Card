@@ -1,3 +1,11 @@
+## P0-4 补充 — 不确定交付的手动重试边界
+
+- 普通单步骤交付（卡密、固定文本、上游内容等）进入 `delivery_uncertain` 后，后台不得直接重新发送；必须先人工核实 Telegram 是否已送达，避免同一权益/消息重复发送。
+- `file_card` 是唯一允许在人工核实步骤后恢复的多步骤类型：必须存在分步骤记录，且每个步骤均已明确为 `succeeded` 或 `failed`；存在 `uncertain`、`sending` 或缺失步骤证据时，数据库 claim 层拒绝重试。
+- 自动恢复扫描继续排除 `delivery_uncertain`；本次同时在数据库 claim 与管理员 HTTP 入口加固，避免绕过前端限制直接领取不确定订单。
+- 新增 SQLite/PostgreSQL 回归测试覆盖普通单步骤不确定订单拒绝手动 claim，以及 file_card 缺失/未核实步骤拒绝、全部核实后允许恢复失败步骤。
+- 无数据库迁移、无新增配置；不改变明确失败 `delivery_failed` 的既有重试行为。
+
 # Payment and delivery integration
 
 ## Current order and stock states
