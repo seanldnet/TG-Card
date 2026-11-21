@@ -433,6 +433,8 @@ func (a *application) getCapConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
 	ip := a.clientIP(r)
 	if !a.allowLoginAttempt(ip) { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
 	var input loginRequest
@@ -560,6 +562,8 @@ func (a *application) recordLoginFailure(ip string){a.loginMu.Lock();defer a.log
 func (a *application) clearLoginFailures(ip string){a.loginMu.Lock();delete(a.loginFailures,ip);a.loginMu.Unlock()}
 
 func (a *application) logout(w http.ResponseWriter,r *http.Request){
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
 	if cookie,err:=r.Cookie(adminRefreshCookieName);err==nil&&cookie.Value!=""{
 		if err:=database.RevokeAdminRefreshFamilyByTokenHash(r.Context(),a.db,a.driver,adminTokenHash(cookie.Value));err!=nil{
 			log.Printf("revoke administrator refresh family: %v",err)
@@ -595,6 +599,8 @@ func clearAdminRefreshCookie(w http.ResponseWriter,r *http.Request){
 }
 
 func (a *application) refresh(w http.ResponseWriter,r *http.Request){
+	w.Header().Set("Cache-Control","no-store, max-age=0")
+	w.Header().Set("Pragma","no-cache")
 	cookie,err:=r.Cookie(adminRefreshCookieName)
 	if err!=nil||strings.TrimSpace(cookie.Value)==""{clearAdminRefreshCookie(w,r);writeJSON(w,http.StatusUnauthorized,map[string]any{"data":"","status":http.StatusUnauthorized});return}
 	oldHash:=adminTokenHash(cookie.Value)
