@@ -42,6 +42,8 @@ const testResult=ref<{siteName:string;protocolVersion:string;balance:string;curr
 interface ProcurementItem { localOrderId:string; localOrderNo:string; externalOrderNo:string; status:string; requestAttempts:number; lastError:string; updatedAt:string; }
 const procurements=ref<ProcurementItem[]>([]);
 const procurementLoading=ref(false),refundOrderId=ref(''),refundReason=ref(''),refundVisible=ref(false),actionLoading=ref('');
+const resolveOrderId=ref(''),resolveVisible=ref(false),resolveResolution=ref<'accepted'|'not_accepted'>('not_accepted');
+const resolveExternalOrderID=ref(''),resolveExternalOrderNo=ref(''),resolveNote=ref('');
 const procurementStatus=(value:string)=>({queued:'待采购',polling:'查单中',completed:'已完成',failed:'采购失败',uncertain:'受理状态不确定',refunded:'已退款'} as Record<string,string>)[value]||value;
 async function loadProcurements(){
  procurementLoading.value=true;
@@ -61,6 +63,24 @@ async function submitRefund(){
  actionLoading.value=refundOrderId.value;
  try{await requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',{reason:refundReason.value.trim()});message.success('退款已记入买家站内余额');refundVisible.value=false;await loadProcurements();}
  catch(error:any){message.error(error?.response?.data?.message||'采购退款失败');}
+ finally{actionLoading.value='';}
+}
+function openResolve(item:ProcurementItem){
+ resolveOrderId.value=item.localOrderId;resolveResolution.value='not_accepted';
+ resolveExternalOrderID.value='';resolveExternalOrderNo.value='';resolveNote.value='';resolveVisible.value=true;
+}
+async function submitResolve(){
+ if(!resolveNote.value.trim()){message.warning('请填写供应商侧核实依据');return;}
+ if(resolveResolution.value==='accepted'&&!/^\\d+$/.test(resolveExternalOrderID.value.trim())){message.warning('供应商已受理时必须填写有效的上游订单 ID');return;}
+ actionLoading.value=resolveOrderId.value;
+ try{
+  await requestClient.post('/upstream/procurements/'+resolveOrderId.value+'/resolve',{
+   resolution:resolveResolution.value,externalOrderId:resolveExternalOrderID.value.trim(),
+   externalOrderNo:resolveExternalOrderNo.value.trim(),note:resolveNote.value.trim(),
+  });
+  message.success(resolveResolution.value==='accepted'?'已登记上游订单，系统将继续查单，不会重复创建采购单':'已确认上游未受理/失败，现在可安全重试或退款');
+  resolveVisible.value=false;await loadProcurements();
+ }catch(error:any){message.error(error?.response?.data?.message||'采购状态核实提交失败');}
  finally{actionLoading.value='';}
 }
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
@@ -246,14 +266,31 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
     <a-table-column title="重试次数" data-index="requestAttempts" :width="90"/>
     <a-table-column title="异常原因" data-index="lastError" :ellipsis="true" :width="260"/>
     <a-table-column title="操作" :fixed="'right'" :width="170"><template #default="{record}">
-     <div class="flex gap-2" v-if="record.status==='failed'||record.status==='uncertain'">
+     <div v-if="record.status==='uncertain'">
+      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="openResolve(record)">核实受理状态</a-button>
+     </div>
+     <div class="flex gap-2" v-else-if="record.status==='failed'">
       <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">{{record.externalOrderNo ? "查单恢复" : "手动重试采购"}}</a-button>
       <a-button size="small" danger :disabled="!!actionLoading" @click="openRefund(record)">退款</a-button>
      </div><span v-else class="text-xs text-gray-400">—</span>
     </template></a-table-column>
    </a-table>
-   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。请先核实上游订单受理状态；已存在上游订单号的失败记录点击“查单恢复”只查询该上游订单，不会再次创建采购单；没有上游订单号的记录使用原本地订单号作为幂等键手动重试。" />
+   <a-alert class="mt-3" type="info" show-icon message="采购异常不会自动退款或改变原始支付记录。受理状态不确定的订单必须先在供应商后台核实：确认已受理时登记上游订单 ID 后只恢复查单；确认未受理/失败后才可安全重试或退款。普通失败记录使用原本地订单号作为幂等键。" />
   </a-card>
+  <a-modal v-model:open="resolveVisible" title="核实上游采购受理状态" :confirm-loading="actionLoading===resolveOrderId" @ok="submitResolve">
+   <a-alert class="mb-4" type="warning" show-icon message="请先在供应商后台按本地订单号核实。不要仅凭本地超时判断供应商未受理；本操作会决定订单后续是恢复查单，还是开放重试/退款。" />
+   <a-form-item label="供应商核实结果">
+    <a-radio-group v-model:value="resolveResolution">
+     <a-radio value="not_accepted">供应商确认未受理 / 明确失败</a-radio>
+     <a-radio value="accepted">供应商确认已受理</a-radio>
+    </a-radio-group>
+   </a-form-item>
+   <template v-if="resolveResolution==='accepted'">
+    <a-form-item label="上游订单 ID"><a-input v-model:value="resolveExternalOrderID" placeholder="填写供应商返回的数字订单 ID"/></a-form-item>
+    <a-form-item label="上游订单号"><a-input v-model:value="resolveExternalOrderNo" placeholder="可选，填写供应商订单号"/></a-form-item>
+   </template>
+   <a-form-item label="核实依据 / 处理说明"><a-textarea v-model:value="resolveNote" :rows="3" :maxlength="500" show-count placeholder="例如：供应商后台订单查询结果、客服确认记录等"/></a-form-item>
+  </a-modal>
   <a-modal v-model:open="refundVisible" title="确认上游采购失败退款" :confirm-loading="!!actionLoading" @ok="submitRefund">
    <a-alert type="warning" show-icon message="退款将按本地订单金额记入买家站内余额，并生成独立退款账本和管理员审计记录。" />
    <a-form-item class="mt-4" label="退款原因"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count placeholder="填写已确认无法履约的原因"/></a-form-item>
