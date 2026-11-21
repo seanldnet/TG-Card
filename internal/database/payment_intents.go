@@ -31,31 +31,31 @@ type EpusdtPaymentEvent struct {
 
 // CreateEpusdtPaymentIntent reserves one provider intent for an existing unpaid
 // local order. The unique order_id is also the provider idempotency key.
-func CreateEpusdtPaymentIntent(ctx context.Context, db *sql.DB, driver, orderID string) (EpusdtPaymentIntent, error) {
-	if orderID == "" { return EpusdtPaymentIntent{}, fmt.Errorf("order ID is required") }
+func CreateEpusdtPaymentIntent(ctx context.Context, db *sql.DB, driver, orderID string) (EpusdtPaymentIntent, bool, error) {
+	if orderID == "" { return EpusdtPaymentIntent{}, false, fmt.Errorf("order ID is required") }
 	tx, err := db.BeginTx(ctx, nil)
-	if err != nil { return EpusdtPaymentIntent{}, err }
+	if err != nil { return EpusdtPaymentIntent{}, false, err }
 	defer tx.Rollback()
 	orderQuery := "SELECT order_no,status,amount_minor,currency FROM orders WHERE id=" + placeholder(driver,1)
 	if driver == "postgres" { orderQuery += " FOR UPDATE" }
 	var orderNo,status,currency string
 	var amount int64
 	if err := tx.QueryRowContext(ctx,orderQuery,orderID).Scan(&orderNo,&status,&amount,&currency); err != nil { return EpusdtPaymentIntent{}, err }
-	if status != "pending_payment" { return EpusdtPaymentIntent{}, fmt.Errorf("order is not awaiting payment: %s",status) }
+	if status != "pending_payment" { return EpusdtPaymentIntent{}, false, fmt.Errorf("order is not awaiting payment: %s",status) }
 	if amount <= 0 || currency != "USDT" { return EpusdtPaymentIntent{}, fmt.Errorf("Epusdt checkout requires a positive USDT order amount") }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id,err := randomID()
-	if err != nil { return EpusdtPaymentIntent{},err }
+	if err != nil { return EpusdtPaymentIntent{},false,err }
 	insert := "INSERT INTO epusdt_payment_intents(id,order_id,amount_minor,currency,status,created_at,updated_at) VALUES("+
 		placeholder(driver,1)+","+placeholder(driver,2)+","+placeholder(driver,3)+","+placeholder(driver,4)+",'creating',"+placeholder(driver,5)+","+placeholder(driver,6)+") ON CONFLICT(order_id) DO NOTHING"
-	if _,err := tx.ExecContext(ctx,insert,id,orderID,amount,currency,now,now); err != nil { return EpusdtPaymentIntent{},err }
+	result,err := tx.ExecContext(ctx,insert,id,orderID,amount,currency,now,now); if err != nil { return EpusdtPaymentIntent{},false,err }; inserted,err:=result.RowsAffected();if err!=nil{return EpusdtPaymentIntent{},false,err}
 	var item EpusdtPaymentIntent
 	query := "SELECT id,order_id,provider_trade_id,payment_url,amount_minor,currency,status,expiration_time,block_transaction_id FROM epusdt_payment_intents WHERE order_id="+placeholder(driver,1)
-	if err := tx.QueryRowContext(ctx,query,orderID).Scan(&item.ID,&item.OrderID,&item.ProviderTradeID,&item.PaymentURL,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpirationTime,&item.BlockTransactionID); err != nil { return EpusdtPaymentIntent{},err }
+	if err := tx.QueryRowContext(ctx,query,orderID).Scan(&item.ID,&item.OrderID,&item.ProviderTradeID,&item.PaymentURL,&item.AmountMinor,&item.Currency,&item.Status,&item.ExpirationTime,&item.BlockTransactionID); err != nil { return EpusdtPaymentIntent{},false,err }
 	item.OrderNo = orderNo
-	if item.AmountMinor != amount || item.Currency != currency { return EpusdtPaymentIntent{},fmt.Errorf("existing Epusdt payment intent amount does not match the order") }
-	if err := tx.Commit(); err != nil { return EpusdtPaymentIntent{},err }
-	return item,nil
+	if item.AmountMinor != amount || item.Currency != currency { return EpusdtPaymentIntent{},false,fmt.Errorf("existing Epusdt payment intent amount does not match the order") }
+	if err := tx.Commit(); err != nil { return EpusdtPaymentIntent{},false,err }
+	return item,inserted==1,nil
 }
 
 func GetEpusdtPaymentIntentByOrderNo(ctx context.Context, db *sql.DB, driver, orderNo string) (EpusdtPaymentIntent,error) {
