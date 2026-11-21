@@ -118,6 +118,23 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
 
 <template>
   <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
+    <a-card :bordered="false" title="支付方式">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+          <div><div class="font-medium">内置 USDT（TRC20）</div><div class="text-xs text-gray-500">链上收款</div></div>
+          <a-switch v-model:checked="settings.enabled" />
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+          <div><div class="font-medium">GMPay Edge</div><div class="text-xs text-gray-500">独立商户网关</div></div>
+          <a-switch v-model:checked="settings.gmpayEnabled" />
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+          <div><div class="font-medium">Epusdt</div><div class="text-xs text-gray-500">独立商户网关</div></div>
+          <a-switch v-model:checked="settings.epusdtEnabled" />
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveSettings">保存并应用</a-button></div>
+    </a-card>
     <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
       <template #extra>
         <a-tag :color="settings.enabled ? 'success' : 'default'">
@@ -150,14 +167,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
           <a-input v-model:value="settings.usdtContract" autocomplete="off" />
         </a-form-item>
         <a-divider />
-        <a-form-item label="启用 TRC20 自动收款">
-          <div class="flex items-center gap-3">
-            <a-switch v-model:checked="settings.enabled" />
-            <span class="text-sm text-gray-500">
-              开启后 Bot 才会显示本订单专属应付金额和收款地址，并启动链上到账监听。
-            </span>
-          </div>
-        </a-form-item>
+
         <a-alert
           class="mb-4"
           type="warning"
@@ -181,7 +191,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
         <a-form-item label="Epusdt 商户 PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
         <a-form-item label="Epusdt 异步回调地址" required extra="填写当前 TG-Card 服务公网可访问的 HTTPS 地址，例如 https://你的域名/api/payment/epusdt/notify。请在 Epusdt 商户端允许此回调地址。"><a-input v-model:value="settings.epusdtNotifyUrl" placeholder="https://你的域名/api/payment/epusdt/notify" autocomplete="url"/></a-form-item>
         <a-form-item label="Epusdt Secret" extra="不会回显；留空保持现有密钥，输入新值可轮换。"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 Epusdt 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
-        <a-form-item label="启用 Epusdt"><a-switch v-model:checked="settings.epusdtEnabled"/><span class="ml-3 text-sm text-gray-500">开启后新订单可以使用 Epusdt 收银台。</span></a-form-item>
+        
       </a-form>
     </a-card>
     <a-card :bordered="false" :loading="loading" title="GMPay Edge 网关">
@@ -191,7 +201,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
         <a-form-item label="GMPay Edge 商户 PID" required><a-input v-model:value="settings.gmpayPid" autocomplete="off"/></a-form-item>
         <a-form-item label="GMPay Edge 回调地址" required><a-input v-model:value="settings.gmpayNotifyUrl" placeholder="https://你的域名/api/payment/gmpay/notify" autocomplete="url"/></a-form-item>
         <a-form-item label="GMPay Edge Secret"><a-input-password v-model:value="gmpaySecret" autocomplete="new-password" placeholder="输入 GMPay Edge 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.gmpaySecretConfigured ? 'success' : 'warning'">{{ settings.gmpaySecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearGmpaySecret">清除已保存 Secret</a-checkbox></div></a-form-item>
-        <a-form-item label="启用 GMPay Edge"><a-switch v-model:checked="settings.gmpayEnabled"/></a-form-item>
+        
       </a-form>
     </a-card>
     <a-card :bordered="false" title="充值赠送规则">
