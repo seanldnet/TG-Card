@@ -1595,6 +1595,7 @@ func (a *application) getSiteSettings(w http.ResponseWriter, r *http.Request) {
  if _,ok:=savedFields["telegramNotifyDailyReport"];!ok{settings.TelegramNotifyDailyReport=true}
  if _,ok:=savedFields["telegramNotifyRiskAlert"];!ok{settings.TelegramNotifyRiskAlert=true}
  if _,ok:=savedFields["stockAutoUnlistOnZero"];!ok{settings.StockAutoUnlistOnZero=true}
+ if _,ok:=savedFields["backupEnabled"];!ok{settings.BackupEnabled=true}
  if settings.SiteName == "" { settings.SiteName = "TG-Card" }
  if settings.BackupTime == "" { settings.BackupTime = "03:00" }
  if settings.SMTPPort == 0 { settings.SMTPPort = 587 }
