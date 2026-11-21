@@ -91,7 +91,7 @@ The independent Dujiao-Next procurement implementation was merged in PR #32. Pai
 
 If the initial supplier POST times out before returning an upstream order ID, the order is parked as `uncertain` for Owner verification; it is not automatically resubmitted. The documented supplier API supports idempotency by API Key + `downstream_order_no`, but does not document a GET lookup by that local key. Manual recovery reuses the original key. Known supplier order IDs are queried using `GET /orders/:id`.
 
-Supplier failures/timeouts do not alter the original buyer payment record or automatically debit/refund the buyer wallet. Owner-confirmed refunds atomically commit the separate wallet credit, refund ledger, order state, procurement event, and admin audit in one database transaction. Mock/CI success is not live supplier integration; PR E remains the only real supplier end-to-end phase.
+Supplier failures/timeouts do not alter the original buyer payment record or automatically debit/refund the buyer wallet. Owner-confirmed refunds atomically commit the separate wallet credit, refund ledger, order state, procurement event, and admin audit in one database transaction. Dujiao-Next normal integration has been confirmed complete by the project owner; no additional PR E merchant-acceptance gate is required.
 
 ## PR D — Supplier funds and refund safety (PR #38 merged)
 
@@ -157,8 +157,8 @@ When a refund is blocked because an active re-delivery lease exists, the support
 - 拒绝退款不修改订单、卡密、钱包余额或资金流水。订单必须先由交付恢复/人工核实流程收敛到明确状态。
 
 
-## Epusdt GMPay merchant configuration (in progress)
+## Epusdt GMPay merchant configuration (merged; checkout lifecycle pending)
 
-The Epusdt GMPay merchant credentials are managed in the existing administrator payment settings (merged in PR #117). The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
+The GMPay protocol client (PR #116) and Epusdt merchant configuration (PR #117) are merged. Merchant credentials are managed in the existing administrator payment settings. The gateway base URL and PID are stored as ordinary configuration; the merchant Secret is encrypted with the application's persistent AES-256-GCM secret key. The read API returns only a boolean indicating whether a Secret is configured. Leaving the Secret field blank preserves the current value; an explicit clear action removes it.
 
-Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. Those operations require a separate payment lifecycle implementation and independent acceptance.
+Migration 0058 adds nullable-in-practice empty-default columns to the existing singleton `payment_settings` row, so existing TRC20 configuration is preserved. This configuration-only phase does not create checkout orders, accept callbacks, confirm payments, credit wallets, or trigger delivery. The next independent payment-lifecycle PR must implement Telegram storefront checkout, provider callback/query verification, atomic order payment confirmation, idempotent settlement, and delivery handoff, with security regression tests. Configuration alone does not mean the channel can accept payments.

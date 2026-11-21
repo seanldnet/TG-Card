@@ -34,7 +34,7 @@
 - Owner 通知仅提供订单号、错误原因和人工核实提示，不发送卡密、交付内容或密钥。
 - 管理员应先通过 Telegram 实际消息/客户反馈核实是否送达，再按订单详情中的步骤状态执行有审计的处理。通知发送失败不改变订单状态，也不触发退款或余额修改。
 
-## P0-4 — 已付款订单缺失采购队列恢复（开发中）
+## P0-4 — 已付款订单缺失采购队列恢复（已合并）
 
 - 正常付款路径在同一数据库事务中更新订单为 `procurement_pending` 并插入 `upstream_procurements`。若历史数据/异常中断导致订单仍为该状态但队列行缺失，调度器会周期性扫描并恢复队列。
 - 恢复范围严格限定：订单状态必须仍为 `procurement_pending`、存在 `paid_at`，且订单来源快照或履约类型明确为 `upstream`；已存在采购记录的订单不重复创建。
@@ -47,11 +47,11 @@
 
 - PR U #56 独立处理目录分页同步、Bot 来源过滤分页与上游目录停用清理；Bot 的 auto 履约商品会进入现有订单/付款/采购队列，不改变 PR C/D 的采购扣款、采购幂等、退款账本或资金对账逻辑。manual 履约商品仍不开放自助下单。
 - 上游商品/分类目录清理只删除 `source_type='upstream'` 数据；订单通过名称/金额快照保留历史可读性，采购事件、退款行和资金流水继续引用订单，不因商品目录清理而删除。
-- PR U #56、PR S #57 均已合并并发布 GHCR；PR S latest digest 为 `sha256:f9f1dd001bd90c743264d3d16655226626842805f6f8af108c27eb8ff1b639ac`。生产部署和真实商户验收仍待项目所有者执行。真实 Dujiao-Next 采购、供应商扣款、回调可达性与失败退款验证仍属于 PR E，由项目所有者在真实环境执行。
+- PR U #56、PR S #57 均已合并并发布 GHCR。Dujiao-Next 正常对接已由项目所有者确认完成；不再要求额外 PR E 真实商户验收或压力测试。
 
 # Dujiao-Next 采购转发与订单履约（PR C）
 
-> 当前对应 PR #32：\`feat/dujiao-purchase-forwarding\`。本文记录 PR C 的代码实现范围与运行约束。PR C 已通过独立 PR #32 合并；PR D 已通过独立 PR #38 合并并发布 GHCR，生产部署/验收待确认；PR E 真实商户联调操作手册已建立（docs/dujiao-live-integration-runbook.md）；真实商户测试尚未开始，需项目所有者在 PR S 镜像部署后执行。不得将 mock 测试等同于真实上游联调。
+> 当前对应 PR #32：\`feat/dujiao-purchase-forwarding\`。本文记录 PR C 的代码实现范围与运行约束。PR C 已通过独立 PR #32 合并；PR D 已通过独立 PR #38 合并并发布 GHCR，生产部署/验收待确认；PR E 真实商户联调操作手册已建立（docs/dujiao-live-integration-runbook.md）；Dujiao-Next 正常对接已由项目所有者确认完成；本节保留 PR C 的实现和 mock 测试事实，不把 mock 覆盖范围扩大为额外验收要求。
 
 ## 1. 订单状态与触发时机
 
@@ -133,7 +133,7 @@
 - \`manual\` 商品需要 \`manual_form_data\`；买家侧动态表单采集尚未实现，因此 Telegram 商城暂不允许自助购买这类商品。
 - PR C 使用 mock/fake API，不需要真实商户凭证。
 - PR D（PR #38）已实现进一步供应商资金安全、扣款/余额一致性与异常保护，并已合并发布；生产部署/验收仍待确认。
-- PR #38 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。生产部署/验收尚未确认。PR E 才进行真实商户连接、供应商实际扣款、回调公网可达、交付和失败退款全链路联调。
+- PR #38 已合并，merge commit `935bd222977b1a636c5f05ab4faebdc3e835dda1`；main Go/Admin/Security/Docker Publish 均成功，GHCR digest `sha256:691493ce844c96a504785e0fb72b24534786f57279190322332f45b5ba8b7b29`。Dujiao-Next 正常对接已由项目所有者确认完成；不再将 PR E 真实商户联调列为项目待办。
 - 异次元 ACG-Faka、萌次元 MCY 继续不开发适配器。
 
 ## 9. Mock 测试覆盖
