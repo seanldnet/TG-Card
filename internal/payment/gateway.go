@@ -142,6 +142,17 @@ func (c *GatewayClient) QueryGMPayOrder(ctx context.Context, tradeID string) (ma
 	return c.doJSON(ctx, http.MethodGet, "/pay/check-status/"+url.PathEscape(tradeID), nil)
 }
 
+// QueryGMPayCheckoutInfo reads the provider's immutable checkout snapshot.
+// Epusdt's lightweight status endpoint intentionally returns only trade_id/status;
+// amount, currency and token must be checked against this separate response.
+func (c *GatewayClient) QueryGMPayCheckoutInfo(ctx context.Context, tradeID string) (map[string]json.RawMessage, error) {
+	tradeID = strings.TrimSpace(tradeID)
+	if tradeID == "" {
+		return nil, errors.New("provider trade_id is required")
+	}
+	return c.doJSON(ctx, http.MethodGet, "/pay/checkout-counter-resp/"+url.PathEscape(tradeID), nil)
+}
+
 func (c *GatewayClient) doFormJSON(ctx context.Context, path, form string) (map[string]json.RawMessage, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form))
 	if err != nil { return nil, err }
