@@ -568,7 +568,7 @@ func SetAdminTOTPPendingSecret(ctx context.Context,db *sql.DB,driver,adminID,cip
 
 func EnableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,totp_enabled_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",now,now,adminID)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext=totp_pending_secret_ciphertext,totp_pending_secret_ciphertext='',totp_enabled=1,token_version=token_version+1,totp_enabled_at="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE id="+placeholder(driver,3)+" AND totp_enabled=0 AND totp_pending_secret_ciphertext<>''",now,now,adminID)
 	if err!=nil{return err}
 	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("TOTP enrollment is not pending")}
 	return nil
@@ -576,7 +576,7 @@ func EnableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
 
 func DisableAdminTOTP(ctx context.Context,db *sql.DB,driver,adminID string)error{
 	now:=time.Now().UTC().Format(time.RFC3339Nano)
-	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext='',totp_pending_secret_ciphertext='',totp_enabled=0,totp_enabled_at='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,adminID)
+	res,err:=db.ExecContext(ctx,"UPDATE admins SET totp_secret_ciphertext='',totp_pending_secret_ciphertext='',totp_enabled=0,token_version=token_version+1,totp_enabled_at='',updated_at="+placeholder(driver,1)+" WHERE id="+placeholder(driver,2),now,adminID)
 	if err!=nil{return err}
 	n,err:=res.RowsAffected();if err!=nil{return err};if n!=1{return fmt.Errorf("administrator not found")}
 	return nil
