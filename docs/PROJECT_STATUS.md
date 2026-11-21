@@ -1,11 +1,19 @@
-## 2026-11-21 — P1 业务数据大盘与运行指标（开发中）
+## 2026-11-21 — P1 业务风险 Owner 主动告警（开发中）
 
-- 当前 main 基线：`d5b798785dcc614254acad56bbc1c482a207788e`（PR #92 已合并）；独立分支：`feat/business-metrics-dashboard-p1`。
+- 当前 main 基线：`bf4b5a1b36f780b5e0ca1c4695d5cbcb35f48c1f`（PR #93 已合并）；独立分支：`feat/business-owner-alert-thresholds-p1`。
+- 新增每分钟业务告警巡检：最近三笔终态交付连续失败、退款账本冲突达到 3 笔、delivery/procurement uncertain 最久等待达到 15 分钟、Cap 连续失败 3 次、API P95 达到 1500ms（至少 20 个样本）、数据库连接池耗尽。
+- 告警复用站点 `risk_alert` Telegram 配置，并通过 `finance_exception_alerts` 按告警类型/小时幂等去重；通知只含风险计数与处理提示。
+- 不自动重发交付、不自动退款、不修改余额或采购状态；无数据库迁移、无新增环境变量/后台配置。
+- 当前状态：代码、测试与阈值文档已提交独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未生产验收。
+
+## 2026-11-21 — P1 业务数据大盘与运行指标（PR #93 已合并）
+
+- PR #93 已 Squash Merge 至 main，merge commit `bf4b5a1b36f780b5e0ca1c4695d5cbcb35f48c1f`；独立分支：`feat/business-metrics-dashboard-p1`。
 - 新增受管理员鉴权保护的 `GET /api/dashboard/metrics`，返回 24 小时交付成功率、交付不确定数量与最久等待、退款账本冲突、上游同步进度、Cap 成功/失败计数、API P95 与数据库连接池状态。
 - 经营概览改用聚合指标 API 展示上述指标；原机器人/商品/订单/售后基础卡片保留。
 - 新增数据库聚合查询测试；指标只读，不修改订单、钱包、采购状态或异常状态。
 - Cap 计数与 API P95 使用进程内窗口（Cap 自进程启动、API 最近 512 次请求），重启后重置；长期趋势与 Owner 告警阈值另列后续任务。
-- 无数据库迁移、无新增环境变量/后台配置；Go/Admin/Security CI 待验证，未合并/发布/生产验收。
+- 无数据库迁移、无新增环境变量/后台配置；PR head Go/Admin/Security CI 全部通过，合并后 main 发布工作流待最终确认。Cap 与 API 采样重启后重置，长期趋势未持久化。
 
 ## 2026-11-21 — P0-4 上游采购 uncertain 人工核实入口（PR #92 已合并）
 
@@ -209,9 +217,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.48
-> - 源码核对基线：main 分支，commit `d5b798785dcc614254acad56bbc1c482a207788e`；PR #92 已合并
-> - 本次文档更新：记录 P1 业务大盘指标接口与前端展示
+> - 文档版本：2.2.49
+> - 源码核对基线：main 分支，commit `bf4b5a1b36f780b5e0ca1c4695d5cbcb35f48c1f`；PR #93 已合并
+> - 本次文档更新：记录 P1 业务风险 Owner 主动告警阈值
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
