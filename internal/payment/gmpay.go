@@ -78,12 +78,6 @@ func (m *Manager) GMPayEdgeEnabled() bool {
 	return m.gmpayEdgeEnabled && m.gmpayEdge != nil && m.gmpayEdgeNotifyURL != ""
 }
 
-func (m *Manager) GatewayEnabled() bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.gateway!=nil && m.gatewayNotifyURL!=""
-}
-
 // CreateGMPayCheckout reserves exactly one provider create attempt for each
 // local order. Epusdt order_id values cannot be reused; ambiguous timeouts are
 // quarantined instead of blindly creating a second provider transaction.
