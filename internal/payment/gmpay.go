@@ -247,6 +247,16 @@ func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]strin
 	if err!=nil||status!=2{return errors.New("GMPay payment is not successful")}
 	intent,err:=database.GetEpusdtPaymentIntentByOrderNo(ctx,m.db,m.driver,orderNo)
 	if err!=nil{return fmt.Errorf("unknown Epusdt merchant order %q: %w",orderNo,err)}
+	order,err:=database.GetOrderByID(ctx,m.db,m.driver,intent.OrderID)
+	if err!=nil{return err}
+	if intent.ProviderTradeID!="" && intent.ProviderTradeID!=tradeID {
+		state:="unexpected_trade"
+		if order.Status=="paid"||order.Status=="delivering"||order.Status=="delivery_failed"||order.Status=="delivered"||order.Status=="procurement_pending"||order.Status=="procurement_failed"{state="duplicate_payment"}
+		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],Status:state,PayloadJSON:payloadJSON})
+		if recordErr!=nil{return recordErr}
+		if inserted{m.bots.Notify("risk_alert","GMPay 回调交易号与本地支付单不一致，已阻止自动入账。订单："+orderNo+"\n本地交易："+intent.ProviderTradeID+"\n回调交易："+tradeID,"")}
+		return nil
+	}
 	amount,amountErr:=parseMinor(fields["amount"])
 	if amountErr!=nil || amount!=intent.AmountMinor {
 		if amountErr!=nil{amount=0}
@@ -258,8 +268,6 @@ func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]strin
 		}
 		return nil
 	}
-	order,err:=database.GetOrderByID(ctx,m.db,m.driver,intent.OrderID)
-	if err!=nil{return err}
 	delivery,confirmErr:=database.ConfirmOrderPayment(ctx,m.db,m.driver,order.ID,"epusdt-gmpay",tradeID)
 	if confirmErr!=nil {
 		state:="late_payment"
