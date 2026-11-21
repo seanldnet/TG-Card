@@ -188,7 +188,7 @@ func TestGMPayStatusQueryCanRecoverMissingCallback(t *testing.T){
 		if r.URL.RawQuery!=""{t.Error("public status query must not include merchant credentials")}
 		queried.Store(true)
 		w.Header().Set("Content-Type","application/json")
-		_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-query","status":2}}`)
+		_,_=io.WriteString(w,`{"status_code":200,"message":"success","data":{"trade_id":"trade-query","status":2,"amount":"12.50","token":"USDT"}}`)
 	}))
 	defer server.Close()
 	m,db,order:=newGMPayTestManager(t);defer db.Close();defer m.bots.Stop()
@@ -267,4 +267,40 @@ func TestEnabledPaymentProvidersRotateAcrossAllThreeAndSnapshotOrder(t *testing.
 	provider,err:=m.NextPaymentProviderForOrder(context.Background(),first)
 	if err!=nil{t.Fatal(err)}
 	if provider!="trc20"{t.Fatalf("existing order provider changed to %q",provider)}
+}
+
+
+func TestGMPayStatusQueryRejectsAssetOrAmountMismatch(t *testing.T) {
+	cases := []struct {
+		name, amount, token, wantStatus string
+	}{
+		{name:"wrong asset", amount:"12.50", token:"TRX", wantStatus:"asset_mismatch"},
+		{name:"wrong amount", amount:"12.49", token:"USDT", wantStatus:"amount_mismatch"},
+		{name:"missing amount", amount:"", token:"USDT", wantStatus:"amount_mismatch"},
+		{name:"missing asset", amount:"12.50", token:"", wantStatus:"asset_mismatch"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"status_code":200,"message":"success","data":{"trade_id":"trade-query-mismatch","status":2,"amount":"`+tc.amount+`","token":"`+tc.token+`"}}`)
+			}))
+			defer server.Close()
+			m, db, order := newGMPayTestManager(t)
+			defer db.Close()
+			defer m.bots.Stop()
+			configureTestGateway(t, m, server.URL)
+			reserveGMPayTestIntent(t, db, order.ID)
+			if err := database.UpdateEpusdtPaymentOrder(context.Background(), db, "sqlite", order.ID, "trade-query-mismatch", "https://checkout.example/pay", time.Now().Add(20*time.Minute).Unix()); err != nil { t.Fatal(err) }
+			if status, err := m.CheckGMPayPayment(context.Background(), order.ID); err == nil || status == "paid" {
+				t.Fatalf("mismatched query result must not settle payment: status=%q err=%v", status, err)
+			}
+			got, err := database.GetOrderByID(context.Background(), db, "sqlite", order.ID)
+			if err != nil { t.Fatal(err) }
+			if got.Status != "pending_payment" || got.PaymentReference != "" { t.Fatalf("mismatched query changed order: %+v", got) }
+			intent, err := database.GetEpusdtPaymentIntentByOrderNo(context.Background(), db, "sqlite", order.OrderNo)
+			if err != nil { t.Fatal(err) }
+			if intent.Status != tc.wantStatus { t.Fatalf("intent status=%q want %q", intent.Status, tc.wantStatus) }
+		})
+	}
 }
