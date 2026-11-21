@@ -29,6 +29,7 @@ type UpstreamProcurementJob struct {
 	SKUID string
 	Quantity int64
 	DeliveryType string
+	ManualFormDataCiphertext string
 }
 
 func enqueueUpstreamProcurementTx(ctx context.Context, tx *sql.Tx, driver, orderID, orderNo string, timeout time.Duration, now time.Time) error {
@@ -100,11 +101,11 @@ func ClaimDueUpstreamProcurements(ctx context.Context, db *sql.DB, driver string
 		due = "CAST(COALESCE(p.next_poll_at,p.created_at) AS TIMESTAMPTZ)<=CAST("+placeholder(driver,1)+" AS TIMESTAMPTZ) AND (p.lease_until IS NULL OR CAST(p.lease_until AS TIMESTAMPTZ)<=CAST("+placeholder(driver,2)+" AS TIMESTAMPTZ))"
 	}
 	tx,err:=db.BeginTx(ctx,nil);if err!=nil{return nil,err};defer tx.Rollback()
-	q:="SELECT p.local_order_id,p.local_order_no,p.external_order_id,p.external_order_no,p.status,p.request_attempts,COALESCE(p.next_poll_at,''),p.deadline_at,p.last_error,p.created_at,p.updated_at,o.status,COALESCE(o.upstream_product_id_snapshot,''),COALESCE(o.upstream_sku_id_snapshot,''),o.quantity,COALESCE(o.upstream_fulfillment_type_snapshot,'') FROM upstream_procurements p JOIN orders o ON o.id=p.local_order_id WHERE p.status IN ('queued','polling') AND "+due+" ORDER BY p.created_at LIMIT "+fmt.Sprint(limit)
+	q:="SELECT p.local_order_id,p.local_order_no,p.external_order_id,p.external_order_no,p.status,p.request_attempts,COALESCE(p.next_poll_at,''),p.deadline_at,p.last_error,p.created_at,p.updated_at,o.status,COALESCE(o.upstream_product_id_snapshot,''),COALESCE(o.upstream_sku_id_snapshot,''),o.quantity,COALESCE(o.upstream_fulfillment_type_snapshot,''),COALESCE(o.upstream_manual_form_data_ciphertext,'') FROM upstream_procurements p JOIN orders o ON o.id=p.local_order_id WHERE p.status IN ('queued','polling') AND "+due+" ORDER BY p.created_at LIMIT "+fmt.Sprint(limit)
 	if driver=="postgres"{q+=" FOR UPDATE OF p SKIP LOCKED"}
 	rows,err:=tx.QueryContext(ctx,q,nowText,nowText);if err!=nil{return nil,err}
 	items:=make([]UpstreamProcurementJob,0,limit)
-	for rows.Next(){var v UpstreamProcurementJob;if err:=rows.Scan(&v.LocalOrderID,&v.LocalOrderNo,&v.ExternalOrderID,&v.ExternalOrderNo,&v.Status,&v.RequestAttempts,&v.NextPollAt,&v.DeadlineAt,&v.LastError,&v.CreatedAt,&v.UpdatedAt,&v.OrderStatus,&v.ProductID,&v.SKUID,&v.Quantity,&v.DeliveryType);err!=nil{rows.Close();return nil,err};items=append(items,v)}
+	for rows.Next(){var v UpstreamProcurementJob;if err:=rows.Scan(&v.LocalOrderID,&v.LocalOrderNo,&v.ExternalOrderID,&v.ExternalOrderNo,&v.Status,&v.RequestAttempts,&v.NextPollAt,&v.DeadlineAt,&v.LastError,&v.CreatedAt,&v.UpdatedAt,&v.OrderStatus,&v.ProductID,&v.SKUID,&v.Quantity,&v.DeliveryType,&v.ManualFormDataCiphertext);err!=nil{rows.Close();return nil,err};items=append(items,v)}
 	if err:=rows.Err();err!=nil{rows.Close();return nil,err};if err:=rows.Close();err!=nil{return nil,err}
 	for i:=range items{
 		upd:="UPDATE upstream_procurements SET lease_until="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE local_order_id="+placeholder(driver,3)+" AND (lease_until IS NULL OR julianday(lease_until)<=julianday("+placeholder(driver,4)+"))"
