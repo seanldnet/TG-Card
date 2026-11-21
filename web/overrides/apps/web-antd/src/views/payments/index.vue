@@ -93,7 +93,7 @@ onMounted(loadTransactions);
     <a-table-column title="核对备注" data-index="reconciliationNote" key="reconciliationNote" :width="260" ellipsis/>
     <a-table-column title="操作" key="actions" :width="130" fixed="right"><template #default="{record}"><a-button v-if="record.status!=='matched'" type="link" size="small" @click="openReconcile(record)">人工关联 / 补单</a-button><span v-else>已处理</span></template></a-table-column>
    </a-table>
-   <a-alert class="mt-4" type="info" show-icon message="人工补单校验收款地址、交易金额、订单创建时间和库存；退款功能尚未开放。"/>
+   
   </a-card>
   <ReconcileModal class="w-full max-w-xl" :confirm-loading="reconcileLoading">
    <div class="p-4 sm:p-6">
