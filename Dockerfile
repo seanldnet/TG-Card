@@ -28,7 +28,7 @@ COPY --from=web-builder /src/web/vben-admin/apps/web-antd/dist ./web/dist
 RUN go mod tidy && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tg-card ./cmd/server
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata && addgroup -S tgcard && adduser -S -G tgcard tgcard
+RUN apk add --no-cache ca-certificates tzdata postgresql-client && addgroup -S tgcard && adduser -S -G tgcard tgcard
 WORKDIR /app
 COPY --from=go-builder /out/tg-card /app/tg-card
 COPY --from=go-builder /src/web/dist /app/web/dist
