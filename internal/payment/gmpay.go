@@ -370,6 +370,27 @@ func (m *Manager) checkGMPayPaymentForProvider(ctx context.Context, orderID, pro
 	fields,err := DecodeGMPayCallback(envelope.Data)
 	if err != nil { return "",fmt.Errorf("decode %s status result: %w",provider,err) }
 	if fields["trade_id"] != intent.ProviderTradeID { return "",errors.New("status response trade ID is missing or does not match local payment intent") }
+	// A successful status alone is not sufficient to settle a payment. The
+	// provider's queried transaction must independently match the local asset
+	// and exact amount, just like a signed callback.
+	eventTradeID := intent.ProviderTradeID
+	if provider == "gmpay_edge" { eventTradeID = "gmpay_edge:" + eventTradeID }
+	if !strings.EqualFold(strings.TrimSpace(fields["token"]), "USDT") {
+		inserted, recordErr := database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],Status:"asset_mismatch",PayloadJSON:string(envelope.Data)})
+		if recordErr != nil { return "",recordErr }
+		if err := database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"asset_mismatch",fields["block_transaction_id"]); err != nil { return "",err }
+		if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付资产与订单要求不一致，已阻止自动入账。订单："+order.OrderNo+"\\n返回资产："+fields["token"],"") }
+		return "",errors.New("provider status response asset does not match USDT order")
+	}
+	queriedAmount, amountErr := parseMinor(fields["amount"])
+	if amountErr != nil || queriedAmount != intent.AmountMinor {
+		if amountErr != nil { queriedAmount = 0 }
+		inserted, recordErr := database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:queriedAmount,Status:"amount_mismatch",PayloadJSON:string(envelope.Data)})
+		if recordErr != nil { return "",recordErr }
+		if err := database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"amount_mismatch",fields["block_transaction_id"]); err != nil { return "",err }
+		if inserted { m.bots.Notify("risk_alert",provider+" 查单返回的支付金额与订单金额不一致，已阻止自动入账。订单："+order.OrderNo+"\\n应付："+formatMinor(intent.AmountMinor)+" USDT\\n查单返回："+fields["amount"],"") }
+		return "",errors.New("provider status response amount does not match local order")
+	}
 	status,err := strconv.Atoi(fields["status"])
 	if err != nil { return "",errors.New("status response is missing a valid status") }
 	switch status {
