@@ -14,7 +14,7 @@
 - 新增迁移 `0057_admin_action_confirmations.sql`：数据库只保存一次性确认凭证 SHA-256 哈希；凭证有效期 2 分钟，绑定管理员、action key、HTTP method、精确路径和规范化请求体，并通过原子消费防止重放。
 - 二次确认要求管理员当前密码；启用 TOTP 时还需动态验证码或一次性恢复码。覆盖余额调整、采购/退款/核实、支付人工核对、售后退款、订单恢复/清理及敏感配置更新。
 - Admin UI 统一处理 HTTP 428 challenge，完成认证后重放原请求；恢复码如被使用则一次性消费。
-- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部通过；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部通过。Docker Publish 尚在运行，digest 待核实。
+- PR head Go Backend CI、Admin Frontend CI、Security Scan 全部通过；合并后 main Go Backend CI、Admin Frontend CI、Security Scan 全部通过。Docker Publish（run `44885024397`）已成功；GHCR `latest` 与 commit tag `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34` manifest digest：`sha256:1ef5ec7d1ef7cc75b9b764bcbea972b83687798468f705e0a4da3664704493a2`。生产部署与真实浏览器 step-up 验收仍待项目所有者执行。
 - 真实浏览器端密码/TOTP/恢复码确认流程仍待部署验收；不能以 CI 通过代替生产验收。
 - 文档版本：2.2.55。
 
