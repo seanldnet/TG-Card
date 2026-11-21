@@ -103,3 +103,15 @@ func SetEpusdtPaymentIntentStatus(ctx context.Context, db *sql.DB, driver, order
 	_,err:=db.ExecContext(ctx,query,status,blockTransactionID,now,orderID)
 	return err
 }
+
+func SetEpusdtPaymentIntentTradeID(ctx context.Context,db *sql.DB,driver,orderID,tradeID string) error {
+	if orderID==""||tradeID==""{return fmt.Errorf("order ID and provider trade ID are required")}
+	query:="UPDATE epusdt_payment_intents SET provider_trade_id="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE order_id="+placeholder(driver,3)+" AND (provider_trade_id='' OR provider_trade_id="+placeholder(driver,4)+")"
+	result,err:=db.ExecContext(ctx,query,tradeID,time.Now().UTC().Format(time.RFC3339Nano),orderID,tradeID)
+	if err!=nil{return err}
+	n,err:=result.RowsAffected();if err!=nil{return err};if n==1{return nil}
+	var existing string
+	if err:=db.QueryRowContext(ctx,"SELECT provider_trade_id FROM epusdt_payment_intents WHERE order_id="+placeholder(driver,1),orderID).Scan(&existing);err!=nil{return err}
+	if existing==tradeID{return nil}
+	return fmt.Errorf("Epusdt provider trade ID does not match the local payment intent")
+}
