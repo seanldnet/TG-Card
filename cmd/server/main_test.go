@@ -120,16 +120,19 @@ func TestAdminLoginRequiresValidTOTPWhenEnabled(t *testing.T) {
 	secrets,err:=secret.New(t.TempDir());if err!=nil{t.Fatal(err)}
 	ciphertext,err:=secrets.Encrypt(secretValue);if err!=nil{t.Fatal(err)}
 	if err:=database.SetAdminTOTPPendingSecret(ctx,db,"sqlite",admin.ID,ciphertext);err!=nil{t.Fatal(err)}
-	if err:=database.EnableAdminTOTP(ctx,db,"sqlite",admin.ID);err!=nil{t.Fatal(err)}
+	const recoveryCode="JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+	if err:=database.EnableAdminTOTPWithRecoveryCodes(ctx,db,"sqlite",admin.ID,[]string{recoveryCode});err!=nil{t.Fatal(err)}
 	tokens,err:=auth.NewManager("01234567890123456789012345678901",t.TempDir());if err!=nil{t.Fatal(err)}
 	app:=&application{db:db,driver:"sqlite",tokens:tokens,secrets:secrets,loginFailures:make(map[string][]time.Time)}
-	login:=func(code string)int{
-		body,_:=json.Marshal(loginRequest{Username:"totp-admin",Password:"a-strong-test-password",TOTPCode:code})
+	login:=func(code,recoveryCode string)int{
+		body,_:=json.Marshal(loginRequest{Username:"totp-admin",Password:"a-strong-test-password",TOTPCode:code,TOTPRecoveryCode:recoveryCode})
 		req:=httptest.NewRequest(http.MethodPost,"/api/auth/login",bytes.NewReader(body));req.RemoteAddr="192.0.2.11:12345"
 		response:=httptest.NewRecorder();app.login(response,req);return response.Code
 	}
-	if status:=login("");status!=http.StatusUnauthorized{t.Fatalf("missing TOTP code status=%d want 401",status)}
-	if status:=login("123456");status!=http.StatusUnauthorized{t.Fatalf("invalid TOTP code status=%d want 401",status)}
+	if status:=login("","");status!=http.StatusUnauthorized{t.Fatalf("missing TOTP code status=%d want 401",status)}
+	if status:=login("123456","");status!=http.StatusUnauthorized{t.Fatalf("invalid TOTP code status=%d want 401",status)}
 	code,err:=auth.TOTPCode(secretValue,time.Now());if err!=nil{t.Fatal(err)}
-	if status:=login(code);status!=http.StatusOK{t.Fatalf("valid TOTP login status=%d want 200",status)}
+	if status:=login(code,"");status!=http.StatusOK{t.Fatalf("valid TOTP login status=%d want 200",status)}
+	if status:=login("",recoveryCode);status!=http.StatusOK{t.Fatalf("valid recovery code login status=%d want 200",status)}
+	if status:=login("",recoveryCode);status!=http.StatusUnauthorized{t.Fatalf("reused recovery code status=%d want 401",status)}
 }
