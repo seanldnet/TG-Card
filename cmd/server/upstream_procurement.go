@@ -62,6 +62,10 @@ func (a *application) runUpstreamProcurementScheduler(ctx context.Context) {
 }
 
 func (a *application) processDueUpstreamProcurements(ctx context.Context) {
+	// Recover the narrow crash/corruption window where a paid upstream order
+	// exists but its idempotent procurement queue row is missing.
+	restored, reconcileErr := database.ReconcileMissingUpstreamProcurements(ctx,a.db,a.driver,20)
+	if reconcileErr != nil { log.Printf("reconcile missing paid upstream procurement jobs failed: %v",reconcileErr) } else if restored > 0 { log.Printf("restored missing paid upstream procurement jobs: count=%d",restored) }
 	jobs,err:=database.ClaimDueUpstreamProcurements(ctx,a.db,a.driver,20,90*time.Second)
 	if err!=nil{log.Printf("claim upstream procurement jobs failed: %v",err);return}
 	for _,job:=range jobs {

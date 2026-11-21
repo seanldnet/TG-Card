@@ -1,3 +1,12 @@
+## 2026-11-21 — 订单与资金补偿机制 P0-4（开发中）
+
+- 开发分支：`feat/order-fund-compensation-reconciliation-p0-4`，基于 main@c56d6322a6a16bd5ce71977e52152a82eeb9d1c1。
+- P0-3 分步骤 file_card 交付恢复 PR #84 已合并；Go CI、Admin CI、安全扫描与 Docker Publish 均成功。GHCR manifest digest：`sha256:50530060864b7ac04c8a5839e40b086e78049f3b7db4547103a2926eea001a75`。
+- 本阶段第一项已实现：定时扫描仍处于 `procurement_pending`、支付已确认且采购队列行缺失的上游订单，按原始 `paid_at` 与配置超时恢复队列，不延长订单采购期限；`local_order_id` 唯一约束保证幂等。
+- 恢复只创建缺失采购队列记录，不改变订单状态、支付方式/交易引用、钱包余额或资金流水；`procurement_failed`、`procurement_uncertain`、已退款/已交付订单不会被该恢复器自动重排。
+- 恢复器已接入现有 5 秒采购调度循环；新增测试覆盖缺失队列恢复、重复扫描幂等及支付/钱包账本不变。Go/Admin/Security CI 待本 PR 验证。
+- 后续工作：继续核对本地交付失败恢复、采购异常通知与补偿状态边界；任何退款或余额变更仍只允许现有经过审计的人工事务，不加入自动资金补偿。
+
 ## 2026-11-21 — 分步骤交付状态机 P0-3（开发中）
 
 - 当前基线：`main@0a8895d54bbac02a78743b8692192c8ed66ea072`（P0-2 全局异常中心 PR #83 已合并）；独立分支 `feat/stepwise-delivery-state-machine-p0-3`。
@@ -130,9 +139,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.39
+> - 文档版本：2.2.40
 > - 源码核对基线：main 分支，commit `0a8895d54bbac02a78743b8692192c8ed66ea072`；PR #83 已合并
-> - 本次文档更新：记录 P0-2 全局异常中心合并与 P0-3 分步骤交付状态机开发进度
+> - 本次文档更新：记录 P0-3 发布及 P0-4 订单采购队列缺失恢复开发进度
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
