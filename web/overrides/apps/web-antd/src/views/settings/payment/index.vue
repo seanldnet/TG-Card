@@ -108,12 +108,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
           {{ settings.enabled ? '收款已启用' : '收款未启用' }}
         </a-tag>
       </template>
-      <a-alert
-        class="mb-5"
-        type="info"
-        show-icon
-        message="在此页面直接配置收款信息，无需修改服务器 .env 或重启 Docker。API Key 使用 AES-256-GCM 加密后保存在当前数据库中。"
-      />
+      
       <a-form layout="vertical">
         <a-form-item label="TronGrid API Key" extra="密钥不会回显。留空表示保持现有密钥；如需更换，请输入新密钥。">
           <a-input-password
@@ -164,7 +159,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
     </a-card>
     <a-card :bordered="false" :loading="loading" title="Epusdt · GMPay 商户配置">
       <template #extra><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag></template>
-      <a-alert class="mb-4" type="info" show-icon message="此处配置 Epusdt GMPay 商户接口。Secret 使用 AES-256-GCM 加密存储且不会回传；启用后 Telegram 商城显示 GMPay 收银台入口，回调必须使用 HTTPS 并完成签名与订单金额核验。"/>
+      
       <a-form layout="vertical">
         <a-form-item label="Epusdt 网关地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
         <a-form-item label="GMPay PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
@@ -174,7 +169,7 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
       </a-form>
     </a-card>
     <a-card :bordered="false" title="充值赠送规则">
-      <a-alert class="mb-4" type="info" show-icon message="规则按充值本金匹配最高门槛；固定赠送填写 USDT 金额，百分比赠送填写百分数。创建充值单时会锁定赠送金额，支付确认时与本金在同一事务中入账，重复回调不会重复赠送。"/>
+      
       <div class="mb-4 flex flex-wrap items-center gap-3"><a-switch v-model:checked="bonusRule.enabled"/><span>启用充值赠送</span><a-button size="small" @click="addBonusTier">添加阶梯</a-button></div>
       <div v-for="(tier,index) in bonusRule.tiers" :key="index" class="mb-3 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 md:grid-cols-3">
        <a-form-item label="充值满（USDT）" class="mb-0"><a-input-number v-model:value="tier.minAmountAtomic" :min="1000000" :step="1000000" class="w-full" :formatter="(v:any)=>String(Number(v||0)/1000000)" :parser="(v:any)=>Number(v)*1000000"/></a-form-item>
