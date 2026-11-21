@@ -98,10 +98,13 @@ async function saveGateway(provider: 'epusdt' | 'gmpay') {
       actionKey: 'settings.payment.update', method: 'PUT', path: '/api/settings/payment', payload,
       run: (token) => requestClient.put<PaymentSettings>('/settings/payment', payload, token ? { headers: { 'X-Admin-Action-Confirmation': token } } : undefined),
     });
-    Object.assign(settings, data);
-    apiKey.value = ''; clearApiKey.value = false;
-    epusdtSecret.value = ''; clearEpusdtSecret.value = false;
-    gmpaySecret.value = ''; clearGmpaySecret.value = false;
+    if (provider === 'epusdt') {
+      settings.epusdtSecretConfigured = data.epusdtSecretConfigured;
+      epusdtSecret.value = ''; clearEpusdtSecret.value = false;
+    } else {
+      settings.gmpaySecretConfigured = data.gmpaySecretConfigured;
+      gmpaySecret.value = ''; clearGmpaySecret.value = false;
+    }
     message.success(provider === 'epusdt' ? 'Epusdt 配置已保存并应用' : 'GMPay Edge 配置已保存并应用');
   } catch (error: any) { message.error(error?.response?.data?.message || '支付网关配置保存失败'); }
   finally { saving.value = false; }
@@ -118,14 +121,13 @@ async function saveSettings() {
       payload,
       run: (token) => requestClient.put<PaymentSettings>('/settings/payment', payload, token ? { headers: { 'X-Admin-Action-Confirmation': token } } : undefined),
     });
-    Object.assign(settings, data);
+    settings.apiKeyConfigured = data.apiKeyConfigured;
+    settings.receiveAddress = data.receiveAddress;
+    settings.usdtContract = data.usdtContract;
+    settings.enabled = data.enabled;
     apiKey.value = '';
     clearApiKey.value = false;
-    epusdtSecret.value = '';
-    clearEpusdtSecret.value = false;
-    gmpaySecret.value = '';
-    clearGmpaySecret.value = false;
-    message.success('支付设置已保存');
+    message.success('TRC20 配置已保存并应用');
   } catch (error: any) {
     message.error(error?.response?.data?.message || '保存失败，请检查配置');
   } finally {
