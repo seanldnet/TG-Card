@@ -66,6 +66,8 @@ type Manager struct {
 	gmpayCheckout func(context.Context, database.Order) (string, error)
 	gmpayStatus func(context.Context, string) (string, error)
 	gmpayEnabled bool
+	paymentProviderSelector func(context.Context, database.Order) (string,error)
+	hostedCheckoutForProvider func(context.Context, database.Order, string) (string,error)
 	ownerID string
 	customerServiceURL string
 	communityURL string
@@ -172,6 +174,19 @@ func (m *Manager) gmpayCheckoutConfig() (func(context.Context,database.Order)(st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.gmpayCheckout,m.gmpayStatus,m.gmpayEnabled
+}
+
+func (m *Manager) SetPaymentRouter(selector func(context.Context,database.Order)(string,error), checkout func(context.Context,database.Order,string)(string,error)) {
+	m.mu.Lock()
+	m.paymentProviderSelector=selector
+	m.hostedCheckoutForProvider=checkout
+	m.mu.Unlock()
+}
+
+func (m *Manager) paymentRouterConfig() (func(context.Context,database.Order)(string,error),func(context.Context,database.Order,string)(string,error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.paymentProviderSelector,m.hostedCheckoutForProvider
 }
 
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
