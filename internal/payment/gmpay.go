@@ -99,16 +99,16 @@ func (m *Manager) createGMPayCheckoutForProvider(ctx context.Context, order data
 	if err!=nil{return "",err}
 	if intent.Status=="paid"{return "",errors.New("order is already paid")}
 	if intent.Status=="late_payment" || intent.Status=="amount_mismatch" || intent.Status=="asset_mismatch" || intent.Status=="duplicate_payment" {return "",errors.New("payment requires manual reconciliation")}
-	if intent.Status=="expired" {return "",errors.New("支付服务订单 has expired")}
+	if intent.Status=="expired" {return "",errors.New("payment provider order has expired")}
 	if !created {
 		if intent.ProviderTradeID=="" {
 			return "",errors.New("GMPay order creation has an uncertain result; do not retry payment creation. Please contact support while the callback is reconciled.")
 		}
 		status,queryErr:=m.checkGMPayPaymentForProvider(ctx,order.ID,provider)
-		if queryErr!=nil{return "",fmt.Errorf("query existing Epusdt trade before reopening checkout: %w",queryErr)}
+		if queryErr!=nil{return "",fmt.Errorf("query existing provider trade before reopening checkout: %w",queryErr)}
 		if status=="paid"{return "",errors.New("order payment has already been confirmed")}
-		if status=="expired"{return "",errors.New("Epusdt payment order has expired")}
-		if intent.PaymentURL==""{return "",errors.New("existing Epusdt payment intent has no cashier URL")}
+		if status=="expired"{return "",errors.New("payment provider order has expired")}
+		if intent.PaymentURL==""{return "",errors.New("existing payment intent has no cashier URL")}
 		return intent.PaymentURL,nil
 	}
 
