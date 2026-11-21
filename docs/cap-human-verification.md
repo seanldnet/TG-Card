@@ -10,7 +10,7 @@
 
 启用后，管理员登录页从固定版本的 jsDelivr CDN 加载 `<cap-widget>`（当前固定 `cap-widget@0.1.63`），并通过 `data-cap-api-endpoint` 指向 Cap 服务的 `https://<instance>/<site-key>/`。Widget 完成挑战后把一次性 token 随登录请求提交给后端。后端调用：
 
-登录页将验证框放在密码字段下方，并使用与账号输入区域相同的全宽布局。Widget 的初始提示为“点击进行安全验证”，验证中、成功、失败和无障碍提示均通过 Cap 的 `data-cap-i18n-*` 属性设置为中文。
+登录页将验证框放在密码字段下方，并使用与账号输入区域相同的全宽布局。为避免 widget 高度压过账号/密码输入框，前端通过 Cap 官方 CSS 自定义属性将 widget 高度设为 30px，并同步缩小内边距、控件间距和复选框；宽度仍为 100%，与账号/密码输入框左右对齐。Widget 的初始提示为“点击进行安全验证”，验证中、成功、失败和无障碍提示均通过 Cap 的 `data-cap-i18n-*` 属性设置为中文。
 
 ```text
 POST {CapDomain}/{SiteKey}/siteverify
