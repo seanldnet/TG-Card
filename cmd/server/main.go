@@ -221,7 +221,7 @@ func main() {
 		if err != nil { log.Fatalf("decrypt saved Epusdt GMPay secret: %v", err) }
 	}
 	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt GMPay checkout: %v", err) }
-	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.GatewayEnabled)
+	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.CheckGMPayPayment, paymentManager.GatewayEnabled())
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
