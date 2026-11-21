@@ -156,7 +156,7 @@ func (m *Manager) createGMPayCheckoutForProvider(ctx context.Context, order data
 		m.bots.Notify("risk_alert","GMPay 返回了不安全的收银台链接，已阻止向用户展示。订单："+order.OrderNo+"\n请在 Epusdt 商户后台核对原支付单。","")
 		return "",fmt.Errorf("支付服务返回 an unsafe payment URL: %w",err)
 	}
-	if data.Status!=1 && data.Status!=2 {
+	if data.Status!=1 && data.Status!=2 && data.Status!=4 {
 		state:="create_uncertain"
 		if data.Status==3{state="expired"}
 		_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,state,"")
@@ -355,6 +355,8 @@ func (m *Manager) settleGMPayPayment(ctx context.Context,fields map[string]strin
 }
 
 func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[string]string, payloadJSON, provider string) error {
+	eventTradeID := tradeID
+	if provider == "gmpay_edge" { eventTradeID = "gmpay_edge:" + tradeID }
 	orderNo:=strings.TrimSpace(fields["order_id"])
 	tradeID:=strings.TrimSpace(fields["trade_id"])
 	if orderNo==""||tradeID==""{return errors.New("GMPay payment is missing order_id or trade_id")}
@@ -368,7 +370,7 @@ func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[
 	if intent.ProviderTradeID!="" && intent.ProviderTradeID!=tradeID {
 		state:="unexpected_trade"
 		if order.Status=="paid"||order.Status=="delivering"||order.Status=="delivery_failed"||order.Status=="delivered"||order.Status=="procurement_pending"||order.Status=="procurement_failed"{state="duplicate_payment"}
-		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],Status:state,PayloadJSON:payloadJSON})
+		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],Status:state,PayloadJSON:payloadJSON})
 		if recordErr!=nil{return recordErr}
 		if inserted{m.bots.Notify("risk_alert","GMPay 回调交易号与本地支付单不一致，已阻止自动入账。订单："+orderNo+"\n本地交易："+intent.ProviderTradeID+"\n回调交易："+tradeID,"")}
 		return nil
@@ -376,7 +378,7 @@ func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[
 	if intent.ProviderTradeID=="" { if err:=database.SetEpusdtPaymentIntentTradeID(ctx,m.db,m.driver,intent.OrderID,tradeID);err!=nil{return err} }
 	if !strings.EqualFold(strings.TrimSpace(fields["token"]), "USDT") {
 		amount, _ := parseMinor(fields["amount"])
-		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"asset_mismatch",PayloadJSON:payloadJSON})
+		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"asset_mismatch",PayloadJSON:payloadJSON})
 		if recordErr!=nil{return recordErr}
 		if inserted {
 			_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,intent.OrderID,"asset_mismatch",fields["block_transaction_id"])
@@ -387,7 +389,7 @@ func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[
 	amount,amountErr:=parseMinor(fields["amount"])
 	if amountErr!=nil || amount!=intent.AmountMinor {
 		if amountErr!=nil{amount=0}
-		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"amount_mismatch",PayloadJSON:payloadJSON})
+		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:intent.OrderID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"amount_mismatch",PayloadJSON:payloadJSON})
 		if recordErr!=nil{return recordErr}
 		if inserted{
 			_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,intent.OrderID,"amount_mismatch",fields["block_transaction_id"])
@@ -401,7 +403,7 @@ func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[
 		if order.Status=="paid"||order.Status=="delivering"||order.Status=="delivery_failed"||order.Status=="delivered"||order.Status=="procurement_pending"||order.Status=="procurement_failed"{
 			state="duplicate_payment"
 		}
-		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:state,PayloadJSON:payloadJSON})
+		inserted,recordErr:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:state,PayloadJSON:payloadJSON})
 		if recordErr!=nil{return recordErr}
 		if inserted{
 			_ = database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,state,fields["block_transaction_id"])
@@ -409,7 +411,7 @@ func (m *Manager) settleGMPayPaymentForProvider(ctx context.Context, fields map[
 		}
 		return nil
 	}
-	inserted,err:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:tradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"paid",PayloadJSON:payloadJSON})
+	inserted,err:=database.RecordEpusdtPaymentEvent(ctx,m.db,m.driver,database.EpusdtPaymentEvent{OrderID:order.ID,ProviderTradeID:eventTradeID,BlockTransactionID:fields["block_transaction_id"],AmountMinor:amount,Status:"paid",PayloadJSON:payloadJSON})
 	if err!=nil{return err}
 	if err:=database.SetEpusdtPaymentIntentStatus(ctx,m.db,m.driver,order.ID,"paid",fields["block_transaction_id"]);err!=nil{return err}
 	if inserted || !delivery.AlreadyPaid{
