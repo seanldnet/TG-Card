@@ -9,6 +9,9 @@ PROJECT="tg-card-backup-test-$$"
 export COMPOSE_PROJECT_NAME="$PROJECT"
 export COMPOSE_FILE="$TMP_DIR/docker-compose.yml"
 export POSTGRES_PASSWORD="isolated-backup-test-password"
+export BACKUP_ENCRYPTION_PASSPHRASE="isolated-ci-backup-passphrase-with-more-than-32-chars"
+export BACKUP_CRYPT_BIN="$TMP_DIR/backup-crypt"
+go build -o "$BACKUP_CRYPT_BIN" ./cmd/backup-crypt
 BACKUP_DIR="$TMP_DIR/backups"
 RESTORE_STARTED=0
 
@@ -98,6 +101,11 @@ BACKUP_DIR="$BACKUP_DIR" BACKUP_KEEP=2 bash scripts/backup.sh
 BACKUP_FINISHED="$(date +%s)"
 BACKUP_PATH="$(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name 'tg-card-*' | head -n 1)"
 test -n "$BACKUP_PATH"
+test -f "$BACKUP_PATH/postgres.dump.age"
+test -f "$BACKUP_PATH/tg_card_data.tar.gz.age"
+test ! -e "$BACKUP_PATH/postgres.dump"
+test ! -e "$BACKUP_PATH/tg_card_data.tar.gz"
+if grep -a -q "test-encryption-key" "$BACKUP_PATH/tg_card_data.tar.gz.age"; then echo "encrypted backup unexpectedly contains plaintext key" >&2; exit 1; fi
 
 echo "[4/6] Mutating database and persistent files to simulate data loss..."
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U tgcard -d tgcard -c "UPDATE orders SET status='refunded' WHERE id='order-1'; DELETE FROM product_keys WHERE id='stock-1'; UPDATE settings SET value='false' WHERE key='cap_enabled';"
