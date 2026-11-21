@@ -1,10 +1,19 @@
-## 2026-11-21 — P0-4 上游采购 uncertain 人工核实入口（开发中）
+## 2026-11-21 — P1 业务数据大盘与运行指标（开发中）
 
-- 当前 main 基线：`ff1f2d5c31daa848fc4ee34548b8423e283684c0`（PR #91 已合并）；独立分支：`feat/upstream-uncertain-resolution-ui-p0-4`。
+- 当前 main 基线：`d5b798785dcc614254acad56bbc1c482a207788e`（PR #92 已合并）；独立分支：`feat/business-metrics-dashboard-p1`。
+- 新增受管理员鉴权保护的 `GET /api/dashboard/metrics`，返回 24 小时交付成功率、交付不确定数量与最久等待、退款账本冲突、上游同步进度、Cap 成功/失败计数、API P95 与数据库连接池状态。
+- 经营概览改用聚合指标 API 展示上述指标；原机器人/商品/订单/售后基础卡片保留。
+- 新增数据库聚合查询测试；指标只读，不修改订单、钱包、采购状态或异常状态。
+- Cap 计数与 API P95 使用进程内窗口（Cap 自进程启动、API 最近 512 次请求），重启后重置；长期趋势与 Owner 告警阈值另列后续任务。
+- 无数据库迁移、无新增环境变量/后台配置；Go/Admin/Security CI 待验证，未合并/发布/生产验收。
+
+## 2026-11-21 — P0-4 上游采购 uncertain 人工核实入口（PR #92 已合并）
+
+- PR #92 已 Squash Merge 至 main，merge commit `d5b798785dcc614254acad56bbc1c482a207788e`；独立分支：`feat/upstream-uncertain-resolution-ui-p0-4`。
 - 审计发现：后端已有 uncertain 采购人工核实接口，但上游设置页仍对 uncertain 订单展示直接重试/退款按钮，未提供 accepted / not_accepted 决策入口。
 - 本次补齐 UI：uncertain 只展示“核实受理状态”；供应商确认已受理时登记上游订单 ID/订单号，恢复 polling 并只查单；确认未受理/明确失败时记录核实依据，收敛为 failed 后才开放安全重试/退款。
 - 复用既有 `/api/upstream/procurements/{id}/resolve`，无新增 API、数据库迁移或环境变量；新增 not_accepted 状态回归测试，验证核实后可沿用原订单幂等键安全重试，且不创建退款流水。
-- 当前状态：前端、测试与专项文档已提交独立分支；Go/Admin/Security CI 待验证；未合并、未发布、未进行生产验收。
+- PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security/Docker Publish workflows 已触发，最终发布状态待确认。真实供应商核验流程仍需生产环境验收。
 
 ## 2026-11-21 — P0-4 不确定交付禁止盲目手动重试（PR #91 已合并）
 
@@ -200,9 +209,9 @@
 
 > **文档元信息**
 > - 最后更新时间：2026-11-21
-> - 文档版本：2.2.47
-> - 源码核对基线：main 分支，commit `ff1f2d5c31daa848fc4ee34548b8423e283684c0`；PR #91 已合并
-> - 本次文档更新：记录 P0-4 uncertain 采购人工核实后台入口
+> - 文档版本：2.2.48
+> - 源码核对基线：main 分支，commit `d5b798785dcc614254acad56bbc1c482a207788e`；PR #92 已合并
+> - 本次文档更新：记录 P1 业务大盘指标接口与前端展示
 ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
 
 - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
