@@ -295,9 +295,10 @@
 > - 源码核对基线：main 分支，commit `2bf6643d218710439f9e848e37cf9a882e699ec1`；PR #103 已合并
 > - 本次文档更新：记录 PR #102 合并及 GHCR 发布 digest；修复历史元信息与 PR #56 章节边界；跟踪基于最新 main 重整的 PR #77 媒体回复安全修复
 >
-> ## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
->
-> - 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
+
+## 2026-11-20 — 上游同步性能与售卖来源总闸（PR U #56 已合并并发布）
+
+- 独立分支：`feat/upstream-sync-performance-source-switch-pr-u`；PR #56 已 Squash Merge：https://github.com/seanldnet/TG-Card/pull/56。基线为 main 的 `6f7e80ec14407cac7fee0bb4559e9084af8253ad`，合并提交 `b5ada0116fe4c33e0a4207ebb754715834e909d8`。
 
 - 已写入分支的实现：Dujiao 商品分页拉取（后台可配置 20–50 条/批、250–10000ms 间隔，默认 25/1000ms）；每批独立数据库事务；商品/分类指纹包含上游目录字段及本地加价/汇率策略；未变化商品/分类只标记本轮已见，跳过 SKU 重写和图片下载。
 - 同步入口改为后台任务：手动与定时同步共用任务锁；数据库唯一活动任务索引阻止多实例重复执行；持久化进度、批次、错误数和取消请求；单页最多重试 3 次，失败页记录后继续扫描，连续 3 页失败暂停并通知 Owner；取消保留已提交批次且不执行缺失商品下架收尾。进程重启时将未结束任务标记为 interrupted/failed。
