@@ -97,9 +97,7 @@ func (m *Manager) NextPaymentProviderForOrder(ctx context.Context, order databas
 	selected := providers[m.checkoutCursor%uint64(len(providers))]
 	m.checkoutCursor++
 	m.mu.Unlock()
-	if selected=="trc20" {
-		if _,_,err:=database.CreatePaymentIntentForProvider(ctx,m.db,m.driver,order.ID,"trc20");err!=nil{return "",err}
-	}
+	if _,_,err:=database.CreatePaymentIntentForProvider(ctx,m.db,m.driver,order.ID,selected);err!=nil{return "",err}
 	return selected,nil
 }
 
