@@ -41,7 +41,7 @@ onMounted(load);
      <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:email-outline" />邮件服务</span></template>
      <div class="max-w-3xl">
       <div class="mb-3 text-sm font-semibold">SMTP 邮件服务</div>
-      <a-alert class="mb-4" type="info" show-icon message="SMTP 密码加密保存在数据库。密码留空时保持已保存的密码不变。" />
+      
       <a-form layout="vertical"><a-row :gutter="16">
        <a-col :xs="24" :md="12"><a-form-item label="SMTP 主机"><a-input v-model:value="form.smtpHost" placeholder="smtp.example.com" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="SMTP 端口"><a-input-number v-model:value="form.smtpPort" class="w-full" :min="1" :max="65535" /></a-form-item></a-col>
@@ -50,7 +50,7 @@ onMounted(load);
        <a-col :xs="24" :md="12"><a-form-item label="发件人名称"><a-input v-model:value="form.smtpFromName" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="发件人邮箱"><a-input v-model:value="form.smtpFromEmail" type="email" /></a-form-item></a-col>
       </a-row><a-form-item label="SMTP TLS"><a-switch v-model:checked="form.smtpUseTLS" /></a-form-item>
-      <a-alert class="mb-4" type="info" show-icon message="加密连接说明：465 端口自动使用 SSL/TLS；587 端口自动使用 STARTTLS。开启 SMTP TLS 后，如果服务器不支持加密连接，系统会拒绝发送。网易 yeah.net 可填写 smtp.yeah.net，网易 163 可填写 smtp.163.com，QQ 邮箱可填写 smtp.qq.com；用户名填写完整邮箱地址，密码填写邮箱 SMTP 授权码，而不是网页登录密码。" /></a-form>
+      </a-form>
       <a-form-item label="邮件通知收件邮箱（用于测试邮件及业务邮件通知）"><a-input v-model:value="form.contactEmail" type="email" placeholder="可选，填写接收通知的邮箱" /></a-form-item>
       <a-space wrap><a-button size="small" :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件</a-button></a-space>
      </div>
@@ -59,7 +59,7 @@ onMounted(load);
      <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:bell-outline" />邮件通知</span></template>
      <div class="max-w-3xl">
       <div class="mb-4 text-sm font-semibold">邮件通知开关</div>
-      <a-alert class="mb-4" type="info" show-icon message="选择哪些业务事件需要发送邮件通知。" />
+      
       <a-row :gutter="[16,12]">
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">新订单通知</span><a-switch v-model:checked="form.emailOrderCreated" /></div></a-col>
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">付款成功通知</span><a-switch v-model:checked="form.emailPaymentSuccess" /></div></a-col>
@@ -72,7 +72,7 @@ onMounted(load);
      <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:package-variant-closed-check" />库存自动化</span></template>
      <div class="max-w-3xl">
       <div class="mb-3 text-sm font-semibold">库存归零与补货上架策略</div>
-      <a-alert class="mb-4" type="info" show-icon message="仅对本地卡密/文件+卡密商品生效；不限量商品和 Dujiao-Next 上游商品不受影响。库存自动化每 5 分钟巡检一次。" />
+      
       <div class="mb-3 flex items-center justify-between rounded-lg border border-gray-100 p-3">
        <div class="pr-4"><div class="text-sm font-medium">库存归零自动下架</div><div class="mt-1 text-xs text-gray-500">可售卡密库存为 0 时自动将商品下架，并通知 Owner。</div></div>
        <a-switch v-model:checked="form.stockAutoUnlistOnZero" />
@@ -87,7 +87,7 @@ onMounted(load);
      <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:telegram" />Telegram 通知</span></template>
      <div class="max-w-3xl">
       <div class="mb-3 text-sm font-semibold">Telegram 私聊与群组通知</div>
-      <a-alert class="mb-4" type="info" show-icon message="填写管理员私聊和通知群组 Chat ID；对应 Bot 必须能向该目标发送消息。" />
+      
       <a-form layout="vertical"><a-row :gutter="16">
         <a-col :xs="24" :md="12"><a-form-item label="管理员通知 Chat ID"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
        <a-col :xs="24" :md="12"><a-form-item label="通知群组 Chat ID"><a-input v-model:value="form.telegramGroupChatId" /></a-form-item></a-col>
@@ -109,7 +109,7 @@ onMounted(load);
      <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:database-clock-outline" />自动备份</span></template>
      <div class="max-w-3xl">
       <div class="mb-3 text-sm font-semibold">每日数据库自动备份</div>
-      <a-alert class="mb-4" type="info" show-icon message="每天按服务器时区执行一次。备份包含 PostgreSQL 数据库及 /app/data 持久化文件，完成后通过 Telegram Bot 将压缩备份文件发送给主人。请先配置 Telegram 主人 ID，并确保至少有一个启用的 Bot。" />
+      
       <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
        <div class="pr-4"><div class="text-sm font-medium">启用每日自动备份</div><div class="mt-1 text-xs text-gray-500">关闭后不再自动创建或发送备份；现有手动备份/恢复脚本不受影响。</div></div>
        <a-switch v-model:checked="form.backupEnabled" />
