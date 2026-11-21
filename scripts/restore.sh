@@ -10,6 +10,7 @@ if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
 fi
 BACKUP_DIR="$1"
 CONFIRM="${2:-}"
+BACKUP_ENCRYPTION_PASSPHRASE="${BACKUP_ENCRYPTION_PASSPHRASE:-}"
 if [ ! -d "$BACKUP_DIR" ] || [ ! -f "$BACKUP_DIR/SHA256SUMS" ]; then
  echo "Backup directory must contain SHA256SUMS" >&2
  exit 2
@@ -31,7 +32,7 @@ backup_crypt() {
 }
 
 if [ -f "$BACKUP_DIR/postgres.dump.age" ] && [ -f "$BACKUP_DIR/tg_card_data.tar.gz.age" ]; then
-  if [ "${#BACKUP_ENCRYPTION_PASSPHRASE:-0}" -lt 32 ]; then
+  if [ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 32 ]; then
     echo "BACKUP_ENCRYPTION_PASSPHRASE must be configured to decrypt this backup" >&2
     exit 2
   fi
