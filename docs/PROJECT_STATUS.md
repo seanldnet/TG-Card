@@ -1,13 +1,15 @@
-## 当前状态摘要（2026-11-22；文档版本 2.2.73）
+## 当前状态摘要（2026-11-22；文档版本 2.2.74）
 
-## 2026-11-22 — 后台菜单与三支付通道整合（PR 待创建；独立分支开发中）
+## 2026-11-22 — 后台菜单与三支付通道整合（PR #122 开发中；文档版本 2.2.74）
 
-- 独立分支：`feat/admin-menu-payment-provider-ux`；基线为 PR #121 合并后的 main。
+- 独立分支与 PR：`feat/admin-menu-payment-provider-ux`，PR #122；基线为 PR #121 合并后的 main，PR #122 当前开放且尚未合并。
 - 已完成的界面调整：侧边菜单按仪表盘、运营管理、商品管理、财务管理、系统设置分组；支付设置增加统一支付方式选择卡，包含内置 TRC20 USDT、GMPay Edge、Epusdt 三个独立开关；商户凭证表单拆分；清理已识别的非必要信息提示。
 - 已完成的后端基础：GMPay Edge 独立凭证加密存储、启动/保存时独立加载；独立回调入口；签名查单 `GET /payments/gmpay/v1/order/query`；支付意图保存 provider 快照，拒绝同一订单切换服务商；Epusdt 与 GMPay Edge 托管收银台目前可按启用通道轮询分配。
 - 已实现：Telegram 商城统一支付选择按钮，按启用的 TRC20、Epusdt、GMPay Edge 三种通道轮询；支付意图固定 provider，链上到账扫描拒绝与订单快照通道不一致的转账。仍待跨服务商交易事件隔离审查、Go/Admin/Security CI 与真实构建验证；当前分支代码不得视为已发布或生产可用。
-- 数据库迁移 0060 新增 GMPay Edge 独立配置及支付意图 provider 字段；需通过 SQLite 与 PostgreSQL 迁移/回归测试。
+- 数据库迁移 0060 新增 GMPay Edge 独立配置及支付意图 provider 字段；SQLite 与 PostgreSQL 回归由 Go CI 执行，尚未取得本轮最终结果。
 - PR #121 已合并：merge commit `e0961fe4dd9a45dc203a91da2274c19ae9af0bc1`；main Go/Admin/Security CI 均成功；Docker Publish run `44944468809` 成功，镜像 digest：`sha256:6b5a98cafdcff3ab75201834c18c82d4f1033a717ec912b6f788e19562ef04e8`。
+- PR #122 首轮 Go CI 暴露测试夹具未执行 `reserved → creating` 原子认领的问题；已修正 Epusdt 幂等测试与 GMPay 生命周期测试，使其遵循生产认领流程。修复提交：`110444fb633363393d14ef1944f1b34b9be76059`、`4a64d7fa245156717e15b3ea6ec74b9caa9b394e`。
+- 当前修复提交 CI：Go run `44950436477`、Admin run `44950436480` 仍在运行；Security run `44950436478` 已通过。尚未合并、未发布镜像，待 Go/Admin 完成后再决定。
 
 ## 2026-11-22 — Epusdt + GMPay 商城支付闭环（PR #121 已合并并发布；文档版本 2.2.72）
 
