@@ -65,7 +65,7 @@ func TestGMPayCallbackRejectsWrongSignatureAndAmountMismatch(t *testing.T){
 	wrong:=signedCallback(order,"trade-wrong","12.50");wrong["signature"]="00"
 	if err:=m.HandleGMPayCallback(context.Background(),wrong,"{}");!errors.Is(err,ErrInvalidSignature){t.Fatalf("wrong signature error=%v",err)}
 
-	mismatch:=signedCallback(order,"trade-mismatch","12.51")
+	mismatch:=signedCallback(order,"trade-amount","12.51")
 	if err:=m.HandleGMPayCallback(context.Background(),mismatch,"{}");err!=nil{t.Fatal(err)}
 	got,err:=database.GetOrderByID(context.Background(),db,"sqlite",order.ID);if err!=nil{t.Fatal(err)}
 	if got.Status!="pending_payment"||got.PaymentReference!=""{t.Fatalf("amount mismatch must not confirm order: %+v",got)}
