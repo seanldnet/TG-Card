@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/http"
 	"net/mail"
-	"net/smtp"
 	"encoding/base64"
 	"os"
 	"path/filepath"
@@ -669,10 +668,9 @@ func (a *application) sendAdminEmailCode(w http.ResponseWriter,r *http.Request) 
 	code:=fmt.Sprintf("%06d",100000+n.Int64())
 	hash:=sha256.Sum256([]byte(code))
 	if err:=database.SaveAdminEmailCode(r.Context(),a.db,a.driver,claims.AdminID,input.Email,hex.EncodeToString(hash[:] ),time.Now().Add(10*time.Minute));err!=nil{log.Printf("save admin email verification code: %v",err);writeError(w,http.StatusInternalServerError,"验证码保存失败");return}
-	port:=settings.SMTPPort;if port==0{port=587}
 	body:="To: "+input.Email+"\r\nFrom: "+settings.SMTPFromName+" <"+settings.SMTPFromEmail+">\r\nSubject: TG-Card 邮箱绑定验证码\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n你的邮箱绑定验证码是："+code+"，10 分钟内有效。若非本人操作，请忽略此邮件。"
-	auth:=smtp.PlainAuth("",settings.SMTPUsername,password,settings.SMTPHost)
-	if err:=smtp.SendMail(fmt.Sprintf("%s:%d",settings.SMTPHost,port),auth,settings.SMTPFromEmail,[]string{input.Email},[]byte(body));err!=nil{log.Printf("send admin email verification: %v",err);writeError(w,http.StatusBadGateway,"验证码邮件发送失败，请检查 SMTP 配置");return}
+	port:=settings.SMTPPort;if port==0{port=587}
+	if err:=sendSMTPMessage(r.Context(),settings.SMTPHost,port,settings.SMTPUsername,password,settings.SMTPFromEmail,[]string{input.Email},[]byte(body),settings.SMTPUseTLS);err!=nil{log.Printf("send admin email verification: %v",err);writeError(w,http.StatusBadGateway,"验证码邮件发送失败："+err.Error());return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.email.code.send","email:"+input.Email,a.clientIP(r),r.UserAgent(),"verification code sent")
 	writeSuccess(w,http.StatusOK,map[string]int{"expiresInSeconds":600})
 }
@@ -1680,11 +1678,10 @@ func (a *application) testSiteEmail(w http.ResponseWriter, r *http.Request) {
  }
  password,err:=a.secrets.Decrypt(settings.SMTPPasswordCiphertext); if err!=nil { writeError(w,http.StatusInternalServerError,"Unable to decrypt SMTP password"); return }
  port:=settings.SMTPPort; if port==0 { port=587 }
- auth:=smtp.PlainAuth("",settings.SMTPUsername,password,settings.SMTPHost)
  fromName:=settings.SMTPFromName; if fromName=="" { fromName=settings.SiteName }
  subject:="=?UTF-8?B?"+base64.StdEncoding.EncodeToString([]byte("TG-Card 邮件配置测试"))+"?="
  body:="From: "+fromName+" <"+settings.SMTPFromEmail+">\r\nTo: "+settings.ContactEmail+"\r\nSubject: "+subject+"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n这是一封 TG-Card SMTP 测试邮件。"
- if err:=smtp.SendMail(fmt.Sprintf("%s:%d",settings.SMTPHost,port),auth,settings.SMTPFromEmail,[]string{settings.ContactEmail},[]byte(body)); err!=nil { log.Printf("SMTP test failed: %v",err); writeError(w,http.StatusBadGateway,"测试邮件发送失败："+err.Error()); return }
+ if err:=sendSMTPMessage(r.Context(),settings.SMTPHost,port,settings.SMTPUsername,password,settings.SMTPFromEmail,[]string{settings.ContactEmail},[]byte(body),settings.SMTPUseTLS); err!=nil { log.Printf("SMTP test failed: %v",err); writeError(w,http.StatusBadGateway,"测试邮件发送失败："+err.Error()); return }
  writeSuccess(w,http.StatusOK,map[string]bool{"sent":true})
 }
 
@@ -1718,10 +1715,9 @@ func (a *application) notifySiteEvent(ctx context.Context, event, details, userC
    log.Printf("email notification decrypt failed: event=%s error=%v",event,err)
   } else {
    port:=s.SMTPPort;if port==0{port=587}
-   auth:=smtp.PlainAuth("",s.SMTPUsername,password,s.SMTPHost)
    subject:="=?UTF-8?B?"+base64.StdEncoding.EncodeToString([]byte(s.SiteName+" "+title))+"?="
    mail:= "From: "+s.SMTPFromName+" <"+s.SMTPFromEmail+">\r\nTo: "+s.ContactEmail+"\r\nSubject: "+subject+"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"+body
-   if err:=smtp.SendMail(fmt.Sprintf("%s:%d",s.SMTPHost,port),auth,s.SMTPFromEmail,[]string{s.ContactEmail},[]byte(mail));err!=nil { log.Printf("email notification failed: event=%s error=%v",event,err) }
+   if err:=sendSMTPMessage(ctx,s.SMTPHost,port,s.SMTPUsername,password,s.SMTPFromEmail,[]string{s.ContactEmail},[]byte(mail),s.SMTPUseTLS);err!=nil { log.Printf("email notification failed: event=%s error=%v",event,err) }
   }
  }
  if telegramEnabled {
