@@ -226,7 +226,13 @@ func main() {
 		gatewaySecret, err = secrets.Decrypt(paymentSettings.EpusdtSecretCiphertext)
 		if err != nil { log.Fatalf("decrypt saved Epusdt GMPay secret: %v", err) }
 	}
-	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt GMPay checkout: %v", err) }
+	if err := paymentManager.SetGatewayConfig(paymentSettings.EpusdtBaseURL, paymentSettings.EpusdtPID, gatewaySecret, paymentSettings.EpusdtNotifyURL, paymentSettings.EpusdtEnabled); err != nil { log.Fatalf("initialize Epusdt checkout: %v", err) }
+	gmpayEdgeSecret := ""
+	if paymentSettings.GMPaySecretCiphertext != "" {
+		gmpayEdgeSecret, err = secrets.Decrypt(paymentSettings.GMPaySecretCiphertext)
+		if err != nil { log.Fatalf("decrypt saved GMPay Edge secret: %v", err) }
+	}
+	if err := paymentManager.SetGMPayEdgeConfig(paymentSettings.GMPayBaseURL, paymentSettings.GMPayPID, gmpayEdgeSecret, paymentSettings.GMPayNotifyURL, paymentSettings.GMPayEnabled); err != nil { log.Fatalf("initialize GMPay Edge checkout: %v", err) }
 	botManager.SetGMPayCheckout(paymentManager.CreateGMPayCheckout, paymentManager.CheckGMPayPayment, paymentManager.GatewayEnabled())
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
@@ -459,6 +465,11 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 		gmpaySecretCiphertext, err = a.secrets.Encrypt(input.GMPaySecret)
 		if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 GMPay Secret"); return }
 	}
+	gmpayEdgeSecret := ""
+	if gmpaySecretCiphertext != "" {
+		gmpayEdgeSecret, err = a.secrets.Decrypt(gmpaySecretCiphertext)
+		if err != nil { writeError(w, http.StatusInternalServerError, "无法读取已保存的 GMPay Edge Secret"); return }
+	}
 	if input.GMPayEnabled {
 		if !strings.HasPrefix(strings.ToLower(input.GMPayBaseURL), "https://") || !strings.HasPrefix(strings.ToLower(input.GMPayNotifyURL), "https://") {
 			writeError(w, http.StatusBadRequest, "GMPay Edge 网关和回调地址必须使用 HTTPS"); return
@@ -507,7 +518,8 @@ func (a *application) updatePaymentSettings(w http.ResponseWriter, r *http.Reque
 	a.botManager.SetPaymentConfig(input.ReceiveAddress, input.Enabled)
 	gatewaySecret := ""
 	if epusdtSecretCiphertext != "" { gatewaySecret, _ = a.secrets.Decrypt(epusdtSecretCiphertext) }
-	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt GMPay 配置应用失败："+err.Error()); return }
+	if err := a.paymentManager.SetGatewayConfig(input.EpusdtBaseURL, input.EpusdtPID, gatewaySecret, input.EpusdtNotifyURL, input.EpusdtEnabled); err != nil { writeError(w, http.StatusBadRequest, "Epusdt 配置应用失败："+err.Error()); return }
+	if err := a.paymentManager.SetGMPayEdgeConfig(input.GMPayBaseURL, input.GMPayPID, gmpayEdgeSecret, input.GMPayNotifyURL, input.GMPayEnabled); err != nil { writeError(w, http.StatusBadRequest, "GMPay Edge 配置应用失败："+err.Error()); return }
 	a.botManager.SetGMPayCheckout(a.paymentManager.CreateGMPayCheckout, a.paymentManager.CheckGMPayPayment, a.paymentManager.GatewayEnabled())
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "payment.settings.update", "payment:trc20", a.clientIP(r), r.UserAgent(), fmt.Sprintf("enabled=%t; receive address updated", input.Enabled))
 	writeSuccess(w, http.StatusOK, paymentSettingsView{
