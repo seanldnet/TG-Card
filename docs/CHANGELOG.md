@@ -1,3 +1,13 @@
+## 2026-11-21 — 备份恢复集成测试补充模拟 RPO/RTO 计时（PR #102 开发中）
+
+- 状态：独立分支 `test/backup-restore-rpo-metrics`，基于 PR #101 合并后的 main。
+- 影响模块：隔离 Docker Compose 备份恢复集成测试、运维验收指标。
+- 变更内容：测试记录备份完成时刻与模拟数据丢失时刻，输出模拟 RPO；同时记录恢复开始至 app 容器 running 的容器启动 RTO。
+- 数据库迁移：无；生产备份/恢复脚本无改动。
+- 配置/部署影响：无新增生产配置；CI 仍使用临时 PostgreSQL 与独立命名卷。
+- 兼容性与已知限制：模拟 RPO 不代表生产备份周期的真实 RPO；容器 running 不等于应用健康就绪，生产 RTO 需通过健康检查和业务 smoke test 计时。
+- 验证：待 PR CI 验证。PROJECT_STATUS 文档版本更新至 2.2.57。
+
 ## 2026-11-21 — P1 管理员敏感操作二次确认（PR #100 已合并）
 
 - 状态：PR #100 已 Squash Merge，merge commit `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34`；合并后 Go/Admin/Security CI 全部成功，Docker Publish run `44885024397` 已成功；GHCR `latest` 与 commit tag `50ecad1ca9fd72ec319e46b1d26fd659a3ad8f34` manifest digest：`sha256:1ef5ec7d1ef7cc75b9b764bcbea972b83687798468f705e0a4da3664704493a2`。
