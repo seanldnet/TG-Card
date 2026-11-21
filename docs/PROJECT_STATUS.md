@@ -13,7 +13,7 @@
 - 审计发现：后端已有 uncertain 采购人工核实接口，但上游设置页仍对 uncertain 订单展示直接重试/退款按钮，未提供 accepted / not_accepted 决策入口。
 - 本次补齐 UI：uncertain 只展示“核实受理状态”；供应商确认已受理时登记上游订单 ID/订单号，恢复 polling 并只查单；确认未受理/明确失败时记录核实依据，收敛为 failed 后才开放安全重试/退款。
 - 复用既有 `/api/upstream/procurements/{id}/resolve`，无新增 API、数据库迁移或环境变量；新增 not_accepted 状态回归测试，验证核实后可沿用原订单幂等键安全重试，且不创建退款流水。
-- PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security/Docker Publish workflows 已触发，最终发布状态待确认。真实供应商核验流程仍需生产环境验收。
+- PR head Go/Admin/Security CI 全部通过；合并后 main Go/Admin/Security/Docker Publish run `44874512618` 全部成功。GHCR `latest` 与提交标签 `d5b798785dcc614254acad56bbc1c482a207788e` 已发布，manifest digest：`sha256:52fc62675515d150e3fdd1f12d72428099e0c60b36b3e3e4133676fa1551cf4c`。真实供应商核验流程仍需生产环境验收。
 
 ## 2026-11-21 — P0-4 不确定交付禁止盲目手动重试（PR #91 已合并）
 
