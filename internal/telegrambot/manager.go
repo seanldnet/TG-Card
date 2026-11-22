@@ -2165,7 +2165,11 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
   log.Printf("AI support timeline load failed: ticket_id=%s error=%v",ticket.ID,err)
   return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"timeline_unavailable")
  }
- for i := len(messages)-1; i >= 0; i-- {
+ // The current buyer message has already been persisted and is normally
+ // the last timeline entry. Inspect the preceding conversation turn so an
+ // earlier operator reply reliably disables automatic AI takeover.
+ for i := len(messages)-2; i >= 0; i-- {
+  if messages[i].SenderType == "system" { continue }
   if messages[i].SenderType == "admin" { return false }
   if messages[i].SenderType == "user" { break }
  }
