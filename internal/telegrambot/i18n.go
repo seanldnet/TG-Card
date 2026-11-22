@@ -273,6 +273,8 @@ var botMessages = map[string]map[string]string{
 	"cart.topup": {languageChinese:"💰 充值余额",languageEnglish:"💰 Top up balance"},
 	"cart.orders": {languageChinese:"📦 查看我的订单",languageEnglish:"📦 View my orders"},
 	"cart.notify_created": {languageChinese:"购物车统一订单：",languageEnglish:"Combined cart order: "},
+	"cart.overflow": {languageChinese:"购物车金额超出可计算范围，请联系管理员。",languageEnglish:"The cart total exceeds the supported calculation range. Please contact support."},
+	"cart.item_kinds": {languageChinese:"商品种类：",languageEnglish:"Product types: "},
 }
 
 func botText(language, key string) string {
