@@ -1167,7 +1167,7 @@
     "deliveryUncertain": "Uncertain deliveries",
     "upstreamCatalogSync": "Supplier catalog sync",
     "syncProgressUnit": "items",
-    "syncPage": "Page",
+    "syncPage": "Page {page}",
     "noActiveSync": "No sync job is currently running",
     "capSuccessRate": "Cap verification success rate",
     "noSample": "No samples",
