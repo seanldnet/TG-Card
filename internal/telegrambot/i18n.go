@@ -397,7 +397,7 @@ var botMessages = map[string]map[string]string{
 	"owner.support.back_list": {languageChinese: "返回列表", languageEnglish: "Back to list"},
 	"owner.support.reply_prompt": {languageChinese: "请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单：", languageEnglish: "Send your reply to the customer (text, image, or file). Current ticket: "},
 	"owner.support.closed": {languageChinese: "该工单已结单。", languageEnglish: "This ticket is already closed."},
-	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"}
+	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"},
 }
 
 func botText(language, key string) string {
