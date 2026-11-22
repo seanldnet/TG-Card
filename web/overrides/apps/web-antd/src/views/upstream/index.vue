@@ -196,60 +196,60 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
 
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
-  <a-card :bordered="false" :loading="loading" title="上游对接">
-   <template #extra><a-tag :color="settings.enabled&&!settings.catalogStale?'success':'default'">{{settings.enabled&&!settings.catalogStale?'上游售卖中':'本地商品售卖'}}</a-tag></template>
+  <a-card :bordered="false" :loading="loading" :title="$t('tg-card.upstream.title')">
+   <template #extra><a-tag :color="settings.enabled&&!settings.catalogStale?'success':'default'">{{settings.enabled&&!settings.catalogStale?$t('tg-card.upstream.catalogSelling'):$t('tg-card.upstream.localSelling')}}</a-tag></template>
    
    <a-form layout="vertical">
-    <a-form-item label="上游类型">
+    <a-form-item :label="$t('tg-card.upstream.supplierType')">
      <a-select v-model:value="settings.provider" disabled>
       <a-select-option value="dujiao_next">Dujiao-Next（官方 Open API）</a-select-option>
      </a-select>
     </a-form-item>
-    <a-form-item label="上游站点地址" extra="填写上游站点 HTTPS 根地址，不要添加 /api/v1/upstream。">
+    <a-form-item :label="$t('tg-card.upstream.siteAddress')" :extra="$t('tg-card.upstream.siteAddressExtra')">
      <a-input v-model:value="settings.baseUrl" placeholder="https://supplier.example.com" autocomplete="url"/>
     </a-form-item>
-    <a-form-item label="商户 ID / API Key" :extra="settings.merchantIdConfigured?'已保存凭证：'+settings.merchantIdMasked+'；留空表示保持原值。':'对应 Dujiao-Next API Key。'">
-     <a-input v-model:value="merchantId" autocomplete="off" placeholder="输入 Dujiao-Next API Key；留空保持已保存值"/>
+    <a-form-item :label="$t('tg-card.upstream.merchantKey')" :extra="settings.merchantIdConfigured?'已保存凭证：'+settings.merchantIdMasked+'；留空表示保持原值。':'对应 Dujiao-Next API Key。'">
+     <a-input v-model:value="merchantId" autocomplete="off" :placeholder="$t('tg-card.upstream.merchantKeyPlaceholder')"/>
     </a-form-item>
-    <a-form-item label="商户密钥 / API Secret" :extra="settings.merchantSecretConfigured?'密钥已加密保存且不会回显；留空表示保持原密钥。':'对应 Dujiao-Next API Secret，将使用 AES-256-GCM 加密保存。'">
-     <a-input-password v-model:value="merchantSecret" autocomplete="new-password" placeholder="输入 API Secret；留空保持已保存值"/>
+    <a-form-item :label="$t('tg-card.upstream.merchantSecret')" :extra="settings.merchantSecretConfigured?'密钥已加密保存且不会回显；留空表示保持原密钥。':'对应 Dujiao-Next API Secret，将使用 AES-256-GCM 加密保存。'">
+     <a-input-password v-model:value="merchantSecret" autocomplete="new-password" :placeholder="$t('tg-card.upstream.secretPlaceholder')"/>
     </a-form-item>
-    <a-form-item v-if="settings.merchantIdConfigured||settings.merchantSecretConfigured" label="凭证管理">
+    <a-form-item v-if="settings.merchantIdConfigured||settings.merchantSecretConfigured" :label="$t('tg-card.upstream.credentials')">
      <a-checkbox v-model:checked="clearCredentials">清除已保存的 API Key 和 API Secret</a-checkbox>
     </a-form-item>
     <a-divider/>
-    <a-form-item label="上游价格加价策略">
+    <a-form-item :label="$t('tg-card.upstream.markup')">
      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
       <div><div class="mb-1 text-xs text-gray-500">百分比加价</div><a-input-number v-model:value="settings.markupPercent" class="w-full" :min="0" :max="1000" :step="1" addon-after="%"/></div>
       <div><div class="mb-1 text-xs text-gray-500">固定加价（USDT 分）</div><a-input-number v-model:value="settings.markupFixedMinor" class="w-full" :min="0" :max="9000000000000" :step="1"/></div>
      </div>
      <div class="mt-2 text-xs text-gray-500">最终售价 = 上游 SKU 原价 × 汇率转 USDT ×（1 + 百分比）+ 固定加价。固定加价以 0.01 USDT 为单位；价格按分四舍五入。</div>
     </a-form-item>
-    <a-form-item label="上游币种兑 USDT 汇率" extra="填写 1 单位上游币种可兑换多少 USDT。例如上游为 CNY 时可填 7.20；上游币种为 USDT 时自动按 1 计算。非 USDT 币种未配置汇率将拒绝同步，避免错误定价。">
-     <a-input-number v-model:value="settings.exchangeRateToUSDT" class="w-full" :min="0" :max="1000000" :step="0.01" placeholder="例如 CNY → USDT：7.20"/>
+    <a-form-item :label="$t('tg-card.upstream.exchangeRate')" extra="填写 1 单位上游币种可兑换多少 USDT。例如上游为 CNY 时可填 7.20；上游币种为 USDT 时自动按 1 计算。非 USDT 币种未配置汇率将拒绝同步，避免错误定价。">
+     <a-input-number v-model:value="settings.exchangeRateToUSDT" class="w-full" :min="0" :max="1000000" :step="0.01" :placeholder="$t('tg-card.upstream.exchangeRatePlaceholder')"/>
     </a-form-item>
-    <a-form-item label="自动同步间隔">
+    <a-form-item :label="$t('tg-card.upstream.syncInterval')">
      <a-select v-model:value="settings.syncIntervalMinutes" class="w-full">
       <a-select-option :value="5">每 5 分钟</a-select-option><a-select-option :value="15">每 15 分钟</a-select-option><a-select-option :value="30">每 30 分钟</a-select-option><a-select-option :value="60">每小时</a-select-option><a-select-option :value="360">每 6 小时</a-select-option><a-select-option :value="1440">每天</a-select-option>
      </a-select>
     </a-form-item>
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-     <a-form-item label="同步批次大小（条）" extra="每页处理 20–50 个上游商品；默认 25。"><a-input-number v-model:value="settings.syncBatchSize" class="w-full" :min="20" :max="50" :step="5"/></a-form-item>
-     <a-form-item label="批次间隔（毫秒）" extra="每批提交后暂停 250–10000 毫秒；默认 1000。"><a-input-number v-model:value="settings.syncBatchDelayMs" class="w-full" :min="250" :max="10000" :step="250"/></a-form-item>
+     <a-form-item :label="$t('tg-card.upstream.batchSize')" extra="每页处理 20–50 个上游商品；默认 25。"><a-input-number v-model:value="settings.syncBatchSize" class="w-full" :min="20" :max="50" :step="5"/></a-form-item>
+     <a-form-item :label="$t('tg-card.upstream.batchDelay')" extra="每批提交后暂停 250–10000 毫秒；默认 1000。"><a-input-number v-model:value="settings.syncBatchDelayMs" class="w-full" :min="250" :max="10000" :step="250"/></a-form-item>
     </div>
-    <a-form-item label="启用上游售卖">
+    <a-form-item :label="$t('tg-card.upstream.enableSelling')">
      <div class="flex flex-wrap items-center gap-3">
       <a-switch v-model:checked="settings.enabled"  :disabled="settings.enabled||settings.catalogStale||settings.syncStatus!=='success'"/>
       <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；上游售卖启用期间不能直接修改站点、凭证或价格策略；请先停用并清除上游目录，再修改配置、重新同步后启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
      </div>
     </a-form-item>
     <a-divider />
-    <a-form-item label="上游采购回调地址" extra="请填写本站公网 HTTPS 地址，路径固定为 /api/v1/upstream/callback。配置后上游交付完成会主动回调；轮询仍作为兜底。">
-     <a-input v-model:value="settings.callbackUrl" placeholder="https://你的域名/api/v1/upstream/callback" autocomplete="url"/>
+    <a-form-item :label="$t('tg-card.upstream.callback')" extra="请填写本站公网 HTTPS 地址，路径固定为 /api/v1/upstream/callback。配置后上游交付完成会主动回调；轮询仍作为兜底。">
+     <a-input v-model:value="settings.callbackUrl" :placeholder="$t('tg-card.upstream.callbackPlaceholder')" autocomplete="url"/>
     </a-form-item>
-    <a-form-item label="采购查单轮询间隔（秒）"><a-input-number v-model:value="settings.procurementPollIntervalSeconds" class="w-full" :min="5" :max="3600" :step="5"/></a-form-item>
-    <a-form-item label="采购等待超时（分钟）"><a-input-number v-model:value="settings.procurementTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></a-form-item>
-    <a-form-item label="供应商余额低于此值时告警" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" placeholder="例如 100.00"/></a-form-item>
+    <a-form-item :label="$t('tg-card.upstream.pollInterval')"><a-input-number v-model:value="settings.procurementPollIntervalSeconds" class="w-full" :min="5" :max="3600" :step="5"/></a-form-item>
+    <a-form-item :label="$t('tg-card.upstream.timeout')"><a-input-number v-model:value="settings.procurementTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></a-form-item>
+    <a-form-item :label="$t('tg-card.upstream.lowBalance')" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" :placeholder="$t('tg-card.upstream.lowBalancePlaceholder')"/></a-form-item>
     
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
@@ -261,7 +261,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
     </div>
    </a-form>
   </a-card>
-  <a-card :bordered="false" title="上游采购人工处理队列">
+  <a-card :bordered="false" :title="$t('tg-card.upstream.procurementQueue')">
    <template #extra><a-button size="small" :loading="procurementLoading" @click="loadProcurements">刷新队列</a-button></template>
    <a-table :data-source="procurements" :loading="procurementLoading" :pagination="{pageSize:8}" row-key="localOrderId" :scroll="{x:760}">
     <a-table-column title="本地订单号" data-index="localOrderNo" :width="190"/>
@@ -290,16 +290,16 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
     </a-radio-group>
    </a-form-item>
    <template v-if="resolveResolution==='accepted'">
-    <a-form-item label="上游订单 ID"><a-input v-model:value="resolveExternalOrderID" placeholder="填写供应商返回的数字订单 ID"/></a-form-item>
-    <a-form-item label="上游订单号"><a-input v-model:value="resolveExternalOrderNo" placeholder="可选，填写供应商订单号"/></a-form-item>
+    <a-form-item label="上游订单 ID"><a-input v-model:value="resolveExternalOrderID" :placeholder="$t('tg-card.upstream.externalIdPlaceholder')"/></a-form-item>
+    <a-form-item label="上游订单号"><a-input v-model:value="resolveExternalOrderNo" :placeholder="$t('tg-card.upstream.externalNoPlaceholder')"/></a-form-item>
    </template>
-   <a-form-item label="核实依据 / 处理说明"><a-textarea v-model:value="resolveNote" :rows="3" :maxlength="500" show-count placeholder="例如：供应商后台订单查询结果、客服确认记录等"/></a-form-item>
+   <a-form-item label="核实依据 / 处理说明"><a-textarea v-model:value="resolveNote" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.upstream.evidencePlaceholder')"/></a-form-item>
   </a-modal>
   <a-modal v-model:open="refundVisible" title="确认上游采购失败退款" :confirm-loading="!!actionLoading" @ok="submitRefund">
    <a-alert type="warning" show-icon message="退款将按本地订单金额记入买家站内余额，并生成独立退款账本和管理员审计记录。" />
-   <a-form-item class="mt-4" label="退款原因"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count placeholder="填写已确认无法履约的原因"/></a-form-item>
+   <a-form-item class="mt-4" label="退款原因"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.upstream.refundReasonPlaceholder')"/></a-form-item>
   </a-modal>
-  <a-card :bordered="false" title="连接与同步状态">
+  <a-card :bordered="false" :title="$t('tg-card.upstream.connectionStatus')">
    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <div class="rounded-lg border border-gray-200 p-4">
      <div class="mb-2 text-sm text-gray-500">连接测试</div>
