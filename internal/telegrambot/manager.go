@@ -1162,6 +1162,11 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			_ = m.answerCallback(ctx, cfg.Token, query.ID, "Language preference could not be saved")
 			return
 		}
+		if err := database.UpsertTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(query.From.ID, 10), query.From.Username, query.From.FirstName, query.From.LastName, cfg.ID); err != nil {
+			log.Printf("upsert Telegram user before language preference save failed: user_id=%d error=%v", query.From.ID, err)
+			_ = m.answerCallback(ctx, cfg.Token, query.ID, "Language preference could not be saved")
+			return
+		}
 		if err := database.SetTelegramUserLanguage(ctx, m.db, m.driver, strconv.FormatInt(query.From.ID, 10), language); err != nil {
 			log.Printf("save Telegram language preference failed: user_id=%d error=%v", query.From.ID, err)
 			_ = m.answerCallback(ctx, cfg.Token, query.ID, "Language preference could not be saved")
