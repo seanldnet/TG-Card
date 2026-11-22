@@ -1,10 +1,19 @@
-## 2026-11-22 — 管理后台移动端交互与布局修复（PR 待验证；文档版本 2.2.86）
+## 2026-11-22 — PR #137 生产部署与移动端回归验收完成（文档版本 2.2.87）
+
+- 项目所有者确认本轮修复部署后均测试正常：备份密钥生成/保存可完成管理员二次确认；对账、资金异常、全局异常页面按钮尺寸统一；全局异常筛选区域间距正常；TRC20 开关位于独立收款卡片右上角；备份密钥按钮与安全提示框留白正常。
+- PR #137 已合并，main commit：`76a1a45fa23c51ceeb5d2f030a3f2798d8c76a24`。Go Backend CI、Admin Frontend CI、Security Scan 及 Docker Publish 均成功。
+- GHCR 镜像：`ghcr.io/seanldnet/tg-card:latest`、`ghcr.io/seanldnet/tg-card:76a1a45fa23c51ceeb5d2f030a3f2798d8c76a24`；OCI manifest digest：`sha256:e60c1433e66f613cab06f2a7008679e9117ceaa61cd724359b0f0b7d1124e36e`。
+- 本轮无数据库迁移；项目所有者已确认部署后的实际页面与交互均正常，生产验收完成。
+
+## 2026-11-22 — 管理后台移动端交互与布局修复（PR #137 已合并、发布并经项目所有者验收；文档版本 2.2.87）
 
 - 修复备份密钥保存二次确认失败：将 `settings.site.backup_encryption.update` 纳入后端受保护敏感操作白名单，匹配现有敏感操作确认流程。
 - TRC20 启用开关移入收款配置卡片右上角，移除重复的顶部支付方式卡片；TRC20 保存操作保留在卡片内部。
 - 对账、资金异常、全局异常页面的按钮尺寸统一为小按钮；全局异常筛选改为纵向表单标签布局，改善窄屏下标签与边框拥挤问题。
 - 备份密钥生成/保存操作区与警告提示增加间距，说明文字提高行高。
-- 本轮无数据库迁移；Go Backend CI、Admin Frontend CI 与 Security Scan 待 PR 验证。生产部署需在镜像发布后另行执行。
+- 本轮无数据库 schema 迁移。PR #137 已 Squash Merge 至 main，合并提交 `76a1a45fa23c51ceeb5d2f030a3f2798d8c76a24`；PR 阶段 Go Backend CI、Admin Frontend CI、Security Scan 全部通过，合并后 main 对应检查及 Docker Publish 均成功。
+- GHCR 已推送 `ghcr.io/seanldnet/tg-card:latest` 与 commit tag `ghcr.io/seanldnet/tg-card:76a1a45fa23c51ceeb5d2f030a3f2798d8c76a24`；OCI manifest digest：`sha256:e60c1433e66f613cab06f2a7008679e9117ceaa61cd724359b0f0b7d1124e36e`。
+- 项目所有者于 2026-11-22 确认已部署测试，以上密钥二次确认、按钮尺寸、异常筛选间距、TRC20 卡片开关布局及备份密钥区域间距均正常；本轮生产验收通过。
 
 ## 2026-11-22 — 网站设置管理数据库备份加密密钥（PR 待验证；文档版本 2.2.85）
 
