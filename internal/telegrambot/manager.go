@@ -988,7 +988,7 @@ func canonicalReplyKeyboardText(value string) string {
 	}
 }
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
-func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}}}} }
+func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return mainMenuKeyboardForLanguage(languageChinese) }
 func mainMenuKeyboardForLanguage(language string) map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
  {{"text":botText(language,"menu.shop"),"callback_data":"menu:shop"},{"text":botText(language,"menu.search"),"callback_data":"menu:search"}},
@@ -1362,7 +1362,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		err:=database.SubscribeProductStock(ctx,m.db,m.driver,productID,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10))
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订阅失败，请稍后重试"); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.back_store"),"callback_data":"shop:home"}}}})
 	case query.Data == "cart:show":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.opening"))
 		m.showCart(ctx,cfg,chatID,query.From.ID)
@@ -1632,7 +1632,7 @@ func (m *Manager) SendWalletRechargeNotice(ctx context.Context,item database.Wal
 	return m.sendMessage(ctx,current.config.Token,chatID,text)
 }
 
-func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatID,userID int64,amountAtomic int64) {
+func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatID,userID int64,amountAtomic int64) {\n\tlanguage:=m.languageForUser(ctx,cfg,TelegramUser{ID:userID})
 	address,enabled:=m.paymentConfig()
 	if !enabled || address=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"充值功能暂未启用，请联系管理员。");return }
 	item,err:=database.CreateWalletRecharge(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(userID,10),strconv.FormatInt(chatID,10),amountAtomic,30*time.Minute)
