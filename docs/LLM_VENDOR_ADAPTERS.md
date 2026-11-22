@@ -30,7 +30,7 @@ Baseline: PR #140 AI support foundation branch. Keep the generic OpenAI-compatib
 - Standard Chat Completions response is parsed; reasoning_content is never returned as answer text.
 - Empty/malformed choices and non-2xx responses fail closed.
 - Provider error body and API key are not leaked.
-- Context cancellation and timeout are respected.
+- Context cancellation and timeout are respected and classified separately: cancellation is non-retryable, while transport deadlines/timeouts are retryable.
 - Unknown provider IDs and invalid URLs are rejected.
 - Kimi .ai and .cn presets remain independent and are not auto-switched.
 - DeepSeek thinking on/off and effort serialization are tested for explicit request configuration.
@@ -61,7 +61,7 @@ Still incomplete and not claimed as production-ready:
 - DeepSeek thinking-mode enable/disable and reasoning-effort fields are supported by the internal completion request contract, but the Telegram support call path and administrator settings do not currently expose operator controls for them. They therefore remain unavailable as an operator-configurable feature in this delivery; exact availability is model/API-version dependent and must be verified against the selected model.
 - OpenAI model capability is not inferred from model names. Operators can explicitly select `TokenLimitParameter` as `auto` (default: `max_completion_tokens`), `max_completion_tokens`, or `max_tokens`; the legacy choice must be selected for models/gateways that require it.
 - Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
-- HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `request_timeout`, `upstream_busy`, `upstream_error`, `unexpected_status`) plus a retryable flag. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
+- HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `request_timeout`, `request_cancelled`, `upstream_busy`, `upstream_error`, `unexpected_status`) plus a retryable flag. Transport-level deadlines/timeouts are classified as retryable `request_timeout`; caller cancellation is classified separately as non-retryable `request_cancelled`; other network/read failures are retryable `upstream_error`. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
 - Timeout and caller-cancellation contract tests are now present; malformed/empty JSON, missing/empty choices, oversized bodies, and empty HTTP 204 response contract tests have now been added; a per-vendor HTTP failure-classification matrix now covers all six configured provider IDs; CI execution on the final rebased head still remains.
 - Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
 
