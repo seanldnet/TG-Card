@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { useWindowSize } from '@vueuse/core';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
+import { $t } from '#/locales';
 
 interface Bot { id: string; name: string; username: string; status: number; }
 interface Product { id: string; name: string; status: number; stockCount: number; priceMinor: number; currency: string; }
@@ -54,15 +55,15 @@ async function loadDashboard() {
     if (results[3].status === 'fulfilled') tickets.value = results[3].value;
     if (results[4].status === 'fulfilled') metrics.value = results[4].value;
     const failures = results.filter((x) => x.status === 'rejected').length;
-    if (failures === 5) message.error('经营数据加载失败，请检查登录状态和服务日志');
-    else if (failures > 0) message.warning('部分经营数据暂时无法加载，已显示可获取的数据');
+    if (failures === 5) message.error($t('tg-card.analytics.loadFailed'));
+    else if (failures > 0) message.warning($t('tg-card.analytics.partialLoad'));
     loadedAt.value = new Date().toLocaleString();
   } finally {
     loading.value = false;
   }
 }
 function statusText(status: string) {
-  const labels: Record<string,string> = { pending_payment:'待付款', paid:'已付款', delivering:'发货中', delivered:'已发货', delivery_failed:'发货失败', expired:'已过期', cancelled:'已取消', failed:'异常' };
+  const labels: Record<string,string> = { pending_payment:$t('tg-card.analytics.orderStatus.pendingPayment'), paid:$t('tg-card.analytics.orderStatus.paid'), delivering:$t('tg-card.analytics.orderStatus.delivering'), delivered:$t('tg-card.analytics.orderStatus.delivered'), delivery_failed:$t('tg-card.analytics.orderStatus.deliveryFailed'), expired:$t('tg-card.analytics.orderStatus.expired'), cancelled:$t('tg-card.analytics.orderStatus.cancelled'), failed:$t('tg-card.analytics.orderStatus.failed') };
   return labels[status] || status;
 }
 function statusColor(status: string) {
@@ -74,13 +75,13 @@ function statusColor(status: string) {
 }
 function formatDuration(seconds: number) {
   if (!seconds || seconds < 0) return '—';
-  if (seconds < 3600) return Math.floor(seconds / 60) + ' 分钟';
-  if (seconds < 86400) return Math.floor(seconds / 3600) + ' 小时';
-  return Math.floor(seconds / 86400) + ' 天';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} ${$t('tg-card.analytics.duration.minutes')}`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} ${$t('tg-card.analytics.duration.hours')}`;
+  return `${Math.floor(seconds / 86400)} ${$t('tg-card.analytics.duration.days')}`;
 }
 function syncStatusText(value: string) {
-  const labels: Record<string,string> = { not_started:'尚未同步', idle:'空闲', queued:'排队中', running:'同步中', cleaning:'清理中', success:'同步成功', failed:'同步失败', paused:'已暂停', cancelled:'已取消' };
-  return labels[value] || value || '未知';
+  const labels: Record<string,string> = { not_started:$t('tg-card.analytics.syncStatus.notStarted'), idle:$t('tg-card.analytics.syncStatus.idle'), queued:$t('tg-card.analytics.syncStatus.queued'), running:$t('tg-card.analytics.syncStatus.running'), cleaning:$t('tg-card.analytics.syncStatus.cleaning'), success:$t('tg-card.analytics.syncStatus.success'), failed:$t('tg-card.analytics.syncStatus.failed'), paused:$t('tg-card.analytics.syncStatus.paused'), cancelled:$t('tg-card.analytics.syncStatus.cancelled') };
+  return labels[value] || value || $t('tg-card.analytics.syncStatus.unknown');
 }
 function open(path: string) { void router.push(path); }
 function formatTime(value: string) { const d = new Date(value); return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString(); }
@@ -91,62 +92,62 @@ onMounted(loadDashboard);
   <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="m-0 text-2xl font-semibold">TG-Card 经营概览</h1>
-        <p class="mt-1 mb-0 text-sm text-gray-500">单商户 Telegram 多 Bot 自动发卡商城 · 实时读取业务数据</p>
+        <h1 class="m-0 text-2xl font-semibold">{{$t('tg-card.analytics.title')}}</h1>
+        <p class="mt-1 mb-0 text-sm text-gray-500">{{$t('tg-card.analytics.subtitle')}}</p>
       </div>
-      <a-button :loading="loading" @click="loadDashboard">刷新数据</a-button>
+      <a-button :loading="loading" @click="loadDashboard">{{$t('tg-card.analytics.refresh')}</a-button>
     </div>
 
     <a-row v-if="metrics" :gutter="[12,12]">
       <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">24 小时交付成功率</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.deliverySuccessRate')}}</div>
         <div class="mt-1 text-2xl font-semibold">{{ (metrics.delivery.deliverySuccessRate * 100).toFixed(1) }}%</div>
         <a-progress class="mt-2" :percent="Math.round(metrics.delivery.deliverySuccessRate * 100)" :show-info="false"/>
-        <div class="mt-1 text-xs text-gray-500">成功 {{ metrics.delivery.deliveredCount }} · 失败 {{ metrics.delivery.deliveryFailedCount }}</div>
+        <div class="mt-1 text-xs text-gray-500">{{$t('tg-card.analytics.success')}} {{ metrics.delivery.deliveredCount }} · {{$t('tg-card.analytics.failed')}} {{ metrics.delivery.deliveryFailedCount }}</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">待核实交付</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.uncertainDelivery')}}</div>
         <div class="mt-1 text-2xl font-semibold">{{ metrics.delivery.deliveryUncertainCount }}</div>
-        <div class="mt-2 text-xs text-gray-500">最久等待 {{ formatDuration(metrics.delivery.deliveryUncertainOldestAgeSeconds) }}</div>
-        <div class="mt-1 text-xs text-gray-500">24 小时新增不确定 {{ metrics.delivery.deliveryUncertainWindowCount }}</div>
+        <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.oldestWait')}} {{ formatDuration(metrics.delivery.deliveryUncertainOldestAgeSeconds) }}</div>
+        <div class="mt-1 text-xs text-gray-500">{{$t('tg-card.analytics.newUncertain24h')}} {{ metrics.delivery.deliveryUncertainWindowCount }}</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">退款账本冲突</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.refundConflict')}}</div>
         <div class="mt-1 text-2xl font-semibold" :class="metrics.alerts.refundConflicts ? 'text-red-600' : ''">{{ metrics.alerts.refundConflicts }}</div>
-        <div class="mt-2 text-xs text-gray-500">上游受理不确定 {{ metrics.alerts.procurementUncertain }} 笔（最久 {{ formatDuration(metrics.delivery.procurementUncertainOldestAgeSeconds) }}）</div>
-        <div class="mt-1 text-xs text-gray-500">交付不确定 {{ metrics.alerts.deliveryUncertain }} 笔</div>
+        <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.procurementUncertain')}} {{ metrics.alerts.procurementUncertain }} ({{$t('tg-card.analytics.oldestWait')}} {{ formatDuration(metrics.delivery.procurementUncertainOldestAgeSeconds) }})</div>
+        <div class="mt-1 text-xs text-gray-500">{{$t('tg-card.analytics.deliveryUncertain')}} {{ metrics.alerts.deliveryUncertain }}</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="6"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">上游目录同步</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.upstreamCatalogSync')}}</div>
         <div class="mt-1 text-lg font-semibold">{{ syncStatusText(metrics.upstreamSync.job?.status || metrics.upstreamSync.status) }}</div>
         <a-progress v-if="metrics.upstreamSync.job" class="mt-2" :percent="Math.round(metrics.upstreamSync.job.progressPercent)" :show-info="false"/>
-        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} 项 · 第 {{ metrics.upstreamSync.job.currentPage }} 页</div>
-        <div v-else class="mt-2 text-xs text-gray-500">当前没有运行中的同步任务</div>
+        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} {{$t('tg-card.analytics.syncProgressUnit')}} · {{$t('tg-card.analytics.syncPage')}} {{ metrics.upstreamSync.job.currentPage }} 页</div>
+        <div v-else class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.noActiveSync')}}</div>
       </a-card></a-col>
     </a-row>
     <a-row v-if="metrics" :gutter="[12,12]">
       <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">Cap 验证成功率</div>
-        <div class="mt-1 text-2xl font-semibold">{{ metrics.cap.total ? metrics.cap.successRatePercent.toFixed(1) + '%' : '暂无样本' }}</div>
-        <div class="mt-2 text-xs text-gray-500">成功 {{ metrics.cap.success }} · 失败 {{ metrics.cap.failure }}（进程启动以来）</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.capSuccessRate')}}</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.cap.total ? metrics.cap.successRatePercent.toFixed(1) + '%' : '{{$t('tg-card.analytics.noSample')}}' }}</div>
+        <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.success')}} {{ metrics.cap.success }} · {{$t('tg-card.analytics.failed')}} {{ metrics.cap.failure }}（{{$t('tg-card.analytics.processLifetime')}}）</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">API P95 延迟</div>
-        <div class="mt-1 text-2xl font-semibold">{{ metrics.api.sampleCount ? metrics.api.p95Milliseconds.toFixed(1) + ' ms' : '暂无样本' }}</div>
-        <div class="mt-2 text-xs text-gray-500">最近 {{ metrics.api.sampleCount }} 次 API 请求</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.apiP95')}}</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.api.sampleCount ? metrics.api.p95Milliseconds.toFixed(1) + ' ms' : '{{$t('tg-card.analytics.noSample')}}' }}</div>
+        <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.recentApiRequests')}}: {{ metrics.api.sampleCount }}</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
-        <div class="text-xs text-gray-500">数据库连接池</div>
+        <div class="text-xs text-gray-500">{{$t('tg-card.analytics.databasePool')}}</div>
         <div class="mt-1 text-2xl font-semibold">{{ metrics.databasePool.inUse }} / {{ metrics.databasePool.maxOpen || '∞' }}</div>
-        <div class="mt-2 text-xs text-gray-500">空闲 {{ metrics.databasePool.idle }} · 等待次数 {{ metrics.databasePool.waitCount }}</div>
+        <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.idle')}} {{ metrics.databasePool.idle }} · {{$t('tg-card.analytics.waitCount')}} {{ metrics.databasePool.waitCount }}</div>
       </a-card></a-col>
     </a-row>
     <a-row :gutter="[12,12]">
       <a-col v-for="metric in [
-        { title: '机器人', value: bots.length, hint: `运行中 ${activeBots} 个`, path: '/bots', icon: 'mdi:robot-outline', tone: 'text-blue-600 bg-transparent' },
-        { title: '商品与库存', value: products.length, hint: `上架 ${activeProducts} 件 · 库存 ${stockCount}`, path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-blue-600 bg-transparent' },
-        { title: '订单', value: orders.length, hint: `待付款 ${pendingOrders} 笔`, path: '/orders', icon: 'mdi:receipt-text-outline', tone: 'text-blue-600 bg-transparent' },
-        { title: '待处理售后', value: openTickets, hint: `发货异常 ${deliveryIssues} 笔`, path: '/support', icon: 'mdi:headset', tone: 'text-blue-600 bg-transparent' },
+        { title: $t('tg-card.analytics.bots'), value: bots.length, hint: $t('tg-card.analytics.runningBots', { count: activeBots }), path: '/bots', icon: 'mdi:robot-outline', tone: 'text-blue-600 bg-transparent' },
+        { title: '{{$t('tg-card.analytics.product')}}与库存', value: products.length, hint: `上架 ${activeProducts} 件 · 库存 ${stockCount}`, path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-blue-600 bg-transparent' },
+        { title: $t('tg-card.analytics.orders'), value: orders.length, hint: $t('tg-card.analytics.pendingOrders', { count: pendingOrders }), path: '/orders', icon: 'mdi:receipt-text-outline', tone: 'text-blue-600 bg-transparent' },
+        { title: $t('tg-card.analytics.pendingSupport'), value: openTickets, hint: $t('tg-card.analytics.deliveryIssues', { count: deliveryIssues }), path: '/support', icon: 'mdi:headset', tone: 'text-blue-600 bg-transparent' },
       ]" :key="metric.path" :xs="12" :sm="12" :xl="6">
         <a-card :bordered="false" hoverable class="h-full cursor-pointer" :body-style="{ padding: '16px 18px' }" @click="open(metric.path)">
           <div class="flex items-center justify-between gap-2">
@@ -158,15 +159,15 @@ onMounted(loadDashboard);
     </a-row>
 
     <a-card class="mt-4" :bordered="false">
-      <template #title>业务快捷入口</template>
+      <template #title>{{$t('tg-card.analytics.shortcuts')}}</template>
       <a-row :gutter="[12,12]">
         <a-col v-for="item in [
-          { title:'机器人管理', desc:'连接 Bot、配置欢迎语', path:'/bots' },
-          { title:'商品与卡密', desc:'商品分类、售价、库存导入', path:'/catalog' },
-          { title:'订单管理', desc:'订单状态与发货重试', path:'/orders' },
-          { title:'支付流水', desc:'链上交易核验与人工补单', path:'/payments/transactions' },
-          { title:'售后工单', desc:'处理用户售后请求', path:'/support' },
-          { title:'支付设置', desc:'配置 TRON 收款参数', path:'/settings/payment' },
+          { title:$t('tg-card.analytics.botManagement'), desc:$t('tg-card.analytics.botDescription'), path:'/bots' },
+          { title:'{{$t('tg-card.analytics.product')}}与卡密', desc:'{{$t('tg-card.analytics.product')}}分类、售价、库存导入', path:'/catalog' },
+          { title:$t('tg-card.analytics.orderManagement'), desc:'订单{{$t('tg-card.analytics.status')}}与发货重试', path:'/orders' },
+          { title:$t('tg-card.analytics.paymentTransactions'), desc:$t('tg-card.analytics.paymentDescription'), path:'/payments/transactions' },
+          { title:$t('tg-card.analytics.supportTickets'), desc:$t('tg-card.analytics.supportDescription'), path:'/support' },
+          { title:$t('tg-card.analytics.paymentSettings'), desc:$t('tg-card.analytics.paymentSettingsDescription'), path:'/settings/payment' },
         ]" :key="item.path" :xs="24" :sm="12" :lg="8">
           <a-card size="small" hoverable @click="open(item.path)">
             <div class="font-medium">{{ item.title }}</div>
@@ -179,8 +180,8 @@ onMounted(loadDashboard);
     <a-card class="mt-4" :bordered="false">
       <template #title>
         <div class="flex items-center justify-between gap-3">
-          <span>最近订单</span>
-          <a-button type="link" @click="open('/orders')">全部订单</a-button>
+          <span>{{$t('tg-card.analytics.recentOrders')}}</span>
+          <a-button type="link" @click="open('/orders')">{{$t('tg-card.analytics.allOrders')}}</a-button>
         </div>
       </template>
       <div v-if="isMobile" class="tg-mobile-list">
@@ -197,23 +198,23 @@ onMounted(loadDashboard);
             <div class="text-xs text-gray-500">{{ formatTime(record.createdAt) }}</div>
           </div>
         </a-card>
-        <a-empty v-if="!loading && recentOrders.length === 0" description="暂无订单数据" />
+        <a-empty v-if="!loading && recentOrders.length === 0" description="{{$t('tg-card.analytics.emptyOrders')}}" />
       </div>
       <a-table v-else :data-source="recentOrders" :loading="loading" row-key="id" :pagination="false" :scroll="{ x: 700 }">
-        <a-table-column title="订单号" data-index="orderNo" key="orderNo" />
-        <a-table-column title="商品" data-index="productName" key="productName" />
-        <a-table-column title="金额" key="amount">
+        <a-table-column title="{{$t('tg-card.analytics.orderNumber')}}" data-index="orderNo" key="orderNo" />
+        <a-table-column title="{{$t('tg-card.analytics.product')}}" data-index="productName" key="productName" />
+        <a-table-column title="{{$t('tg-card.analytics.amount')}}" key="amount">
           <template #default="{ record }">{{ (record.amountMinor / 100).toFixed(2) }} {{ record.currency }}</template>
         </a-table-column>
-        <a-table-column title="状态" key="status">
+        <a-table-column title="{{$t('tg-card.analytics.status')}}" key="status">
           <template #default="{ record }"><a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag></template>
         </a-table-column>
-        <a-table-column title="创建时间" key="createdAt">
+        <a-table-column title="{{$t('tg-card.analytics.createdAt')}}" key="createdAt">
           <template #default="{ record }">{{ formatTime(record.createdAt) }}</template>
         </a-table-column>
-        <template #emptyText><a-empty description="暂无订单数据" /></template>
+        <template #emptyText><a-empty description="{{$t('tg-card.analytics.emptyOrders')}}" /></template>
       </a-table>
     </a-card>
-    <div class="mt-3 text-right text-xs text-gray-400">数据更新时间：{{ loadedAt || '加载中' }}</div>
+    <div class="mt-3 text-right text-xs text-gray-400">{{$t('tg-card.analytics.updatedAt')}}：{{ loadedAt || '{{$t('tg-card.analytics.loading')}}' }}</div>
   </div>
 </template>
