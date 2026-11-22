@@ -50,9 +50,6 @@ func classifyProviderStatus(status int) *ProviderError {
 	return e
 }
 
-var (
-)
-
 type Config struct {
 	Provider string
 	BaseURL string
