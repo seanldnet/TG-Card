@@ -13,12 +13,12 @@ import (
 )
 
 func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUserID int64) {
+	language := m.languageForUser(ctx, cfg, TelegramUser{ID: telegramUserID})
 	if m.db == nil {
 		_ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"cart.unavailable"))
 		return
 	}
 	userID:=strconv.FormatInt(telegramUserID,10)
-	language:=m.languageForUser(ctx,cfg,TelegramUser{ID:telegramUserID})
 	items,err:=database.ListCartItems(ctx,m.db,m.driver,cfg.ID,userID)
 	if err!=nil {
 		logCartError(cfg.ID,telegramUserID,err)
@@ -34,7 +34,7 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 	lines:=make([]string,0,len(items))
 	for _,item:=range items {
 		if item.LineTotalMinor<0 || totals[item.Currency]>(1<<63-1)-item.LineTotalMinor {
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"购物车金额超出可计算范围，请联系管理员。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"cart.overflow"))
 			return
 		}
 		totals[item.Currency]+=item.LineTotalMinor
@@ -64,12 +64,13 @@ func logCartError(botID string,userID int64,err error) {
 }
 
 func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query CallbackQuery,chatID int64) {
-	_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.creating"))
+	language:=m.languageForUser(ctx,cfg,query.From)
+	_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(language,"cart.creating"))
 	userID:=strconv.FormatInt(query.From.ID,10)
 	order,items,err:=database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,userID,strconv.FormatInt(chatID,10),20*time.Minute)
 	if err!=nil {
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.checkout_error_short"))
-		_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.checkout_error")+err.Error()+"\n购物车内容已保留，你可以调整商品后重试。")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(language,"cart.checkout_error_short"))
+		_ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"cart.checkout_error")+err.Error()+"\n购物车内容已保留，你可以调整商品后重试。")
 		return
 	}
 	lines:=make([]string,0,len(items))
