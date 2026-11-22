@@ -103,6 +103,10 @@ var botMessages = map[string]map[string]string{
 		languageChinese: "❓ 使用帮助",
 		languageEnglish: "❓ Help",
 	},
+	"menu.home": {
+		languageChinese: "🏠 主菜单",
+		languageEnglish: "🏠 Main menu",
+	},
 	"shop.title": {
 		languageChinese: "🛍️ 商品中心\n请选择商品分类：",
 		languageEnglish: "🛍️ Store\nChoose a category:",
