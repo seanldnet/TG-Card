@@ -90,6 +90,19 @@ func TestNewVendorProviderUsesDocumentedDefaults(t *testing.T) {
 	}
 }
 
+func TestNewVendorProviderPreservesCustomGateway(t *testing.T) {
+ server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  w.Header().Set("Content-Type", "application/json")
+  _, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+ }))
+ defer server.Close()
+ provider, err := NewVendorProvider(Config{Provider:"custom", BaseURL:server.URL+"/v1", APIKey:"test-key", Model:"custom-model"})
+ if err != nil { t.Fatalf("custom gateway should remain supported: %v", err) }
+ if _, err := provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}}); err != nil {
+  t.Fatalf("custom gateway completion: %v", err)
+ }
+}
+
 func TestNewVendorProviderRejectsUnknownVendor(t *testing.T) {
 	_, err := NewVendorProvider(Config{Provider: "unknown", APIKey: "key", Model: "model"})
 	if err == nil {
