@@ -331,7 +331,11 @@
     "businessGroupPlaceholder": "https://t.me/notification_group",
     "runtimeStatus": "Runtime status",
     "enable": "Enabled",
-    "disable": "Disabled"
+    "disable": "Disabled",
+    "defaultLanguage": "Default language",
+    "languageChinese": "Simplified Chinese",
+    "languageEnglish": "English",
+    "defaultLanguageHint": "New users use their Telegram language when supported; otherwise this Bot default applies. A user's saved language preference always takes priority."
   },
   "payments": {
     "status": {
