@@ -88,7 +88,7 @@ func CreateSupportTicket(ctx context.Context, db *sql.DB, driver, botID, telegra
 		ID: id, TicketNo: "SA" + time.Now().UTC().Format("20060102150405") + suffix[:6],
 		OrderID: orderID, OrderNo: orderNo, BotID: botID, TelegramUserID: telegramUserID,
 		TelegramChatID: telegramChatID, Category: category, Description: description,
-		Status: "open", CreatedAt: now, UpdatedAt: now,
+		Status: "open", AIStatus: "not_used", CreatedAt: now, UpdatedAt: now,
 	}
 	insert := "INSERT INTO support_tickets(id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at) VALUES ("
 	for i := 1; i <= 13; i++ {
@@ -118,7 +118,7 @@ func ListSupportTickets(ctx context.Context, db *sql.DB, driver string) ([]Suppo
 	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,''),COALESCE((SELECT ai_status FROM support_ticket_ai_states WHERE ticket_id=support_tickets.id),'not_used'),COALESCE((SELECT ai_reason FROM support_ticket_ai_states WHERE ticket_id=support_tickets.id),'') FROM support_tickets ORDER BY created_at DESC LIMIT 500"
 	rows,err:=db.QueryContext(ctx,query); if err!=nil{return nil,err}; defer rows.Close()
 	items:=make([]SupportTicket,0)
-	for rows.Next(){ var item SupportTicket; if err:=rows.Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt);err!=nil{return nil,err}; items=append(items,item) }
+	for rows.Next(){ var item SupportTicket; if err:=rows.Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt,&item.AIStatus,&item.AIReason);err!=nil{return nil,err}; items=append(items,item) }
 	return items,rows.Err()
 }
 
