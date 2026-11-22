@@ -16,7 +16,8 @@ func SupportedVendors() []Vendor {
 	return []Vendor{
 		{ID: "openai", Name: "OpenAI", DefaultBaseURL: "https://api.openai.com/v1"},
 		{ID: "deepseek", Name: "DeepSeek", DefaultBaseURL: "https://api.deepseek.com"},
-		{ID: "moonshot", Name: "Moonshot Kimi", DefaultBaseURL: "https://api.moonshot.ai/v1"},
+		{ID: "moonshot", Name: "Moonshot Kimi (International)", DefaultBaseURL: "https://api.moonshot.ai/v1"},
+		{ID: "moonshot-cn", Name: "Moonshot Kimi (Mainland China)", DefaultBaseURL: "https://api.moonshot.cn/v1"},
 		{ID: "zhipu", Name: "Zhipu GLM", DefaultBaseURL: "https://open.bigmodel.cn/api/paas/v4"},
 	}
 }
