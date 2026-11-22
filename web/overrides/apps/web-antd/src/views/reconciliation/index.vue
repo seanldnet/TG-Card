@@ -55,7 +55,7 @@ onMounted(load);
    <a-card :bordered="false"><div class="text-xs text-gray-500">{{$t('tg-card.reconciliation.recharge')}}</div><div class="mt-2 text-xl font-semibold">{{money(totals.recharge)}}</div></a-card>
   </div>
   <a-card :bordered="false" :loading="loading">
-   <template #title><div class="text-base font-semibold">每日对账日历 · {{month}}</div></template>
+   <template #title><div class="text-base font-semibold">{{$t('tg-card.reconciliation.calendar')}}{{month}}</div></template>
    <a-alert class="mb-3" type="info" show-icon :message="$t('tg-card.reconciliation.dailyNote')" />
    <a-table :data-source="reports" row-key="reportDate" :pagination="{pageSize:31,hideOnSinglePage:true}" :scroll="{x:1580}">
     <a-table-column :title="$t('tg-card.reconciliation.dateUTC')" data-index="reportDate" key="date" :width="130"/>
@@ -74,7 +74,7 @@ onMounted(load);
    <a-empty v-if="!loading&&reports.length===0" :description="$t('tg-card.reconciliation.noReports')"/>
   </a-card>
   <a-card :bordered="false" :loading="loading">
-   <template #title><div class="flex flex-wrap items-center justify-between gap-2"><span class="text-base font-semibold">{{$t('tg-card.reconciliation.consistency')}}</span><a-tag :color="anomalyCount>0?'error':'success'">{{anomalyCount>0?'最新检查发现异常':'最新检查无异常'}}</a-tag></div></template>
+   <template #title><div class="flex flex-wrap items-center justify-between gap-2"><span class="text-base font-semibold">{{$t('tg-card.reconciliation.consistency')}}</span><a-tag :color="anomalyCount>0?'error':'success'">{{anomalyCount>0?$t('tg-card.reconciliation.latestAnomaly'):$t('tg-card.reconciliation.latestClean')}}</a-tag></div></template>
    <a-alert class="mb-3" type="warning" show-icon :message="$t('tg-card.reconciliation.readOnlyNote')" />
    <a-table :data-source="runs" row-key="runKey" :pagination="{pageSize:8,hideOnSinglePage:true}" :scroll="{x:800}">
     <a-table-column :title="$t('tg-card.reconciliation.checkTime')" key="time" :width="190"><template #default="{record}">{{when(record.runAt)}}</template></a-table-column>
@@ -86,7 +86,7 @@ onMounted(load);
 
   </a-card>
   <a-modal v-model:open="detailOpen" :title="$t('tg-card.reconciliation.detailTitle')" :footer="null" width="900px">
-   <div class="mb-3 text-xs text-gray-500">检查批次：{{runLabel(selectedRun)}}</div>
+   <div class="mb-3 text-xs text-gray-500">{{$t('tg-card.reconciliation.run')}}{{runLabel(selectedRun)}}</div>
    <a-spin :spinning="detailLoading">
     <a-table :data-source="anomalies" row-key="telegramUserId" :pagination="{pageSize:10,hideOnSinglePage:true}" :scroll="{x:850}">
      <a-table-column :title="$t('tg-card.reconciliation.telegramUser')" data-index="telegramUserId" key="user" :width="180"/>
