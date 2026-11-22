@@ -65,10 +65,17 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 	input.TokenLimitParameter, tokenParameterErr = normalizeTokenLimitParameter(input.TokenLimitParameter)
 	if tokenParameterErr != nil { return tokenParameterErr }
 	input.APIKey = strings.TrimSpace(input.APIKey)
-	if input.Provider == "" || input.BaseURL == "" || input.Model == "" {
+	if input.Provider == "" || input.Model == "" {
 		return ErrInvalidConfig
 	}
 	if timeoutSeconds <= 0 || timeoutSeconds > 90 { timeoutSeconds = 30 }
+	provider, err := NewVendorProvider(Config{Provider:input.Provider, BaseURL:input.BaseURL, APIKey:"validation-only", Model:input.Model, Timeout:time.Duration(timeoutSeconds)*time.Second, TokenLimitParameter:input.TokenLimitParameter})
+	if err != nil {
+		return err
+	}
+	// Persist the resolved preset URL so a blank BaseURL behaves consistently
+	// with NewVendorProvider. Custom gateways still require an explicit URL.
+	input.BaseURL = strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
 	var ciphertext string
 	if input.APIKey != "" {
 		var err error
@@ -82,9 +89,6 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 		if err := json.Unmarshal([]byte(existing), &current); err != nil { return fmt.Errorf("decode saved LLM config: %w", err) }
 		ciphertext = current.APIKeyCiphertext
 		if ciphertext == "" { return ErrNotConfigured }
-	}
-	if _, err := NewVendorProvider(Config{Provider:input.Provider, BaseURL:input.BaseURL, APIKey:"validation-only", Model:input.Model, Timeout:time.Duration(timeoutSeconds)*time.Second, TokenLimitParameter:input.TokenLimitParameter}); err != nil {
-		return err
 	}
 	value, err := json.Marshal(StoredConfig{Provider:input.Provider, BaseURL:input.BaseURL, Model:input.Model, APIKeyCiphertext:ciphertext, TimeoutSeconds:timeoutSeconds, TokenLimitParameter:input.TokenLimitParameter, Enabled:enabled})
 	if err != nil { return err }
