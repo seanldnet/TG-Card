@@ -16,6 +16,8 @@ func TestSupportedVendorAdaptersUseExpectedTokenParameter(t *testing.T) {
 	}{
 		{name: "OpenAI", provider: "openai", tokenField: "max_completion_tokens"},
 		{name: "DeepSeek", provider: "deepseek", tokenField: "max_tokens"},
+		{name: "Moonshot Kimi international", provider: "moonshot", tokenField: "max_tokens"},
+		{name: "Moonshot Kimi mainland", provider: "moonshot-cn", tokenField: "max_tokens"},
 		{name: "Moonshot Kimi alias", provider: "kimi", tokenField: "max_tokens"},
 		{name: "Zhipu GLM alias", provider: "glm", tokenField: "max_tokens"},
 	}
@@ -63,6 +65,7 @@ func TestNewVendorProviderUsesDocumentedDefaults(t *testing.T) {
 		"openai": "https://api.openai.com/v1",
 		"deepseek": "https://api.deepseek.com",
 		"moonshot": "https://api.moonshot.ai/v1",
+		"moonshot-cn": "https://api.moonshot.cn/v1",
 		"zhipu": "https://open.bigmodel.cn/api/paas/v4",
 	}
 	for provider, want := range tests {
