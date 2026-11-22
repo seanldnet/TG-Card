@@ -251,6 +251,29 @@ func TestProviderHTTPFailuresAreClassifiedWithoutLeakingBody(t *testing.T) {
 }
 
 
+
+func TestVendorHTTPFailureClassificationMatrix(t *testing.T) {
+ vendors := []string{"openai","deepseek","moonshot","moonshot-cn","zhipu","custom"}
+ statuses := []struct{status int; code string; retryable bool}{
+  {http.StatusUnauthorized,"auth_failed",false},
+  {http.StatusTooManyRequests,"rate_limited",true},
+  {http.StatusBadGateway,"upstream_error",true},
+ }
+ for _, vendor := range vendors { for _, tt := range statuses {
+  t.Run(vendor+"/"+http.StatusText(tt.status),func(t *testing.T){
+   server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.WriteHeader(tt.status);_,_=w.Write([]byte("secret provider detail"))}))
+   defer server.Close()
+   provider,err:=NewVendorProvider(Config{Provider:vendor,BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
+   if err!=nil{t.Fatal(err)}
+   _,err=provider.Complete(context.Background(),CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+   var providerErr *ProviderError
+   if !errors.As(err,&providerErr){t.Fatalf("expected ProviderError, got %v",err)}
+   if providerErr.Code!=tt.code||providerErr.Retryable!=tt.retryable{t.Fatalf("classification=(%q,%v), want (%q,%v)",providerErr.Code,providerErr.Retryable,tt.code,tt.retryable)}
+   if strings.Contains(err.Error(),"secret provider detail")||strings.Contains(err.Error(),"test-key"){t.Fatalf("provider error leaked secret: %v",err)}
+  })
+ }}
+}
+
 func TestOpenAITokenLimitParameterCanBeSelectedExplicitly(t *testing.T) {
 	tests := []struct { name, parameter, want string }{
 		{"default", "", "max_completion_tokens"},
