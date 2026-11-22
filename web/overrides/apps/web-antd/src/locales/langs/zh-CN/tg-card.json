@@ -717,6 +717,9 @@
     "processingStatus": "处理状态",
     "ignore": "忽略",
     "note": "处理说明",
-    "notePlaceholder": "填写排查结论、处理措施或忽略原因"
+    "notePlaceholder": "填写排查结论、处理措施或忽略原因",
+    "ageingDayHours": "{days}天{hours}小时",
+    "ageingHoursMinutes": "{hours}小时{minutes}分钟",
+    "ageingMinutes": "{minutes}分钟"
   }
 }
