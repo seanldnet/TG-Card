@@ -4,6 +4,7 @@ import { message, Modal } from 'ant-design-vue';
 import { useWindowSize } from '@vueuse/core';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
+import { $t } from '#/locales';
 
 interface Category { id:string; name:string; sortOrder:number; status:number; sourceType:string; upstreamCategoryId:string }
 interface Product { id:string; categoryId:string; categoryName:string; name:string; description:string; priceMinor:number; currency:string; deliveryType:string; deliveryConfigJson:string; status:number; stockCount:number; sourceType:string; upstreamProductId:string; upstreamSkuId:string; upstreamPriceSnapshotMinor:number; upstreamCurrency:string; upstreamStockQuantity:number; upstreamStockStatus:string; imagePathsJson:string; bulkDiscountJson:string }
@@ -19,18 +20,18 @@ const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const enabledProducts=computed(()=>products.value.filter(item=>item.status===1).length);
 const totalStock=computed(()=>products.value.reduce((sum,item)=>sum+item.stockCount,0));
-const categoryRules={name:[{required:true,whitespace:true,message:'请输入分类名称',trigger:'blur'}]};
+const categoryRules={name:[{required:true,whitespace:true,message:$t('tg-card.catalog.validation.categoryName'),trigger:'blur'}]};
 const productRules={
- name:[{required:true,whitespace:true,message:'请输入商品名称',trigger:'blur'}],
- price:[{validator:(_rule:any,value:string)=>Number.isFinite(Number(value))&&Number(value)>=0?Promise.resolve():Promise.reject(new Error('请输入有效的商品价格')),trigger:'blur'}],
+ name:[{required:true,whitespace:true,message:$t('tg-card.catalog.validation.productName'),trigger:'blur'}],
+ price:[{validator:(_rule:any,value:string)=>Number.isFinite(Number(value))&&Number(value)>=0?Promise.resolve():Promise.reject(new Error($t('tg-card.catalog.validation.price'))),trigger:'blur'}],
 };
-const importRules={content:[{required:true,whitespace:true,message:'请粘贴卡密内容，每行一条',trigger:'blur'}]};
+const importRules={content:[{required:true,whitespace:true,message:$t('tg-card.catalog.validation.importKeys'),trigger:'blur'}]};
 async function loadAll(){
  loading.value=true;
  try{
   const [cats,items,upstream]=await Promise.all([requestClient.get<Category[]>('/catalog/categories'),requestClient.get<Product[]>('/catalog/products'),requestClient.get<any>('/upstream/config')]);
   categories.value=cats;products.value=items;upstreamEnabled.value=Boolean(upstream.enabled);
- }catch(error:any){message.error(error?.response?.data?.message||'商品与分类加载失败')}
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.catalog.errors.load'))}
  finally{loading.value=false}
 }
 function handleAddCategory(){categoryForm.name='';categoryModalOpen.value=true}
@@ -39,14 +40,14 @@ async function saveCategory(){
  categorySaving.value=true;
  try{
   await requestClient.post('/catalog/categories',{name:categoryForm.name.trim(),sortOrder:categories.value.length});
-  categoryModalOpen.value=false;message.success('分类创建成功');await loadAll();
- }catch(error:any){message.error(error?.response?.data?.message||'创建分类失败')}
+  categoryModalOpen.value=false;message.success($t('tg-card.catalog.messages.categoryCreated'));await loadAll();
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.catalog.errors.createCategory'))}
  finally{categorySaving.value=false}
 }
 function removeCategory(item:Category){
- Modal.confirm({title:'删除分类',content:'确定删除“'+item.name+'”吗？该分类下的商品会变为未分类。',okType:'danger',onOk:async()=>{
-  try{await requestClient.delete('/catalog/categories/'+item.id);message.success('分类已删除');await loadAll()}
-  catch(error:any){message.error(error?.response?.data?.message||'删除分类失败')}
+ Modal.confirm({title:$t('tg-card.catalog.deleteCategoryTitle'),content:$t('tg-card.catalog.deleteCategoryConfirm',{name:item.name}),okType:'danger',onOk:async()=>{
+  try{await requestClient.delete('/catalog/categories/'+item.id);message.success($t('tg-card.catalog.messages.categoryDeleted'));await loadAll()}
+  catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.catalog.errors.deleteCategory'))}
  }});
 }
 function handleAddProduct(){
@@ -69,28 +70,28 @@ function openEdit(item:Product){
 async function saveProduct(){
   try{await productFormRef.value?.validate()}catch{return}
   const price=Number(productForm.price);
-  if(!Number.isFinite(price)||price<0){message.warning('请输入有效的商品价格');return}
+  if(!Number.isFinite(price)||price<0){message.warning($t('tg-card.catalog.messages.priceInvalid'));return}
   const tiers=[] as Array<{minQuantity:number;discountPercent:number}>;
   for(const line of productForm.discountText.split(/\r?\n/).map(v=>v.trim()).filter(Boolean)){
    const parts=line.split(/[:：,，]/).map(v=>Number(v.trim()));
    if(parts.length!==2||!Number.isInteger(parts[0])||!Number.isInteger(parts[1])||parts[0]<2||parts[0]>100||parts[1]<1||parts[1]>90){
-    message.warning('阶梯折扣请按“购买数量:折扣百分比”填写，例如 2:10');return;
+    message.warning($t('tg-card.catalog.messages.tierFormat'));return;
    }
    tiers.push({minQuantity:parts[0],discountPercent:parts[1]});
   }
   tiers.sort((a,b)=>a.minQuantity-b.minQuantity);
-  if(tiers.some((t,i)=>i>0&&t.minQuantity===tiers[i-1].minQuantity)){message.warning('同一购买数量不能重复配置折扣');return}
+  if(tiers.some((t,i)=>i>0&&t.minQuantity===tiers[i-1].minQuantity)){message.warning($t('tg-card.catalog.messages.duplicateTier'));return}
   saving.value=true;
   try{
    let deliveryConfig={} as Record<string,any>;
-  if(productForm.deliveryType==='fixed_text'){if(!productForm.deliveryText.trim()){message.warning('请填写固定文本交付内容');return;}deliveryConfig={text:productForm.deliveryText.trim()};}
-  if(productForm.deliveryType==='invite_link'){if(!productForm.inviteChatId.trim()){message.warning('请填写目标群组 Chat ID');return;}deliveryConfig={chatId:productForm.inviteChatId.trim(),expireMinutes:Number(productForm.inviteExpiryMinutes)};}
-  if(productForm.deliveryType==='file'||productForm.deliveryType==='file_card'){if(!productForm.telegramFileId.trim()){message.warning('请填写 Telegram 文件 file_id');return;}deliveryConfig={fileId:productForm.telegramFileId.trim()};}
+  if(productForm.deliveryType==='fixed_text'){if(!productForm.deliveryText.trim()){message.warning($t('tg-card.catalog.messages.fixedTextRequired'));return;}deliveryConfig={text:productForm.deliveryText.trim()};}
+  if(productForm.deliveryType==='invite_link'){if(!productForm.inviteChatId.trim()){message.warning($t('tg-card.catalog.messages.chatIdRequired'));return;}deliveryConfig={chatId:productForm.inviteChatId.trim(),expireMinutes:Number(productForm.inviteExpiryMinutes)};}
+  if(productForm.deliveryType==='file'||productForm.deliveryType==='file_card'){if(!productForm.telegramFileId.trim()){message.warning($t('tg-card.catalog.messages.fileIdRequired'));return;}deliveryConfig={fileId:productForm.telegramFileId.trim()};}
   const payload={categoryId:productForm.categoryId||'',name:productForm.name.trim(),description:productForm.description,priceMinor:Math.round(price*100),currency:'USDT',deliveryType:productForm.deliveryType,deliveryConfig,status:productForm.enabled?1:0,bulkDiscount:tiers};
-  if(editingId.value){await requestClient.put('/catalog/products/'+editingId.value,payload);message.success('商品修改成功')}
-  else{await requestClient.post('/catalog/products',payload);message.success('商品创建成功')}
+  if(editingId.value){await requestClient.put('/catalog/products/'+editingId.value,payload);message.success($t('tg-card.catalog.messages.productUpdated'))}
+  else{await requestClient.post('/catalog/products',payload);message.success($t('tg-card.catalog.messages.productCreated'))}
   productModalOpen.value=false;await loadAll();
- }catch(error:any){message.error(error?.response?.data?.message||'保存商品失败，请检查分类和填写内容')}
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.catalog.errors.saveProduct'))}
  finally{saving.value=false}
 }
 async function openImport(item:Product){importProduct.value=item;importForm.content='';importModalOpen.value=true}
@@ -100,22 +101,22 @@ async function submitImport(){
  saving.value=true;
  try{
   const result=await requestClient.post<{inserted:number;duplicates:number}>('/catalog/products/'+importProduct.value.id+'/keys',{content:importForm.content});
-  message.success('成功新增 '+result.inserted+' 条卡密，重复跳过 '+result.duplicates+' 条');
+  message.success($t('tg-card.catalog.messages.keysImported',{inserted:result.inserted,duplicates:result.duplicates}));
   importModalOpen.value=false;await loadAll();
- }catch(error:any){message.error(error?.response?.data?.message||'导入卡密失败')}
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.catalog.errors.importKeys'))}
  finally{saving.value=false}
 }
 function removeProduct(item:Product){
- Modal.confirm({title:'删除商品',content:'确定删除“'+item.name+'”吗？商品关联库存也会被删除。',okType:'danger',onOk:async()=>{
-  try{await requestClient.delete('/catalog/products/'+item.id);message.success('商品已删除');await loadAll()}
-  catch(error:any){message.error(error?.response?.data?.message||'删除商品失败')}
+ Modal.confirm({title:$t('tg-card.catalog.deleteProductTitle'),content:$t('tg-card.catalog.deleteProductConfirm',{name:item.name}),okType:'danger',onOk:async()=>{
+  try{await requestClient.delete('/catalog/products/'+item.id);message.success($t('tg-card.catalog.messages.productDeleted'));await loadAll()}
+  catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.catalog.errors.deleteProduct'))}
  }});
 }
 function money(item:Product){return (item.priceMinor/100).toFixed(2)+' '+item.currency}
-function upstreamPriceLabel(item:Product){return item.sourceType==='upstream'?'上游原价 '+(item.upstreamPriceSnapshotMinor/100).toFixed(2)+' '+item.upstreamCurrency:''}
+function upstreamPriceLabel(item:Product){return item.sourceType==='upstream'?$t('tg-card.catalog.upstreamPrice',{amount:(item.upstreamPriceSnapshotMinor/100).toFixed(2),currency:item.upstreamCurrency}):''}
 function imagePath(item:Product){try{return (JSON.parse(item.imagePathsJson||'[]') as string[])[0]||''}catch{return ''}}
-function stockLabel(item:Product){if(item.sourceType==='upstream')return item.upstreamStockQuantity<0?'不限量':String(item.upstreamStockQuantity);return item.deliveryType==='card'||item.deliveryType==='file_card'?String(item.stockCount):'不限量'}
-function deliveryLabel(item:Product){return item.sourceType==='upstream'?'上游代购':({card:'卡密',fixed_text:'固定文本',invite_link:'一次性邀请链接',file:'文件',file_card:'文件 + 卡密'} as Record<string,string>)[item.deliveryType]||'卡密'}
+function stockLabel(item:Product){if(item.sourceType==='upstream')return item.upstreamStockQuantity<0?$t('tg-card.catalog.unlimited'):String(item.upstreamStockQuantity);return item.deliveryType==='card'||item.deliveryType==='file_card'?String(item.stockCount):$t('tg-card.catalog.unlimited')}
+function deliveryLabel(item:Product){if(item.sourceType==='upstream')return $t('tg-card.catalog.upstream');const key='tg-card.catalog.delivery.'+item.deliveryType;const value=$t(key);return value===key?$t('tg-card.catalog.delivery.card'):value}
 function rowProps(record:Product){return {class:upstreamEnabled.value&&record.sourceType==='local'?'opacity-50 grayscale':''};}
 onMounted(loadAll);
 </script>
@@ -123,74 +124,74 @@ onMounted(loadAll);
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-5 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
-   <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">商品与库存</h1><p class="mb-0 mt-1 text-xs text-gray-500">管理商城商品、分类及自动发货卡密库存</p></div>
+   <div class="min-w-0"><h1 class="m-0 text-xl font-semibold tracking-tight">{{$t('tg-card.catalog.title')}}</h1><p class="mb-0 mt-1 text-xs text-gray-500">{{$t('tg-card.catalog.subtitle')}}</p></div>
   </div>
   <a-row :gutter="[12,12]">
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">商品总数</div><div class="mt-2 text-2xl font-semibold leading-none">{{products.length}}</div><div class="mt-2 text-xs text-gray-400">已创建的商品</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:package-variant-closed" class="block text-2xl" /></span></div></a-card></a-col>
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">商品分类</div><div class="mt-2 text-2xl font-semibold leading-none">{{categories.length}}</div><div class="mt-2 text-xs text-gray-400">可供商品选择</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:shape-outline" class="block text-2xl" /></span></div></a-card></a-col>
-   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">可售卡密库存</div><div class="mt-2 text-2xl font-semibold leading-none">{{totalStock}}</div><div class="mt-2 text-xs text-gray-400">等待自动发货的卡密</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:archive-outline" class="block text-2xl" /></span></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">{{$t('tg-card.catalog.productTotal')}}</div><div class="mt-2 text-2xl font-semibold leading-none">{{products.length}}</div><div class="mt-2 text-xs text-gray-400">{{$t('tg-card.catalog.createdProducts')}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:package-variant-closed" class="block text-2xl" /></span></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">{{$t('tg-card.catalog.categories')}}</div><div class="mt-2 text-2xl font-semibold leading-none">{{categories.length}}</div><div class="mt-2 text-xs text-gray-400">{{$t('tg-card.catalog.categorySelectable')}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:shape-outline" class="block text-2xl" /></span></div></a-card></a-col>
+   <a-col :xs="12" :md="8"><a-card :bordered="false" class="h-full rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}"><div class="flex items-center justify-between gap-2"><div><div class="text-xs text-gray-500">{{$t('tg-card.catalog.sellableKeys')}}</div><div class="mt-2 text-2xl font-semibold leading-none">{{totalStock}}</div><div class="mt-2 text-xs text-gray-400">{{$t('tg-card.catalog.keysWaiting')}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:archive-outline" class="block text-2xl" /></span></div></a-card></a-col>
   </a-row>
  
   <a-card :bordered="false" class="rounded-xl shadow-sm" :body-style="{padding:'20px 24px'}">
-   <a-alert v-if="upstreamEnabled" class="mb-4" type="info" show-icon message="当前 Bot 商品目录已切换为上游来源。本地商品仍保留在后台并置灰显示；上游商品采购将在 PR C 完成前保持禁用。" />
+   <a-alert v-if="upstreamEnabled" class="mb-4" type="info" show-icon message="{{$t('tg-card.catalog.upstreamNotice')}}" />
    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-    <div class="text-sm font-semibold">商品与库存</div>
+    <div class="text-sm font-semibold">{{$t('tg-card.catalog.title')}}</div>
     <a-space wrap>
-     <a-button size="middle" @click="handleAddCategory"><template #icon><IconifyIcon icon="mdi:tag-plus-outline" /></template>新增分类</a-button>
-     <a-button type="primary" size="middle" @click="handleAddProduct"><template #icon><IconifyIcon icon="mdi:package-variant-plus" /></template>新增商品</a-button>
+     <a-button size="middle" @click="handleAddCategory"><template #icon><IconifyIcon icon="mdi:tag-plus-outline" /></template>{{$t('tg-card.catalog.addCategory')}}</a-button>
+     <a-button type="primary" size="middle" @click="handleAddProduct"><template #icon><IconifyIcon icon="mdi:package-variant-plus" /></template>{{$t('tg-card.catalog.addProduct')}}</a-button>
     </a-space>
    </div>
    <a-tabs v-model:activeKey="activeTab" class="mb-1">
-    <a-tab-pane key="products" tab="商品与库存"/>
-    <a-tab-pane key="categories" tab="商品分类"/>
+    <a-tab-pane key="products" :tab="$t('tg-card.catalog.productsTab')"/>
+    <a-tab-pane key="categories" :tab="$t('tg-card.catalog.categoryTab')"/>
    </a-tabs>
    <div v-if="activeTab==='categories'">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-semibold">商品分类</div><div class="mt-1 text-xs text-gray-400">分类用于整理商品；没有分类也可以直接创建商品</div></div></div>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-semibold">{{$t('tg-card.catalog.categories')}}</div><div class="mt-1 text-xs text-gray-400">{{$t('tg-card.catalog.categoryHelp')}}</div></div></div>
     <a-space v-if="categories.length" wrap><a-tag v-for="category in categories" :key="category.id" closable @close.prevent="removeCategory(category)">{{category.name}}</a-tag></a-space>
-    <a-empty v-else description="还没有分类，点击“新增分类”创建第一个分类"/>
+    <a-empty v-else description="{{$t('tg-card.catalog.noCategories')}}"/>
    </div>
    <div v-else>
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-semibold">商品列表</div><div class="mt-1 text-xs text-gray-400">没有分类也可以新增商品，分类为可选项</div></div></div>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-semibold">{{$t('tg-card.catalog.productList')}}</div><div class="mt-1 text-xs text-gray-400">{{$t('tg-card.catalog.productHelp')}}</div></div></div>
     <div v-if="isMobile" class="flex flex-col gap-3">
      <a-card v-for="item in products" :key="item.id" size="small" class="rounded-lg border border-gray-100" :class="upstreamEnabled&&item.sourceType==='local'?'opacity-50 grayscale':''" :body-style="{padding:'20px 24px'}">
-      <div class="flex min-w-0 items-start justify-between gap-3"><div class="flex min-w-0 items-center gap-3"><a-image v-if="imagePath(item)" :src="imagePath(item)" :width="48" :height="48" class="shrink-0 rounded object-cover"/><div class="min-w-0"><div class="break-words text-sm font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-400">{{item.categoryName||'未分类'}}</div></div></div><div class="flex shrink-0 items-center gap-1"><a-tag class="m-0" :color="item.sourceType==='upstream'?'processing':upstreamEnabled?'default':'blue'">{{item.sourceType==='upstream'?'上游':upstreamEnabled?'本地（隐藏）':'本地'}}</a-tag><a-tag class="m-0" :color="item.status===1?'success':'default'">{{item.status===1?'销售中':'已下架'}}</a-tag></div></div>
+      <div class="flex min-w-0 items-start justify-between gap-3"><div class="flex min-w-0 items-center gap-3"><a-image v-if="imagePath(item)" :src="imagePath(item)" :width="48" :height="48" class="shrink-0 rounded object-cover"/><div class="min-w-0"><div class="break-words text-sm font-semibold">{{item.name}}</div><div class="mt-1 text-xs text-gray-400">{{item.categoryName||$t('tg-card.catalog.categoryFallback')}}</div></div></div><div class="flex shrink-0 items-center gap-1"><a-tag class="m-0" :color="item.sourceType==='upstream'?'processing':upstreamEnabled?'default':'blue'">{{item.sourceType==='upstream'?$t('tg-card.catalog.sourceType.upstream'):upstreamEnabled?$t('tg-card.catalog.sourceType.hidden'):$t('tg-card.catalog.sourceType.local')}}</a-tag><a-tag class="m-0" :color="item.status===1?'success':'default'">{{item.status===1?$t('tg-card.catalog.productStatus.active'):$t('tg-card.catalog.productStatus.inactive')}}</a-tag></div></div>
       <a-divider class="my-3"/>
-      <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">售价</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div><div v-if="upstreamPriceLabel(item)" class="mt-1 text-xs text-gray-400">{{upstreamPriceLabel(item)}}</div></div><div><div class="text-xs text-gray-400">可售库存</div><div class="mt-1 text-sm font-semibold">{{stockLabel(item)}}</div></div><div><div class="text-xs text-gray-400">交付方式</div><div class="mt-1 text-sm font-semibold">{{deliveryLabel(item)}}</div></div></div>
-      <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button v-if="item.sourceType!=='upstream'&&(item.deliveryType==='card'||item.deliveryType==='file_card')" size="small" @click="openImport(item)">导入卡密</a-button><a-button size="small" :disabled="item.sourceType==='upstream'" @click="openEdit(item)">编辑</a-button><a-button size="small" danger :disabled="item.sourceType==='upstream'" @click="removeProduct(item)">删除</a-button></div>
+      <div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-400">{{$t('tg-card.catalog.price')}}</div><div class="mt-1 text-sm font-semibold">{{money(item)}}</div><div v-if="upstreamPriceLabel(item)" class="mt-1 text-xs text-gray-400">{{upstreamPriceLabel(item)}}</div></div><div><div class="text-xs text-gray-400">{{$t('tg-card.catalog.stock')}}</div><div class="mt-1 text-sm font-semibold">{{stockLabel(item)}}</div></div><div><div class="text-xs text-gray-400">{{$t('tg-card.catalog.deliveryMethod')}}</div><div class="mt-1 text-sm font-semibold">{{deliveryLabel(item)}}</div></div></div>
+      <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button v-if="item.sourceType!=='upstream'&&(item.deliveryType==='card'||item.deliveryType==='file_card')" size="small" @click="openImport(item)">{{$t('tg-card.catalog.import')}}</a-button><a-button size="small" :disabled="item.sourceType==='upstream'" @click="openEdit(item)">{{$t('tg-card.catalog.edit')}}</a-button><a-button size="small" danger :disabled="item.sourceType==='upstream'" @click="removeProduct(item)">{{$t('tg-card.catalog.delete')}}</a-button></div>
      </a-card>
-     <a-empty v-if="!loading&&products.length===0" description="还没有商品，点击“新增商品”创建第一个商品"/>
+     <a-empty v-if="!loading&&products.length===0" description="{{$t('tg-card.catalog.noProducts')}}"/>
     </div>
     <a-table v-else :data-source="products" :loading="loading" row-key="id" :scroll="{x:1000}" :custom-row="rowProps">
-     <a-table-column title="商品名称" data-index="name" key="name" :width="260"><template #default="{record}"><div class="flex items-center gap-2"><a-image v-if="imagePath(record)" :src="imagePath(record)" :width="36" :height="36" class="shrink-0 rounded object-cover"/><span class="whitespace-normal break-words leading-5">{{record.name}}</span></div></template></a-table-column>
-     <a-table-column title="来源" key="source"><template #default="{record}"><a-tag :color="record.sourceType==='upstream'?'processing':upstreamEnabled?'default':'blue'">{{record.sourceType==='upstream'?'上游':upstreamEnabled?'本地（隐藏）':'本地'}}</a-tag></template></a-table-column>
-     <a-table-column title="分类" data-index="categoryName" key="categoryName"><template #default="{record}">{{record.categoryName||'未分类'}}</template></a-table-column>
-     <a-table-column title="售价" key="price"><template #default="{record}"><div>{{money(record)}}</div><div v-if="upstreamPriceLabel(record)" class="text-xs text-gray-400">{{upstreamPriceLabel(record)}}</div></template></a-table-column>
-     <a-table-column title="库存 / 交付" key="stockCount" :width="140"><template #default="{record}">{{stockLabel(record)}} · {{deliveryLabel(record)}}</template></a-table-column>
-     <a-table-column title="状态" key="status"><template #default="{record}"><a-tag :color="record.status===1?'success':'default'">{{record.status===1?'销售中':'已下架'}}</a-tag></template></a-table-column>
-     <a-table-column title="操作" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button v-if="record.sourceType!=='upstream'&&(record.deliveryType==='card'||record.deliveryType==='file_card')" type="link" size="small" @click="openImport(record)">导入卡密</a-button><a-button type="link" size="small" :disabled="record.sourceType==='upstream'" @click="openEdit(record)">编辑</a-button><a-button type="link" danger size="small" :disabled="record.sourceType==='upstream'" @click="removeProduct(record)">删除</a-button></a-space></template></a-table-column>
-     <template #emptyText><a-empty description="还没有商品，点击“新增商品”创建第一个商品"/></template>
+     <a-table-column :title="$t('tg-card.catalog.productName')" data-index="name" key="name" :width="260"><template #default="{record}"><div class="flex items-center gap-2"><a-image v-if="imagePath(record)" :src="imagePath(record)" :width="36" :height="36" class="shrink-0 rounded object-cover"/><span class="whitespace-normal break-words leading-5">{{record.name}}</span></div></template></a-table-column>
+     <a-table-column :title="$t('tg-card.catalog.source')" key="source"><template #default="{record}"><a-tag :color="record.sourceType==='upstream'?'processing':upstreamEnabled?'default':'blue'">{{record.sourceType==='upstream'?$t('tg-card.catalog.sourceType.upstream'):upstreamEnabled?$t('tg-card.catalog.sourceType.hidden'):$t('tg-card.catalog.sourceType.local')}}</a-tag></template></a-table-column>
+     <a-table-column :title="$t('tg-card.catalog.category')" data-index="categoryName" key="categoryName"><template #default="{record}">{{record.categoryName||$t('tg-card.catalog.categoryFallback')}}</template></a-table-column>
+     <a-table-column :title="$t('tg-card.catalog.price')" key="price"><template #default="{record}"><div>{{money(record)}}</div><div v-if="upstreamPriceLabel(record)" class="text-xs text-gray-400">{{upstreamPriceLabel(record)}}</div></template></a-table-column>
+     <a-table-column :title="$t('tg-card.catalog.stockDelivery')" key="stockCount" :width="140"><template #default="{record}">{{stockLabel(record)}} · {{deliveryLabel(record)}}</template></a-table-column>
+     <a-table-column :title="$t('tg-card.catalog.status')" key="status"><template #default="{record}"><a-tag :color="record.status===1?'success':'default'">{{record.status===1?$t('tg-card.catalog.productStatus.active'):$t('tg-card.catalog.productStatus.inactive')}}</a-tag></template></a-table-column>
+     <a-table-column :title="$t('tg-card.catalog.actions')" key="actions" fixed="right" width="220"><template #default="{record}"><a-space><a-button v-if="record.sourceType!=='upstream'&&(record.deliveryType==='card'||record.deliveryType==='file_card')" type="link" size="small" @click="openImport(record)">{{$t('tg-card.catalog.import')}}</a-button><a-button type="link" size="small" :disabled="record.sourceType==='upstream'" @click="openEdit(record)">{{$t('tg-card.catalog.edit')}}</a-button><a-button type="link" danger size="small" :disabled="record.sourceType==='upstream'" @click="removeProduct(record)">{{$t('tg-card.catalog.delete')}}</a-button></a-space></template></a-table-column>
+     <template #emptyText><a-empty description="{{$t('tg-card.catalog.noProducts')}}"/></template>
     </a-table>
    </div>
   </a-card>
-  <a-modal v-model:open="categoryModalOpen" title="新增商品分类" :width="480" :confirm-loading="categorySaving" ok-text="保存分类" cancel-text="取消" @ok="saveCategory">
-   <div class="py-3"><a-form ref="categoryFormRef" :model="categoryForm" :rules="categoryRules" layout="vertical"><a-form-item label="分类名称" name="name"><a-input v-model:value="categoryForm.name" size="large" :maxlength="80" placeholder="例如：会员卡、软件授权"/></a-form-item></a-form></div>
+  <a-modal v-model:open="categoryModalOpen" :title="$t('tg-card.catalog.newCategoryTitle')" :width="480" :confirm-loading="categorySaving" :ok-text="$t('tg-card.catalog.saveCategory')" :cancel-text="$t('tg-card.catalog.cancel')" @ok="saveCategory">
+   <div class="py-3"><a-form ref="categoryFormRef" :model="categoryForm" :rules="categoryRules" layout="vertical"><a-form-item :label="$t('tg-card.catalog.categoryName')" name="name"><a-input v-model:value="categoryForm.name" size="large" :maxlength="80" :placeholder="$t('tg-card.catalog.categoryPlaceholder')"/></a-form-item></a-form></div>
   </a-modal>
-  <a-modal v-model:open="productModalOpen" :title="editingId?'编辑商品':'新增商品'" :width="560" :confirm-loading="saving" ok-text="保存商品" cancel-text="取消" @ok="saveProduct">
+  <a-modal v-model:open="productModalOpen" :title="editingId?$t('tg-card.catalog.editProduct'):$t('tg-card.catalog.newProduct')" :width="560" :confirm-loading="saving" :ok-text="$t('tg-card.catalog.saveProduct')" :cancel-text="$t('tg-card.catalog.cancel')" @ok="saveProduct">
    <div class="py-3"><a-form ref="productFormRef" :model="productForm" :rules="productRules" layout="vertical">
-    <a-form-item label="商品名称" name="name"><a-input v-model:value="productForm.name" size="large" :maxlength="160" placeholder="例如：会员月卡"/></a-form-item>
-    <a-form-item label="商品分类"><a-select v-model:value="productForm.categoryId" size="large" allow-clear show-search option-filter-prop="label" placeholder="可不选择分类"  :options="categories.filter(item=>item.sourceType==='local').map(item=>({label:item.name,value:item.id}))"/></a-form-item>
-    <a-form-item label="售价（USDT）" name="price"><a-input v-model:value="productForm.price" size="large" inputmode="decimal" placeholder="例如：9.90"/></a-form-item>
-    <a-form-item label="商品交付方式"><a-select v-model:value="productForm.deliveryType" size="large" :options="[{label:'卡密自动发货',value:'card'},{label:'固定文本',value:'fixed_text'},{label:'一次性 Telegram 邀请链接',value:'invite_link'},{label:'Telegram 文件',value:'file'},{label:'文件 + 卡密',value:'file_card'}]"/></a-form-item>
-    <a-form-item v-if="productForm.deliveryType==='fixed_text'" label="固定交付文本"><a-textarea v-model:value="productForm.deliveryText" :rows="4" :maxlength="4000" placeholder="付款后自动发送给买家的内容"/></a-form-item>
-    <template v-if="productForm.deliveryType==='invite_link'"><a-form-item label="目标群组 Chat ID"><a-input v-model:value="productForm.inviteChatId" placeholder="-100xxxxxxxxxx"/></a-form-item><a-form-item label="邀请链接有效期（分钟）"><a-input-number v-model:value="productForm.inviteExpiryMinutes" :min="5" :max="10080" class="w-full"/></a-form-item><a-alert type="info" show-icon message="Bot 必须是目标群组管理员，并拥有邀请用户权限；每个订单生成仅限 1 人使用的专属链接。"/></template>
-    <a-form-item v-if="productForm.deliveryType==='file'||productForm.deliveryType==='file_card'" label="Telegram 文件 file_id"><a-input v-model:value="productForm.telegramFileId" placeholder="填写由该 Bot 获取的 Telegram file_id"/><div class="mt-1 text-xs text-gray-400">当前通过 Telegram file_id 发送文件；请先将文件发送给该 Bot 并取得 file_id。</div></a-form-item>
-    <a-form-item label="批量购买阶梯折扣（选填）"><a-textarea v-model:value="productForm.discountText" :rows="3" placeholder="每行一档：购买数量:折扣百分比\n例如：2:10 表示购买 2 件及以上打 9 折；5:20 表示购买 5 件及以上打 8 折"/><div class="mt-1 text-xs text-gray-400">折扣比例表示优惠百分比；不填写则按原价结算。数量需递增，最多 20 档。</div></a-form-item>
-     <a-form-item label="商品说明"><a-textarea v-model:value="productForm.description" :rows="3" :maxlength="4000" show-count placeholder="填写商品说明（选填）"/></a-form-item>
-    <a-form-item label="销售状态"><a-switch v-model:checked="productForm.enabled" checked-children="上架" un-checked-children="下架"/></a-form-item>
+    <a-form-item :label="$t('tg-card.catalog.productName')" name="name"><a-input v-model:value="productForm.name" size="large" :maxlength="160" :placeholder="$t('tg-card.catalog.namePlaceholder')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.catalog.categories')"><a-select v-model:value="productForm.categoryId" size="large" allow-clear show-search option-filter-prop="label" :placeholder="$t('tg-card.catalog.categoryPlaceholderOptional')"  :options="categories.filter(item=>item.sourceType==='local').map(item=>({label:item.name,value:item.id}))"/></a-form-item>
+    <a-form-item :label="$t('tg-card.catalog.priceUSDT')" name="price"><a-input v-model:value="productForm.price" size="large" inputmode="decimal" :placeholder="$t('tg-card.catalog.pricePlaceholder')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.catalog.deliveryType')"><a-select v-model:value="productForm.deliveryType" size="large" :options="[{label:$t('tg-card.catalog.deliveryOptions.card'),value:'card'},{label:$t('tg-card.catalog.deliveryOptions.fixed_text'),value:'fixed_text'},{label:$t('tg-card.catalog.deliveryOptions.invite_link'),value:'invite_link'},{label:$t('tg-card.catalog.deliveryOptions.file'),value:'file'},{label:$t('tg-card.catalog.deliveryOptions.file_card'),value:'file_card'}]"/></a-form-item>
+    <a-form-item v-if="productForm.deliveryType==='fixed_text'" :label="$t('tg-card.catalog.fixedDeliveryText')"><a-textarea v-model:value="productForm.deliveryText" :rows="4" :maxlength="4000" :placeholder="$t('tg-card.catalog.fixedTextPlaceholder')"/></a-form-item>
+    <template v-if="productForm.deliveryType==='invite_link'"><a-form-item :label="$t('tg-card.catalog.targetChat')"><a-input v-model:value="productForm.inviteChatId" :placeholder="$t('tg-card.catalog.targetChat')"/></a-form-item><a-form-item :label="$t('tg-card.catalog.inviteExpiry')"><a-input-number v-model:value="productForm.inviteExpiryMinutes" :min="5" :max="10080" class="w-full"/></a-form-item><a-alert type="info" show-icon :message="$t('tg-card.catalog.inviteNotice')"/></template>
+    <a-form-item v-if="productForm.deliveryType==='file'||productForm.deliveryType==='file_card'" :label="$t('tg-card.catalog.telegramFileId')"><a-input v-model:value="productForm.telegramFileId" :placeholder="$t('tg-card.catalog.fileIdPlaceholder')"/><div class="mt-1 text-xs text-gray-400">{{$t('tg-card.catalog.fileIdHint')}}</div></a-form-item>
+    <a-form-item :label="$t('tg-card.catalog.tierDiscount')"><a-textarea v-model:value="productForm.discountText" :rows="3" :placeholder="$t('tg-card.catalog.tierPlaceholder')"/><div class="mt-1 text-xs text-gray-400">{{$t('tg-card.catalog.tierHint')}}</div></a-form-item>
+     <a-form-item :label="$t('tg-card.catalog.description')"><a-textarea v-model:value="productForm.description" :rows="3" :maxlength="4000" show-count :placeholder="$t('tg-card.catalog.descriptionPlaceholder')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.catalog.salesStatus')"><a-switch v-model:checked="productForm.enabled" :checked-children="$t('tg-card.catalog.onSale')" :un-checked-children="$t('tg-card.catalog.offSale')"/></a-form-item>
    </a-form></div>
   </a-modal>
-  <a-modal v-model:open="importModalOpen" :title="importProduct?'导入卡密 - '+importProduct.name:'导入卡密'" :width="560" :confirm-loading="saving" ok-text="开始导入" cancel-text="取消" @ok="submitImport">
-   <div class="py-3"><a-alert class="mb-4" type="info" show-icon message="每行填写一条卡密，系统会加密保存并自动跳过重复内容"/><a-form ref="importFormRef" :model="importForm" :rules="importRules" layout="vertical"><a-form-item label="卡密内容" name="content"><a-textarea v-model:value="importForm.content" :rows="8" placeholder="每行一条卡密内容"/></a-form-item></a-form></div>
+  <a-modal v-model:open="importModalOpen" :title="importProduct?$t('tg-card.catalog.importTitle')+' - '+importProduct.name:$t('tg-card.catalog.importTitle')" :width="560" :confirm-loading="saving" :ok-text="$t('tg-card.catalog.startImport')" :cancel-text="$t('tg-card.catalog.cancel')" @ok="submitImport">
+   <div class="py-3"><a-alert class="mb-4" type="info" show-icon :message="$t('tg-card.catalog.importNotice')"/><a-form ref="importFormRef" :model="importForm" :rules="importRules" layout="vertical"><a-form-item :label="$t('tg-card.catalog.keyContent')" name="content"><a-textarea v-model:value="importForm.content" :rows="8" :placeholder="$t('tg-card.catalog.keyPlaceholder')"/></a-form-item></a-form></div>
   </a-modal>
  </div>
 </template>
