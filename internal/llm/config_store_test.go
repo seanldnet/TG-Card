@@ -2,10 +2,10 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"database/sql"
-	"testing"
+	"encoding/json"
 	"strings"
+	"testing"
 
 	"github.com/seanldnet/TG-Card/internal/secret"
 	_ "modernc.org/sqlite"
