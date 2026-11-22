@@ -61,7 +61,7 @@ func BuildSupportPrompt(ticket database.SupportTicket, messages []database.Suppo
 		case "system":
 			// AI replies are stored as system timeline events to distinguish them
 			// from operator messages, but remain assistant turns in model context.
-			if item.SenderName == "ai-assistant" {
+			if item.SenderID == "ai-assistant" {
 				role = "assistant"
 			}
 		}
