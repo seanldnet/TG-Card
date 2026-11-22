@@ -15,6 +15,7 @@ type llmSettingsRequest struct {
 	Model string `json:"model"`
 	APIKey string `json:"apiKey"`
 	TimeoutSeconds int `json:"timeoutSeconds"`
+	TokenLimitParameter string `json:"tokenLimitParameter"`
 	Enabled bool `json:"enabled"`
 	SupportPrompt string `json:"supportPrompt"`
 }
@@ -54,7 +55,7 @@ func (a *application) updateLLMSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	err := llm.SaveStoredConfig(r.Context(), a.db, a.driver, llm.Config{
-		Provider: input.Provider, BaseURL: input.BaseURL, Model: input.Model, APIKey: input.APIKey,
+		Provider: input.Provider, BaseURL: input.BaseURL, Model: input.Model, APIKey: input.APIKey, TokenLimitParameter: input.TokenLimitParameter,
 	}, input.TimeoutSeconds, input.Enabled, a.secrets.Encrypt)
 	if err != nil {
 		if err == llm.ErrNotConfigured {

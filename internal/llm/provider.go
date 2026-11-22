@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +20,42 @@ var (
 	ErrProviderResponse = errors.New("invalid LLM provider response")
 )
 
+type ProviderError struct {
+	StatusCode int
+	Code string
+	Retryable bool
+}
+
+func (e *ProviderError) Error() string {
+	if e.StatusCode > 0 {
+		return fmt.Sprintf("LLM provider request failed: %s (HTTP %d)", e.Code, e.StatusCode)
+	}
+	return fmt.Sprintf("LLM provider request failed: %s", e.Code)
+}
+
+func (e *ProviderError) Unwrap() error { return ErrProviderResponse }
+
+func classifyProviderStatus(status int) *ProviderError {
+	e := &ProviderError{StatusCode: status, Code: "unexpected_status"}
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		e.Code = "auth_failed"
+	case http.StatusTooManyRequests:
+		e.Code, e.Retryable = "rate_limited", true
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		e.Code = "invalid_request"
+	case http.StatusRequestTimeout:
+		e.Code, e.Retryable = "request_timeout", true
+	case http.StatusTooEarly:
+		e.Code, e.Retryable = "upstream_busy", true
+	default:
+		if status >= 500 && status <= 599 {
+			e.Code, e.Retryable = "upstream_error", true
+		}
+	}
+	return e
+}
+
 type Config struct {
 	Provider string
 	BaseURL string
@@ -26,6 +63,8 @@ type Config struct {
 	Model string
 	Timeout time.Duration
 	MaxResponseBytes int64
+	// TokenLimitParameter selects the OpenAI token-limit field: auto, max_completion_tokens, or max_tokens.
+	TokenLimitParameter string
 }
 
 type Message struct {
@@ -37,6 +76,11 @@ type CompletionRequest struct {
 	Messages []Message
 	MaxTokens int
 	Temperature float64
+	// Thinking controls DeepSeek's documented thinking mode. nil leaves the
+	// vendor default unchanged; other vendors ignore this field.
+	Thinking *bool
+	// ReasoningEffort is an optional DeepSeek reasoning-effort hint.
+	ReasoningEffort string
 }
 
 type Provider interface {
@@ -81,12 +125,42 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	}
 	maxTokens := input.MaxTokens
 	if maxTokens <= 0 || maxTokens > 2048 { maxTokens = 512 }
-	payload := struct {
-		Model string `json:"model"`
-		Messages []Message `json:"messages"`
-		MaxTokens int `json:"max_tokens"`
-		Temperature float64 `json:"temperature"`
-	}{p.config.Model, input.Messages, maxTokens, input.Temperature}
+	payload := map[string]any{
+		"model": p.config.Model,
+		"messages": input.Messages,
+		"temperature": input.Temperature,
+	}
+	// OpenAI's current Chat Completions contract uses max_completion_tokens.
+	// DeepSeek, Moonshot Kimi and Zhipu GLM retain max_tokens.
+	if normalizeVendor(p.config.Provider) == "openai" {
+		parameter := strings.ToLower(strings.TrimSpace(p.config.TokenLimitParameter))
+		if parameter == "" || parameter == "auto" || parameter == "max_completion_tokens" {
+			payload["max_completion_tokens"] = maxTokens
+		} else if parameter == "max_tokens" {
+			payload["max_tokens"] = maxTokens
+		} else {
+			return "", fmt.Errorf("%w: unsupported OpenAI token-limit parameter", ErrInvalidConfig)
+		}
+	} else {
+		payload["max_tokens"] = maxTokens
+	}
+	if normalizeVendor(p.config.Provider) == "deepseek" {
+		if input.Thinking != nil {
+			thinkingType := "enabled"
+			if !*input.Thinking {
+				thinkingType = "disabled"
+			}
+			payload["thinking"] = map[string]string{"type": thinkingType}
+		}
+		switch strings.ToLower(strings.TrimSpace(input.ReasoningEffort)) {
+		case "", "low", "medium", "high":
+			if input.ReasoningEffort != "" {
+				payload["reasoning_effort"] = strings.ToLower(strings.TrimSpace(input.ReasoningEffort))
+			}
+		default:
+			return "", fmt.Errorf("%w: unsupported DeepSeek reasoning effort", ErrInvalidConfig)
+		}
+	}
 	body, err := json.Marshal(payload)
 	if err != nil { return "", err }
 	endpoint := p.config.BaseURL + "/chat/completions"
@@ -95,17 +169,43 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	req.Header.Set("Authorization", "Bearer "+p.config.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
-	if err != nil { return "", fmt.Errorf("LLM request failed: %w", err) }
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return "", &ProviderError{Code: "request_cancelled"}
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", &ProviderError{Code: "request_timeout", Retryable: true}
+		}
+		var networkErr net.Error
+		if errors.As(err, &networkErr) && networkErr.Timeout() {
+			return "", &ProviderError{Code: "request_timeout", Retryable: true}
+		}
+		return "", &ProviderError{Code: "upstream_error", Retryable: true}
+	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, p.config.MaxResponseBytes+1))
-	if err != nil { return "", err }
+	if err != nil {
+		return "", &ProviderError{Code: "upstream_error", Retryable: true}
+	}
 	if int64(len(data)) > p.config.MaxResponseBytes { return "", fmt.Errorf("%w: response too large", ErrProviderResponse) }
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Do not include provider response bodies: they may echo sensitive data.
-		return "", fmt.Errorf("LLM provider returned HTTP %d", resp.StatusCode)
+		return "", classifyProviderStatus(resp.StatusCode)
 	}
-	var result struct { Choices []struct { Message Message `json:"message"` } `json:"choices"` }
+	var result struct {
+		Choices []struct {
+			Message Message `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
 	if err := json.Unmarshal(data, &result); err != nil || len(result.Choices) == 0 || strings.TrimSpace(result.Choices[0].Message.Content) == "" {
+		return "", ErrProviderResponse
+	}
+	// Length-limited or filtered completions are not treated as successful
+	// customer-service answers. Missing finish_reason remains accepted for
+	// compatibility with older OpenAI-compatible gateways.
+	finishReason := strings.TrimSpace(result.Choices[0].FinishReason)
+	if finishReason != "" && finishReason != "stop" {
 		return "", ErrProviderResponse
 	}
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
