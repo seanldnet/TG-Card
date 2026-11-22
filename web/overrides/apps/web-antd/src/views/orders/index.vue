@@ -65,37 +65,37 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="tg-mobile-metric-grid md:grid md:grid-cols-4 md:gap-4">
-   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500"{{$t('tg-card.orders.total')}}div><div class="mt-2 text-2xl font-bold">{{orders.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:receipt-text-outline" class="block text-2xl" /></span></div></a-card>
-   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500"{{$t('tg-card.orders.pending')}}div><div class="mt-2 text-2xl font-bold">{{pendingCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:clock-outline" class="block text-2xl" /></span></div></a-card>
-   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500"{{$t('tg-card.orders.reserved')}}div><div class="mt-2 text-2xl font-bold">{{reservedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:package-variant-closed" class="block text-2xl" /></span></div></a-card>
-   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500"{{$t('tg-card.orders.deliveryIssues')}}div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:alert-circle-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">{{$t('tg-card.orders.total')}}</div><div class="mt-2 text-2xl font-bold">{{orders.length}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:receipt-text-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">{{$t('tg-card.orders.pending')}}</div><div class="mt-2 text-2xl font-bold">{{pendingCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:clock-outline" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">{{$t('tg-card.orders.reserved')}}</div><div class="mt-2 text-2xl font-bold">{{reservedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:package-variant-closed" class="block text-2xl" /></span></div></a-card>
+   <a-card :bordered="false" class="h-full"><div class="flex min-w-0 items-center justify-between gap-3"><div class="min-w-0"><div class="text-sm text-gray-500">{{$t('tg-card.orders.deliveryIssues')}}</div><div class="mt-2 text-2xl font-bold">{{failedCount}}</div></div><span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-600"><IconifyIcon icon="mdi:alert-circle-outline" class="block text-2xl" /></span></div></a-card>
   </div>
   <a-card :bordered="false" :head-style="{ padding: '12px 20px' }" :body-style="{ padding: '16px 20px' }">
-   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6"{{$t('tg-card.orders.title')}}div><div class="mt-1 text-xs leading-5 text-gray-500"{{$t('tg-card.orders.subtitle')}}div></div><div class="flex flex-wrap items-center gap-3"><a-button size="small" danger ghost @click="cleanupOpen=true"{{$t('tg-card.orders.cleanup')}}a-button><a-button size="small" :loading="loading" @click="loadOrders"{{$t('tg-card.orders.refresh')}}a-button></div></div></template>
+   <template #title><div class="flex min-w-0 flex-wrap items-center justify-between gap-3 px-1 py-1"><div class="min-w-0"><div class="text-base font-semibold leading-6">{{$t('tg-card.orders.title')}}</div><div class="mt-1 text-xs leading-5 text-gray-500">{{$t('tg-card.orders.subtitle')}}</div></div><div class="flex flex-wrap items-center gap-3"><a-button size="small" danger ghost @click="cleanupOpen=true">{{$t('tg-card.orders.cleanup')}}</a-button><a-button size="small" :loading="loading" @click="loadOrders">{{$t('tg-card.orders.refresh')}}</a-button></div></div></template>
    <div v-if="isMobile" class="tg-mobile-list">
     <a-card v-for="item in mobileOrders" :key="item.id" size="small">
      <div class="flex min-w-0 items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
-       <div class="flex min-w-0 items-center gap-2"><span class="truncate font-semibold">{{item.orderNo}}</span><a-button size="small" type="text" @click="copy(item.orderNo)"{{$t('tg-card.orders.copy')}}a-button></div>
+       <div class="flex min-w-0 items-center gap-2"><span class="truncate font-semibold">{{item.orderNo}}</span><a-button size="small" type="text" @click="copy(item.orderNo)">{{$t('tg-card.orders.copy')}}</a-button></div>
        <div class="mt-1 break-words text-sm text-gray-600">{{item.productName}}</div>
       </div>
       <a-tag class="shrink-0" :color="statusColor(item.status)">{{statusLabel(item.status)}}</a-tag>
      </div>
      <a-divider class="my-3"/>
      <div class="grid grid-cols-2 gap-3 text-sm">
-      <div><div class="text-gray-500"{{$t('tg-card.orders.productAmount')}}div><div class="mt-1 font-semibold">{{(item.amountMinor/100).toFixed(2)}} {{item.currency}}</div></div>
-      <div><div class="text-gray-500"{{$t('tg-card.orders.onchainDue')}}div><div class="mt-1 font-semibold">{{item.paymentAmount==='0.000000'?'-':item.paymentAmount+' USDT'}}</div></div>
-      <div><div class="text-gray-500"{{$t('tg-card.orders.telegramUser')}}div><div class="mt-1 break-all">{{item.telegramUserId}}</div></div>
-      <div><div class="text-gray-500"{{$t('tg-card.orders.createdAt')}}div><div class="mt-1 break-words">{{formatTime(item.createdAt)}}</div></div>
+      <div><div class="text-gray-500">{{$t('tg-card.orders.productAmount')}}</div><div class="mt-1 font-semibold">{{(item.amountMinor/100).toFixed(2)}} {{item.currency}}</div></div>
+      <div><div class="text-gray-500">{{$t('tg-card.orders.onchainDue')}}</div><div class="mt-1 font-semibold">{{item.paymentAmount==='0.000000'?'-':item.paymentAmount+' USDT'}}</div></div>
+      <div><div class="text-gray-500">{{$t('tg-card.orders.telegramUser')}}</div><div class="mt-1 break-all">{{item.telegramUserId}}</div></div>
+      <div><div class="text-gray-500">{{$t('tg-card.orders.createdAt')}}</div><div class="mt-1 break-words">{{formatTime(item.createdAt)}}</div></div>
      </div>
      <div v-if="item.deliveryError" class="mt-3 rounded-md bg-red-50 p-3 text-xs text-red-700 break-words">{{item.deliveryError}}</div>
      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-      <a-button size="small" @click="openOrderDetail(item)"{{$t('tg-card.orders.details')}}a-button>
+      <a-button size="small" @click="openOrderDetail(item)">{{$t('tg-card.orders.details')}}</a-button>
       <a-tag :color="item.stockReserved?'processing':'default'">{{item.stockReserved?'已预留库存':'未预留库存'}}</a-tag>
-      <a-button v-if="item.status==='paid'||item.status==='delivery_failed'||(item.status==='delivery_uncertain'&&item.deliveryType!=='invite_link')" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)"{{$t('tg-card.orders.retryDelivery')}}a-button>
-      <a-tooltip v-else-if="item.status==='delivery_uncertain'&&item.deliveryType==='invite_link'" title="一次性邀请链接的结果不确定，禁止自动重新创建；请人工核实并处理。"><span class="text-xs text-orange-600"{{$t('tg-card.orders.manualVerify')}}span></a-tooltip>
+      <a-button v-if="item.status==='paid'||item.status==='delivery_failed'||(item.status==='delivery_uncertain'&&item.deliveryType!=='invite_link')" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">{{$t('tg-card.orders.retryDelivery')}}</a-button>
+      <a-tooltip v-else-if="item.status==='delivery_uncertain'&&item.deliveryType==='invite_link'" title="一次性邀请链接的结果不确定，禁止自动重新创建；请人工核实并处理。"><span class="text-xs text-orange-600">{{$t('tg-card.orders.manualVerify')}}</span></a-tooltip>
      </div>
-     <div v-if="item.paymentReference" class="mt-2 truncate text-xs text-gray-500"><a :href="`https://tronscan.org/#/transaction/${item.paymentReference}`" target="_blank" rel="noreferrer"{{$t('tg-card.orders.viewChain')}}a></div>
+     <div v-if="item.paymentReference" class="mt-2 truncate text-xs text-gray-500"><a :href="`https://tronscan.org/#/transaction/${item.paymentReference}`" target="_blank" rel="noreferrer">{{$t('tg-card.orders.viewChain')}}</a></div>
     </a-card>
     <a-empty v-if="!loading&&orders.length===0" :description="$t('tg-card.orders.empty')"/>
     <div v-if="orders.length>mobilePageSize" class="flex justify-center py-3"><a-pagination v-model:current="mobilePage" :page-size="mobilePageSize" :total="orders.length" size="small" show-less-items /></div>
@@ -110,7 +110,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
     <a-table-column :title="$t('tg-card.orders.telegramUser')" data-index="telegramUserId" key="telegramUserId" :width="150"/>
     <a-table-column :title="$t('tg-card.orders.orderStatus')" key="status" :width="110"><template #default="{record}"><a-tag :color="statusColor(record.status)">{{statusLabel(record.status)}}</a-tag></template></a-table-column>
     <a-table-column :title="$t('tg-card.orders.reserved')" key="stockReserved" :width="100"><template #default="{record}"><a-tag :color="record.stockReserved?'processing':'default'">{{record.stockReserved?'已预留':'未预留'}}</a-tag></template></a-table-column>
-    <a-table-column :title="$t('tg-card.orders.deliveryRetry')" key="delivery" :width="120"><template #default="{record}"><a-button v-if="record.status==='paid'||record.status==='delivery_failed'||(record.status==='delivery_uncertain'&&record.deliveryType!=='invite_link')" type="link" size="small" :loading="retryingId===record.id" @click="retryDelivery(record)"{{$t('tg-card.orders.retryDelivery')}}a-button><a-tooltip v-else-if="record.status==='delivery_uncertain'&&record.deliveryType==='invite_link'" title="该交付包含可能已成功的外部步骤，禁止整单重试；请人工核实并处理。"><span class="text-xs text-orange-600"{{$t('tg-card.orders.manualVerify')}}span></a-tooltip><span v-else>-</span></template></a-table-column>
+    <a-table-column :title="$t('tg-card.orders.deliveryRetry')" key="delivery" :width="120"><template #default="{record}"><a-button v-if="record.status==='paid'||record.status==='delivery_failed'||(record.status==='delivery_uncertain'&&record.deliveryType!=='invite_link')" type="link" size="small" :loading="retryingId===record.id" @click="retryDelivery(record)">{{$t('tg-card.orders.retryDelivery')}}</a-button><a-tooltip v-else-if="record.status==='delivery_uncertain'&&record.deliveryType==='invite_link'" title="该交付包含可能已成功的外部步骤，禁止整单重试；请人工核实并处理。"><span class="text-xs text-orange-600">{{$t('tg-card.orders.manualVerify')}}</span></a-tooltip><span v-else>-</span></template></a-table-column>
     <a-table-column :title="$t('tg-card.orders.attempts')" data-index="deliveryAttempts" key="deliveryAttempts" :width="120"/>
     <a-table-column :title="$t('tg-card.orders.lastError')" data-index="deliveryError" key="deliveryError" :width="220" ellipsis/>
     <a-table-column :title="$t('tg-card.orders.createdAt')" key="createdAt" :width="190"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
@@ -126,7 +126,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
    <a-spin :spinning="detailLoading">
     <template v-if="selectedDetail">
      <div v-if="selectedDetail.deliverySteps?.length" class="mb-4 rounded-lg border border-gray-100 p-3 sm:col-span-2">
-       <div class="mb-3 font-semibold"{{$t('tg-card.orders.deliverySteps')}}div>
+       <div class="mb-3 font-semibold">{{$t('tg-card.orders.deliverySteps')}}</div>
        <div v-for="step in selectedDetail.deliverySteps" :key="step.id" class="mb-3 last:mb-0 rounded-md border border-gray-100 p-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
          <span class="font-medium">{{deliveryStepLabel(step.stepKey)}}</span>
@@ -139,25 +139,25 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
          <div class="col-span-2">最近开始：{{formatTime(step.startedAt||'')}}</div>
         </div>
         <div v-if="step.status==='uncertain' && selectedDetail.order.status==='delivery_uncertain'" class="mt-3 flex flex-wrap gap-2">
-         <a-button size="small" type="primary" @click="resolveDeliveryStep(step,'succeeded')"{{$t('tg-card.orders.markSucceeded')}}a-button>
-         <a-button size="small" danger @click="resolveDeliveryStep(step,'failed')"{{$t('tg-card.orders.markFailed')}}a-button>
+         <a-button size="small" type="primary" @click="resolveDeliveryStep(step,'succeeded')">{{$t('tg-card.orders.markSucceeded')}}</a-button>
+         <a-button size="small" danger @click="resolveDeliveryStep(step,'failed')">{{$t('tg-card.orders.markFailed')}}</a-button>
         </div>
        </div>
       </div>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.orderNumber')}}div><div class="mt-1 break-all font-semibold">{{selectedDetail.order.orderNo}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.orderStatus')}}div><div class="mt-1"><a-tag :color="statusColor(selectedDetail.order.status)">{{statusLabel(selectedDetail.order.status)}}</a-tag></div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.telegramUserId')}}div><div class="mt-1 break-all">{{selectedDetail.order.telegramUserId}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.telegramChatId')}}div><div class="mt-1 break-all">{{selectedDetail.order.telegramChatId}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.product')}}div><div class="mt-1">{{selectedDetail.order.productName}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.amountDue')}}div><div class="mt-1 font-semibold">{{selectedDetail.order.paymentAmount}} USDT</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.orderCreated')}}div><div class="mt-1">{{formatTime(selectedDetail.order.createdAt)}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.paymentConfirmed')}}div><div class="mt-1">{{formatTime(selectedDetail.order.paidAt||'')}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.chainReceived')}}div><div class="mt-1">{{selectedDetail.paymentBlockTimestampMs?formatTime(selectedDetail.paymentBlockTimestampMs):'-'}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500"{{$t('tg-card.orders.deliveredAt')}}div><div class="mt-1">{{formatTime(selectedDetail.order.deliveredAt||'')}}</div></div>
-      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500"{{$t('tg-card.orders.payerAddress')}}div><div class="mt-1 break-all">{{selectedDetail.paymentFromAddress||'-'}} <a-button v-if="selectedDetail.paymentFromAddress" size="small" type="link" @click="copy(selectedDetail.paymentFromAddress)"{{$t('tg-card.orders.copy')}}a-button></div></div>
-      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500"{{$t('tg-card.orders.platformAddress')}}div><div class="mt-1 break-all">{{selectedDetail.paymentToAddress||'-'}} <a-button v-if="selectedDetail.paymentToAddress" size="small" type="link" @click="copy(selectedDetail.paymentToAddress)"{{$t('tg-card.orders.copy')}}a-button></div></div>
-      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500"{{$t('tg-card.orders.txHash')}}div><div class="mt-1 break-all">{{selectedDetail.paymentTransactionId||selectedDetail.order.paymentReference||'-'}}</div><a v-if="selectedDetail.paymentTransactionId" class="mt-1 inline-block" :href="'https://tronscan.org/#/transaction/'+selectedDetail.paymentTransactionId" target="_blank" rel="noreferrer"{{$t('tg-card.orders.viewTronscan')}}a></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.orderNumber')}}</div><div class="mt-1 break-all font-semibold">{{selectedDetail.order.orderNo}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.orderStatus')}}</div><div class="mt-1"><a-tag :color="statusColor(selectedDetail.order.status)">{{statusLabel(selectedDetail.order.status)}}</a-tag></div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.telegramUserId')}}</div><div class="mt-1 break-all">{{selectedDetail.order.telegramUserId}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.telegramChatId')}}</div><div class="mt-1 break-all">{{selectedDetail.order.telegramChatId}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.product')}}</div><div class="mt-1">{{selectedDetail.order.productName}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.amountDue')}}</div><div class="mt-1 font-semibold">{{selectedDetail.order.paymentAmount}} USDT</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.orderCreated')}}</div><div class="mt-1">{{formatTime(selectedDetail.order.createdAt)}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.paymentConfirmed')}}</div><div class="mt-1">{{formatTime(selectedDetail.order.paidAt||'')}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.chainReceived')}}</div><div class="mt-1">{{selectedDetail.paymentBlockTimestampMs?formatTime(selectedDetail.paymentBlockTimestampMs):'-'}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3"><div class="text-xs text-gray-500">{{$t('tg-card.orders.deliveredAt')}}</div><div class="mt-1">{{formatTime(selectedDetail.order.deliveredAt||'')}}</div></div>
+      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500">{{$t('tg-card.orders.payerAddress')}}</div><div class="mt-1 break-all">{{selectedDetail.paymentFromAddress||'-'}} <a-button v-if="selectedDetail.paymentFromAddress" size="small" type="link" @click="copy(selectedDetail.paymentFromAddress)">{{$t('tg-card.orders.copy')}}</a-button></div></div>
+      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500">{{$t('tg-card.orders.platformAddress')}}</div><div class="mt-1 break-all">{{selectedDetail.paymentToAddress||'-'}} <a-button v-if="selectedDetail.paymentToAddress" size="small" type="link" @click="copy(selectedDetail.paymentToAddress)">{{$t('tg-card.orders.copy')}}</a-button></div></div>
+      <div class="rounded-lg border border-gray-100 p-3 sm:col-span-2"><div class="text-xs text-gray-500">{{$t('tg-card.orders.txHash')}}</div><div class="mt-1 break-all">{{selectedDetail.paymentTransactionId||selectedDetail.order.paymentReference||'-'}}</div><a v-if="selectedDetail.paymentTransactionId" class="mt-1 inline-block" :href="'https://tronscan.org/#/transaction/'+selectedDetail.paymentTransactionId" target="_blank" rel="noreferrer">{{$t('tg-card.orders.viewTronscan')}}</a></div>
      </div>
     </template>
    </a-spin>
