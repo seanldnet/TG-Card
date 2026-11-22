@@ -56,7 +56,7 @@ watch(
         ? {
             sidebarToggle: true,
             globalSearch: false,
-            languageToggle: false,
+            languageToggle: true,
             timezone: false,
             fullscreen: false,
             refresh: false,
