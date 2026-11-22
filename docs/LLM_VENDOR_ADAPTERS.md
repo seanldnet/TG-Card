@@ -1,7 +1,7 @@
 # LLM Vendor Adapter Compatibility Matrix
 
-Status: implementation contract for P1-2; not a claim of completed adapters.
-Baseline: PR #140 AI support foundation branch. Keep the generic OpenAI-compatible transport as the shared HTTP layer; vendor adapters must only add explicit request/response compatibility behavior.
+Status: first adapter batch merged in PR #142; remaining gaps and live integration are tracked below.
+Baseline: PR #140 AI support foundation and PR #142 first adapter batch are merged to main (merge commit `44fb370850c97c0c85dc1bddd2326fd38ae28a55`). Keep the generic OpenAI-compatible transport as the shared HTTP layer; vendor adapters must only add explicit request/response compatibility behavior.
 
 ## Supported vendors and verified protocol facts
 
@@ -46,27 +46,24 @@ Baseline: PR #140 AI support foundation branch. Keep the generic OpenAI-compatib
 - Zhipu GLM API examples: https://docs.bigmodel.cn/cn/best-practice/case/ai-search-engine
 - Zhipu Assistant API reference (legacy/deprecated; not to be used for this integration): https://docs.bigmodel.cn/api-reference/助手-api/助手对话
 
-## Delivery status (updated 2026-11-23)
+## Delivery status (updated 2026-11-23; PR #142 merged)
 
-Initial code implementation is now present on the PR #141 branch:
+PR #142 is merged to main. The first adapter batch includes:
 
-- Added a vendor registry for OpenAI, DeepSeek, Moonshot Kimi international (`.ai`) and mainland China (`.cn`), and Zhipu GLM.
-- Added provider selection through `NewVendorProvider`; unsupported vendor IDs fail closed.
-- Added explicit token-limit serialization: OpenAI uses `max_completion_tokens`; DeepSeek, Kimi and Zhipu use `max_tokens`.
-- Routed the Telegram AI support path through the vendor registry.
-- Added mock contract tests for vendor token fields, aliases, regional Kimi presets and unknown-vendor rejection.
+- Vendor registry and provider selection for OpenAI, DeepSeek, Moonshot Kimi international (.ai) and mainland China (.cn), and Zhipu GLM.
+- Explicit token-limit serialization: OpenAI uses the configured `max_completion_tokens` / legacy `max_tokens` choice; DeepSeek, Kimi and Zhipu use `max_tokens`.
+- Telegram AI support routed through the vendor registry.
+- Mock contract tests for token fields, aliases, regional Kimi presets, unknown vendors, timeout/cancellation, malformed/empty responses, oversized bodies and per-vendor HTTP failure classification.
+- Stable provider error classifications and fail-closed handling for non-stop finish reasons; reasoning content is not exposed as customer-facing text.
 
-Still incomplete and not claimed as production-ready:
+Remaining gaps (not production-ready claims):
 
-- DeepSeek thinking-mode enable/disable and reasoning-effort fields are supported by the internal completion request contract, but the Telegram support call path and administrator settings do not currently expose operator controls for them. They therefore remain unavailable as an operator-configurable feature in this delivery; exact availability is model/API-version dependent and must be verified against the selected model.
-- OpenAI model capability is not inferred from model names. Operators can explicitly select `TokenLimitParameter` as `auto` (default: `max_completion_tokens`), `max_completion_tokens`, or `max_tokens`; the legacy choice must be selected for models/gateways that require it.
-- Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
-- HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `request_timeout`, `request_cancelled`, `upstream_busy`, `upstream_error`, `unexpected_status`) plus a retryable flag. Transport-level deadlines/timeouts are classified as retryable `request_timeout`; caller cancellation is classified separately as non-retryable `request_cancelled`; other network/read failures are retryable `upstream_error`. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
-- Timeout and caller-cancellation contract tests are now present; malformed/empty JSON, missing/empty choices, oversized bodies, and empty HTTP 204 response contract tests have now been added; a per-vendor HTTP failure-classification matrix now covers all six configured provider IDs; CI execution on the final rebased head still remains.
-- Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
+- DeepSeek thinking enable/disable and reasoning-effort are not exposed as operator controls in the Telegram support path/admin settings.
+- Vendor-specific response and finish-reason normalization is partial.
+- No live API integration has been verified with operator-provided credentials.
+- Production deployment and end-to-end production verification are separate operational steps.
 
-This is a partial implementation, not four fully completed vendor adapters. Existing generic HTTPS, timeout, response-size and secret-redaction safeguards remain in the shared transport.
-
+PR #142 merge commit: `44fb370850c97c0c85dc1bddd2326fd38ae28a55`.
 
 ## OpenAI token-limit configuration
 
