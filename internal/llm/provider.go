@@ -40,8 +40,10 @@ func classifyProviderStatus(status int) *ProviderError {
 		e.Code, e.Retryable = "rate_limited", true
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		e.Code = "invalid_request"
-	case http.StatusRequestTimeout, http.StatusTooEarly:
-		e.Retryable = true
+	case http.StatusRequestTimeout:
+		e.Code, e.Retryable = "request_timeout", true
+	case http.StatusTooEarly:
+		e.Code, e.Retryable = "upstream_busy", true
 	default:
 		if status >= 500 && status <= 599 {
 			e.Code, e.Retryable = "upstream_error", true
