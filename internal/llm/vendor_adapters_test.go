@@ -388,7 +388,7 @@ func TestCompleteHonorsConfiguredHTTPTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 	defer close(release)
-	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"gpt-test",Timeout:20*time.Millisecond})(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
+	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
 	if err != nil { t.Fatal(err) }
 	started := time.Now()
 	_, err = provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
