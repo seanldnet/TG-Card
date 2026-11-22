@@ -77,4 +77,4 @@ This is a partial implementation, not four fully completed vendor adapters. Exis
 - `max_tokens`: send the legacy field for a model or compatible gateway that requires it.
 - Any other value fails with `ErrInvalidConfig`.
 
-The transport intentionally does not infer support from model-name prefixes. The operator must select the parameter appropriate to the configured model and endpoint. This field is currently a provider configuration capability; the Telegram admin UI wiring remains a separate follow-up.
+The transport intentionally does not infer support from model-name prefixes. The operator must select the parameter appropriate to the configured model and endpoint. This setting is persisted with the AI support configuration and exposed in the administrator's AI Support settings. Existing saved configurations without this field default to `auto`; the API response exposes only the selected parameter and never the API key. The custom OpenAI-compatible gateway option remains supported and requires an explicit HTTPS BaseURL.
