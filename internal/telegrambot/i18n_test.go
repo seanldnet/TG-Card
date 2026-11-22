@@ -72,8 +72,12 @@ func TestCommerceScreenTranslations(t *testing.T) {
 			t.Errorf("botText(%q, %q) = %q, want %q", tc.language, tc.key, got, tc.want)
 		}
 	}
-	for _, key := range []string{"cart.empty","cart.checkout","cart.created","cart.pay_wallet","cart.pay_chain","cart.validation"}
-	for _, key := range []string{"payment.wallet_success","payment.wallet_delivered","payment.gateway_paid","payment.gateway_pending","payment.trc20_assigned","payment.hosted_instructions","payment.refresh_status"} { if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("payment translation %q is not localized",key) } } { if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("cart translation %q is not localized",key) } }
+	for _, key := range []string{"cart.empty","cart.checkout","cart.created","cart.pay_wallet","cart.pay_chain","cart.validation"} {
+		if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("cart translation %q is not localized",key) }
+	}
+	for _, key := range []string{"payment.wallet_success","payment.wallet_delivered","payment.gateway_paid","payment.gateway_pending","payment.trc20_assigned","payment.hosted_instructions","payment.refresh_status"} {
+		if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("payment translation %q is not localized",key) }
+	}
 	if got := orderStatusText(languageEnglish, "pending_payment"); got != "Awaiting payment" {
 		t.Errorf("English order status = %q", got)
 	}
