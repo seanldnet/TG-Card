@@ -1101,5 +1101,26 @@
     "explain": "Redemption codes are managed separately from coupons. Redemption records retain the customer, reward type, and redemption time. Deleting a code does not revoke entitlements already issued.",
     "leaveImmediate": "Leave blank for immediate activation",
     "leaveNoExpiry": "Leave blank for no expiry"
+  },
+  "dashboard": {
+    "workspaceTitle": "Operations workspace",
+    "workspaceSubtitle": "Review outstanding business tasks and open the relevant page directly",
+    "refreshTasks": "Refresh tasks",
+    "taskDelivery": "Pending deliveries",
+    "taskDeliveryDesc": "Paid orders or failed deliveries that need attention",
+    "taskSupport": "Pending support",
+    "taskSupportDesc": "Customer support requests awaiting a response",
+    "taskPayment": "Orders awaiting payment",
+    "taskPaymentDesc": "Orders waiting for customers to complete payment",
+    "taskStock": "Out-of-stock products",
+    "taskStockDesc": "Listed products with no sellable keys",
+    "openTask": "Handle",
+    "commonActions": "Common actions",
+    "botManagement": "Bot management",
+    "catalogStock": "Products & inventory",
+    "paymentTransactions": "Payment transactions",
+    "websiteSettings": "Website settings",
+    "loadFailed": "Failed to load operations data. Check your login status.",
+    "partialLoad": "Some data could not be loaded."
   }
 }
