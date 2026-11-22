@@ -345,6 +345,10 @@ var botMessages = map[string]map[string]string{
 	"support.added": {languageChinese: "补充内容已添加到工单。", languageEnglish: "Your message has been added to the ticket."},
 	"support.recreated": {languageChinese: " 已结单，已为你重新创建工单 #", languageEnglish: " is closed. A new ticket #"},
 	"support.continue_uploads": {languageChinese: "。你可以继续发送文字、图片或文件。", languageEnglish: ". You can continue sending text, images, or files."},
+
+	"support.update_title": {languageChinese: "售后工单更新", languageEnglish: "Support ticket update"},
+	"support.current_status": {languageChinese: "当前状态：", languageEnglish: "Status: "},
+	"support.admin_reply": {languageChinese: "管理员回复：", languageEnglish: "Support team reply:"},
 }
 
 func botText(language, key string) string {
@@ -361,6 +365,20 @@ func botText(language, key string) string {
 		}
 	}
 	return key
+}
+
+
+func supportStatusText(language, status string) string {
+	if normalizeLanguage(language) != languageEnglish { return status }
+	switch status {
+	case "open": return "Open"
+	case "in_progress": return "In progress"
+	case "waiting_user": return "Waiting for your reply"
+	case "resolved": return "Resolved"
+	case "closed": return "Closed"
+	case "rejected": return "Rejected"
+	default: return status
+	}
 }
 
 func orderStatusText(language, status string) string {
