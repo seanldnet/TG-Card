@@ -163,6 +163,30 @@ var botMessages = map[string]map[string]string{
 		languageChinese: "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。",
 		languageEnglish: "No eligible paid orders were found. You can enter an order number manually to continue.",
 	},
+	"help.body": {
+		languageChinese: "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 选择金额即可创建充值单\n🧾 申请售后 - 选择订单并描述问题\n\n直接点击下方按钮即可使用各项功能。",
+		languageEnglish: "Available features:\n🛍️ Store - Browse products and place orders\n📦 My orders - Check payment and delivery status\n💳 My balance - View your store balance\n💰 Top up - Create a balance top-up order\n🧾 Support - Choose an order and describe your issue\n\nUse the buttons below to continue.",
+	},
+	"help.link": {
+		languageChinese: "\n\nTelegram 客服：",
+		languageEnglish: "\n\nTelegram support: ",
+	},
+	"search.prompt": {
+		languageChinese: "请输入商品名称或关键词，我会直接帮你筛选商品。",
+		languageEnglish: "Enter a product name or keyword and I'll search the store for you.",
+	},
+	"support.query_error": {
+		languageChinese: "暂时无法查询你的订单，请稍后再试。",
+		languageEnglish: "Your orders are temporarily unavailable. Please try again later.",
+	},
+	"support.ticket_choose": {
+		languageChinese: "请选择需要申请售后的订单：",
+		languageEnglish: "Choose the order you need help with:",
+	},
+	"support.ticket_none": {
+		languageChinese: "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。",
+		languageEnglish: "No eligible paid orders were found. You can enter an order number manually to continue.",
+	},
 }
 
 func botText(language, key string) string {
