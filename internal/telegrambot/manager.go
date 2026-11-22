@@ -954,6 +954,18 @@ func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard
 	{{"text":"⛔ 关闭待付款订单","callback_data":"owner:closeorder"}},
 	{{"text":"⬅️ 返回个人首页","callback_data":"owner:back"}},
 }}}
+
+func ownerMenuKeyboardForLanguage(language string) map[string]any {
+ return map[string]any{"inline_keyboard":[][]map[string]string{
+  {{"text":botText(language,"owner.menu.stats"),"callback_data":"owner:stats"},{"text":botText(language,"owner.menu.users"),"callback_data":"owner:userbalance"}},
+  {{"text":botText(language,"owner.menu.orders"),"callback_data":"owner:orders"},{"text":botText(language,"owner.menu.stock"),"callback_data":"owner:stock"}},
+  {{"text":botText(language,"owner.menu.add_stock"),"callback_data":"owner:addstock"},{"text":botText(language,"owner.menu.broadcast"),"callback_data":"owner:broadcast"}},
+  {{"text":botText(language,"owner.menu.ban"),"callback_data":"owner:ban"},{"text":botText(language,"owner.menu.unban"),"callback_data":"owner:unban"}},
+  {{"text":botText(language,"owner.menu.close_order"),"callback_data":"owner:closeorder"}},
+  {{"text":botText(language,"owner.menu.back_home"),"callback_data":"owner:back"}},
+ }}
+}
+
 func mainReplyKeyboard(isOwner bool) map[string]any {
 	return mainReplyKeyboardForLanguage(isOwner, languageChinese)
 }
