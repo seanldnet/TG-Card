@@ -331,7 +331,11 @@
     "businessGroupPlaceholder": "https://t.me/业务通知群",
     "runtimeStatus": "运行状态",
     "enable": "启用",
-    "disable": "停用"
+    "disable": "停用",
+    "defaultLanguage": "默认语言",
+    "languageChinese": "简体中文",
+    "languageEnglish": "English",
+    "defaultLanguageHint": "用户首次进入时优先使用 Telegram 语言；无法识别时回退到此默认语言。用户手动选择的语言偏好优先级最高。"
   },
   "payments": {
     "status": {
