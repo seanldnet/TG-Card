@@ -95,7 +95,7 @@ onMounted(loadDashboard);
         <h1 class="m-0 text-2xl font-semibold">{{$t('tg-card.analytics.title')}}</h1>
         <p class="mt-1 mb-0 text-sm text-gray-500">{{$t('tg-card.analytics.subtitle')}}</p>
       </div>
-      <a-button :loading="loading" @click="loadDashboard">{{$t('tg-card.analytics.refresh')}</a-button>
+      <a-button :loading="loading" @click="loadDashboard">{{$t('tg-card.analytics.refresh')}}</a-button>
     </div>
 
     <a-row v-if="metrics" :gutter="[12,12]">
