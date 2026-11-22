@@ -588,7 +588,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			description:=strings.TrimSpace(msg.Caption);if description==""{description="用户提交了图片/文件作为售后凭证"}
 			ticket,err:=database.CreateSupportTicket(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),strconv.FormatInt(msg.Chat.ID,10),orderNo,"other",description)
 			if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单创建失败："+err.Error(),supportBackKeyboard());m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia);return}
-			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,fileID,fileName);err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单已创建，但附件保存失败，请重新发送附件。")}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n文字说明和附件已一起保存。你可以继续补充文字、图片或文件。",supportBackKeyboard())}
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,fileID,fileName);err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单已创建，但附件保存失败，请重新发送附件。")}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.submit_success")+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.ticket_number")+ticket.TicketNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.order_number")+ticket.OrderNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.attachment_saved"),supportBackKeyboard())}
 			m.notifyOwnerSupportTicket(ctx,cfg,ticket.ID)
 			m.Notify("support_created","新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
 			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID);return
@@ -693,7 +693,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 				return
 			}
 			if _, timelineErr := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,"",""); timelineErr != nil { log.Printf("append initial support message failed: ticket_id=%s error=%v",ticket.ID,timelineErr) }
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.submit_success")+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.ticket_number")+ticket.TicketNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.order_number")+ticket.OrderNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.status_pending"), supportBackKeyboard())
 			// Give the first plain-text description the same guarded AI triage
 			// path as later replies; attachments remain human-reviewed.
 			m.tryAIHandleSupportFollowup(ctx,cfg,msg,ticket,description)
@@ -861,7 +861,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
 		if _,timelineErr:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),strings.Join(command[2:]," "),"","");timelineErr!=nil{log.Printf("append support command timeline failed: ticket_id=%s error=%v",ticket.ID,timelineErr)}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",supportBackKeyboard())
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.submit_success")+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.ticket_number")+ticket.TicketNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.order_number")+ticket.OrderNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.status_pending"),supportBackKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
 }
@@ -2247,7 +2247,7 @@ func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg M
   }
   handled := m.tryAIHandleSupportFollowup(ctx,cfg,msg,ticket,text)
   if !handled {
-   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容已添加到工单。")
+   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(m.languageForTelegramID(ctx,userID),"support.added"))
   }
   m.notifyOwnerSupportMessage(ctx,cfg,ticket.ID,text,fileID,fileName)
   m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
@@ -2271,7 +2271,7 @@ func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg M
  m.notifyOwnerSupportTicket(ctx,cfg,next.ID)
  m.Notify("support_created","用户在已结单工单后重新联系，已创建新工单："+next.TicketNo+"\n原工单："+ticket.TicketNo+"\n订单号："+next.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
  m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+next.ID)
- _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"原工单 "+ticket.TicketNo+" 已结单，已为你重新创建工单 #"+next.TicketNo+"。你可以继续发送文字、图片或文件。")
+ _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,ticket.TicketNo+botText(m.languageForTelegramID(ctx,userID),"support.recreated")+next.TicketNo+botText(m.languageForTelegramID(ctx,userID),"support.continue_uploads"))
 }
 
 
@@ -2648,13 +2648,17 @@ func (m *Manager) languageForChat(ctx context.Context, cfg Config, chatID int64)
 	return languageChinese
 }
 
-func (m *Manager) deliveryLanguage(ctx context.Context, order database.Order) string {
-	if m.db != nil && strings.TrimSpace(order.TelegramUserID) != "" {
-		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, order.TelegramUserID); err == nil && saved != "" {
+func (m *Manager) languageForTelegramID(ctx context.Context, userID string) string {
+	if m.db != nil && strings.TrimSpace(userID) != "" {
+		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, userID); err == nil && saved != "" {
 			return saved
 		}
 	}
 	return languageChinese
+}
+
+func (m *Manager) deliveryLanguage(ctx context.Context, order database.Order) string {
+	return m.languageForTelegramID(ctx, order.TelegramUserID)
 }
 
 func (m *Manager) ensureTelegramLanguage(ctx context.Context, user TelegramUser) {
