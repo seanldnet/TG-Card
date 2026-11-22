@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"time"
 	"testing"
 )
 
@@ -213,4 +214,65 @@ func TestProviderHTTPFailuresAreClassifiedWithoutLeakingBody(t *testing.T) {
 			}
 		})
 	}
+}
+
+
+func TestOpenAITokenLimitParameterCanBeSelectedExplicitly(t *testing.T) {
+	tests := []struct { name, parameter, want string }{
+		{"default", "", "max_completion_tokens"},
+		{"auto", "auto", "max_completion_tokens"},
+		{"modern", "max_completion_tokens", "max_completion_tokens"},
+		{"legacy", "max_tokens", "max_tokens"},
+	}
+	for _, tt := range tests { t.Run(tt.name, func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil { t.Errorf("decode request: %v", err) }
+			if _, ok := payload[tt.want]; !ok { t.Errorf("expected %s in payload: %#v", tt.want, payload) }
+			other := "max_tokens"; if tt.want == other { other = "max_completion_tokens" }
+			if _, ok := payload[other]; ok { t.Errorf("unexpected token parameter %s", other) }
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+		}))
+		defer server.Close()
+		provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",TokenLimitParameter:tt.parameter})
+		if err != nil { t.Fatal(err) }
+		_, err = provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+		if err != nil { t.Fatal(err) }
+	}) }
+}
+
+func TestOpenAIRejectsUnknownTokenLimitParameter(t *testing.T) {
+	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:"https://api.openai.com/v1",APIKey:"test-key",Model:"test-model",TokenLimitParameter:"guess"})
+	if err != nil { t.Fatal(err) }
+	_, err = provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+	if !errors.Is(err, ErrInvalidConfig) { t.Fatalf("expected invalid config, got %v", err) }
+}
+
+func TestCompleteHonorsContextCancellation(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
+	if err != nil { t.Fatal(err) }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, callErr := provider.Complete(ctx, CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}}); done <- callErr }()
+	<-started
+	cancel()
+	if err := <-done; err == nil { t.Fatal("expected cancellation error") }
+}
+
+func TestCompleteHonorsConfiguredHTTPTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	defer server.Close()
+	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
+	if err != nil { t.Fatal(err) }
+	started := time.Now()
+	_, err = provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+	if err == nil { t.Fatal("expected timeout error") }
+	if time.Since(started) > time.Second { t.Fatal("request did not respect configured timeout") }
 }
