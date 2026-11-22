@@ -19,6 +19,12 @@ func normalizeLanguage(value string) string {
 	}
 }
 
+func detectLanguageWithDefault(languageCode, defaultLanguage string) string {
+	if language := normalizeLanguage(languageCode); language != "" { return language }
+	if language := normalizeLanguage(defaultLanguage); language != "" { return language }
+	return languageChinese
+}
+
 func detectLanguage(languageCode string) string {
 	if language := normalizeLanguage(languageCode); language != "" {
 		return language
