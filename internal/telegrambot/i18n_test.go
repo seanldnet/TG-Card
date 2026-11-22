@@ -36,3 +36,23 @@ func TestBotTextFallsBackToChineseForMissingTranslation(t *testing.T) {
 		t.Fatalf("unknown translation key should remain visible for diagnosis, got %q", got)
 	}
 }
+
+func TestMainReplyKeyboardUsesSelectedLanguageAndCanonicalizesLabels(t *testing.T) {
+	markup := mainReplyKeyboardForLanguage(false, languageEnglish)
+	rows, ok := markup["keyboard"].([][]map[string]string)
+	if !ok || len(rows) < 4 {
+		t.Fatalf("unexpected reply keyboard shape: %#v", markup)
+	}
+	if got := rows[0][0]["text"]; got != "🛍️ Store" {
+		t.Fatalf("English reply keyboard store label = %q", got)
+	}
+	if got := rows[3][1]["text"]; got != "🏠 Main menu" {
+		t.Fatalf("English reply keyboard home label = %q", got)
+	}
+	if got := canonicalReplyKeyboardText("📦 My orders"); got != "📦 我的订单" {
+		t.Fatalf("English reply keyboard label was not routed to the existing action: %q", got)
+	}
+	if got := canonicalReplyKeyboardText("🔎 搜索商品"); got != "🔎 搜索商品" {
+		t.Fatalf("Chinese reply keyboard label should remain unchanged: %q", got)
+	}
+}
