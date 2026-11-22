@@ -2180,7 +2180,7 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
   }
   if messages[i].SenderType == "user" { break }
  }
- provider, err := llm.NewOpenAICompatible(aiConfig)
+ provider, err := llm.NewVendorProvider(aiConfig)
  if err != nil {
   log.Printf("AI support provider initialization failed: ticket_id=%s error=%v",ticket.ID,err)
   return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"provider_unavailable")
