@@ -355,19 +355,27 @@ func TestCompleteRejectsUnexpectedHTTPStatusWithoutParsingBody(t *testing.T) {
 
 func TestCompleteHonorsContextCancellation(t *testing.T) {
 	started := make(chan struct{})
+	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(started)
-		<-r.Context().Done()
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
 	}))
 	defer server.Close()
 	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
 	if err != nil { t.Fatal(err) }
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan error, 1)
 	go func() { _, callErr := provider.Complete(ctx, CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}}); done <- callErr }()
 	<-started
 	cancel()
 	if err := <-done; err == nil { t.Fatal("expected cancellation error") }
+	// Some HTTP transports may return from the client before the test server
+	// observes the peer disconnect. Always release the handler before Close.
+	close(release)
 }
 
 func TestCompleteHonorsConfiguredHTTPTimeout(t *testing.T) {
