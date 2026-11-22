@@ -16,6 +16,7 @@ import { preferences, updatePreferences, usePreferences } from '@vben/preference
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { useWindowSize } from '@vueuse/core';
 
+import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 import { requestClient } from '#/api/request';
 import LoginForm from '#/views/_core/authentication/login.vue';
