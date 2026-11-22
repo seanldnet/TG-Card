@@ -414,8 +414,13 @@ func TestCompleteClassifiesTransportTimeoutAndCancellation(t *testing.T) {
  })
  t.Run("caller cancellation is not retryable",func(t *testing.T){
   started:=make(chan struct{})
-  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){close(started);<-r.Context().Done()}))
+  release:=make(chan struct{})
+  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+   close(started)
+   select { case <-r.Context().Done(): case <-release: }
+  }))
   defer server.Close()
+  defer close(release)
   provider,err:=NewVendorProvider(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
   if err!=nil{t.Fatal(err)}
   ctx,cancel:=context.WithCancel(context.Background())
