@@ -2147,22 +2147,27 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
  if m.db == nil || strings.TrimSpace(currentText) == "" || ticket.AssignedTo != "" {
   return false
  }
- decision := llm.DecideSupportHandling(currentText)
- if !decision.AutoReply {
-  _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 已停止自动答复并转交人工："+decision.Reason,"","")
-  _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条问题需要人工客服核实，我已为你转交平台客服，请稍候。")
-  return true
- }
+ if msg.Document != nil || len(msg.Photo) > 0 { return false }
  aiConfig, enabled, err := llm.LoadStoredConfig(ctx,m.db,m.driver,m.decrypt)
  if err != nil {
   log.Printf("AI support config load failed: ticket_id=%s error=%v",ticket.ID,err)
   return false
  }
  if !enabled { return false }
+ decision := llm.DecideSupportHandling(currentText)
+ if !decision.AutoReply {
+  _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 已停止自动答复并转交人工："+decision.Reason,"","")
+  _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条问题需要人工客服核实，我已为你转交平台客服，请稍候。")
+  return true
+ }
  messages, err := database.ListSupportTicketMessages(ctx,m.db,m.driver,ticket.ID)
  if err != nil {
   log.Printf("AI support timeline load failed: ticket_id=%s error=%v",ticket.ID,err)
   return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"timeline_unavailable")
+ }
+ for i := len(messages)-1; i >= 0; i-- {
+  if messages[i].SenderType == "admin" { return false }
+  if messages[i].SenderType == "user" { break }
  }
  provider, err := llm.NewOpenAICompatible(aiConfig)
  if err != nil {
