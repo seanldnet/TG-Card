@@ -26,7 +26,7 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 		return
 	}
 	if len(items)==0 {
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛒 购物车还是空的。\n去商品中心挑选本地卡密商品，点击“加入购物车”即可。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"cart.shop"),"callback_data":"shop:home"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(language,"cart.empty"),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"cart.shop"),"callback_data":"shop:home"}}}})
 		return
 	}
 	totals:=make(map[string]int64)
@@ -55,7 +55,7 @@ func (m *Manager) showCart(ctx context.Context, cfg Config, chatID, telegramUser
 	for _,currency:=range currencies { totalLines=append(totalLines,formatPrice(totals[currency],currency)) }
 	rows=append(rows,[]map[string]string{{"text":botText(language,"cart.clear"),"callback_data":"cart:clear"},{"text":botText(language,"cart.continue"),"callback_data":"shop:home"}})
 	rows=append(rows,[]map[string]string{{"text":botText(language,"cart.checkout"),"callback_data":"cart:checkout"}})
-	message:="🛒 我的购物车\n\n"+strings.Join(lines,"\n\n")+"\n\n商品小计（未扣批量优惠）：\n"+strings.Join(totalLines,"\n")+"\n\n符合条件的商品批量折扣会在结算时自动计算；库存、价格和商品状态也会在结算时重新校验。"
+	message:=botText(language,"cart.title")+"\n\n"+strings.Join(lines,"\n\n")+"\n\n"+botText(language,"cart.subtotal")+"\n"+strings.Join(totalLines,"\n")+"\n\n"+botText(language,"cart.validation")
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,message,map[string]any{"inline_keyboard":rows})
 }
 
@@ -76,8 +76,8 @@ func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query Callba
 	lines:=make([]string,0,len(items))
 	for _,item:=range items { lines=append(lines,fmt.Sprintf("%s × %d · %s",item.ProductName,item.Quantity,formatPrice(item.LineTotalMinor,item.Currency))) }
 	balance,balanceErr:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,userID)
-	message:="✅ 购物车统一订单已创建！\n订单号："+order.OrderNo+"\n\n"+strings.Join(lines,"\n")+"\n\n应付总额："+formatPrice(order.AmountMinor,order.Currency)+"\n链上准确付款金额："+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n支付有效期：20 分钟"
-	if balanceErr==nil { message+="\n当前站内余额："+formatUSDTAtomic(balance)+" USDT" }
+	message:=botText(language,"cart.created")+"\n"+botText(language,"cart.order_number")+order.OrderNo+"\n\n"+strings.Join(lines,"\n")+"\n\n"+botText(language,"cart.amount_due")+formatPrice(order.AmountMinor,order.Currency)+"\n"+botText(language,"cart.exact_amount")+formatUSDTAtomic(order.PaymentAmountAtomic)+" USDT\n"+botText(language,"cart.expiry")
+	if balanceErr==nil { message+= "\n"+botText(language,"cart.balance")+formatUSDTAtomic(balance)+" USDT" }
 	buttons:=[][]map[string]string{
 		{{"text":botText(language,"cart.pay_wallet"),"callback_data":"shop:walletpay:"+order.ID}},
 		{{"text":botText(language,"cart.pay_chain"),"callback_data":"shop:chainpay:"+order.ID}},
@@ -86,6 +86,6 @@ func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query Callba
 	buttons=append(buttons,[]map[string]string{{"text":botText(language,"cart.topup"),"callback_data":"wallet:recharge:10000000"}})
 	buttons=append(buttons,[]map[string]string{{"text":botText(language,"cart.orders"),"callback_data":"menu:orders"}})
 	keyboard:=map[string]any{"inline_keyboard":buttons}
-	m.Notify("order_created",botText(language,"cart.notify_created")+order.OrderNo+"\n商品种类："+strconv.Itoa(len(items))+"\n金额："+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
+	m.Notify("order_created",botText(language,"cart.notify_created")+order.OrderNo+ "\n"+botText(language,"cart.item_kinds")+strconv.Itoa(len(items))+ "\n"+botText(language,"cart.amount_due")+formatPrice(order.AmountMinor,order.Currency),strconv.FormatInt(chatID,10))
 	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,message,keyboard)
 }
