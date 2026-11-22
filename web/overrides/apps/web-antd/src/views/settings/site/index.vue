@@ -72,7 +72,7 @@ onMounted(load);
       </a-row><a-form-item label="SMTP TLS"><a-switch v-model:checked="form.smtpUseTLS" /></a-form-item>
       </a-form>
       <a-form-item label="邮件通知收件邮箱（用于测试邮件及业务邮件通知）"><a-input v-model:value="form.contactEmail" type="email" placeholder="可选，填写接收通知的邮箱" /></a-form-item>
-      <a-space wrap><a-button size="small" :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件</a-button></a-space>
+      <a-space wrap class="mt-3 gap-3"><a-button size="small" :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件</a-button></a-space>
      </div>
     </a-tab-pane>
     <a-tab-pane key="email">
@@ -150,9 +150,9 @@ onMounted(load);
        <a-tag v-if="backupEncryptionKeyConfigured" color="success">已配置</a-tag>
        <a-tag v-else color="warning">未配置</a-tag>
       </a-space>
-      <a-alert class="mt-3" type="warning" show-icon message="密钥至少 32 个字符。请在保存后立即复制并存入密码管理器或离线安全位置；丢失密钥将无法解密备份。更换密钥只影响之后生成的备份，旧备份仍必须使用原密钥恢复。" />
-      <div class="mt-3 text-xs text-gray-500">网站保存的密钥用于每日自动备份。服务器命令行手动备份/恢复仍需在运行命令的环境中提供 BACKUP_ENCRYPTION_PASSPHRASE。</div>
-      <div class="mt-3 text-xs text-gray-500">备份发送失败时会记录服务端错误日志，并尝试向主人发送失败通知。备份文件通过 Telegram 文档消息发送。</div>
+      <a-alert class="mt-4" type="warning" show-icon message="密钥至少 32 个字符。请在保存后立即复制并存入密码管理器或离线安全位置；丢失密钥将无法解密备份。更换密钥只影响之后生成的备份，旧备份仍必须使用原密钥恢复。" />
+      <div class="mt-4 text-xs leading-6 text-gray-500">网站保存的密钥用于每日自动备份。服务器命令行手动备份/恢复仍需在运行命令的环境中提供 BACKUP_ENCRYPTION_PASSPHRASE。</div>
+      <div class="mt-3 text-xs leading-6 text-gray-500">备份发送失败时会记录服务端错误日志，并尝试向主人发送失败通知。备份文件通过 Telegram 文档消息发送。</div>
      </div>
     </a-tab-pane>
     <a-tab-pane key="cap">
