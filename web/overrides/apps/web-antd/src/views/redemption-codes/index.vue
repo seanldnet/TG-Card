@@ -57,7 +57,7 @@ onMounted(load);
    <a-table :columns="columns" :data-source="items" :loading="loading" :pagination="{pageSize:10}" row-key="id" :scroll="{x:950}">
     <template #bodyCell="{column,record}">
      <template v-if="column.key==='reward'">{{rewardLabel(record)}}</template>
-     <template v-else-if="column.key==='usage'">{{record.usageCount}}<span v-if="record.usageLimit>0"> / {{record.usageLimit}}</span><div class="text-xs text-gray-500">每人 {{record.perUserLimit}} 次</div></template>
+     <template v-else-if="column.key==='usage'">{{record.usageCount}}<span v-if="record.usageLimit>0"> / {{record.usageLimit}}</span><div class="text-xs text-gray-500">{{$t('tg-card.redemptionCodes.timesPerUser',{count:record.perUserLimit})}}</div></template>
      <template v-else-if="column.key==='period'"><span class="text-xs">{{periodLabel(record)}}</span></template>
      <template v-else-if="column.key==='status'"><a-tag :color="record.status===1?'success':'default'">{{record.status===1?$t('tg-card.redemptionCodes.enabledStatus'):$t('tg-card.redemptionCodes.disabledStatus')}}</a-tag></template>
      <template v-else-if="column.key==='actions'"><a-space size="small"><a-button type="link" size="small" @click="copyCode(record.code)">{{$t('tg-card.redemptionCodes.copy')}}</a-button><a-button type="link" size="small" @click="edit(record)">{{$t('tg-card.redemptionCodes.edit')}}</a-button><a-button type="link" danger size="small" @click="remove(record)">{{$t('tg-card.redemptionCodes.delete')}}</a-button></a-space></template>
@@ -81,8 +81,8 @@ onMounted(load);
     </template>
     <a-form-item :label="$t('tg-card.redemptionCodes.usageLimit')"><a-input-number v-model:value="form.usageLimit" :min="0" class="w-full"/></a-form-item>
     <a-form-item :label="$t('tg-card.redemptionCodes.perUserLimit')"><a-input-number v-model:value="form.perUserLimit" :min="1" :max="100" class="w-full"/></a-form-item>
-    <a-form-item :label="$t('tg-card.redemptionCodes.startsAt')"><a-input v-model:value="form.startsAt" placeholder="留空立即生效"/></a-form-item>
-    <a-form-item :label="$t('tg-card.redemptionCodes.endsAt')"><a-input v-model:value="form.endsAt" placeholder="留空长期有效"/></a-form-item>
+    <a-form-item :label="$t('tg-card.redemptionCodes.startsAt')"><a-input v-model:value="form.startsAt" :placeholder="$t('tg-card.redemptionCodes.leaveImmediate')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.redemptionCodes.endsAt')"><a-input v-model:value="form.endsAt" :placeholder="$t('tg-card.redemptionCodes.leaveNoExpiry')"/></a-form-item>
     <a-form-item :label="$t('tg-card.redemptionCodes.status')"><a-switch v-model:checked="form.enabled" :checked-children="$t('tg-card.redemptionCodes.enabledStatus')" :un-checked-children="$t('tg-card.redemptionCodes.disabledStatus')"/></a-form-item>
    </a-form>
    <a-alert type="info" show-icon class="mt-2" :message="$t('tg-card.redemptionCodes.explain')"/>
