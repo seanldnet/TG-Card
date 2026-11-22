@@ -7,6 +7,7 @@ import { ProfilePasswordSetting, z } from '@vben/common-ui';
 import { message } from 'ant-design-vue';
 
 import { requestClient } from '#/api/request';
+import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 
 const authStore = useAuthStore();
@@ -14,36 +15,36 @@ const authStore = useAuthStore();
 const formSchema = computed((): VbenFormSchema[] => [
   {
     fieldName: 'oldPassword',
-    label: '当前密码',
+    label: $t('tg-card.passwordSettings.currentPassword'),
     component: 'VbenInputPassword',
-    componentProps: { placeholder: '请输入当前密码' },
-    rules: z.string().min(1, '请输入当前密码'),
+    componentProps: { placeholder: $t('tg-card.passwordSettings.currentPasswordPlaceholder') },
+    rules: z.string().min(1, $t('tg-card.passwordSettings.currentPasswordPlaceholder')),
   },
   {
     fieldName: 'newPassword',
-    label: '新密码',
+    label: $t('tg-card.passwordSettings.newPassword'),
     component: 'VbenInputPassword',
     componentProps: {
       passwordStrength: true,
-      placeholder: '至少 12 位，建议使用大小写字母、数字和符号',
+      placeholder: $t('tg-card.passwordSettings.newPasswordPlaceholder'),
     },
     rules: z
       .string()
-      .min(12, '新密码至少需要 12 位')
-      .max(256, '新密码不能超过 256 位'),
+      .min(12, $t('tg-card.passwordSettings.newPasswordMin'))
+      .max(256, $t('tg-card.passwordSettings.newPasswordMax')),
   },
   {
     fieldName: 'confirmPassword',
-    label: '确认新密码',
+    label: $t('tg-card.passwordSettings.confirmPassword'),
     component: 'VbenInputPassword',
-    componentProps: { placeholder: '请再次输入新密码' },
+    componentProps: { placeholder: $t('tg-card.passwordSettings.confirmRequired') },
     dependencies: {
       rules(values) {
         return z
           .string()
-          .min(1, '请再次输入新密码')
+          .min(1, $t('tg-card.passwordSettings.confirmRequired'))
           .refine((value) => value === values.newPassword, {
-            message: '两次输入的密码不一致',
+            message: $t('tg-card.passwordSettings.passwordMismatch'),
           });
       },
       triggerFields: ['newPassword'],
@@ -56,7 +57,7 @@ async function handleSubmit(values: Record<string, string>) {
     currentPassword: values.oldPassword,
     newPassword: values.newPassword,
   });
-  message.success('密码修改成功，请使用新密码重新登录');
+  message.success($t('tg-card.passwordSettings.passwordChanged'));
   await authStore.logout();
 }
 </script>
