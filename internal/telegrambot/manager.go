@@ -136,6 +136,7 @@ type TelegramUser struct {
 	Username string `json:"username"`
 	FirstName string `json:"first_name"`
 	LastName string `json:"last_name"`
+	LanguageCode string `json:"language_code"`
 }
 
 type apiResult struct {
@@ -608,6 +609,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" { return }
+	if text == "/language" || text == "/lang" || text == "🌐 语言 / Language" {
+		language := m.languageForUser(ctx, cfg, *msg.From)
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, botText(language, "language.title")+"\n"+botText(language, "language.current"), languageKeyboard(language))
+		return
+	}
 	pending := m.takePendingAction(cfg.ID, msg.Chat.ID)
 	userID:=strconv.FormatInt(msg.From.ID,10);chatKey:=strconv.FormatInt(msg.Chat.ID,10)
 	if text=="/cancel" {
@@ -878,7 +884,7 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 		message = "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。"
 	}
 	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
-	rows = append(rows, []map[string]string{{"text":"⬅️ 返回商城","callback_data":"shop:home"}})
+	rows = append(rows, []map[string]string{{"text":botText(language, "orders.back"),"callback_data":"shop:home"}})
 	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, message, map[string]any{"inline_keyboard": rows})
 }
 
@@ -886,8 +892,10 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 // showWalletBalance keeps the balance interaction focused: identity, balance and two actions only.
 func (m *Manager) showWalletBalance(ctx context.Context,cfg Config,chatID,userID int64) {
   balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(userID,10))
-  if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂时无法查询余额，请稍后再试。",walletBalanceKeyboard()); return }
-  text:="👤 Telegram 用户 ID："+strconv.FormatInt(userID,10)+"\n💰 账户余额："+formatUSDTAtomic(balance)+" USDT"
+  if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForChat(ctx,cfg,chatID),"balance.unavailable"),walletBalanceKeyboard()); return }
+  language:=m.languageForChat(ctx,cfg,chatID)
+  text:="👤 Telegram ID: "+strconv.FormatInt(userID,10)+"\n💰 Balance: "+formatUSDTAtomic(balance)+" USDT"
+  if language==languageChinese { text="👤 Telegram 用户 ID："+strconv.FormatInt(userID,10)+"\n💰 账户余额："+formatUSDTAtomic(balance)+" USDT" }
   _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,walletBalanceKeyboard())
 }
 
@@ -945,14 +953,19 @@ func mainReplyKeyboard(isOwner bool) map[string]any { rows:=[][]map[string]strin
 };if isOwner { rows=append(rows,[]map[string]string{{"text":"🛠️ 主人管理"},{"text":"🧾 待处理工单"}}) };return map[string]any{"keyboard":rows,"resize_keyboard":true,"is_persistent":true,"input_field_placeholder":"选择菜单功能"} }
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
-func mainMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
- {{"text":"🛍️ 商品中心","callback_data":"menu:shop"},{"text":"🔎 搜索商品","callback_data":"menu:search"}},
- {{"text":"🛒 购物车","callback_data":"menu:cart"},{"text":"📦 我的订单","callback_data":"menu:orders"}},
- {{"text":"💳 我的余额","callback_data":"menu:balance"},{"text":"💰 余额充值","callback_data":"menu:recharge"}},
- {{"text":"🧾 申请售后","callback_data":"menu:support"},{"text":"❓ 使用帮助","callback_data":"menu:help"}},
+func mainMenuKeyboard() map[string]any { return mainMenuKeyboardForLanguage(languageChinese) }
+func mainMenuKeyboardForLanguage(language string) map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
+ {{"text":botText(language,"menu.shop"),"callback_data":"menu:shop"},{"text":botText(language,"menu.search"),"callback_data":"menu:search"}},
+ {{"text":botText(language,"menu.cart"),"callback_data":"menu:cart"},{"text":botText(language,"menu.orders"),"callback_data":"menu:orders"}},
+ {{"text":botText(language,"menu.balance"),"callback_data":"menu:balance"},{"text":botText(language,"menu.recharge"),"callback_data":"menu:recharge"}},
+ {{"text":botText(language,"menu.support"),"callback_data":"menu:support"},{"text":botText(language,"menu.help"),"callback_data":"menu:help"}},
+ {{"text":"🌐 语言 / Language","callback_data":"menu:language"}},
 }}}
 func welcomeKeyboard(cfg Config, isOwner bool) map[string]any {
- rows:=mainMenuKeyboard()["inline_keyboard"].([][]map[string]string)
+ return welcomeKeyboardForLanguage(cfg,isOwner,languageChinese)
+}
+func welcomeKeyboardForLanguage(cfg Config, isOwner bool, language string) map[string]any {
+ rows:=mainMenuKeyboardForLanguage(language)["inline_keyboard"].([][]map[string]string)
  if cfg.CustomerServiceURL!=""{rows=append([][]map[string]string{{{"text":"👩‍💻 联系客服","url":cfg.CustomerServiceURL}}},rows...)}
  if cfg.BusinessGroupURL!=""{rows=append([][]map[string]string{{{"text":"📢 业务通知群","url":cfg.BusinessGroupURL}}},rows...)}
  if isOwner { rows=append(rows, []map[string]string{{"text":"🛠️ 主人管理","callback_data":"owner:home"}}) }
@@ -968,24 +981,25 @@ func (m *Manager) showStartHome(ctx context.Context, cfg Config, chatID int64, u
 			balanceText = formatUSDTAtomic(balance) + " USDT"
 		}
 	}
+	language := m.languageForUser(ctx, cfg, user)
 	welcomeMessage := strings.TrimSpace(cfg.WelcomeMessage)
-	if welcomeMessage == "" { welcomeMessage = "🎉 欢迎来到我们的商城！" }
+	if welcomeMessage == "" { welcomeMessage = botText(language, "home.welcome") }
 	purchaseNotice := strings.TrimSpace(cfg.PurchaseNotice)
-	if purchaseNotice == "" { purchaseNotice = "📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密" }
+	if purchaseNotice == "" { purchaseNotice = botText(language, "home.purchase_notice") }
 	displayName := strings.TrimSpace(user.FirstName + " " + user.LastName)
-	if displayName == "" { displayName = "用户" }
+	if displayName == "" { displayName = botText(language, "home.user") }
 	welcome := welcomeMessage + "\n\n👋 " + displayName +
-		"\n👤 Telegram ID：" + strconv.FormatInt(user.ID, 10) +
-		"\n💰 当前余额：" + balanceText + "\n\n" + purchaseNotice
+		"\n" + botText(language, "home.telegram_id") + strconv.FormatInt(user.ID, 10) +
+		"\n" + botText(language, "home.balance") + balanceText + "\n\n" + purchaseNotice
 	// Keep both Telegram menu surfaces: inline actions attached to the welcome
 	// card, plus the persistent reply keyboard below the message input. Telegram
 	// accepts only one reply_markup per message, so these must be sent separately.
 	isOwner := m.isOwner(cfg, user.ID)
-	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, welcomeKeyboard(cfg, isOwner)); err != nil {
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, welcome, welcomeKeyboardForLanguage(cfg, isOwner, language)); err != nil {
 		log.Printf("send Telegram welcome card with inline menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
 		return
 	}
-	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, "👇 也可以使用输入框下方的常驻菜单快速操作。", mainReplyKeyboard(isOwner)); err != nil {
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "home.persistent_menu"), mainReplyKeyboard(isOwner)); err != nil {
 		log.Printf("send Telegram persistent reply menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
 	}
 }
@@ -1036,15 +1050,15 @@ func (m *Manager) showShop(ctx context.Context,cfg Config,chatID int64) {
 func (m *Manager) showShopPage(ctx context.Context,cfg Config,chatID int64,page int) {
  if page<0 {page=0}
  cats,err:=database.ListVisibleCategoriesPage(ctx,m.db,m.driver,6,page*5)
- if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品分类暂时无法加载。",shopBackKeyboard());return}
+ if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForChat(ctx,cfg,chatID),"shop.load_error"),shopBackKeyboard());return}
  rows:=make([][]map[string]string,0,8)
  count:=len(cats);hasNext:=count>5;if hasNext{cats=cats[:5]}
  for _,category:=range cats {rows=append(rows,[]map[string]string{{"text":truncateButtonText(category.Name,28),"callback_data":"shop:category:"+category.ID}})}
  if page>0 {rows=append(rows,[]map[string]string{{"text":"⬅️ 上一页","callback_data":"shop:catpage:"+strconv.Itoa(page-1)}})}
  if hasNext {rows=append(rows,[]map[string]string{{"text":"下一页 ➡️","callback_data":"shop:catpage:"+strconv.Itoa(page+1)}})}
- if len(rows)==0 {items,_:=database.ListVisibleProductsPage(ctx,m.db,m.driver,1,0,"","");if len(items)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"目前还没有上架商品。",shopBackKeyboard());return};rows=append(rows,[]map[string]string{{"text":"全部商品","callback_data":"shop:category:all"}})}
+ if len(rows)==0 {items,_:=database.ListVisibleProductsPage(ctx,m.db,m.driver,1,0,"","");if len(items)==0{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForChat(ctx,cfg,chatID),"shop.empty"),shopBackKeyboard());return};rows=append(rows,[]map[string]string{{"text":"全部商品","callback_data":"shop:category:all"}})}
  rows=append(rows,[]map[string]string{{"text":"📦 我的订单","callback_data":"shop:orders"}})
- _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🛍️ 商品中心\n请选择商品分类：",map[string]any{"inline_keyboard":rows})
+ _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForChat(ctx,cfg,chatID),"shop.title"),map[string]any{"inline_keyboard":rows})
 }
 func (m *Manager) showCategory(ctx context.Context,cfg Config,chatID int64,categoryID string) {
  m.showCategoryPage(ctx,cfg,chatID,categoryID,0)
@@ -1142,6 +1156,22 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
+	if strings.HasPrefix(query.Data, "language:set:") {
+		language := normalizeLanguage(strings.TrimPrefix(query.Data, "language:set:"))
+		if language == "" || m.db == nil {
+			_ = m.answerCallback(ctx, cfg.Token, query.ID, "Language preference could not be saved")
+			return
+		}
+		if err := database.SetTelegramUserLanguage(ctx, m.db, m.driver, strconv.FormatInt(query.From.ID, 10), language); err != nil {
+			log.Printf("save Telegram language preference failed: user_id=%d error=%v", query.From.ID, err)
+			_ = m.answerCallback(ctx, cfg.Token, query.ID, "Language preference could not be saved")
+			return
+		}
+		_ = m.answerCallback(ctx, cfg.Token, query.ID, botText(language, "language.saved"))
+		_ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "language.saved"))
+		m.showStartHome(ctx, cfg, chatID, query.From)
+		return
+	}
 	if (strings.HasPrefix(query.Data,"cart:") || query.Data=="menu:cart") && query.Message.Chat.Type!="private" {
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车仅支持在机器人私聊中使用")
 		return
@@ -1298,6 +1328,9 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
 		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击“商品中心”浏览商品，或使用下方返回按钮回到商城。",shopBackKeyboard())
 		case "home": m.showStartHome(ctx, cfg, chatID, query.From)
+		case "language":
+			language := m.languageForUser(ctx, cfg, query.From)
+			_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "language.title")+"\n"+botText(language, "language.current"), languageKeyboard(language))
 		}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已打开")
 		return
@@ -1543,6 +1576,7 @@ func orderStatusLabel(status string) string {
 }
 
 func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
+	language := m.languageForUser(ctx, cfg, user)
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
 		log.Printf("telegram user orders failed: bot_id=%s user_id=%d error=%v", cfg.ID, user.ID, err)
@@ -1550,23 +1584,23 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 		return
 	}
 	if len(orders) == 0 {
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "你还没有订单。", shopBackKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "orders.empty"), shopBackKeyboard())
 		return
 	}
 	var b strings.Builder
-	b.WriteString("📦 我的订单（最近 20 笔）")
+	b.WriteString(botText(language, "orders.title"))
 	rows := make([][]map[string]string, 0, len(orders))
 	for _, order := range orders {
-		b.WriteString("\n\n订单号：" + order.OrderNo)
-		b.WriteString("\n商品：" + order.ProductName)
-		b.WriteString("\n数量：" + strconv.Itoa(order.Quantity))
+		b.WriteString("\n\n" + botText(language, "orders.number") + order.OrderNo)
+		b.WriteString("\n" + botText(language, "orders.product") + order.ProductName)
+		b.WriteString("\n" + botText(language, "orders.quantity") + strconv.Itoa(order.Quantity))
 		if lines,lineErr:=database.ListCartCheckoutItems(ctx,m.db,m.driver,order.ID);lineErr==nil && len(lines)>0 {
 			b.WriteString("\n商品明细：")
 			for _,line:=range lines { b.WriteString("\n· "+line.ProductName+" × "+strconv.Itoa(line.Quantity)) }
 		}
-		b.WriteString("\n金额：" + formatPrice(order.AmountMinor, order.Currency))
-		b.WriteString("\n状态：" + orderStatusLabel(order.Status))
-		buttons := []map[string]string{{"text":"查看详情","callback_data":"order:detail:"+order.ID}}
+		b.WriteString("\n" + botText(language, "orders.amount") + formatPrice(order.AmountMinor, order.Currency))
+		b.WriteString("\n" + botText(language, "orders.status") + orderStatusLabel(order.Status))
+		buttons := []map[string]string{{"text":botText(language, "orders.detail"),"callback_data":"order:detail:"+order.ID}}
 		if order.Status == "delivered" && (order.DeliveryType == "invite_link" || order.DeliveryType == "file_card") {
 			buttons = append(buttons, map[string]string{"text":"联系客服核实","callback_data":"support:order:"+order.OrderNo})
 		} else if order.Status == "delivered" {
@@ -2497,4 +2531,22 @@ func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportT
 	text:="售后工单更新\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n当前状态："+ticket.Status
 	if ticket.AdminReply!="" { text+="\n管理员回复：\n"+ticket.AdminReply }
 	return m.sendMessage(ctx,cfg.Token,chatID,text)
+}
+
+func (m *Manager) languageForUser(ctx context.Context, cfg Config, user TelegramUser) string {
+	if m.db != nil {
+		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10)); err == nil && saved != "" {
+			return saved
+		}
+	}
+	return detectLanguage(user.LanguageCode)
+}
+
+func (m *Manager) languageForChat(ctx context.Context, cfg Config, chatID int64) string {
+	if m.db != nil {
+		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, strconv.FormatInt(chatID, 10)); err == nil && saved != "" {
+			return saved
+		}
+	}
+	return languageChinese
 }
