@@ -22,6 +22,7 @@ import (
 
 	"github.com/skip2/go-qrcode"
 	"github.com/seanldnet/TG-Card/internal/database"
+	"github.com/seanldnet/TG-Card/internal/llm"
 )
 
 type Config struct {
@@ -2110,7 +2111,10 @@ func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg M
   if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"user",userID,text,fileID,fileName,updateID);err!=nil {
    _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容保存失败，请稍后重试。");return
   }
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容已添加到工单。")
+  handled := m.tryAIHandleSupportFollowup(ctx,cfg,msg,ticket,text)
+  if !handled {
+   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容已添加到工单。")
+  }
   m.notifyOwnerSupportMessage(ctx,cfg,ticket.ID,text,fileID,fileName)
   m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
   return
@@ -2134,6 +2138,66 @@ func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg M
  m.Notify("support_created","用户在已结单工单后重新联系，已创建新工单："+next.TicketNo+"\n原工单："+ticket.TicketNo+"\n订单号："+next.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
  m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+next.ID)
  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"原工单 "+ticket.TicketNo+" 已结单，已为你重新创建工单 #"+next.TicketNo+"。你可以继续发送文字、图片或文件。")
+}
+
+
+// tryAIHandleSupportFollowup only handles routine text messages when AI is enabled.
+// All sensitive requests and provider failures are handed to the existing Owner Bot flow.
+func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, msg Message, ticket database.SupportTicket, currentText string) bool {
+ if m.db == nil || strings.TrimSpace(currentText) == "" || ticket.AssignedTo != "" {
+  return false
+ }
+ decision := llm.DecideSupportHandling(currentText)
+ if !decision.AutoReply {
+  _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 已停止自动答复并转交人工："+decision.Reason,"","")
+  _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条问题需要人工客服核实，我已为你转交平台客服，请稍候。")
+  return true
+ }
+ aiConfig, enabled, err := llm.LoadStoredConfig(ctx,m.db,m.driver,m.decrypt)
+ if err != nil {
+  log.Printf("AI support config load failed: ticket_id=%s error=%v",ticket.ID,err)
+  return false
+ }
+ if !enabled { return false }
+ messages, err := database.ListSupportTicketMessages(ctx,m.db,m.driver,ticket.ID)
+ if err != nil {
+  log.Printf("AI support timeline load failed: ticket_id=%s error=%v",ticket.ID,err)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"timeline_unavailable")
+ }
+ provider, err := llm.NewOpenAICompatible(aiConfig)
+ if err != nil {
+  log.Printf("AI support provider initialization failed: ticket_id=%s error=%v",ticket.ID,err)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"provider_unavailable")
+ }
+ timeout := aiConfig.Timeout
+ if timeout <= 0 || timeout > 90*time.Second { timeout = 30*time.Second }
+ requestCtx, cancel := context.WithTimeout(ctx,timeout)
+ defer cancel()
+ prompt := llm.BuildSupportPrompt(ticket,messages,currentText)
+ answer, err := provider.Complete(requestCtx,llm.CompletionRequest{Messages:prompt,MaxTokens:512,Temperature:0.2})
+ if err != nil {
+  log.Printf("AI support completion failed: ticket_id=%s error=%v",ticket.ID,err)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"model_unavailable")
+ }
+ answer = strings.TrimSpace(answer)
+ if answer == "" || len([]rune(answer)) > 4000 {
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"invalid_model_response")
+ }
+ if _, err := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-assistant","AI 售后预处理："+answer,"",""); err != nil {
+  log.Printf("AI support response persistence failed: ticket_id=%s error=%v",ticket.ID,err)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"response_persistence_failed")
+ }
+ if err := m.sendMessage(ctx,cfg.Token,msg.Chat.ID,answer); err != nil {
+  log.Printf("AI support Telegram delivery failed: ticket_id=%s error=%v",ticket.ID,err)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"telegram_delivery_failed")
+ }
+ return true
+}
+
+func (m *Manager) escalateAISupportFailure(ctx context.Context,cfg Config,msg Message,ticket database.SupportTicket,reason string) bool {
+ _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 暂不可用，已转交人工客服："+reason,"","")
+ _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"AI 客服暂时无法可靠处理这条消息，已为你转交人工客服，请稍候。")
+ return true
 }
 
 func (m *Manager) notifyOwnerSupportReopened(ctx context.Context,cfg Config,ticket database.SupportTicket) {
