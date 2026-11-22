@@ -121,7 +121,7 @@ onMounted(loadDashboard);
         <div class="text-xs text-gray-500">{{$t('tg-card.analytics.upstreamCatalogSync')}}</div>
         <div class="mt-1 text-lg font-semibold">{{ syncStatusText(metrics.upstreamSync.job?.status || metrics.upstreamSync.status) }}</div>
         <a-progress v-if="metrics.upstreamSync.job" class="mt-2" :percent="Math.round(metrics.upstreamSync.job.progressPercent)" :show-info="false"/>
-        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} {{$t('tg-card.analytics.syncProgressUnit')}} · {{$t('tg-card.analytics.syncPage')}} {{ metrics.upstreamSync.job.currentPage }}</div>
+        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} {{$t('tg-card.analytics.syncProgressUnit')}} · {{$t('tg-card.analytics.syncPage', { page: metrics.upstreamSync.job.currentPage })}}</div>
         <div v-else class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.noActiveSync')}}</div>
       </a-card></a-col>
     </a-row>
