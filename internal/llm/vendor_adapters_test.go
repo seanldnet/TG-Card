@@ -2,9 +2,11 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -164,4 +166,51 @@ func TestNonDeepSeekDoesNotReceiveThinkingControls(t *testing.T) {
 	if _, err := provider.Complete(context.Background(), CompletionRequest{
 		Messages:[]Message{{Role:"user",Content:"question"}}, Thinking:&enabled, ReasoningEffort:"high",
 	}); err != nil { t.Fatal(err) }
+}
+
+
+func TestProviderHTTPFailuresAreClassifiedWithoutLeakingBody(t *testing.T) {
+	tests := []struct {
+		status int
+		code string
+		retryable bool
+	}{
+		{http.StatusUnauthorized, "auth_failed", false},
+		{http.StatusForbidden, "auth_failed", false},
+		{http.StatusTooManyRequests, "rate_limited", true},
+		{http.StatusBadRequest, "invalid_request", false},
+		{http.StatusUnprocessableEntity, "invalid_request", false},
+		{http.StatusRequestTimeout, "unexpected_status", true},
+		{http.StatusBadGateway, "upstream_error", true},
+		{http.StatusServiceUnavailable, "upstream_error", true},
+		{http.StatusNotFound, "unexpected_status", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code+"_"+http.StatusText(tt.status), func(t *testing.T) {
+			const secretBody = "provider echoed test-key and Authorization: Bearer test-key"
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(secretBody))
+			}))
+			defer server.Close()
+			provider, err := NewOpenAICompatible(Config{
+				Provider: "openai", BaseURL: server.URL + "/v1",
+				APIKey: "test-key", Model: "gpt-test",
+			})
+			if err != nil { t.Fatal(err) }
+			_, err = provider.Complete(context.Background(), CompletionRequest{
+				Messages: []Message{{Role: "user", Content: "hello"}},
+			})
+			if err == nil { t.Fatal("expected provider error") }
+			var providerErr *ProviderError
+			if !errors.As(err, &providerErr) { t.Fatalf("expected ProviderError, got %T: %v", err, err) }
+			if providerErr.Code != tt.code || providerErr.Retryable != tt.retryable {
+				t.Fatalf("classification = (%q, %v), want (%q, %v)", providerErr.Code, providerErr.Retryable, tt.code, tt.retryable)
+			}
+			if !errors.Is(err, ErrProviderResponse) { t.Fatal("ProviderError must preserve ErrProviderResponse compatibility") }
+			if strings.Contains(err.Error(), "test-key") || strings.Contains(err.Error(), "Authorization") || strings.Contains(err.Error(), secretBody) {
+				t.Fatalf("provider error leaked sensitive response content: %v", err)
+			}
+		})
+	}
 }
