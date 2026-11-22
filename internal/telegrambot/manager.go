@@ -2625,8 +2625,9 @@ func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportT
 	m.mu.Unlock()
 	if !ok { return fmt.Errorf("Telegram bot for this support ticket is not running") }
 	chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64);if err!=nil{return fmt.Errorf("invalid support ticket chat ID: %w",err)}
-	text:="售后工单更新\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n当前状态："+ticket.Status
-	if ticket.AdminReply!="" { text+="\n管理员回复：\n"+ticket.AdminReply }
+	language := m.languageForTelegramID(ctx, ticket.TelegramUserID)
+	text := botText(language, "support.update_title") + "\n" + botText(language, "support.ticket_number") + ticket.TicketNo + "\n" + botText(language, "support.order_number") + ticket.OrderNo + "\n" + botText(language, "support.current_status") + supportStatusText(language, ticket.Status)
+	if ticket.AdminReply != "" { text += "\n" + botText(language, "support.admin_reply") + "\n" + ticket.AdminReply }
 	return m.sendMessage(ctx,cfg.Token,chatID,text)
 }
 
