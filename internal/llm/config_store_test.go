@@ -3,7 +3,7 @@ package llm
 import (
 	"context"
 	"database/sql"
-	"testing"
+	"testing"\n\t"strings"
 
 	"github.com/seanldnet/TG-Card/internal/secret"
 	_ "modernc.org/sqlite"
@@ -53,4 +53,13 @@ func contains(s, sub string) bool {
 	if len(sub) == 0 { return true }
 	for i:=0; i+len(sub)<=len(s); i++ { if s[i:i+len(sub)] == sub { return true } }
 	return false
+}
+
+func TestSupportPromptStorageAndBounds(t *testing.T) {
+ db:=configTestDB(t)
+ want:="仅解释商品使用方法；不处理退款。"
+ if err:=SaveSupportPrompt(context.Background(),db,"sqlite",want);err!=nil{t.Fatal(err)}
+ got,err:=LoadSupportPrompt(context.Background(),db,"sqlite")
+ if err!=nil || got!=want {t.Fatalf("prompt round trip failed: got=%q err=%v",got,err)}
+ if err:=SaveSupportPrompt(context.Background(),db,"sqlite",strings.Repeat("规",3001));err==nil{t.Fatal("expected oversized prompt to be rejected")}
 }
