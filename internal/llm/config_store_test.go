@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"database/sql"
 	"testing"
 	"strings"
@@ -74,6 +75,25 @@ func TestStoredConfigDefaultsMissingTokenLimitParameterToAuto(t *testing.T) {
  loaded, _, err := LoadStoredConfig(context.Background(), db, "sqlite", manager.Decrypt)
  if err != nil { t.Fatal(err) }
  if loaded.TokenLimitParameter != "auto" { t.Fatalf("default token parameter = %q, want auto", loaded.TokenLimitParameter) }
+}
+
+
+func TestLegacyStoredConfigWithoutTokenParameterLoadsAsAuto(t *testing.T) {
+ db := configTestDB(t)
+ manager, err := secret.New(t.TempDir())
+ if err != nil { t.Fatal(err) }
+ ciphertext, err := manager.Encrypt("sk-legacy")
+ if err != nil { t.Fatal(err) }
+ legacy := StoredConfig{Provider:"openai",BaseURL:"https://api.openai.com/v1",Model:"legacy-model",APIKeyCiphertext:ciphertext,TimeoutSeconds:30,Enabled:true}
+ raw, err := json.Marshal(legacy)
+ if err != nil { t.Fatal(err) }
+ if _, err := db.Exec("INSERT INTO settings(key,value,updated_at) VALUES(?,?,?)",configSettingKey,string(raw),"2026-01-01T00:00:00Z"); err != nil { t.Fatal(err) }
+ loaded, enabled, err := LoadStoredConfig(context.Background(),db,"sqlite",manager.Decrypt)
+ if err != nil { t.Fatal(err) }
+ if !enabled || loaded.TokenLimitParameter != "auto" { t.Fatalf("legacy config should load as auto: enabled=%v parameter=%q",enabled,loaded.TokenLimitParameter) }
+ view, err := LoadConfigView(context.Background(),db,"sqlite")
+ if err != nil { t.Fatal(err) }
+ if view.TokenLimitParameter != "auto" { t.Fatalf("legacy view parameter = %q, want auto",view.TokenLimitParameter) }
 }
 
 func TestStoredConfigRejectsUnknownTokenLimitParameter(t *testing.T) {
