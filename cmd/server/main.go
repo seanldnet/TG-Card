@@ -1889,10 +1889,12 @@ func (a *application) updateSiteSettings(w http.ResponseWriter, r *http.Request)
  database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"site.settings.update","site:settings",a.clientIP(r),r.UserAgent(),"updated")
  configured:=input.SMTPPasswordCiphertext!=""
  input.SMTPPasswordCiphertext=""
+ backupEncryptionConfigured := input.BackupEncryptionPassphraseCiphertext != ""
+ input.BackupEncryptionPassphraseCiphertext = ""
  input.CapEnabled = capEnabledForResponse
  input.CapDomain = capValues["cap_domain"]
  input.CapSiteKey = capValues["cap_site_key"]
- writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured,CapSecretConfigured:encryptedCapSecret!="",CapEnabled:input.CapEnabled,CapDomain:input.CapDomain,CapSiteKey:input.CapSiteKey})
+ writeSuccess(w,http.StatusOK,siteSettingsView{siteSettings:input,SMTPPasswordConfigured:configured,CapSecretConfigured:encryptedCapSecret!="",BackupEncryptionPassphraseConfigured:backupEncryptionConfigured,CapEnabled:input.CapEnabled,CapDomain:input.CapDomain,CapSiteKey:input.CapSiteKey})
 }
 func (a *application) testSiteEmail(w http.ResponseWriter, r *http.Request) {
  if _,ok:=a.authenticate(w,r); !ok { return }
