@@ -44,6 +44,7 @@ var protectedAdminActionKeys = map[string]bool{
 	"settings.recharge-bonus.update": true,
 	"settings.site.update":           true,
 	"settings.site.backup_encryption.update": true,
+	"settings.ai.llm.update": true,
 	"settings.upstream.update":       true,
 	"settings.upstream.disable":      true,
 }
