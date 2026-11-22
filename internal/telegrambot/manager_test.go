@@ -515,3 +515,38 @@ func TestOwnerMediaReplyRejectsOverlongCaptionBeforeTelegramDelivery(t *testing.
 		if item.SenderType == "admin" { t.Fatalf("rejected reply must not be persisted as delivered: %#v", item) }
 	}
 }
+
+func TestTelegramLanguagePreferencePersistsAndOverridesPlatformLanguage(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"})
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := database.Migrate(ctx, db, "sqlite"); err != nil { t.Fatal(err) }
+	if err := database.UpsertTelegramUser(ctx, db, "sqlite", "10001", "buyer", "Buyer", "", "bot-i18n"); err != nil { t.Fatal(err) }
+
+	manager := &Manager{db: db, driver: "sqlite"}
+	user := TelegramUser{ID: 10001, LanguageCode: "en-US"}
+	if got := manager.languageForUser(ctx, Config{ID: "bot-i18n"}, user); got != languageEnglish {
+		t.Fatalf("Telegram language_code should be used before manual preference, got %q", got)
+	}
+	if err := database.SetTelegramUserLanguage(ctx, db, "sqlite", "10001", languageChinese); err != nil { t.Fatal(err) }
+	// Re-selecting the active language is a valid no-op (not a missing-user error).
+	if err := database.SetTelegramUserLanguage(ctx, db, "sqlite", "10001", languageChinese); err != nil {
+		t.Fatalf("saving the already-selected language should be idempotent: %v", err)
+	}
+	saved, err := database.GetTelegramUserLanguage(ctx, db, "sqlite", "10001")
+	if err != nil || saved != languageChinese { t.Fatalf("saved preference = %q, err=%v", saved, err) }
+	if got := manager.languageForUser(ctx, Config{ID: "bot-i18n"}, user); got != languageChinese {
+		t.Fatalf("explicit preference should override Telegram language_code, got %q", got)
+	}
+	if err := database.SetTelegramUserLanguage(ctx, db, "sqlite", "10001", "fr"); err == nil {
+		t.Fatal("unsupported language must be rejected")
+	}
+}
+
+func TestLanguageSelectionKeyboardContainsBothSupportedLanguages(t *testing.T) {
+	keyboard := languageKeyboard(languageEnglish)
+	if !keyboardHasCallback(keyboard, "language:set:zh") || !keyboardHasCallback(keyboard, "language:set:en") {
+		t.Fatal("language keyboard must expose Chinese and English choices")
+	}
+}
