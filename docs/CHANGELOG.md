@@ -1,3 +1,10 @@
+## 2026-11-23 — PR #143 Telegram Bot i18n 第一阶段验证与修复（进行中）
+
+- PR #143 的 Go Backend CI（全量 go test、go vet、Docker 备份恢复集成测试、Go 构建）、Admin Frontend CI 与 Security Scan 均已成功。
+- 复核确认项目使用 PostgreSQL（pgx）及 SQLite；移除误加的 MySQL 专属 RowsAffected 兼容查询，保留同语言重复选择的幂等测试。
+- 当前第一阶段仍未覆盖商品详情、购物车/结账/付款、发货与售后通知、Owner 工作流等完整业务流程；常驻 Reply Keyboard 等残留文案仍需继续补齐。
+- PR #143 尚未合并；CI 通过不代表生产部署或真实 Telegram Bot 端到端验收。
+
 ## 2026-11-23 — PR #140/#142 已合并，P1-3 Bot i18n 推进中（文档版本 2.2.96）
 
 - PR #140 AI 售后基础架构已合并；包含通用 Chat Completions 调用层、加密模型配置、受保护管理 API、敏感意图转人工、订单事实型上下文、运营 Prompt、独立 AI 工单状态及后台标记/筛选。

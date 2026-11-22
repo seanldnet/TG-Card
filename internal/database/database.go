@@ -531,6 +531,7 @@ type TelegramUser struct {
 	FirstName string `json:"firstName"`
 	LastName string `json:"lastName"`
 	LastSeenBotID string `json:"lastSeenBotId"`
+	PreferredLanguage string `json:"preferredLanguage"`
 	BalanceAtomic int64 `json:"balanceAtomic"`
 	OrderCount int64 `json:"orderCount"`
 	TotalSpentAtomic int64 `json:"totalSpentAtomic"`
@@ -553,14 +554,40 @@ func UpsertTelegramUser(ctx context.Context, db *sql.DB, driver, telegramUserID,
 	return err
 }
 
+
+// SetTelegramUserLanguage persists an explicit zh/en preference for a Telegram user.
+func SetTelegramUserLanguage(ctx context.Context, db *sql.DB, driver, telegramUserID, language string) error {
+	language = strings.ToLower(strings.TrimSpace(language))
+	if language != "zh" && language != "en" {
+		return fmt.Errorf("unsupported Telegram language")
+	}
+	result, err := db.ExecContext(ctx, "UPDATE telegram_users SET preferred_language="+placeholder(driver,1)+",updated_at="+placeholder(driver,2)+" WHERE telegram_user_id="+placeholder(driver,3), language, time.Now().UTC().Format(time.RFC3339Nano), telegramUserID)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count != 1 { return sql.ErrNoRows }
+	return nil
+}
+
+// GetTelegramUserLanguage returns the user's explicit preference, or an empty
+// string when no manual preference has been selected.
+func GetTelegramUserLanguage(ctx context.Context, db *sql.DB, driver, telegramUserID string) (string, error) {
+	var language string
+	err := db.QueryRowContext(ctx, "SELECT preferred_language FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1), telegramUserID).Scan(&language)
+	if err != nil { return "", err }
+	language = strings.ToLower(strings.TrimSpace(language))
+	if language != "zh" && language != "en" { return "", nil }
+	return language, nil
+}
+
 func ListTelegramUsers(ctx context.Context, db *sql.DB) ([]TelegramUser,error) {
-	query := `SELECT u.id,u.telegram_user_id,u.username,u.first_name,u.last_name,u.last_seen_bot_id,u.balance_atomic,u.created_at,u.updated_at,
+	query := `SELECT u.id,u.telegram_user_id,u.username,u.first_name,u.last_name,u.last_seen_bot_id,u.preferred_language,u.balance_atomic,u.created_at,u.updated_at,
 	(SELECT COUNT(1) FROM orders o WHERE o.telegram_user_id=u.telegram_user_id),
 	(SELECT COALESCE(SUM(o.payment_amount_atomic),0) FROM orders o WHERE o.telegram_user_id=u.telegram_user_id AND o.status IN ('paid','delivering','delivery_failed','delivered'))
 	FROM telegram_users u ORDER BY u.updated_at DESC LIMIT 1000`
 	rows,err:=db.QueryContext(ctx,query);if err!=nil{return nil,err};defer rows.Close()
 	items:=make([]TelegramUser,0)
-	for rows.Next(){var u TelegramUser;if err:=rows.Scan(&u.ID,&u.TelegramUserID,&u.Username,&u.FirstName,&u.LastName,&u.LastSeenBotID,&u.BalanceAtomic,&u.CreatedAt,&u.UpdatedAt,&u.OrderCount,&u.TotalSpentAtomic);err!=nil{return nil,err};items=append(items,u)}
+	for rows.Next(){var u TelegramUser;if err:=rows.Scan(&u.ID,&u.TelegramUserID,&u.Username,&u.FirstName,&u.LastName,&u.LastSeenBotID,&u.PreferredLanguage,&u.BalanceAtomic,&u.CreatedAt,&u.UpdatedAt,&u.OrderCount,&u.TotalSpentAtomic);err!=nil{return nil,err};items=append(items,u)}
 	return items,rows.Err()
 }
 
