@@ -1,3 +1,12 @@
+## 2026-11-23 — PR #140/#142 已合并，P1-3 Bot i18n 推进中（文档版本 2.2.96）
+
+- PR #140 AI 售后基础架构已合并；包含通用 Chat Completions 调用层、加密模型配置、受保护管理 API、敏感意图转人工、订单事实型上下文、运营 Prompt、独立 AI 工单状态及后台标记/筛选。
+- PR #142 第一批多模型适配已合并至 main：OpenAI、DeepSeek、Kimi 国际/中国大陆端点、智谱 GLM provider registry；包含 token-limit 参数选择、错误分类和 mock 契约测试。
+- PR #142 合并后 main commit：`44fb370850c97c0c85dc1bddd2326fd38ae28a55`。合并状态不代表真实供应商 API 联调、生产部署或生产验收。
+- 尚待完成：DeepSeek thinking 后台配置、完整响应/finish-reason 归一化及真实 API 联调。
+- PR #143 正在推进 Telegram Bot 中英文 i18n 第一阶段，当前 PR 仍为 Open；未覆盖的商品详情、购物车/支付、发货与售后通知、Owner 工作流和每 Bot 默认语言列为后续范围。
+- 同步校准 PROJECT_STATUS、ROADMAP 与 LLM_VENDOR_ADAPTERS；文档版本 2.2.96。
+
 ## 2026-11-23 — PR #140 AI 售后基础批次校准（文档版本 2.2.95）
 
 - 已实现通用 OpenAI-compatible Chat Completions 调用层、模型配置加密存储与受保护管理 API、敏感意图拦截、有界上下文、订单归属校验后的事实型上下文、运营 Prompt，以及 AI 独立工单状态持久化和后台标记/筛选。
