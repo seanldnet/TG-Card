@@ -844,10 +844,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		m.showStartHome(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first == "/shop" || text == "🛍️ 商城" || text == "🛍️ 商品中心":
 		m.showShop(ctx, cfg, msg.Chat.ID)
-	case first == "/help" || text == "❓ 使用帮助":
-		help := "可用功能：\n🛍️ 商城 - 浏览商品并创建订单\n📦 我的订单 - 查询付款状态\n💳 我的余额 - 查询站内余额\n💰 余额充值 - 选择金额即可创建充值单\n🧾 申请售后 - 选择订单并描述问题\n\n直接点击下方按钮即可使用各项功能。"
-		if link:=cfg.CustomerServiceURL;link!=""{help+="\n\nTelegram 客服："+link}
-		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboard())
+	case first == "/help" || text == "❓ 使用帮助" || text == "❓ Help":
+		language := m.languageForUser(ctx, cfg, *msg.From)
+		help := botText(language, "help.body")
+		if link:=cfg.CustomerServiceURL;link!=""{help+=botText(language,"help.link")+link}
+		_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, help, mainMenuKeyboardForLanguage(language))
 	case first == "/orders" || text == "📦 我的订单":
 		m.showOrders(ctx, cfg, msg.Chat.ID, *msg.From)
 	case text == "🧾 售后帮助":
@@ -866,9 +867,10 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 }
 
 func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
+	language := m.languageForUser(ctx, cfg, user)
 	orders, err := database.ListOrdersByTelegramUser(ctx, m.db, m.driver, strconv.FormatInt(user.ID, 10), cfg.ID)
 	if err != nil {
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "暂时无法查询你的订单，请稍后再试。", supportBackKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "support.query_error"), supportBackKeyboard())
 		return
 	}
 	rows := make([][]map[string]string, 0)
@@ -879,9 +881,9 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 			rows = append(rows, []map[string]string{{"text": label, "callback_data": "support:order:"+order.OrderNo}})
 		}
 	}
-	message := "请选择需要申请售后的订单："
+	message := botText(language, "support.ticket_choose")
 	if len(rows) == 0 {
-		message = "目前没有查到可直接选择的已付款订单。你可以手动发送订单号，核实后继续申请售后。"
+		message = botText(language, "support.ticket_none")
 	}
 	rows = append(rows, []map[string]string{{"text": "✍️ 手动输入订单号", "callback_data": "support:manual"}})
 	rows = append(rows, []map[string]string{{"text":botText(language, "orders.back"),"callback_data":"shop:home"}})
@@ -1326,7 +1328,10 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		switch strings.TrimPrefix(query.Data,"menu:") {
 		case "shop": m.showShop(ctx,cfg,chatID)
 		case "cart": m.showCart(ctx,cfg,chatID,query.From.ID)
-		case "search": m.setPendingAction(cfg.ID,chatID,"search");_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请输入商品名称或关键词，我会帮你搜索。",shopBackKeyboard())
+		case "search":
+			language := m.languageForUser(ctx, cfg, query.From)
+			m.setPendingAction(cfg.ID,chatID,"search")
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(language,"search.prompt"),shopBackKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
 		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
 		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
