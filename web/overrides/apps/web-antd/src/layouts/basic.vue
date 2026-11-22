@@ -84,7 +84,7 @@ const menus = computed(() => [
   {
     handler: () => router.push({ name: 'Profile' }),
     icon: 'lucide:user-round',
-    text: '个人中心',
+    text: $t('tg-card.navigation.profile'),
   },
 ]);
 
