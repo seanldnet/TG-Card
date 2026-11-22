@@ -805,7 +805,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	case text == "🧾 申请售后":
 		m.startSupportFlow(ctx, cfg, msg.Chat.ID, *msg.From)
 	case first=="/balance" || text=="💳 我的余额":
-		m.showWalletBalance(ctx,cfg,msg.Chat.ID,msg.From.ID)
+		m.showWalletBalance(ctx,cfg,msg.Chat.ID,*msg.From)
 	case first=="/recharge" || text=="💰 余额充值":
 		if len(command)>1 {
 			value,err:=strconv.ParseFloat(command[1],64)
@@ -892,13 +892,19 @@ func (m *Manager) startSupportFlow(ctx context.Context, cfg Config, chatID int64
 
 
 // showWalletBalance keeps the balance interaction focused: identity, balance and two actions only.
-func (m *Manager) showWalletBalance(ctx context.Context,cfg Config,chatID,userID int64) {
-  balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,strconv.FormatInt(userID,10))
-  if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForChat(ctx,cfg,chatID),"balance.unavailable"),walletBalanceKeyboard()); return }
-  language:=m.languageForChat(ctx,cfg,chatID)
-  text:="👤 Telegram ID: "+strconv.FormatInt(userID,10)+"\n💰 Balance: "+formatUSDTAtomic(balance)+" USDT"
-  if language==languageChinese { text="👤 Telegram 用户 ID："+strconv.FormatInt(userID,10)+"\n💰 账户余额："+formatUSDTAtomic(balance)+" USDT" }
-  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,walletBalanceKeyboard())
+func (m *Manager) showWalletBalance(ctx context.Context, cfg Config, chatID int64, user TelegramUser) {
+	userID := user.ID
+	language := m.languageForUser(ctx, cfg, user)
+	balance, err := database.GetTelegramWalletBalance(ctx, m.db, m.driver, strconv.FormatInt(userID, 10))
+	if err != nil {
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "balance.unavailable"), walletBalanceKeyboard())
+		return
+	}
+	text := "👤 Telegram ID: " + strconv.FormatInt(userID, 10) + "\n💰 Balance: " + formatUSDTAtomic(balance) + " USDT"
+	if language == languageChinese {
+		text = "👤 Telegram 用户 ID：" + strconv.FormatInt(userID, 10) + "\n💰 账户余额：" + formatUSDTAtomic(balance) + " USDT"
+	}
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, walletBalanceKeyboard())
 }
 
 func walletBalanceKeyboard() map[string]any {
@@ -1361,7 +1367,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			m.setPendingAction(cfg.ID,chatID,"search")
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(language,"search.prompt"),shopBackKeyboard())
 		case "orders": m.showOrders(ctx,cfg,chatID,query.From)
-		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
+		case "balance": m.showWalletBalance(ctx,cfg,chatID,query.From)
 		case "recharge": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
 		case "support": m.startSupportFlow(ctx,cfg,chatID,query.From)
 		case "help": _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"点击“商品中心”浏览商品，或使用下方返回按钮回到商城。",shopBackKeyboard())
@@ -1537,7 +1543,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择充值金额：",rechargeKeyboard())
 	case query.Data=="wallet:refresh":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"账户信息已刷新")
-		m.showWalletBalance(ctx,cfg,chatID,query.From.ID)
+		m.showWalletBalance(ctx,cfg,chatID,query.From)
 	case query.Data == "wallet:custom":
 		m.setPendingAction(cfg.ID, chatID, "wallet_custom_amount")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请输入充值金额")
