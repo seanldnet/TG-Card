@@ -190,7 +190,7 @@ onMounted(loadAll);
     <a-form-item :label="$t('tg-card.catalog.salesStatus')"><a-switch v-model:checked="productForm.enabled" :checked-children="$t('tg-card.catalog.onSale')" :un-checked-children="$t('tg-card.catalog.offSale')"/></a-form-item>
    </a-form></div>
   </a-modal>
-  <a-modal v-model:open="importModalOpen" :title="importProduct?$t('tg-card.catalog.importTitle')+' - '+importProduct.name:$t('tg-card.catalog.importTitle')" :width="560" :confirm-loading="saving" :ok-text="$t('tg-card.catalog.startImport')" cancel-text="取消" @ok="submitImport">
+  <a-modal v-model:open="importModalOpen" :title="importProduct?$t('tg-card.catalog.importTitle')+' - '+importProduct.name:$t('tg-card.catalog.importTitle')" :width="560" :confirm-loading="saving" :ok-text="$t('tg-card.catalog.startImport')" :cancel-text="$t('tg-card.catalog.cancel')" @ok="submitImport">
    <div class="py-3"><a-alert class="mb-4" type="info" show-icon :message="$t('tg-card.catalog.importNotice')"/><a-form ref="importFormRef" :model="importForm" :rules="importRules" layout="vertical"><a-form-item :label="$t('tg-card.catalog.keyContent')" name="content"><a-textarea v-model:value="importForm.content" :rows="8" :placeholder="$t('tg-card.catalog.keyPlaceholder')"/></a-form-item></a-form></div>
   </a-modal>
  </div>
