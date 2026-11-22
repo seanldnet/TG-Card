@@ -25,6 +25,8 @@ type SupportTicket struct {
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 	ResolvedAt string `json:"resolvedAt,omitempty"`
+	AIStatus string `json:"aiStatus"`
+	AIReason string `json:"aiReason,omitempty"`
 }
 
 // CreateSupportTicket locks the order while checking and inserting an active ticket.
@@ -106,18 +108,40 @@ func CreateSupportTicket(ctx context.Context, db *sql.DB, driver, botID, telegra
 }
 
 func GetSupportTicket(ctx context.Context, db *sql.DB, driver, id string) (SupportTicket, error) {
-	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets WHERE id=" + placeholder(driver,1)
+	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,''),COALESCE((SELECT ai_status FROM support_ticket_ai_states WHERE ticket_id=support_tickets.id),'not_used'),COALESCE((SELECT ai_reason FROM support_ticket_ai_states WHERE ticket_id=support_tickets.id),'') FROM support_tickets WHERE id=" + placeholder(driver,1)
 	var item SupportTicket
-	err := db.QueryRowContext(ctx,query,id).Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt)
+	err := db.QueryRowContext(ctx,query,id).Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt,&item.AIStatus,&item.AIReason)
 	return item,err
 }
 
 func ListSupportTickets(ctx context.Context, db *sql.DB, driver string) ([]SupportTicket,error) {
-	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,'') FROM support_tickets ORDER BY created_at DESC LIMIT 500"
+	query := "SELECT id,ticket_no,order_id,order_no,bot_id,telegram_user_id,telegram_chat_id,category,description,status,admin_reply,created_at,updated_at,COALESCE(resolved_at,''),COALESCE(assigned_to,''),COALESCE(sla_due_at,''),COALESCE((SELECT ai_status FROM support_ticket_ai_states WHERE ticket_id=support_tickets.id),'not_used'),COALESCE((SELECT ai_reason FROM support_ticket_ai_states WHERE ticket_id=support_tickets.id),'') FROM support_tickets ORDER BY created_at DESC LIMIT 500"
 	rows,err:=db.QueryContext(ctx,query); if err!=nil{return nil,err}; defer rows.Close()
 	items:=make([]SupportTicket,0)
 	for rows.Next(){ var item SupportTicket; if err:=rows.Scan(&item.ID,&item.TicketNo,&item.OrderID,&item.OrderNo,&item.BotID,&item.TelegramUserID,&item.TelegramChatID,&item.Category,&item.Description,&item.Status,&item.AdminReply,&item.CreatedAt,&item.UpdatedAt,&item.ResolvedAt,&item.AssignedTo,&item.SLADueAt);err!=nil{return nil,err}; items=append(items,item) }
 	return items,rows.Err()
+}
+
+// UpdateSupportTicketAIStatus persists the AI handling outcome independently from
+// the business lifecycle status. Reasons are short internal codes, never model output.
+func UpdateSupportTicketAIStatus(ctx context.Context, db *sql.DB, driver, ticketID, status, reason string) error {
+	ticketID = strings.TrimSpace(ticketID)
+	status = strings.TrimSpace(status)
+	reason = strings.TrimSpace(reason)
+	switch status {
+	case "not_used", "ai_replied", "human_required", "ai_error":
+	default:
+		return fmt.Errorf("invalid support ticket AI status")
+	}
+	if ticketID == "" || len(reason) > 120 {
+		return fmt.Errorf("invalid support ticket AI state")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := "INSERT INTO support_ticket_ai_states(ticket_id,ai_status,ai_reason,updated_at) VALUES(" +
+		placeholder(driver, 1) + "," + placeholder(driver, 2) + "," + placeholder(driver, 3) + "," + placeholder(driver, 4) +
+		") ON CONFLICT(ticket_id) DO UPDATE SET ai_status=excluded.ai_status,ai_reason=excluded.ai_reason,updated_at=excluded.updated_at"
+	_, err := db.ExecContext(ctx, query, ticketID, status, reason, now)
+	return err
 }
 
 func UpdateSupportTicket(ctx context.Context, db *sql.DB, driver, id, status, adminReply string) (SupportTicket,error) {
