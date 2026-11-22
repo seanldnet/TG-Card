@@ -57,6 +57,8 @@ type Config struct {
 	Model string
 	Timeout time.Duration
 	MaxResponseBytes int64
+	// TokenLimitParameter selects the OpenAI token-limit field: auto, max_completion_tokens, or max_tokens.
+	TokenLimitParameter string
 }
 
 type Message struct {
@@ -125,7 +127,14 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	// OpenAI's current Chat Completions contract uses max_completion_tokens.
 	// DeepSeek, Moonshot Kimi and Zhipu GLM retain max_tokens.
 	if normalizeVendor(p.config.Provider) == "openai" {
-		payload["max_completion_tokens"] = maxTokens
+		parameter := strings.ToLower(strings.TrimSpace(p.config.TokenLimitParameter))
+		if parameter == "" || parameter == "auto" || parameter == "max_completion_tokens" {
+			payload["max_completion_tokens"] = maxTokens
+		} else if parameter == "max_tokens" {
+			payload["max_tokens"] = maxTokens
+		} else {
+			return "", fmt.Errorf("%w: unsupported OpenAI token-limit parameter", ErrInvalidConfig)
+		}
 	} else {
 		payload["max_tokens"] = maxTokens
 	}
