@@ -1,7 +1,7 @@
 ## 2026-11-23 — P1-3 Telegram Bot i18n 状态更新
 
 - PR #143 第一阶段实现 Telegram 语言识别、/language 与 /lang 切换、语言偏好持久化，以及欢迎页、主菜单、商城分类、订单列表、余额、帮助、搜索提示和售后订单选择入口的双语文案。
-- PR #143 当前 HEAD 的 Go Backend CI、Admin Frontend CI、安全扫描均通过；随后发现并修复重复保存相同语言时的 MySQL RowsAffected 兼容问题，修复提交待 CI 复验。
+- PR #143 当前 HEAD 的 Go Backend CI、Admin Frontend CI、安全扫描均通过；随后复核数据库驱动为 PostgreSQL（pgx）/SQLite，已移除不适用的 MySQL 专属兼容查询；修正提交待 CI 复验。
 - 仍待完成：常驻 Reply Keyboard 和部分入口文案、商品详情、购物车/结账/付款、交付/售后通知、Owner 工作流、每 Bot 默认语言设置。
 - PR #143 尚未合并；代码合并与生产部署、真实 Telegram 端到端验收分别记录。
 
