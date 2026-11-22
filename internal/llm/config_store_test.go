@@ -3,7 +3,8 @@ package llm
 import (
 	"context"
 	"database/sql"
-	"testing"\n\t"strings"
+	"testing"
+	"strings"
 
 	"github.com/seanldnet/TG-Card/internal/secret"
 	_ "modernc.org/sqlite"
