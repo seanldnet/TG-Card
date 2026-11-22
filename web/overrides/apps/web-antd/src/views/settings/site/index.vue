@@ -13,6 +13,11 @@ interface SiteSettings {
 }
 const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),capSecretConfigured=ref(false),backupEncryptionKeyConfigured=ref(false),backupEncryptionKeySaving=ref(false),activeTab=ref('basic');
 const backupEncryptionPassphrase=ref('');
+type LLMSettings={provider:string;baseUrl:string;model:string;timeoutSeconds:number;enabled:boolean;apiKeyConfigured:boolean};
+const llmLoading=ref(false),llmSaving=ref(false),llmKey=ref('');
+const llmForm=reactive({provider:'openai',baseUrl:'https://api.openai.com/v1',model:'gpt-4o-mini',timeoutSeconds:30,enabled:false});
+async function loadLLM(){llmLoading.value=true;try{const data=await requestClient.get<LLMSettings>('/settings/ai/llm');Object.assign(llmForm,{provider:data.provider||'openai',baseUrl:data.baseUrl||'https://api.openai.com/v1',model:data.model||'gpt-4o-mini',timeoutSeconds:data.timeoutSeconds||30,enabled:!!data.enabled});llmKey.value='';}catch{message.error('AI 模型配置加载失败');}finally{llmLoading.value=false;}}
+async function saveLLM(){if(!llmForm.provider.trim()||!llmForm.baseUrl.trim()||!llmForm.model.trim()){message.warning('请填写供应商、API Base URL 和模型名称');return;}llmSaving.value=true;const payload={...llmForm,apiKey:llmKey.value};try{await withAdminActionConfirmation({actionKey:'settings.ai.llm.update',method:'PUT',path:'/api/settings/ai/llm',payload,run:(token)=>requestClient.put<LLMSettings>('/settings/ai/llm',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});llmKey.value='';await loadLLM();message.success('AI 模型配置已安全保存');}catch(error:any){message.error(error?.response?.data?.message||'保存 AI 模型配置失败');}finally{llmSaving.value=false;}}
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false,capEnabled:false,capDomain:'',capSiteKey:'',capSecret:'',backupEnabled:true,backupTime:'03:00'});
@@ -40,7 +45,7 @@ async function saveBackupEncryptionKey(){
 }
 async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success('测试邮件已发送，请检查收件箱');}catch(error:any){message.error(error?.response?.data?.message||'测试邮件发送失败');}finally{testing.value=false;}}
 async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success('Telegram 测试通知已发送');}catch(error:any){message.error(error?.response?.data?.message||'Telegram 测试通知失败');}finally{testing.value=false;}}
-onMounted(load);
+onMounted(()=>{load();loadLLM();});
 </script>
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
@@ -123,6 +128,30 @@ onMounted(load);
        <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">支付风险提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyRiskAlert" /></div></a-col>
       </a-row>
       <a-button class="mt-4" size="small" :loading="testing" @click="testTelegram">发送 Telegram 测试通知</a-button>
+     </div>
+    </a-tab-pane>
+    <a-tab-pane key="ai">
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:robot-outline" />AI 售后客服</span></template>
+     <div class="max-w-3xl">
+      <div class="mb-2 text-sm font-semibold">大模型服务配置</div>
+      <p class="mb-4 text-xs leading-5 text-gray-500">支持 OpenAI 兼容 Chat Completions 接口。API Key 使用服务端密钥加密保存；读取配置不会返回密钥。保存操作需要管理员二次确认。</p>
+      <a-spin :spinning="llmLoading">
+       <a-form layout="vertical">
+        <a-form-item label="模型供应商"><a-select v-model:value="llmForm.provider"><a-select-option value="openai">OpenAI</a-select-option><a-select-option value="deepseek">DeepSeek</a-select-option><a-select-option value="kimi">Kimi / Moonshot</a-select-option><a-select-option value="zhipu">智谱 GLM</a-select-option><a-select-option value="custom">自定义 OpenAI 兼容服务</a-select-option></a-select></a-form-item>
+        <a-form-item label="API Base URL"><a-input v-model:value="llmForm.baseUrl" placeholder="https://api.openai.com/v1" /></a-form-item>
+        <a-form-item label="模型名称"><a-input v-model:value="llmForm.model" placeholder="例如 gpt-4o-mini / deepseek-chat" /></a-form-item>
+        <a-form-item label="API Key"><a-input-password v-model:value="llmKey" autocomplete="new-password" :placeholder="llmForm.apiKeyConfigured?'已加密保存，留空保持原密钥':'请输入模型 API Key'" /></a-form-item>
+        <a-form-item label="请求超时（秒）"><a-input-number v-model:value="llmForm.timeoutSeconds" class="w-full" :min="1" :max="90" /></a-form-item>
+        <a-form-item label="启用 AI 模型"><a-switch v-model:checked="llmForm.enabled" /></a-form-item>
+       </a-form>
+       <a-space wrap>
+        <a-button size="small" :loading="llmLoading" @click="loadLLM">重新加载</a-button>
+        <a-button size="small" type="primary" :loading="llmSaving" @click="saveLLM">保存 AI 配置</a-button>
+        <a-tag v-if="llmForm.apiKeyConfigured" color="success">API Key 已配置</a-tag>
+        <a-tag v-else color="warning">API Key 未配置</a-tag>
+       </a-space>
+      </a-spin>
+      <a-alert class="mt-4" type="warning" show-icon message="当前版本已完成模型配置与安全存储基础，但 AI 尚未接入买家售后对话，不会自动回复用户。请勿将启用开关理解为 AI 客服已上线。" />
      </div>
     </a-tab-pane>
     <a-tab-pane key="backup">
