@@ -652,7 +652,12 @@
     "startImport": "开始导入",
     "importNotice": "每行填写一条卡密，系统会加密保存并自动跳过重复内容",
     "keyContent": "卡密内容",
-    "keyPlaceholder": "每行一条卡密内容"
+    "keyPlaceholder": "每行一条卡密内容",
+    "sourceType": {
+      "upstream": "上游",
+      "local": "本地",
+      "hidden": "本地（隐藏）"
+    }
   },
   "systemExceptions": {
     "category": {
