@@ -58,7 +58,7 @@ Initial code implementation is now present on the PR #141 branch:
 
 Still incomplete and not claimed as production-ready:
 
-- DeepSeek thinking-mode enable/disable and reasoning-effort request fields are implemented; exact availability remains model/API-version dependent and must be verified against the selected model.
+- DeepSeek thinking-mode enable/disable and reasoning-effort fields are supported by the internal completion request contract, but the Telegram support call path and administrator settings do not currently expose operator controls for them. They therefore remain unavailable as an operator-configurable feature in this delivery; exact availability is model/API-version dependent and must be verified against the selected model.
 - OpenAI model capability is not inferred from model names. Operators can explicitly select `TokenLimitParameter` as `auto` (default: `max_completion_tokens`), `max_completion_tokens`, or `max_tokens`; the legacy choice must be selected for models/gateways that require it.
 - Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
 - HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `request_timeout`, `upstream_busy`, `upstream_error`, `unexpected_status`) plus a retryable flag. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
@@ -78,3 +78,8 @@ This is a partial implementation, not four fully completed vendor adapters. Exis
 - Any other value fails with `ErrInvalidConfig`.
 
 The transport intentionally does not infer support from model-name prefixes. The operator must select the parameter appropriate to the configured model and endpoint. This setting is persisted with the AI support configuration and exposed in the administrator's AI Support settings. Existing saved configurations without this field default to `auto`; the API response exposes only the selected parameter and never the API key. The custom OpenAI-compatible gateway option remains supported and requires an explicit HTTPS BaseURL.
+
+
+## Endpoint preset persistence
+
+For a built-in vendor, an omitted BaseURL is resolved to that vendor's documented default before the configuration is persisted. The custom OpenAI-compatible gateway does not have a default endpoint and must be given an explicit BaseURL. The saved configuration therefore always contains the effective endpoint rather than an empty preset value.
