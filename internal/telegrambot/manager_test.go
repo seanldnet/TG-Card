@@ -530,6 +530,10 @@ func TestTelegramLanguagePreferencePersistsAndOverridesPlatformLanguage(t *testi
 		t.Fatalf("Telegram language_code should be used before manual preference, got %q", got)
 	}
 	if err := database.SetTelegramUserLanguage(ctx, db, "sqlite", "10001", languageChinese); err != nil { t.Fatal(err) }
+	// Re-selecting the active language is a valid no-op (not a missing-user error).
+	if err := database.SetTelegramUserLanguage(ctx, db, "sqlite", "10001", languageChinese); err != nil {
+		t.Fatalf("saving the already-selected language should be idempotent: %v", err)
+	}
 	saved, err := database.GetTelegramUserLanguage(ctx, db, "sqlite", "10001")
 	if err != nil || saved != languageChinese { t.Fatalf("saved preference = %q, err=%v", saved, err) }
 	if got := manager.languageForUser(ctx, Config{ID: "bot-i18n"}, user); got != languageChinese {
