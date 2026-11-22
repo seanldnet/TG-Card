@@ -45,7 +45,7 @@ onMounted(load);
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-end justify-between gap-3">
    <div><h1 class="m-0 text-xl font-semibold">对账与余额校验</h1><p class="mb-0 mt-1 text-xs text-gray-500">每日 UTC 对账日报历史、链上异常统计及用户余额流水只读校验。</p></div>
-   <div class="flex flex-wrap items-center gap-2"><a-date-picker v-model:value="month" picker="month" value-format="YYYY-MM" placeholder="选择月份" class="w-40" @change="load"/><a-button :loading="loading" @click="load">刷新</a-button><a-button type="primary" :loading="checking" @click="runCheck">立即执行余额校验</a-button></div>
+   <div class="flex flex-wrap items-center gap-2"><a-date-picker v-model:value="month" picker="month" value-format="YYYY-MM" placeholder="选择月份" class="w-40" @change="load"/><a-button size="small" :loading="loading" @click="load">刷新</a-button><a-button size="small" type="primary" :loading="checking" @click="runCheck">立即执行余额校验</a-button></div>
   </div>
   <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
    <a-card :bordered="false"><div class="text-xs text-gray-500">本月订单数</div><div class="mt-2 text-2xl font-semibold">{{totals.orders}}</div></a-card>
