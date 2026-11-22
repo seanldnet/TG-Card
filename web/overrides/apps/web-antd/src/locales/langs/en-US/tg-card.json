@@ -717,6 +717,9 @@
     "processingStatus": "Processing status",
     "ignore": "Ignore",
     "note": "Resolution notes",
-    "notePlaceholder": "Enter findings, corrective actions, or reason for ignoring"
+    "notePlaceholder": "Enter findings, corrective actions, or reason for ignoring",
+    "ageingDayHours": "{days}d {hours}h",
+    "ageingHoursMinutes": "{hours}h {minutes}m",
+    "ageingMinutes": "{minutes}m"
   }
 }
