@@ -4,6 +4,7 @@ import { useWindowSize } from '@vueuse/core';
 import { IconifyIcon } from '@vben/icons';
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import { $t } from '#/locales';
 import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 interface SiteSettings {
  siteName:string;siteLogo:string;contactEmail:string;smtpHost:string;smtpPort:number;smtpUsername:string;smtpPassword:string;smtpFromName:string;smtpFromEmail:string;smtpUseTLS:boolean;
@@ -23,113 +24,113 @@ async function saveLLM(){if(!llmForm.provider.trim()||!llmForm.baseUrl.trim()||!
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const form=reactive<SiteSettings>({siteName:'TG-Card',siteLogo:'',contactEmail:'',smtpHost:'',smtpPort:587,smtpUsername:'',smtpPassword:'',smtpFromName:'TG-Card',smtpFromEmail:'',smtpUseTLS:true,emailOrderCreated:false,emailPaymentSuccess:true,emailDeliverySuccess:true,emailSupportCreated:true,telegramAdminChatId:'',telegramGroupChatId:'',telegramNotifyOrderCreated:true,telegramNotifyPaymentSuccess:true,telegramNotifyDeliverySuccess:true,telegramNotifySupportCreated:true,telegramNotifyStockLow:true,telegramNotifyDailyReport:true,telegramNotifyRiskAlert:true,stockAutoUnlistOnZero:true,stockAutoRelistOnRestock:false,capEnabled:false,capDomain:'',capSiteKey:'',capSecret:'',backupEnabled:true,backupTime:'03:00'});
-async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean;backupEncryptionPassphraseConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;backupEncryptionKeyConfigured.value=!!data.backupEncryptionPassphraseConfigured;form.smtpPassword='';form.capSecret='';backupEncryptionPassphrase.value='';}catch{message.error('网站设置加载失败');}finally{loading.value=false;}}
-async function save(){saving.value=true;try{const payload={...form};const data=await withAdminActionConfirmation({actionKey:'settings.site.update',method:'PUT',path:'/api/settings/site',payload,run:(token)=>requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.capSecret='';message.success('网站设置已保存');}catch(error:any){message.error(error?.response?.data?.message||'保存网站设置失败');}finally{saving.value=false;}}
-async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error('无法读取图标文件');return false;}if(image.size>20*1024*1024){message.warning('网站图标不能超过 20 MB');return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body,{headers:{'Content-Type':'multipart/form-data'}});form.siteLogo=result.siteLogo;message.success('网站图标上传成功，请保存设置');}catch(error:any){message.error(error?.response?.data?.message||'网站图标上传失败');}finally{logoUploading.value=false;}return false;}
+async function load(){loading.value=true;try{const data=await requestClient.get<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean;backupEncryptionPassphraseConfigured:boolean}>('/settings/site');Object.assign(form,data);passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;backupEncryptionKeyConfigured.value=!!data.backupEncryptionPassphraseConfigured;form.smtpPassword='';form.capSecret='';backupEncryptionPassphrase.value='';}catch{message.error($t('tg-card.siteSettings.loadFailed'));}finally{loading.value=false;}}
+async function save(){saving.value=true;try{const payload={...form};const data=await withAdminActionConfirmation({actionKey:'settings.site.update',method:'PUT',path:'/api/settings/site',payload,run:(token)=>requestClient.put<SiteSettings & {smtpPasswordConfigured:boolean;capSecretConfigured:boolean}>('/settings/site',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});Object.assign(form,data);form.smtpPassword='';passwordConfigured.value=!!data.smtpPasswordConfigured;capSecretConfigured.value=!!data.capSecretConfigured;form.capSecret='';message.success($t('tg-card.siteSettings.saveSuccess'));}catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.saveFailed'));}finally{saving.value=false;}}
+async function uploadSiteLogo(file:any){const image=file?.originFileObj||file;if(!(image instanceof Blob)){message.error($t('tg-card.siteSettings.logoReadFailed'));return false;}if(image.size>20*1024*1024){message.warning($t('tg-card.siteSettings.logoTooLarge'));return false;}logoUploading.value=true;try{const body=new FormData();body.append('file',image,image.name||'site-logo');const result=await requestClient.post<{siteLogo:string}>('/settings/site/logo',body,{headers:{'Content-Type':'multipart/form-data'}});form.siteLogo=result.siteLogo;message.success($t('tg-card.siteSettings.logoUploaded'));}catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.logoUploadFailed'));}finally{logoUploading.value=false;}return false;}
 function generateBackupEncryptionKey(){
  try{
   const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   const bytes=crypto.getRandomValues(new Uint8Array(32));
   backupEncryptionPassphrase.value=Array.from(bytes,(byte)=>alphabet[byte&63]).join('');
-  message.success('已生成 32 位随机备份密钥，请保存后妥善保管');
- }catch{message.error('当前浏览器无法安全生成随机密钥');}
+  message.success($t('tg-card.siteSettings.backupKeyGenerated'));
+ }catch{message.error($t('tg-card.siteSettings.randomKeyFailed'));}
 }
 async function saveBackupEncryptionKey(){
- if(backupEncryptionPassphrase.value.length<32){message.warning('备份加密密钥至少需要 32 个字符');return;}
+ if(backupEncryptionPassphrase.value.length<32){message.warning($t('tg-card.siteSettings.backupKeyMinLength'));return;}
  backupEncryptionKeySaving.value=true;
  const payload={passphrase:backupEncryptionPassphrase.value};
  try{
   await withAdminActionConfirmation({actionKey:'settings.site.backup_encryption.update',method:'PUT',path:'/api/settings/site/backup-encryption-key',payload,run:(token)=>requestClient.put('/settings/site/backup-encryption-key',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   backupEncryptionKeyConfigured.value=true;backupEncryptionPassphrase.value='';
-  message.success('数据库备份加密密钥已保存');
- }catch(error:any){message.error(error?.response?.data?.message||'保存备份加密密钥失败');}
+  message.success($t('tg-card.siteSettings.backupKeySaved'));
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.backupKeySaveFailed'));}
  finally{backupEncryptionKeySaving.value=false;}
 }
-async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success('测试邮件已发送，请检查收件箱');}catch(error:any){message.error(error?.response?.data?.message||'测试邮件发送失败');}finally{testing.value=false;}}
-async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success('Telegram 测试通知已发送');}catch(error:any){message.error(error?.response?.data?.message||'Telegram 测试通知失败');}finally{testing.value=false;}}
+async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success($t('tg-card.siteSettings.emailTestSent'));}catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.emailTestFailed'));}finally{testing.value=false;}}
+async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success($t('tg-card.siteSettings.telegramTestSent'));}catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.telegramTestFailed'));}finally{testing.value=false;}}
 onMounted(()=>{load();loadLLM();});
 </script>
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
-  <div><h1 class="m-0 text-xl font-semibold">网站设置</h1><p class="mb-0 mt-1 text-xs leading-5 text-gray-500">按类别分开管理。配置会保存到数据库，无需修改服务器环境变量。</p></div>
+  <div><h1 class="m-0 text-xl font-semibold">{{$t('tg-card.siteSettings.title')}}</h1><p class="mb-0 mt-1 text-xs leading-5 text-gray-500">{{$t('tg-card.siteSettings.subtitle')}}</p></div>
   <a-card :bordered="false" :loading="loading" :body-style="{padding:'16px'}">
    <a-tabs v-model:activeKey="activeTab" :tab-position="isMobile?'top':'left'" :tab-bar-gutter="12" class="site-settings-tabs">
     <a-tab-pane key="basic">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:web" />基础信息</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:web" />{{$t('tg-card.siteSettings.tabBasic')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-4 text-sm font-semibold">站点基础信息</div>
+      <div class="mb-4 text-sm font-semibold">{{$t('tg-card.siteSettings.basicSection')}}</div>
       <a-form layout="vertical"><a-row :gutter="16">
-       <a-col :xs="24" :md="12"><a-form-item label="站点名称"><a-input v-model:value="form.siteName" maxlength="100" /></a-form-item></a-col>
-<a-col :span="24"><a-form-item label="网站图标"><div class="flex flex-wrap items-center gap-3"><img v-if="form.siteLogo" :src="form.siteLogo" alt="网站图标预览" class="h-14 w-14 rounded-lg border border-gray-200 object-contain p-1" /><a-upload accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/avif,image/heic,image/heif" :show-upload-list="false" :before-upload="uploadSiteLogo"><a-button :loading="logoUploading">上传网站图标</a-button></a-upload><span class="text-xs text-gray-500">支持常见图片格式，最大 20 MB</span></div></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.siteName')"><a-input v-model:value="form.siteName" maxlength="100" /></a-form-item></a-col>
+<a-col :span="24"><a-form-item :label="$t('tg-card.siteSettings.siteLogo')"><div class="flex flex-wrap items-center gap-3"><img v-if="form.siteLogo" :src="form.siteLogo" :alt="$t('tg-card.siteSettings.logoAlt')" class="h-14 w-14 rounded-lg border border-gray-200 object-contain p-1" /><a-upload accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/avif,image/heic,image/heif" :show-upload-list="false" :before-upload="uploadSiteLogo"><a-button :loading="logoUploading">{{$t('tg-card.siteSettings.uploadLogo')}}</a-button></a-upload><span class="text-xs text-gray-500">{{$t('tg-card.siteSettings.imageFormats')}}</span></div></a-form-item></a-col>
       </a-row></a-form>
      </div>
     </a-tab-pane>
     <a-tab-pane key="smtp">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:email-outline" />邮件服务</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:email-outline" />{{$t('tg-card.siteSettings.tabSmtp')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-3 text-sm font-semibold">SMTP 邮件服务</div>
+      <div class="mb-3 text-sm font-semibold">{{$t('tg-card.siteSettings.smtpSection')}}</div>
       
       <a-form layout="vertical"><a-row :gutter="16">
-       <a-col :xs="24" :md="12"><a-form-item label="SMTP 主机"><a-input v-model:value="form.smtpHost" placeholder="smtp.example.com" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="SMTP 端口"><a-input-number v-model:value="form.smtpPort" class="w-full" :min="1" :max="65535" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="SMTP 用户名"><a-input v-model:value="form.smtpUsername" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="SMTP 密码"><a-input-password v-model:value="form.smtpPassword" autocomplete="new-password" :placeholder="passwordConfigured?'已配置，留空保持不变':'请输入 SMTP 密码'" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="发件人名称"><a-input v-model:value="form.smtpFromName" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="发件人邮箱"><a-input v-model:value="form.smtpFromEmail" type="email" /></a-form-item></a-col>
-      </a-row><a-form-item label="SMTP TLS"><a-switch v-model:checked="form.smtpUseTLS" /></a-form-item>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.smtpHost')"><a-input v-model:value="form.smtpHost" placeholder="smtp.example.com" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.smtpPort')"><a-input-number v-model:value="form.smtpPort" class="w-full" :min="1" :max="65535" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.smtpUsername')"><a-input v-model:value="form.smtpUsername" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.smtpPassword')"><a-input-password v-model:value="form.smtpPassword" autocomplete="new-password" :placeholder="passwordConfigured?$t('tg-card.siteSettings.configuredKeep'):$t('tg-card.siteSettings.enterSmtpPassword')" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.fromName')"><a-input v-model:value="form.smtpFromName" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.fromEmail')"><a-input v-model:value="form.smtpFromEmail" type="email" /></a-form-item></a-col>
+      </a-row><a-form-item :label="$t('tg-card.siteSettings.smtpTls')"><a-switch v-model:checked="form.smtpUseTLS" /></a-form-item>
       </a-form>
-      <a-form-item label="邮件通知收件邮箱（用于测试邮件及业务邮件通知）"><a-input v-model:value="form.contactEmail" type="email" placeholder="可选，填写接收通知的邮箱" /></a-form-item>
-      <a-space wrap class="mt-3 gap-3"><a-button size="small" :loading="testing" :disabled="!form.contactEmail" @click="testEmail">发送测试邮件</a-button></a-space>
+      <a-form-item :label="$t('tg-card.siteSettings.contactEmail')"><a-input v-model:value="form.contactEmail" type="email" :placeholder="$t('tg-card.siteSettings.contactEmailPlaceholder')" /></a-form-item>
+      <a-space wrap class="mt-3 gap-3"><a-button size="small" :loading="testing" :disabled="!form.contactEmail" @click="testEmail">{{$t('tg-card.siteSettings.sendTestEmail')}}</a-button></a-space>
      </div>
     </a-tab-pane>
     <a-tab-pane key="email">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:bell-outline" />邮件通知</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:bell-outline" />{{$t('tg-card.siteSettings.tabEmail')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-4 text-sm font-semibold">邮件通知开关</div>
+      <div class="mb-4 text-sm font-semibold">{{$t('tg-card.siteSettings.emailSection')}}</div>
       
       <a-row :gutter="[16,12]">
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">新订单通知</span><a-switch v-model:checked="form.emailOrderCreated" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">付款成功通知</span><a-switch v-model:checked="form.emailPaymentSuccess" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">自动发货通知</span><a-switch v-model:checked="form.emailDeliverySuccess" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">售后工单通知</span><a-switch v-model:checked="form.emailSupportCreated" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.newOrderEmail')}}</span><a-switch v-model:checked="form.emailOrderCreated" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.paymentSuccessEmail')}}</span><a-switch v-model:checked="form.emailPaymentSuccess" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.deliverySuccessEmail')}}</span><a-switch v-model:checked="form.emailDeliverySuccess" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.supportCreatedEmail')}}</span><a-switch v-model:checked="form.emailSupportCreated" /></div></a-col>
       </a-row>
      </div>
     </a-tab-pane>
     <a-tab-pane key="inventory">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:package-variant-closed-check" />库存自动化</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:package-variant-closed-check" />{{$t('tg-card.siteSettings.tabInventory')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-3 text-sm font-semibold">库存归零与补货上架策略</div>
+      <div class="mb-3 text-sm font-semibold">{{$t('tg-card.siteSettings.inventorySection')}}</div>
       
       <div class="mb-3 flex items-center justify-between rounded-lg border border-gray-100 p-3">
-       <div class="pr-4"><div class="text-sm font-medium">库存归零自动下架</div><div class="mt-1 text-xs text-gray-500">可售卡密库存为 0 时自动将商品下架，并通知 Owner。</div></div>
+       <div class="pr-4"><div class="text-sm font-medium">{{$t('tg-card.siteSettings.autoUnlist')}}</div><div class="mt-1 text-xs text-gray-500">{{$t('tg-card.siteSettings.autoUnlistDesc')}}</div></div>
        <a-switch v-model:checked="form.stockAutoUnlistOnZero" />
       </div>
       <div class="flex items-center justify-between rounded-lg border border-gray-100 p-3">
-       <div class="pr-4"><div class="text-sm font-medium">补货后自动重新上架</div><div class="mt-1 text-xs text-gray-500">开启后，已下架商品补充库存时自动上架；关闭时需在商品管理中手动上架。</div></div>
+       <div class="pr-4"><div class="text-sm font-medium">{{$t('tg-card.siteSettings.autoRelist')}}</div><div class="mt-1 text-xs text-gray-500">{{$t('tg-card.siteSettings.autoRelistDesc')}}</div></div>
        <a-switch v-model:checked="form.stockAutoRelistOnRestock" />
       </div>
      </div>
     </a-tab-pane>
     <a-tab-pane key="telegram">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:telegram" />Telegram 通知</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:telegram" />{{$t('tg-card.siteSettings.tabTelegram')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-3 text-sm font-semibold">Telegram 私聊与群组通知</div>
+      <div class="mb-3 text-sm font-semibold">{{$t('tg-card.siteSettings.telegramSection')}}</div>
       
       <a-form layout="vertical"><a-row :gutter="16">
-        <a-col :xs="24" :md="12"><a-form-item label="管理员通知 Chat ID"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
-       <a-col :xs="24" :md="12"><a-form-item label="通知群组 Chat ID"><a-input v-model:value="form.telegramGroupChatId" /></a-form-item></a-col>
+        <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.adminChatId')"><a-input v-model:value="form.telegramAdminChatId" /></a-form-item></a-col>
+       <a-col :xs="24" :md="12"><a-form-item :label="$t('tg-card.siteSettings.groupChatId')"><a-input v-model:value="form.telegramGroupChatId" /></a-form-item></a-col>
       </a-row></a-form>
-      <div class="mb-3 mt-2 text-sm font-semibold">通知事件</div>
+      <div class="mb-3 mt-2 text-sm font-semibold">{{$t('tg-card.siteSettings.notificationEvents')}}</div>
       <a-row :gutter="[16,12]">
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">新订单</span><a-switch v-model:checked="form.telegramNotifyOrderCreated" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">付款成功</span><a-switch v-model:checked="form.telegramNotifyPaymentSuccess" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">发货成功</span><a-switch v-model:checked="form.telegramNotifyDeliverySuccess" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">售后工单</span><a-switch v-model:checked="form.telegramNotifySupportCreated" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">库存不足提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyStockLow" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">每日经营报告（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyDailyReport" /></div></a-col>
-       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">支付风险提醒（发送给主人）</span><a-switch v-model:checked="form.telegramNotifyRiskAlert" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.newOrder')}}</span><a-switch v-model:checked="form.telegramNotifyOrderCreated" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.paymentSuccess')}}</span><a-switch v-model:checked="form.telegramNotifyPaymentSuccess" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.deliverySuccess')}}</span><a-switch v-model:checked="form.telegramNotifyDeliverySuccess" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.supportTicket')}}</span><a-switch v-model:checked="form.telegramNotifySupportCreated" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.stockLow')}}</span><a-switch v-model:checked="form.telegramNotifyStockLow" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.dailyReport')}}</span><a-switch v-model:checked="form.telegramNotifyDailyReport" /></div></a-col>
+       <a-col :xs="24" :sm="12"><div class="flex items-center justify-between rounded-lg border border-gray-100 p-3"><span class="text-sm">{{$t('tg-card.siteSettings.riskAlert')}}</span><a-switch v-model:checked="form.telegramNotifyRiskAlert" /></div></a-col>
       </a-row>
-      <a-button class="mt-4" size="small" :loading="testing" @click="testTelegram">发送 Telegram 测试通知</a-button>
+      <a-button class="mt-4" size="small" :loading="testing" @click="testTelegram">{{$t('tg-card.siteSettings.sendTestTelegram')}}</a-button>
      </div>
     </a-tab-pane>
     <a-tab-pane key="ai">
@@ -149,7 +150,7 @@ onMounted(()=>{load();loadLLM();});
         <a-form-item label="AI 售后客服规则 / Prompt"><a-textarea v-model:value="llmForm.supportPrompt" :rows="6" :maxlength="3000" show-count placeholder="填写商品答疑范围、表达风格、常见问题处理指引。不要要求 AI 执行退款、补发或修改订单等操作。" /><div class="mt-1 text-xs text-gray-500">最多 3000 字；该规则作为模型指令附加在系统安全规则之后，不能覆盖退款、资金和人工转接限制。</div></a-form-item>
        </a-form>
        <a-space wrap>
-        <a-button size="small" :loading="llmLoading" @click="loadLLM">重新加载</a-button>
+        <a-button size="small" :loading="llmLoading" @click="loadLLM">{{$t('tg-card.siteSettings.reload')}}</a-button>
         <a-button size="small" type="primary" :loading="llmSaving" @click="saveLLM">保存 AI 配置</a-button>
         <a-tag v-if="llmForm.apiKeyConfigured" color="success">API Key 已配置</a-tag>
         <a-tag v-else color="warning">API Key 未配置</a-tag>
@@ -159,49 +160,49 @@ onMounted(()=>{load();loadLLM();});
      </div>
     </a-tab-pane>
     <a-tab-pane key="backup">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:database-clock-outline" />自动备份</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:database-clock-outline" />{{$t('tg-card.siteSettings.tabBackup')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-3 text-sm font-semibold">每日数据库自动备份</div>
+      <div class="mb-3 text-sm font-semibold">{{$t('tg-card.siteSettings.backupSection')}}</div>
       
       <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
-       <div class="pr-4"><div class="text-sm font-medium">启用每日自动备份</div><div class="mt-1 text-xs text-gray-500">关闭后不再自动创建或发送备份；现有手动备份/恢复脚本不受影响。</div></div>
+       <div class="pr-4"><div class="text-sm font-medium">{{$t('tg-card.siteSettings.enableBackup')}}</div><div class="mt-1 text-xs text-gray-500">{{$t('tg-card.siteSettings.backupToggleDesc')}}</div></div>
        <a-switch v-model:checked="form.backupEnabled" />
       </div>
       <a-form layout="vertical">
-       <a-form-item label="每日备份时间"><a-time-picker v-model:value="form.backupTime" format="HH:mm" value-format="HH:mm" class="w-full" :minute-step="5" /></a-form-item>
+       <a-form-item :label="$t('tg-card.siteSettings.backupTime')"><a-time-picker v-model:value="form.backupTime" format="HH:mm" value-format="HH:mm" class="w-full" :minute-step="5" /></a-form-item>
       </a-form>
       <a-divider />
-      <div class="mb-2 text-sm font-semibold">数据库备份加密密钥</div>
+      <div class="mb-2 text-sm font-semibold">{{$t('tg-card.siteSettings.backupEncryptionSection')}}</div>
       <a-form layout="vertical">
-       <a-form-item label="32 位备份加密密钥">
-        <a-input-password v-model:value="backupEncryptionPassphrase" autocomplete="new-password" :maxlength="128" placeholder="请输入密钥，或点击生成密钥" />
+       <a-form-item :label="$t('tg-card.siteSettings.backupKeyLabel')">
+        <a-input-password v-model:value="backupEncryptionPassphrase" autocomplete="new-password" :maxlength="128" :placeholder="$t('tg-card.siteSettings.backupKeyPlaceholder')" />
        </a-form-item>
       </a-form>
       <a-space wrap>
-       <a-button size="small" @click="generateBackupEncryptionKey">生成密钥</a-button>
-       <a-button size="small" type="primary" :loading="backupEncryptionKeySaving" :disabled="backupEncryptionPassphrase.length<32" @click="saveBackupEncryptionKey">保存密钥</a-button>
-       <a-tag v-if="backupEncryptionKeyConfigured" color="success">已配置</a-tag>
-       <a-tag v-else color="warning">未配置</a-tag>
+       <a-button size="small" @click="generateBackupEncryptionKey">{{$t('tg-card.siteSettings.generateKey')}}</a-button>
+       <a-button size="small" type="primary" :loading="backupEncryptionKeySaving" :disabled="backupEncryptionPassphrase.length<32" @click="saveBackupEncryptionKey">{{$t('tg-card.siteSettings.saveKey')}}</a-button>
+       <a-tag v-if="backupEncryptionKeyConfigured" color="success">{{$t('tg-card.siteSettings.configured')}}</a-tag>
+       <a-tag v-else color="warning">{{$t('tg-card.siteSettings.notConfigured')}}</a-tag>
       </a-space>
-      <a-alert class="mt-4" type="warning" show-icon message="密钥至少 32 个字符。请在保存后立即复制并存入密码管理器或离线安全位置；丢失密钥将无法解密备份。更换密钥只影响之后生成的备份，旧备份仍必须使用原密钥恢复。" />
-      <div class="mt-4 text-xs leading-6 text-gray-500">网站保存的密钥用于每日自动备份。服务器命令行手动备份/恢复仍需在运行命令的环境中提供 BACKUP_ENCRYPTION_PASSPHRASE。</div>
-      <div class="mt-3 text-xs leading-6 text-gray-500">备份发送失败时会记录服务端错误日志，并尝试向主人发送失败通知。备份文件通过 Telegram 文档消息发送。</div>
+      <a-alert class="mt-4" type="warning" show-icon :message="$t('tg-card.siteSettings.backupWarning')" />
+      <div class="mt-4 text-xs leading-6 text-gray-500">{{$t('tg-card.siteSettings.backupKeyHelp')}}</div>
+      <div class="mt-3 text-xs leading-6 text-gray-500">{{$t('tg-card.siteSettings.backupFailureHelp')}}</div>
      </div>
     </a-tab-pane>
     <a-tab-pane key="cap">
-     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:shield-check-outline" />人机验证</span></template>
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:shield-check-outline" />{{$t('tg-card.siteSettings.tabCap')}}</span></template>
      <div class="max-w-3xl">
-      <div class="mb-3 text-sm font-semibold">Cap 人机验证</div>
+      <div class="mb-3 text-sm font-semibold">{{$t('tg-card.siteSettings.capSection')}}</div>
       
       <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-100 p-3">
-       <div class="pr-4"><div class="text-sm font-medium">启用登录人机验证</div></div>
+       <div class="pr-4"><div class="text-sm font-medium">{{$t('tg-card.siteSettings.enableCap')}}</div></div>
        <a-switch v-model:checked="form.capEnabled" />
       </div>
       <a-form layout="vertical">
-       <a-form-item label="服务域名"><a-input v-model:value="form.capDomain" placeholder="https://cap.example.com" /></a-form-item>
-       <a-form-item label="Site Key"><a-input v-model:value="form.capSiteKey" autocomplete="off" /></a-form-item>
-       <a-form-item label="Secret Key">
-        <a-input-password v-model:value="form.capSecret" autocomplete="new-password" :placeholder="capSecretConfigured?'已加密保存，留空保持不变':'请输入 Cap Secret Key'" />
+       <a-form-item :label="$t('tg-card.siteSettings.capDomain')"><a-input v-model:value="form.capDomain" placeholder="https://cap.example.com" /></a-form-item>
+       <a-form-item :label="$t('tg-card.siteSettings.siteKey')"><a-input v-model:value="form.capSiteKey" autocomplete="off" /></a-form-item>
+       <a-form-item :label="$t('tg-card.siteSettings.secretKey')">
+        <a-input-password v-model:value="form.capSecret" autocomplete="new-password" :placeholder="capSecretConfigured?$t('tg-card.siteSettings.capSecretKeep'):$t('tg-card.siteSettings.capSecretPlaceholder')" />
         
        </a-form-item>
       </a-form>
@@ -211,8 +212,8 @@ onMounted(()=>{load();loadLLM();});
    </a-tabs>
   </a-card>
   <div class="flex flex-wrap items-center justify-between gap-2">
-   <span class="text-xs text-gray-400">切换分组不会自动保存，请完成修改后点击保存。</span>
-   <a-space><a-button size="small" :loading="loading" @click="load">重新加载</a-button><a-button size="middle" type="primary" :loading="saving" @click="save">保存设置</a-button></a-space>
+   <span class="text-xs text-gray-400">{{$t('tg-card.siteSettings.unsavedHint')}}</span>
+   <a-space><a-button size="small" :loading="loading" @click="load">{{$t('tg-card.siteSettings.reload')}}</a-button><a-button size="middle" type="primary" :loading="saving" @click="save">{{$t('tg-card.siteSettings.save')}}</a-button></a-space>
   </div>
  </div>
 </template>
