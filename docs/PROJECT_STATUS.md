@@ -15,7 +15,7 @@
 - 余额流水一致性检查的差异明细改为带加载状态的独立弹窗；初次加载历史记录不自动弹窗。对账月份选择改用 Ant Design Vue 月份选择器。
 - 后台 Ant Design Vue 按钮统一尺寸；登录用户名/密码错误提示改为中文；资金检查结果、异常来源及关联对象的常见状态改为中文展示。
 - 新增回调公网地址派生与可信代理头处理测试；无数据库迁移。
-- PR #135 已 Squash Merge 至 main，合并提交 32cbf6b24c39f94d6df8a27408e3e16155670e3d；合并后 Go Backend CI、Admin Frontend CI、Security Scan 与 Docker Publish 已触发，生产反向代理 HTTPS/可信代理配置仍需目标环境验证。
+- PR #135 已 Squash Merge 至 main，合并提交 32cbf6b24c39f94d6df8a27408e3e16155670e3d；合并后 Go Backend CI（run 44963456837）、Admin Frontend CI（run 44963456814）、Security Scan（run 44963456855）与 Docker Publish（run 44963456816）均成功。GHCR latest 与 commit tag 已推送，OCI manifest digest：sha256:2ce38874a8995c0f3bcb00e82ef6042f5e74dd547502030be0cc1af9ac489482。生产反向代理 HTTPS/可信代理配置仍需目标环境验证。
 
 ## 2026-11-22 — 本地与每日备份 age 加密（PR #132 已合并并发布；文档版本 2.2.84）
 
