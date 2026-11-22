@@ -2154,7 +2154,7 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
  aiConfig, enabled, err := llm.LoadStoredConfig(ctx,m.db,m.driver,m.decrypt)
  if err != nil {
   log.Printf("AI support config load failed: ticket_id=%s error=%v",ticket.ID,err)
-  return false
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"config_unavailable")
  }
  if !enabled { return false }
  decision := llm.DecideSupportHandling(currentText)
