@@ -16,7 +16,7 @@ type SupportDecision struct {
 
 var supportEscalationPhrases = []string{
 	"人工客服", "转人工", "真人客服", "找客服", "找人工", "联系老板", "找老板",
-	"退款", "退钱", "退费", "拒付", "撤销付款", "支付争议", "重复扣款",
+	"退款", "退钱", "退费", "拒付", "撤销付款", "支付争议", "付款有争议", "付款争议", "交易争议", "支付有问题", "重复扣款",
 	"银行卡", "信用卡", "隐私", "个人信息", "账号被盗", "盗号", "投诉", "举报",
 	"法律", "律师", "报警", "起诉", "诈骗", "欺诈", "chargeback", "refund",
 	"dispute", "human agent", "live agent", "talk to a person", "personal data",
