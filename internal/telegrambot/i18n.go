@@ -245,7 +245,7 @@ var botMessages = map[string]map[string]string{
 
 	"cart.unavailable": {languageChinese:"购物车暂时不可用，请稍后重试。",languageEnglish:"The cart is temporarily unavailable. Please try again later."},
 	"cart.load_error": {languageChinese:"购物车暂时无法读取，请稍后重试。",languageEnglish:"The cart could not be loaded. Please try again later."},
-	"cart.empty": {languageChinese:"🛒 购物车还是空的。\\n去商品中心挑选本地卡密商品，点击“加入购物车”即可。",languageEnglish:"🛒 Your cart is empty.\\nBrowse the store and add products to your cart."},
+	"cart.empty": {languageChinese:"🛒 购物车还是空的。\n去商品中心挑选本地卡密商品，点击“加入购物车”即可。",languageEnglish:"🛒 Your cart is empty.\nBrowse the store and add products to your cart."},
 	"cart.shop": {languageChinese:"🛍️ 去逛商城",languageEnglish:"🛍️ Browse store"},
 	"cart.stock": {languageChinese:"库存 ",languageEnglish:"Stock "},
 	"cart.stock_short": {languageChinese:"（库存不足）",languageEnglish:" (insufficient stock)"},
