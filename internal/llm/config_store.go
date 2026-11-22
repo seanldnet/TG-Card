@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const configSettingKey = "ai_support_llm_config"
+const configSettingKey = "ai_support_llm_config"\nconst supportPromptSettingKey = "ai_support_operator_prompt"
 
 type StoredConfig struct {
 	Provider string `json:"provider"`
@@ -99,4 +99,24 @@ func LoadConfigView(ctx context.Context, db *sql.DB, driver string) (ConfigView,
 	var stored StoredConfig
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil { return ConfigView{}, fmt.Errorf("decode saved LLM config: %w", err) }
 	return ConfigView{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, TimeoutSeconds:stored.TimeoutSeconds, Enabled:stored.Enabled, APIKeyConfigured:stored.APIKeyCiphertext != ""}, nil
+}
+
+\n// SaveSupportPrompt stores the operator-authored AI support guidance separately from provider credentials.
+func SaveSupportPrompt(ctx context.Context, db *sql.DB, driver, prompt string) error {
+ if db == nil { return errors.New("LLM config storage is unavailable") }
+ prompt = strings.TrimSpace(prompt)
+ if len([]rune(prompt)) > 3000 { return fmt.Errorf("AI support prompt exceeds 3000 characters") }
+ now := time.Now().UTC().Format(time.RFC3339Nano)
+ query := "INSERT INTO settings(key,value,updated_at) VALUES ("+settingPlaceholder(driver,1)+","+settingPlaceholder(driver,2)+","+settingPlaceholder(driver,3)+") ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at"
+ _, err := db.ExecContext(ctx, query, supportPromptSettingKey, prompt, now)
+ return err
+}
+
+func LoadSupportPrompt(ctx context.Context, db *sql.DB, driver string) (string, error) {
+ if db == nil { return "", errors.New("LLM config storage is unavailable") }
+ var prompt string
+ err := db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = "+settingPlaceholder(driver,1), supportPromptSettingKey).Scan(&prompt)
+ if err == sql.ErrNoRows { return "", nil }
+ if err != nil { return "", err }
+ return limitSupportText(prompt, 3000), nil
 }
