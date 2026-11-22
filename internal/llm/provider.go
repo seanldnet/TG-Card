@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -26,7 +27,10 @@ type ProviderError struct {
 }
 
 func (e *ProviderError) Error() string {
-	return fmt.Sprintf("LLM provider request failed: %s (HTTP %d)", e.Code, e.StatusCode)
+	if e.StatusCode > 0 {
+		return fmt.Sprintf("LLM provider request failed: %s (HTTP %d)", e.Code, e.StatusCode)
+	}
+	return fmt.Sprintf("LLM provider request failed: %s", e.Code)
 }
 
 func (e *ProviderError) Unwrap() error { return ErrProviderResponse }
@@ -165,10 +169,24 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	req.Header.Set("Authorization", "Bearer "+p.config.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
-	if err != nil { return "", fmt.Errorf("LLM request failed: %w", err) }
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return "", &ProviderError{Code: "request_cancelled"}
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", &ProviderError{Code: "request_timeout", Retryable: true}
+		}
+		var networkErr net.Error
+		if errors.As(err, &networkErr) && networkErr.Timeout() {
+			return "", &ProviderError{Code: "request_timeout", Retryable: true}
+		}
+		return "", &ProviderError{Code: "upstream_error", Retryable: true}
+	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, p.config.MaxResponseBytes+1))
-	if err != nil { return "", err }
+	if err != nil {
+		return "", &ProviderError{Code: "upstream_error", Retryable: true}
+	}
 	if int64(len(data)) > p.config.MaxResponseBytes { return "", fmt.Errorf("%w: response too large", ErrProviderResponse) }
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Do not include provider response bodies: they may echo sensitive data.
