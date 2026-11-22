@@ -7,13 +7,13 @@ import { requestClient } from '#/api/request';
 import { $t } from '#/locales';
 
 interface RuntimeStatus { botId:string; username:string; state:string; running:boolean; lastPollAt?:string; lastUpdateAt?:string; lastError?:string; lastErrorAt?:string }
-interface Bot { id:string; name:string; username:string; status:number; welcomeText:string; welcomeMessage:string; purchaseNotice:string; description:string; ownerId:string; customerServiceUrl:string; businessGroupUrl:string; createdAt:string; updatedAt:string }
+interface Bot { id:string; name:string; username:string; status:number; defaultLanguage:string; welcomeText:string; welcomeMessage:string; purchaseNotice:string; description:string; ownerId:string; customerServiceUrl:string; businessGroupUrl:string; createdAt:string; updatedAt:string }
 const loading=ref(false),saving=ref(false),botModalOpen=ref(false),editingId=ref('');
 const bots=ref<Bot[]>([]),runtimeStatuses=ref<RuntimeStatus[]>([]);
 let runtimeTimer:ReturnType<typeof setInterval>|undefined;
 const runtimeByBot=computed(()=>Object.fromEntries(runtimeStatuses.value.map(item=>[item.botId,item])));
 const botFormRef=ref();
-const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',welcomeMessage:'🎉 欢迎来到我们的商城！',purchaseNotice:'📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密',description:'欢迎使用本机器人，浏览商品并安全快捷地完成购买。',ownerId:'',customerServiceUrl:'',businessGroupUrl:'',enabled:true});
+const botForm=reactive({name:'',token:'',welcomeText:'欢迎来到我们的商城！',welcomeMessage:'🎉 欢迎来到我们的商城！',purchaseNotice:'📌 购买须知：\n• 请确认商品信息及库存后再下单\n• 虚拟商品发货后请妥善保管卡密',description:'欢迎使用本机器人，浏览商品并安全快捷地完成购买。',ownerId:'',customerServiceUrl:'',businessGroupUrl:'',defaultLanguage:'zh',enabled:true});
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
 const activeCount=computed(()=>bots.value.filter(item=>item.status===1).length);
@@ -23,9 +23,9 @@ const botRules={
  name:[{required:true,whitespace:true,message:$t('tg-card.bots.nameRequired'),trigger:'blur'}],
  token:[{validator:(_rule:any,value:string)=>editingId.value||String(value||'').trim()?Promise.resolve():Promise.reject(new Error($t('tg-card.bots.tokenRequired'))),trigger:'blur'}],
 };
-function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.welcomeMessage='🎉 欢迎来到我们的商城！';botForm.purchaseNotice='📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description='欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId='';botForm.customerServiceUrl='';botForm.businessGroupUrl='';botForm.enabled=true}
+function resetBotForm(){botForm.name='';botForm.token='';botForm.welcomeText='欢迎来到我们的商城！';botForm.welcomeMessage='🎉 欢迎来到我们的商城！';botForm.purchaseNotice='📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description='欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId='';botForm.customerServiceUrl='';botForm.businessGroupUrl='';botForm.defaultLanguage='zh';botForm.enabled=true}
 function handleAddBot(){editingId.value='';resetBotForm();botModalOpen.value=true}
-function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.welcomeMessage=bot.welcomeMessage||'🎉 欢迎来到我们的商城！';botForm.purchaseNotice=bot.purchaseNotice||'📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description=bot.description||'欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId=bot.ownerId||'';botForm.customerServiceUrl=bot.customerServiceUrl||'';botForm.businessGroupUrl=bot.businessGroupUrl||'';botForm.enabled=bot.status===1;botModalOpen.value=true}
+function openEdit(bot:Bot){editingId.value=bot.id;botForm.name=bot.name;botForm.token='';botForm.welcomeText=bot.welcomeText||'';botForm.welcomeMessage=bot.welcomeMessage||'🎉 欢迎来到我们的商城！';botForm.purchaseNotice=bot.purchaseNotice||'📌 购买须知：\\n• 请确认商品信息及库存后再下单\\n• 虚拟商品发货后请妥善保管卡密';botForm.description=bot.description||'欢迎使用本机器人，浏览商品并安全快捷地完成购买。';botForm.ownerId=bot.ownerId||'';botForm.customerServiceUrl=bot.customerServiceUrl||'';botForm.businessGroupUrl=bot.businessGroupUrl||'';botForm.defaultLanguage=bot.defaultLanguage||'zh';botForm.enabled=bot.status===1;botModalOpen.value=true}
 async function refreshRuntime(){try{runtimeStatuses.value=await requestClient.get<RuntimeStatus[]>('/bots/runtime')}catch{/* Keep the last known runtime snapshot; bot list remains usable. */}}
 async function restartBot(bot:Bot){
  Modal.confirm({title:$t('tg-card.bots.restartTitle'),content:$t('tg-card.bots.restartConfirm',{username:bot.username}),okText:$t('tg-card.bots.confirmRestart'),cancelText:$t('tg-card.bots.cancel'),onOk:async()=>{
@@ -40,7 +40,7 @@ async function submit(){
  saving.value=true;
  try{
   if(editingId.value){
-   await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
+   await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim(),defaultLanguage:botForm.defaultLanguage});
    message.success($t('tg-card.bots.saved'));
   }else{
    await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
@@ -98,6 +98,7 @@ onUnmounted(()=>{if(runtimeTimer)clearInterval(runtimeTimer)});
      <a-form-item :label="$t('tg-card.bots.welcomeMessage')"><a-textarea v-model:value="botForm.welcomeMessage" :rows="3" :maxlength="2000" show-count :placeholder="$t('tg-card.bots.welcomePlaceholder')"/></a-form-item>
      <a-form-item :label="$t('tg-card.bots.purchaseNotice')"><a-textarea v-model:value="botForm.purchaseNotice" :rows="4" :maxlength="2000" show-count :placeholder="$t('tg-card.bots.purchasePlaceholder')"/></a-form-item>
      <a-divider class="my-2">{{$t('tg-card.bots.settings')}}</a-divider>
+     <a-form-item :label="$t('tg-card.bots.defaultLanguage')"><a-select v-model:value="botForm.defaultLanguage" size="large"><a-select-option value="zh">{{$t('tg-card.bots.languageChinese')}}</a-select-option><a-select-option value="en">{{$t('tg-card.bots.languageEnglish')}}</a-select-option></a-select><div class="mt-1 text-xs text-gray-500">{{$t('tg-card.bots.defaultLanguageHint')}}</div></a-form-item>
      <a-form-item :label="$t('tg-card.bots.ownerId')"><a-input v-model:value="botForm.ownerId" inputmode="numeric" :placeholder="$t('tg-card.bots.ownerPlaceholder')"/></a-form-item>
      <a-form-item :label="$t('tg-card.bots.customerService')"><a-input v-model:value="botForm.customerServiceUrl" :placeholder="$t('tg-card.bots.customerServicePlaceholder')"/></a-form-item>
      <a-form-item :label="$t('tg-card.bots.businessGroup')"><a-input v-model:value="botForm.businessGroupUrl" :placeholder="$t('tg-card.bots.businessGroupPlaceholder')"/></a-form-item>
