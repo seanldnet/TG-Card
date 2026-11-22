@@ -34,7 +34,7 @@ Baseline: PR #140 AI support foundation branch. Keep the generic OpenAI-compatib
 - Unknown provider IDs and invalid URLs are rejected.
 - Kimi .ai and .cn presets remain independent and are not auto-switched.
 - DeepSeek thinking on/off and effort serialization are tested for explicit request configuration.
-- OpenAI max_completion_tokens capability selection is tested without sending deprecated max_tokens to reasoning models.
+- OpenAI token-limit field selection is configurable and tested for default/auto modern behavior and explicit legacy `max_tokens`; no model-name capability guessing is performed.
 
 ## Source references checked 2026-11-23
 
@@ -59,10 +59,22 @@ Initial code implementation is now present on the PR #141 branch:
 Still incomplete and not claimed as production-ready:
 
 - DeepSeek thinking-mode enable/disable and reasoning-effort request fields are implemented; exact availability remains model/API-version dependent and must be verified against the selected model.
-- Model capability metadata for OpenAI token-limit selection; the current OpenAI behavior uses the modern field uniformly.
+- OpenAI model capability is not inferred from model names. Operators can explicitly select `TokenLimitParameter` as `auto` (default: `max_completion_tokens`), `max_completion_tokens`, or `max_tokens`; the legacy choice must be selected for models/gateways that require it.
 - Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
 - HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `upstream_error`, `unexpected_status`) plus a retryable flag. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
-- Full timeout, cancellation, malformed/oversized response, and error mapping contract matrix per vendor.
+- Timeout and caller-cancellation contract tests are now present; full malformed/oversized response and per-vendor failure matrix still need execution and expansion.
 - Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
 
 This is a partial implementation, not four fully completed vendor adapters. Existing generic HTTPS, timeout, response-size and secret-redaction safeguards remain in the shared transport.
+
+
+## OpenAI token-limit configuration
+
+`Config.TokenLimitParameter` is an explicit transport setting for OpenAI endpoints:
+
+- Empty or `auto`: send `max_completion_tokens` (default).
+- `max_completion_tokens`: send the modern field explicitly.
+- `max_tokens`: send the legacy field for a model or compatible gateway that requires it.
+- Any other value fails with `ErrInvalidConfig`.
+
+The transport intentionally does not infer support from model-name prefixes. The operator must select the parameter appropriate to the configured model and endpoint. This field is currently a provider configuration capability; the Telegram admin UI wiring remains a separate follow-up.
