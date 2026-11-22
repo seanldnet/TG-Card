@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import { $t } from '#/locales';
 import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface BonusTier { minAmountAtomic: number; bonusType: 'fixed' | 'percent'; bonusValue: number; }
@@ -46,12 +47,12 @@ const settings = reactive<PaymentSettings>({
 
 async function loadBonusRule(){
   try { const data=await requestClient.get<BonusRule>('/settings/recharge-bonus'); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; }
-  catch { message.error('充值赠送规则加载失败'); }
+  catch { message.error($t('tg-card.paymentSettings.bonusLoadFailed')); }
 }
 async function saveBonusRule(){
   bonusSaving.value=true;
-  try { const payload={enabled:bonusRule.enabled,tiers:bonusRule.tiers}; const data=await withAdminActionConfirmation({actionKey:'settings.recharge-bonus.update',method:'PUT',path:'/api/settings/recharge-bonus',payload,run:(token)=>requestClient.put<BonusRule>('/settings/recharge-bonus',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)}); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; message.success('充值赠送规则已保存'); }
-  catch(error:any){ message.error(error?.response?.data?.message||'保存充值赠送规则失败'); }
+  try { const payload={enabled:bonusRule.enabled,tiers:bonusRule.tiers}; const data=await withAdminActionConfirmation({actionKey:'settings.recharge-bonus.update',method:'PUT',path:'/api/settings/recharge-bonus',payload,run:(token)=>requestClient.put<BonusRule>('/settings/recharge-bonus',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)}); Object.assign(bonusRule,data); bonusRule.tiers=data.tiers||[]; message.success($t('tg-card.paymentSettings.bonusSaved')); }
+  catch(error:any){ message.error(error?.response?.data?.message||$t('tg-card.paymentSettings.bonusSaveFailed')); }
   finally { bonusSaving.value=false; }
 }
 function addBonusTier(){bonusRule.tiers.push({minAmountAtomic:10000000,bonusType:'fixed',bonusValue:1000000});}
@@ -63,7 +64,7 @@ async function loadSettings() {
     const data = await requestClient.get<PaymentSettings>('/settings/payment');
     Object.assign(settings, data);
   } catch {
-    message.error('支付设置加载失败');
+    message.error($t('tg-card.paymentSettings.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -105,8 +106,8 @@ async function saveGateway(provider: 'epusdt' | 'gmpay') {
       settings.gmpaySecretConfigured = data.gmpaySecretConfigured;
       gmpaySecret.value = ''; clearGmpaySecret.value = false;
     }
-    message.success(provider === 'epusdt' ? 'Epusdt 配置已保存并应用' : 'GMPay Edge 配置已保存并应用');
-  } catch (error: any) { message.error(error?.response?.data?.message || '支付网关配置保存失败'); }
+    message.success(provider === 'epusdt' ? $t('tg-card.paymentSettings.epusdtSaved') : $t('tg-card.paymentSettings.gmpaySaved'));
+  } catch (error: any) { message.error(error?.response?.data?.message || $t('tg-card.paymentSettings.gatewaySaveFailed')); }
   finally { saving.value = false; }
 }
 
@@ -127,9 +128,9 @@ async function saveSettings() {
     settings.enabled = data.enabled;
     apiKey.value = '';
     clearApiKey.value = false;
-    message.success('TRC20 配置已保存并应用');
+    message.success($t('tg-card.paymentSettings.tronSaved'));
   } catch (error: any) {
-    message.error(error?.response?.data?.message || '保存失败，请检查配置');
+    message.error(error?.response?.data?.message || $t('tg-card.paymentSettings.saveFailed'));
   } finally {
     saving.value = false;
   }
@@ -140,31 +141,31 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
 
 <template>
   <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
-    <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
-      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.enabled ? 'success' : 'default'">{{ settings.enabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.enabled" /></div></template>
+    <a-card :bordered="false" :loading="loading" :title="$t('tg-card.paymentSettings.tronTitle')">
+      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.enabled ? 'success' : 'default'">{{ settings.enabled ? $t('tg-card.paymentSettings.enabled') : $t('tg-card.paymentSettings.disabled') }}</a-tag><a-switch v-model:checked="settings.enabled" /></div></template>
       
       <a-form layout="vertical">
         <a-form-item label="TronGrid API Key">
           <a-input-password
             v-model:value="apiKey"
             autocomplete="new-password"
-            placeholder="输入 TronGrid API Key"
+            :placeholder="$t('tg-card.paymentSettings.tronGridKey')"
           />
           <div class="mt-2 flex items-center gap-2">
             <a-tag :color="settings.apiKeyConfigured ? 'success' : 'warning'">
-              {{ settings.apiKeyConfigured ? 'API Key 已配置' : '尚未配置 API Key' }}
+              {{ settings.apiKeyConfigured ? $t('tg-card.paymentSettings.apiKeyConfigured') : $t('tg-card.paymentSettings.apiKeyMissing') }}
             </a-tag>
-            <a-checkbox v-model:checked="clearApiKey">清除已保存的 API Key</a-checkbox>
+            <a-checkbox v-model:checked="clearApiKey">{{$t('tg-card.paymentSettings.clearApiKey')}}</a-checkbox>
           </div>
         </a-form-item>
-        <a-form-item label="TRON 收款地址" required>
+        <a-form-item :label="$t('tg-card.paymentSettings.tronAddress')" required>
           <a-input
             v-model:value="settings.receiveAddress"
             autocomplete="off"
-            placeholder="T 开头的 TRON 主网地址"
+            :placeholder="$t('tg-card.paymentSettings.tronAddressPlaceholder')"
           />
         </a-form-item>
-        <a-form-item label="USDT TRC20 合约地址">
+        <a-form-item :label="$t('tg-card.paymentSettings.contractAddress')">
           <a-input v-model:value="settings.usdtContract" autocomplete="off" />
         </a-form-item>
         <a-divider />
@@ -173,41 +174,41 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
           class="mt-4"
           type="warning"
           show-icon
-          message="安全提醒"
-          description="请只填写商户自己的收款地址。系统仅监听到账，不需要钱包私钥；少付、多付、过期转账仍需人工对账。"
+          :message="$t('tg-card.paymentSettings.securityReminder')"
+          :description="$t('tg-card.paymentSettings.securityDescription')"
         />
       </a-form>
-      <div class="mt-4 flex justify-end"><a-button size="small" type="primary" :loading="saving" @click="saveSettings">保存 TRC20 配置</a-button></div>
+      <div class="mt-4 flex justify-end"><a-button size="small" type="primary" :loading="saving" @click="saveSettings">{{$t('tg-card.paymentSettings.saveTron')}}</a-button></div>
     </a-card>
-    <a-card :bordered="false" :loading="loading" title="Epusdt 网关">
-      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.epusdtEnabled" /></div></template>
+    <a-card :bordered="false" :loading="loading" :title="$t('tg-card.paymentSettings.epusdtTitle')">
+      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? $t('tg-card.paymentSettings.enabled') : $t('tg-card.paymentSettings.disabled') }}</a-tag><a-switch v-model:checked="settings.epusdtEnabled" /></div></template>
       <a-form layout="vertical">
-        <a-form-item label="Epusdt 服务地址" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
-        <a-form-item label="Epusdt 商户 PID" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
-        <a-form-item label="Epusdt Secret"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" placeholder="输入 Epusdt 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">清除已保存 Secret</a-checkbox></div></a-form-item>
-        <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveGateway('epusdt')">保存 Epusdt 配置</a-button></div>
+        <a-form-item :label="$t('tg-card.paymentSettings.epusdtBaseUrl')" required><a-input v-model:value="settings.epusdtBaseUrl" placeholder="https://pay.example.com" autocomplete="url"/></a-form-item>
+        <a-form-item :label="$t('tg-card.paymentSettings.epusdtPid')" required><a-input v-model:value="settings.epusdtPid" autocomplete="off"/></a-form-item>
+        <a-form-item :label="$t('tg-card.paymentSettings.epusdtSecret')"><a-input-password v-model:value="epusdtSecret" autocomplete="new-password" :placeholder="$t('tg-card.paymentSettings.epusdtSecretPlaceholder')"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.epusdtSecretConfigured ? 'success' : 'warning'">{{ settings.epusdtSecretConfigured ? $t('tg-card.paymentSettings.secretConfigured') : $t('tg-card.paymentSettings.secretMissing') }}</a-tag><a-checkbox v-model:checked="clearEpusdtSecret">{{$t('tg-card.paymentSettings.clearSecret')}}</a-checkbox></div></a-form-item>
+        <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveGateway('epusdt')">{{$t('tg-card.paymentSettings.saveEpusdt')}}</a-button></div>
       </a-form>
     </a-card>
-    <a-card :bordered="false" :loading="loading" title="GMPay Edge 网关">
-      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.gmpayEnabled ? 'success' : 'default'">{{ settings.gmpayEnabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.gmpayEnabled" /></div></template>
+    <a-card :bordered="false" :loading="loading" :title="$t('tg-card.paymentSettings.gmpayTitle')">
+      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.gmpayEnabled ? 'success' : 'default'">{{ settings.gmpayEnabled ? $t('tg-card.paymentSettings.enabled') : $t('tg-card.paymentSettings.disabled') }}</a-tag><a-switch v-model:checked="settings.gmpayEnabled" /></div></template>
       <a-form layout="vertical">
-        <a-form-item label="GMPay Edge 服务地址" required><a-input v-model:value="settings.gmpayBaseUrl" placeholder="https://gmpay.example.com" autocomplete="url"/></a-form-item>
-        <a-form-item label="GMPay Edge 商户 PID" required><a-input v-model:value="settings.gmpayPid" autocomplete="off"/></a-form-item>
-        <a-form-item label="GMPay Edge Secret"><a-input-password v-model:value="gmpaySecret" autocomplete="new-password" placeholder="输入 GMPay Edge 商户 Secret"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.gmpaySecretConfigured ? 'success' : 'warning'">{{ settings.gmpaySecretConfigured ? 'Secret 已配置' : 'Secret 尚未配置' }}</a-tag><a-checkbox v-model:checked="clearGmpaySecret">清除已保存 Secret</a-checkbox></div></a-form-item>
-        <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveGateway('gmpay')">保存 GMPay 配置</a-button></div>
+        <a-form-item :label="$t('tg-card.paymentSettings.gmpayBaseUrl')" required><a-input v-model:value="settings.gmpayBaseUrl" placeholder="https://gmpay.example.com" autocomplete="url"/></a-form-item>
+        <a-form-item :label="$t('tg-card.paymentSettings.gmpayPid')" required><a-input v-model:value="settings.gmpayPid" autocomplete="off"/></a-form-item>
+        <a-form-item :label="$t('tg-card.paymentSettings.gmpaySecret')"><a-input-password v-model:value="gmpaySecret" autocomplete="new-password" :placeholder="$t('tg-card.paymentSettings.gmpaySecretPlaceholder')"/><div class="mt-2 flex items-center gap-2"><a-tag :color="settings.gmpaySecretConfigured ? 'success' : 'warning'">{{ settings.gmpaySecretConfigured ? $t('tg-card.paymentSettings.secretConfigured') : $t('tg-card.paymentSettings.secretMissing') }}</a-tag><a-checkbox v-model:checked="clearGmpaySecret">{{$t('tg-card.paymentSettings.clearSecret')}}</a-checkbox></div></a-form-item>
+        <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveGateway('gmpay')">{{$t('tg-card.paymentSettings.saveGmpay')}}</a-button></div>
       </a-form>
     </a-card>
-    <a-card :bordered="false" title="充值赠送规则">
+    <a-card :bordered="false" :title="$t('tg-card.paymentSettings.bonusTitle')">
       
-      <div class="mb-4 flex flex-wrap items-center gap-3"><a-switch v-model:checked="bonusRule.enabled"/><span>启用充值赠送</span><a-button size="small" @click="addBonusTier">添加阶梯</a-button></div>
+      <div class="mb-4 flex flex-wrap items-center gap-3"><a-switch v-model:checked="bonusRule.enabled"/><span>{{$t('tg-card.paymentSettings.enableBonus')}}</span><a-button size="small" @click="addBonusTier">{{$t('tg-card.paymentSettings.addTier')}}</a-button></div>
       <div v-for="(tier,index) in bonusRule.tiers" :key="index" class="mb-3 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3 md:grid-cols-3">
-       <a-form-item label="充值满（USDT）" class="mb-0"><a-input-number v-model:value="tier.minAmountAtomic" :min="1000000" :step="1000000" class="w-full" :formatter="(v:any)=>String(Number(v||0)/1000000)" :parser="(v:any)=>Number(v)*1000000"/></a-form-item>
-       <a-form-item label="赠送方式" class="mb-0"><a-select v-model:value="tier.bonusType"><a-select-option value="fixed">固定赠送</a-select-option><a-select-option value="percent">按比例赠送</a-select-option></a-select></a-form-item>
-       <a-form-item :label="tier.bonusType==='fixed'?'赠送金额（USDT）':'赠送比例（%）'" class="mb-0"><a-input-number v-model:value="tier.bonusValue" :min="1" :max="tier.bonusType==='percent'?100:100000000" class="w-full" :formatter="(v:any)=>tier.bonusType==='fixed'?String(Number(v||0)/1000000):String(Number(v||0)/100)" :parser="(v:any)=>Math.round(Number(v)*(tier.bonusType==='fixed'?1000000:100))"/></a-form-item>
-       <div class="md:col-span-3 flex justify-end"><a-button danger size="small" @click="removeBonusTier(index)">删除此阶梯</a-button></div>
+       <a-form-item :label="$t('tg-card.paymentSettings.rechargeAtLeast')" class="mb-0"><a-input-number v-model:value="tier.minAmountAtomic" :min="1000000" :step="1000000" class="w-full" :formatter="(v:any)=>String(Number(v||0)/1000000)" :parser="(v:any)=>Number(v)*1000000"/></a-form-item>
+       <a-form-item :label="$t('tg-card.paymentSettings.bonusType')" class="mb-0"><a-select v-model:value="tier.bonusType"><a-select-option value="fixed">{{$t('tg-card.paymentSettings.fixedBonus')}}</a-select-option><a-select-option value="percent">{{$t('tg-card.paymentSettings.percentBonus')}}</a-select-option></a-select></a-form-item>
+       <a-form-item :label="tier.bonusType==='fixed'?$t('tg-card.paymentSettings.bonusAmount'):$t('tg-card.paymentSettings.bonusPercent')" class="mb-0"><a-input-number v-model:value="tier.bonusValue" :min="1" :max="tier.bonusType==='percent'?100:100000000" class="w-full" :formatter="(v:any)=>tier.bonusType==='fixed'?String(Number(v||0)/1000000):String(Number(v||0)/100)" :parser="(v:any)=>Math.round(Number(v)*(tier.bonusType==='fixed'?1000000:100))"/></a-form-item>
+       <div class="md:col-span-3 flex justify-end"><a-button danger size="small" @click="removeBonusTier(index)">{{$t('tg-card.paymentSettings.deleteTier')}}</a-button></div>
       </div>
-      <a-empty v-if="bonusRule.tiers.length===0" description="尚未配置阶梯规则，开启后添加至少一档规则"/>
-      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="bonusSaving" @click="saveBonusRule">保存充值赠送规则</a-button></div>
+      <a-empty v-if="bonusRule.tiers.length===0" :description="$t('tg-card.paymentSettings.noTiers')"/>
+      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="bonusSaving" @click="saveBonusRule">{{$t('tg-card.paymentSettings.saveBonus')}}</a-button></div>
     </a-card>
   </div>
 </template>
