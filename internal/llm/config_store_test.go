@@ -50,6 +50,42 @@ func TestStoredConfigKeepsExistingKeyWhenInputIsBlank(t *testing.T) {
 	if enabled || loaded.APIKey != "sk-existing" || loaded.Model != base.Model { t.Fatalf("unexpected updated config: enabled=%v model=%s", enabled, loaded.Model) }
 }
 
+
+func TestStoredConfigPersistsTokenLimitParameterWithoutExposingKey(t *testing.T) {
+ db := configTestDB(t)
+ manager, err := secret.New(t.TempDir())
+ if err != nil { t.Fatal(err) }
+ input := Config{Provider:"openai", BaseURL:"https://api.openai.com/v1", Model:"legacy-gateway-model", APIKey:"sk-token-setting", TokenLimitParameter:"max_tokens"}
+ if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 30, true, manager.Encrypt); err != nil { t.Fatal(err) }
+ view, err := LoadConfigView(context.Background(), db, "sqlite")
+ if err != nil { t.Fatal(err) }
+ if view.TokenLimitParameter != "max_tokens" { t.Fatalf("view token parameter = %q", view.TokenLimitParameter) }
+ loaded, enabled, err := LoadStoredConfig(context.Background(), db, "sqlite", manager.Decrypt)
+ if err != nil { t.Fatal(err) }
+ if !enabled || loaded.TokenLimitParameter != "max_tokens" || loaded.APIKey != input.APIKey { t.Fatalf("stored token parameter/key did not round-trip: %+v", loaded) }
+}
+
+func TestStoredConfigDefaultsMissingTokenLimitParameterToAuto(t *testing.T) {
+ db := configTestDB(t)
+ manager, err := secret.New(t.TempDir())
+ if err != nil { t.Fatal(err) }
+ input := Config{Provider:"openai", BaseURL:"https://api.openai.com/v1", Model:"gpt-4o-mini", APIKey:"sk-default"}
+ if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 30, true, manager.Encrypt); err != nil { t.Fatal(err) }
+ loaded, _, err := LoadStoredConfig(context.Background(), db, "sqlite", manager.Decrypt)
+ if err != nil { t.Fatal(err) }
+ if loaded.TokenLimitParameter != "auto" { t.Fatalf("default token parameter = %q, want auto", loaded.TokenLimitParameter) }
+}
+
+func TestStoredConfigRejectsUnknownTokenLimitParameter(t *testing.T) {
+ db := configTestDB(t)
+ manager, err := secret.New(t.TempDir())
+ if err != nil { t.Fatal(err) }
+ input := Config{Provider:"openai", BaseURL:"https://api.openai.com/v1", Model:"gpt-4o-mini", APIKey:"sk-invalid", TokenLimitParameter:"guess"}
+ if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 30, true, manager.Encrypt); err == nil {
+  t.Fatal("expected invalid token-limit parameter to be rejected")
+ }
+}
+
 func contains(s, sub string) bool {
 	if len(sub) == 0 { return true }
 	for i:=0; i+len(sub)<=len(s); i++ { if s[i:i+len(sub)] == sub { return true } }
