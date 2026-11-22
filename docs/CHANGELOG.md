@@ -1,18 +1,18 @@
-## 2026-11-23 — P1-3 Telegram Bot 中英文国际化（开发中）
+## 2026-11-23 — PR #143 Telegram Bot i18n 第一阶段验证与修复（进行中）
 
-- 独立分支：`feat/telegram-bot-i18n-20261123`，基于 main commit `44fb370850c97c0c85dc1bddd2326fd38ae28a55`。
-- 新增中文/英文语言识别与翻译字典；从 Telegram `language_code` 自动选择 zh/en，其他语言回退简体中文；用户可通过 `/language`、`/lang` 或主菜单语言入口手动切换。
-- 新增数据库迁移 0063，为 Telegram 用户保存显式语言偏好；自动检测结果在首次交互时持久化，手动选择可覆盖自动检测。
-- 已双语覆盖欢迎卡片、内联主菜单、商城分类入口、订单列表字段/状态、余额页、帮助、商品搜索提示及售后订单选择入口。
-- 新增语言识别、语言键盘和偏好持久化测试。CI 尚未运行，PR 尚未创建；结账、付款、交付通知、售后通知/回调、广播和 Owner 管理文案，以及每 Bot 默认语言后台配置仍待完成。
-- 无数据库迁移执行记录；迁移 0063 仅随代码提交，生产数据库升级须由应用启动迁移流程执行。当前不是生产发布。
+- PR #143 的 Go Backend CI（全量 go test、go vet、Docker 备份恢复集成测试、Go 构建）、Admin Frontend CI 与 Security Scan 均已成功。
+- 复核发现语言偏好重复保存需要兼容 MySQL changed-rows 语义，已在 PR 分支修复并补充幂等测试；更新后的提交仍需重新跑 CI。
+- 当前第一阶段仍未覆盖商品详情、购物车/结账/付款、发货与售后通知、Owner 工作流等完整业务流程；常驻 Reply Keyboard 等残留文案仍需继续补齐。
+- PR #143 尚未合并；CI 通过不代表生产部署或真实 Telegram Bot 端到端验收。
 
-## 2026-11-23 — P1-2 LLM 多供应商适配已合并
+## 2026-11-23 — PR #140/#142 已合并，P1-3 Bot i18n 推进中（文档版本 2.2.96）
 
-- PR #142 已 Squash Merge 至 main，合并提交 `44fb370850c97c0c85dc1bddd2326fd38ae28a55`；PR #140 AI 售后基础能力此前已合并。
-- PR #142 Go Backend CI、Admin Frontend CI、Security Scan 全部成功；Go 全量测试、静态检查、Docker 备份恢复集成测试和 Go 二进制构建通过。
-- 完成 OpenAI、DeepSeek、Kimi、智谱及自定义 OpenAI-compatible 网关适配；供应商错误分类、超时/取消、密钥脱敏及 Telegram 发送/工单记录顺序保护。
-- 代码合并与 CI 构建不代表生产部署；真实供应商 API Key 联调尚待运营环境执行。
+- PR #140 AI 售后基础架构已合并；包含通用 Chat Completions 调用层、加密模型配置、受保护管理 API、敏感意图转人工、订单事实型上下文、运营 Prompt、独立 AI 工单状态及后台标记/筛选。
+- PR #142 第一批多模型适配已合并至 main：OpenAI、DeepSeek、Kimi 国际/中国大陆端点、智谱 GLM provider registry；包含 token-limit 参数选择、错误分类和 mock 契约测试。
+- PR #142 合并后 main commit：`44fb370850c97c0c85dc1bddd2326fd38ae28a55`。合并状态不代表真实供应商 API 联调、生产部署或生产验收。
+- 尚待完成：DeepSeek thinking 后台配置、完整响应/finish-reason 归一化及真实 API 联调。
+- PR #143 正在推进 Telegram Bot 中英文 i18n 第一阶段，当前 PR 仍为 Open；未覆盖的商品详情、购物车/支付、发货与售后通知、Owner 工作流和每 Bot 默认语言列为后续范围。
+- 同步校准 PROJECT_STATUS、ROADMAP 与 LLM_VENDOR_ADAPTERS；文档版本 2.2.96。
 
 ## 2026-11-23 — PR #140 AI 售后基础批次校准（文档版本 2.2.95）
 
