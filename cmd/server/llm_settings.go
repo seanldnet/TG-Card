@@ -9,7 +9,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/llm"
 )
 
-type llmSettingsRequest struct {
+type llmSettingsRequest struct {\n\tSupportPrompt string `json:"supportPrompt"`
 	Provider string `json:"provider"`
 	BaseURL string `json:"baseUrl"`
 	Model string `json:"model"`
@@ -40,8 +40,8 @@ func (a *application) updateLLMSettings(w http.ResponseWriter, r *http.Request) 
 	input.Provider = strings.TrimSpace(input.Provider)
 	input.BaseURL = strings.TrimSpace(input.BaseURL)
 	input.Model = strings.TrimSpace(input.Model)
-	input.APIKey = strings.TrimSpace(input.APIKey)
-	if len(input.Provider) > 40 || len(input.BaseURL) > 500 || len(input.Model) > 200 || len(input.APIKey) > 4096 {
+	input.APIKey = strings.TrimSpace(input.APIKey)\n\tinput.SupportPrompt = strings.TrimSpace(input.SupportPrompt)
+	if len(input.Provider) > 40 || len(input.BaseURL) > 500 || len(input.Model) > 200 || len(input.APIKey) > 4096 || len([]rune(input.SupportPrompt)) > 3000 {
 		writeError(w, http.StatusBadRequest, "AI 模型配置字段长度超出限制")
 		return
 	}
@@ -56,7 +56,7 @@ func (a *application) updateLLMSettings(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "AI 模型配置无效或保存失败")
 		return
 	}
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "settings.ai.llm.update", "ai-llm-config", a.clientIP(r), r.UserAgent(), "provider="+input.Provider+"; model="+input.Model+"; enabled="+map[bool]string{true:"true",false:"false"}[input.Enabled])
+	if err := llm.SaveSupportPrompt(r.Context(), a.db, a.driver, input.SupportPrompt); err != nil { writeError(w, http.StatusBadRequest, "AI 客服规则无效或保存失败"); return }\n\tdatabase.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "settings.ai.llm.update", "ai-llm-config", a.clientIP(r), r.UserAgent(), "provider="+input.Provider+"; model="+input.Model+"; enabled="+map[bool]string{true:"true",false:"false"}[input.Enabled])
 	view, err := llm.LoadConfigView(r.Context(), a.db, a.driver)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "配置已保存，但读取配置状态失败")
