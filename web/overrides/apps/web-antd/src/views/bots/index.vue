@@ -43,7 +43,7 @@ async function submit(){
    await requestClient.put('/bots/'+editingId.value,{name:botForm.name.trim(),welcomeText:botForm.welcomeText,status:botForm.enabled?1:0,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim(),defaultLanguage:botForm.defaultLanguage});
    message.success($t('tg-card.bots.saved'));
   }else{
-   await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim()});
+   await requestClient.post('/bots',{name:botForm.name.trim(),token:botForm.token.trim(),welcomeText:botForm.welcomeText,welcomeMessage:botForm.welcomeMessage,purchaseNotice:botForm.purchaseNotice,description:botForm.description,ownerId:botForm.ownerId.trim(),customerServiceUrl:botForm.customerServiceUrl.trim(),businessGroupUrl:botForm.businessGroupUrl.trim(),defaultLanguage:botForm.defaultLanguage});
    message.success($t('tg-card.bots.added'));
   }
   botModalOpen.value=false;await loadBots();
