@@ -81,12 +81,18 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	}
 	maxTokens := input.MaxTokens
 	if maxTokens <= 0 || maxTokens > 2048 { maxTokens = 512 }
-	payload := struct {
-		Model string `json:"model"`
-		Messages []Message `json:"messages"`
-		MaxTokens int `json:"max_tokens"`
-		Temperature float64 `json:"temperature"`
-	}{p.config.Model, input.Messages, maxTokens, input.Temperature}
+	payload := map[string]any{
+		"model": p.config.Model,
+		"messages": input.Messages,
+		"temperature": input.Temperature,
+	}
+	// OpenAI's current Chat Completions contract uses max_completion_tokens.
+	// DeepSeek, Moonshot Kimi and Zhipu GLM retain max_tokens.
+	if normalizeVendor(p.config.Provider) == "openai" {
+		payload["max_completion_tokens"] = maxTokens
+	} else {
+		payload["max_tokens"] = maxTokens
+	}
 	body, err := json.Marshal(payload)
 	if err != nil { return "", err }
 	endpoint := p.config.BaseURL + "/chat/completions"
