@@ -988,7 +988,7 @@ func canonicalReplyKeyboardText(value string) string {
 	}
 }
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
-func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
+func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return mainMenuKeyboardForLanguage(languageChinese) }
 func mainMenuKeyboardForLanguage(language string) map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{
  {{"text":botText(language,"menu.shop"),"callback_data":"menu:shop"},{"text":botText(language,"menu.search"),"callback_data":"menu:search"}},
@@ -1362,7 +1362,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		err:=database.SubscribeProductStock(ctx,m.db,m.driver,productID,cfg.ID,strconv.FormatInt(query.From.ID,10),strconv.FormatInt(chatID,10))
 		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订阅失败，请稍后重试"); return }
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}}}})
 	case query.Data == "cart:show":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.opening"))
 		m.showCart(ctx,cfg,chatID,query.From.ID)
@@ -1449,135 +1449,137 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case strings.HasPrefix(query.Data,"shop:walletpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:walletpay:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
-		if orderErr!=nil||order.TelegramUserID!=strconv.FormatInt(query.From.ID,10){_ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作此订单");return}
+		if orderErr!=nil||order.TelegramUserID!=strconv.FormatInt(query.From.ID,10){_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.unauthorized"));return}
 		delivery,balance,err:=database.PayOrderWithWallet(ctx,m.db,m.driver,orderID)
-		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付失败"); _ = m.sendMessage(ctx,cfg.Token,chatID,"余额支付失败："+err.Error()); return }
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"余额支付成功")
+		if err!=nil { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.wallet_failed_short")); _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.wallet_failed")+err.Error()); return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.wallet_success"))
 		m.Notify("payment_success","站内余额付款成功：订单 "+delivery.Order.OrderNo+"\n剩余余额："+formatUSDTAtomic(balance)+" USDT",strconv.FormatInt(chatID,10))
 		claimed,claimErr:=database.ClaimOrderDelivery(ctx,m.db,m.driver,orderID,2*time.Minute)
-		if claimErr!=nil { log.Printf("wallet paid order delivery lease failed: order_id=%s error=%v",orderID,claimErr); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，商品已进入后台发货队列，请稍后查看订单。"); return }
-		if !claimed { _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，发货正在处理中，请稍后查看订单。"); return }
+		if claimErr!=nil { log.Printf("wallet paid order delivery lease failed: order_id=%s error=%v",orderID,claimErr); _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.paid_queued")); return }
+		if !claimed { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.delivery_processing")); return }
 		delivery,loadErr:=database.GetOrderDelivery(ctx,m.db,m.driver,orderID)
-		if loadErr!=nil { log.Printf("wallet paid order delivery load failed: order_id=%s error=%v",orderID,loadErr); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但发货信息暂时无法读取，系统会自动重试。"); return }
-		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,"付款已成功，但自动发货遇到问题，系统会自动重试。") } else { _ = m.sendMessage(ctx,cfg.Token,chatID,"站内余额支付成功，商品已发出。") }
+		if loadErr!=nil { log.Printf("wallet paid order delivery load failed: order_id=%s error=%v",orderID,loadErr); _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.delivery_load_error")); return }
+		if err:=m.DeliverPaidOrder(ctx,delivery);err!=nil { log.Printf("wallet paid order delivery failed: order_id=%s error=%v",orderID,err); _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.delivery_retrying")) } else { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.wallet_delivered")) }
 	case strings.HasPrefix(query.Data,"shop:autopay:"):
 		orderID := strings.TrimPrefix(query.Data,"shop:autopay:")
 		order, orderErr := database.GetOrderByID(ctx,m.db,m.driver,orderID)
 		if orderErr != nil || order.TelegramUserID != strconv.FormatInt(query.From.ID,10) || order.Status != "pending_payment" {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或已处理")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.order_processed"))
 			return
 		}
 		selector, checkout := m.paymentRouterConfig()
 		if selector == nil {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"支付方式暂不可用")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.method_unavailable"))
 			return
 		}
 		provider, routeErr := selector(ctx,order)
 		if routeErr != nil {
 			log.Printf("select payment provider failed: order_id=%s error=%v",order.ID,routeErr)
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法分配支付方式，请稍后重试")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.route_error"))
 			return
 		}
 		if provider == "trc20" {
 			address, enabled := m.paymentConfig()
 			if !enabled || address == "" {
-				_ = m.answerCallback(ctx,cfg.Token,query.ID,"TRC20 收款暂不可用")
+				_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.trc20_unavailable"))
 				return
 			}
 			amountText := formatUSDTAtomic(order.PaymentAmountAtomic)
 			orderAmountText := formatPrice(order.AmountMinor,order.Currency)
-			paymentText := "付款信息\n订单号："+order.OrderNo+"\n商品订单金额："+orderAmountText+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+amountText+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
+			language:=m.languageForUser(ctx,cfg,query.From)
+			paymentText := botText(language,"payment.info_title")+"\n"+botText(language,"payment.number")+order.OrderNo+"\n"+botText(language,"payment.amount")+orderAmountText+"\n"+botText(language,"payment.address")+address+"\n"+botText(language,"payment.exact")+amountText+" USDT\n"+botText(language,"payment.instructions")
 			markup := map[string]any{"inline_keyboard":[][]map[string]any{
-				{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
-				{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
-				{{"text":"📋 复制订单号","copy_text":map[string]string{"text":order.OrderNo}}},
-				{{"text":"我的订单","callback_data":"shop:orders"}},
-				{{"text":"返回商城","callback_data":"shop:home"}},
+				{{"text":botText(language,"payment.copy_address"),"copy_text":map[string]string{"text":address}}},
+				{{"text":botText(language,"payment.copy_exact"),"copy_text":map[string]string{"text":amountText}}},
+				{{"text":botText(language,"payment.copy_order"),"copy_text":map[string]string{"text":order.OrderNo}}},
+				{{"text":botText(language,"payment.view_orders"),"callback_data":"shop:orders"}},
+				{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}},
 			}}
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"已为本订单分配 TRC20 USDT")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(language,"payment.trc20_assigned"))
 			if sendErr := m.sendPhotoMarkup(ctx,cfg.Token,chatID,paymentText,address,markup); sendErr != nil {
 				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,paymentText+"\n二维码无法显示，请复制地址付款。",markup)
 			}
 			return
 		}
 		if provider != "epusdt" && provider != "gmpay_edge" || checkout == nil {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"分配到的支付方式暂不可用")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.provider_unavailable"))
 			return
 		}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在连接支付收银台")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.connecting"))
 		paymentURL, checkoutErr := checkout(ctx,order,provider)
 		if checkoutErr != nil {
 			log.Printf("hosted checkout creation failed: provider=%s order_id=%s error=%v",provider,order.ID,checkoutErr)
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建在线收银台，请稍后重试；系统会先查询原支付单，避免重复创建。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.checkout_error"))
 			return
 		}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的在线收银台已准备好。请完成付款，系统确认后自动发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开收银台","url":paymentURL}},{{"text":"🔄 我已付款，刷新状态","callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.hosted_ready")+order.OrderNo+botText(m.languageForUser(ctx,cfg,query.From),"payment.hosted_instructions"),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.open_checkout"),"url":paymentURL}},{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.refresh_status"),"callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.view_orders"),"callback_data":"menu:orders"}}}})
 		return
 	case strings.HasPrefix(query.Data,"shop:chainpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:chainpay:")
 		order,err:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
-		if err!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或已处理"); return }
+		if err!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.order_processed")); return }
 		address,enabled:=m.paymentConfig()
-		if !enabled || address=="" { _ = m.answerCallback(ctx,cfg.Token,query.ID,"链上付款暂未启用"); _ = m.sendMessage(ctx,cfg.Token,chatID,"链上付款暂未启用，请联系管理员。"); return }
+		if !enabled || address=="" { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.chain_unavailable")); _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.chain_unavailable_help")); return }
 		amountText:=formatUSDTAtomic(order.PaymentAmountAtomic)
 		orderAmountText:=formatPrice(order.AmountMinor,order.Currency)
-		text:="付款信息\n订单号："+order.OrderNo+"\n商品订单金额："+orderAmountText+"\nTRC20 USDT 收款地址："+address+"\n准确转账金额："+amountText+" USDT\n请在有效期内完成转账，系统确认后自动发货。"
+		language:=m.languageForUser(ctx,cfg,query.From)
+		text:=botText(language,"payment.info_title")+"\n"+botText(language,"payment.number")+order.OrderNo+"\n"+botText(language,"payment.amount")+orderAmountText+"\n"+botText(language,"payment.address")+address+"\n"+botText(language,"payment.exact")+amountText+" USDT\n"+botText(language,"payment.instructions")
 		markup:=map[string]any{"inline_keyboard":[][]map[string]any{
-			{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
-			{{"text":"📋 复制订单金额","copy_text":map[string]string{"text":orderAmountText}}},
-			{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
-			{{"text":"📋 复制订单号","copy_text":map[string]string{"text":order.OrderNo}}},
-			{{"text":"我的订单","callback_data":"shop:orders"}},
-			{{"text":"返回商城","callback_data":"shop:home"}},
+			{{"text":botText(language,"payment.copy_address"),"copy_text":map[string]string{"text":address}}},
+			{{"text":botText(language,"payment.copy_amount"),"copy_text":map[string]string{"text":orderAmountText}}},
+			{{"text":botText(language,"payment.copy_exact"),"copy_text":map[string]string{"text":amountText}}},
+			{{"text":botText(language,"payment.copy_order"),"copy_text":map[string]string{"text":order.OrderNo}}},
+			{{"text":botText(language,"payment.view_orders"),"callback_data":"shop:orders"}},
+			{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}},
 		}}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已显示付款信息")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.info_shown"))
 		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
 	case strings.HasPrefix(query.Data,"shop:gmpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:gmpay:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
 		if orderErr!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) || order.Status!="pending_payment" {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在、已关闭或已付款")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.order_closed"))
 			return
 		}
 		checkout,_,enabled:=m.gmpayCheckoutConfig()
 		if !enabled || checkout==nil {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"GMPay 暂未启用")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gmpay_unavailable"))
 			return
 		}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在连接 GMPay 收银台")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.connecting"))
 		paymentURL,checkoutErr:=checkout(ctx,order)
 		if checkoutErr!=nil {
 			log.Printf("GMPay checkout creation failed: order_id=%s error=%v",order.ID,checkoutErr)
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法创建 GMPay 收银台，请稍后重试；如已提交过请求，系统会先查询原支付单，避免重复创建。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gmpay_error"))
 			return
 		}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单 "+order.OrderNo+" 的在线收银台已准备好。请在支付有效期内完成付款，系统收到签名验证通过的回调后会自动确认并发货。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"🌐 打开 GMPay 收银台","url":paymentURL}},{{"text":"🔄 我已付款，刷新状态","callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":"📦 查看我的订单","callback_data":"menu:orders"}}}})
+		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.hosted_ready")+order.OrderNo+botText(m.languageForUser(ctx,cfg,query.From),"payment.gmpay_instructions"),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.open_gmpay"),"url":paymentURL}},{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.refresh_status"),"callback_data":"shop:gmpaycheck:"+order.ID}},{{"text":botText(m.languageForUser(ctx,cfg,query.From),"payment.view_orders"),"callback_data":"menu:orders"}}}})
 	case strings.HasPrefix(query.Data,"shop:gmpaycheck:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:gmpaycheck:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
 		if orderErr!=nil || order.TelegramUserID!=strconv.FormatInt(query.From.ID,10) {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"订单不存在或无权查看")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.order_access_denied"))
 			return
 		}
 		_,statusCheck,enabled:=m.gmpayCheckoutConfig()
 		if !enabled || statusCheck==nil {
-			_ = m.answerCallback(ctx,cfg.Token,query.ID,"GMPay 暂未启用")
+			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gmpay_unavailable"))
 			return
 		}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在向支付网关查询状态")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gateway_checking"))
 		status,statusErr:=statusCheck(ctx,order.ID)
 		if statusErr!=nil {
 			log.Printf("GMPay status query failed: order_id=%s error=%v",order.ID,statusErr)
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"暂时无法查询支付状态，请稍后重试。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.status_error"))
 			return
 		}
 		switch status {
 		case "paid":
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"✅ 支付网关已确认到账，订单已进入自动发货流程。请在“我的订单”查看最新状态。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gateway_paid"))
 		case "expired":
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"该支付单已过期，请联系管理员处理或重新创建订单。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gateway_expired"))
 		default:
-			_ = m.sendMessage(ctx,cfg.Token,chatID,"支付网关暂未确认到账。请勿重复转账，稍后可再次刷新状态。")
+			_ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"payment.gateway_pending"))
 		}
 	case query.Data=="wallet:openrecharge":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"请选择充值金额")
@@ -1638,8 +1640,8 @@ func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatI
 	amountText:=formatUSDTAtomic(item.PaymentAmountAtomic)
 	text:="余额充值订单已创建！\n充值单号："+item.RechargeNo+"\n充值本金："+formatUSDTAtomic(item.AmountAtomic)+" USDT\n预计赠送："+formatUSDTAtomic(item.BonusAmountAtomic)+" USDT\n预计到账："+formatUSDTAtomic(item.AmountAtomic+item.BonusAmountAtomic)+" USDT\nTRC20 USDT 收款地址："+address+"\n本次准确转账金额："+amountText+" USDT\n网络：TRON（TRC20）\n请在 30 分钟内支付。链上确认后会自动入账。"
 	markup:=map[string]any{"inline_keyboard":[][]map[string]any{
-		{{"text":"📋 复制收款地址","copy_text":map[string]string{"text":address}}},
-		{{"text":"📋 复制准确金额","copy_text":map[string]string{"text":amountText}}},
+		{{"text":botText(language,"payment.copy_address"),"copy_text":map[string]string{"text":address}}},
+		{{"text":botText(language,"payment.copy_exact"),"copy_text":map[string]string{"text":amountText}}},
 		{{"text":"📋 复制充值单号","copy_text":map[string]string{"text":item.RechargeNo}}},
 		{{"text":"💳 查看我的余额","callback_data":"wallet:balance"}},
 		{{"text":"🛍️ 返回商城","callback_data":"shop:home"}},
