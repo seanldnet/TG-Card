@@ -306,6 +306,8 @@ func main() {
 	api.HandleFunc("GET /api/reconciliation/balance-anomalies", app.listBalanceReconciliationAnomalies)
 	api.HandleFunc("POST /api/reconciliation/balance-check", app.runBalanceReconciliationNow)
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.sensitiveRateLimit("payment-manual-reconcile", 10, 5*time.Minute, app.requireAdminActionConfirmation("payment.transaction.reconcile", app.reconcilePaymentTransaction)))
+	api.HandleFunc("GET /api/settings/ai/llm", app.getLLMSettings)
+	api.HandleFunc("PUT /api/settings/ai/llm", app.sensitiveRateLimit("ai-llm-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.ai.llm.update", app.updateLLMSettings)))
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.sensitiveRateLimit("site-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.update", app.updateSiteSettings)))
 	api.HandleFunc("PUT /api/settings/site/backup-encryption-key", app.sensitiveRateLimit("backup-encryption-key", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.backup_encryption.update", app.updateSiteBackupEncryptionKey)))

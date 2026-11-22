@@ -125,3 +125,35 @@ func TestRefundOrderToWalletIsAtomicAndIdempotent(t *testing.T) {
 	if err:=db.QueryRowContext(ctx,"SELECT status FROM product_keys WHERE order_id=?",order.ID).Scan(&keyStatus);err!=nil{t.Fatal(err)}
 	if keyStatus!=3{t.Fatalf("expected delivered card key to be revoked, got status %d",keyStatus)}
 }
+
+
+func TestSupportTicketAIStatePersistsAndAppearsInList(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Config{DBDriver: "sqlite", DatabaseDSN: ":memory:"}
+	db, err := Open(ctx, cfg)
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+	if err := Migrate(ctx, db, cfg.DBDriver); err != nil { t.Fatal(err) }
+	product, err := CreateProduct(ctx, db, cfg.DBDriver, Product{Name: "AI state test", PriceMinor: 500, Currency: "USDT", DeliveryType: "text", Status: 1})
+	if err != nil { t.Fatal(err) }
+	order, err := CreateOrder(ctx, db, cfg.DBDriver, "ai-state-bot", "ai-state-user", "ai-state-chat", product.ID, time.Minute)
+	if err != nil { t.Fatal(err) }
+	if _, err := db.ExecContext(ctx, "UPDATE orders SET status='paid' WHERE id=?", order.ID); err != nil { t.Fatal(err) }
+	ticket, err := CreateSupportTicket(ctx, db, cfg.DBDriver, "ai-state-bot", "ai-state-user", "ai-state-chat", order.OrderNo, "other", "AI state test")
+	if err != nil { t.Fatal(err) }
+	if ticket.AIStatus != "not_used" { t.Fatalf("expected default AI status not_used, got %q", ticket.AIStatus) }
+	if err := UpdateSupportTicketAIStatus(ctx, db, cfg.DBDriver, ticket.ID, "human_required", "refund_request"); err != nil { t.Fatal(err) }
+	loaded, err := GetSupportTicket(ctx, db, cfg.DBDriver, ticket.ID)
+	if err != nil { t.Fatal(err) }
+	if loaded.AIStatus != "human_required" || loaded.AIReason != "refund_request" {
+		t.Fatalf("unexpected persisted AI state: status=%q reason=%q", loaded.AIStatus, loaded.AIReason)
+	}
+	items, err := ListSupportTickets(ctx, db, cfg.DBDriver)
+	if err != nil { t.Fatal(err) }
+	if len(items) != 1 || items[0].AIStatus != "human_required" {
+		t.Fatalf("AI state missing from ticket list: %#v", items)
+	}
+	if err := UpdateSupportTicketAIStatus(ctx, db, cfg.DBDriver, ticket.ID, "invalid", ""); err == nil {
+		t.Fatal("invalid AI status must be rejected")
+	}
+}
