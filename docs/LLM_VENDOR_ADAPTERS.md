@@ -61,8 +61,8 @@ Still incomplete and not claimed as production-ready:
 - DeepSeek thinking-mode enable/disable and reasoning-effort request fields are implemented; exact availability remains model/API-version dependent and must be verified against the selected model.
 - OpenAI model capability is not inferred from model names. Operators can explicitly select `TokenLimitParameter` as `auto` (default: `max_completion_tokens`), `max_completion_tokens`, or `max_tokens`; the legacy choice must be selected for models/gateways that require it.
 - Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
-- HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `upstream_error`, `unexpected_status`) plus a retryable flag. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
-- Timeout and caller-cancellation contract tests are now present; full malformed/oversized response and per-vendor failure matrix still need execution and expansion.
+- HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `request_timeout`, `upstream_busy`, `upstream_error`, `unexpected_status`) plus a retryable flag. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
+- Timeout and caller-cancellation contract tests are now present; malformed/empty JSON, missing/empty choices, oversized bodies, and empty HTTP 204 response contract tests have now been added; the per-vendor failure matrix and CI execution still remain.
 - Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
 
 This is a partial implementation, not four fully completed vendor adapters. Existing generic HTTPS, timeout, response-size and secret-redaction safeguards remain in the shared transport.
