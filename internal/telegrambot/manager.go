@@ -2210,13 +2210,18 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
  if answer == "" || len([]rune(answer)) > 4000 {
   return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"invalid_model_response")
  }
- if _, err := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-assistant","AI 售后预处理："+answer,"",""); err != nil {
-  log.Printf("AI support response persistence failed: ticket_id=%s error=%v",ticket.ID,err)
-  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"response_persistence_failed")
- }
+ // Deliver before recording the assistant message: a failed Telegram send must
+ // not leave an answer in the ticket timeline that the customer may never have seen.
  if err := m.sendMessage(ctx,cfg.Token,msg.Chat.ID,answer); err != nil {
   log.Printf("AI support Telegram delivery failed: ticket_id=%s error=%v",ticket.ID,err)
   return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"telegram_delivery_failed")
+ }
+ if _, err := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-assistant","AI 售后预处理："+answer,"",""); err != nil {
+  log.Printf("AI support response persistence failed after Telegram delivery: ticket_id=%s error=%v",ticket.ID,err)
+  _ = database.UpdateSupportTicketAIStatus(ctx,m.db,m.driver,ticket.ID,"human_required","response_persistence_failed_after_delivery")
+  _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 回复已发送，但工单记录失败，已转交人工核对。","","")
+  _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"刚才的回复已发送，但工单记录暂时异常，我已转交人工客服继续核对，请稍候。")
+  return true
  }
  if err := database.UpdateSupportTicketAIStatus(ctx, m.db, m.driver, ticket.ID, "ai_replied", ""); err != nil {
   log.Printf("AI support state persistence failed: ticket_id=%s error=%v", ticket.ID, err)
