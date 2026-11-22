@@ -37,6 +37,11 @@ type CompletionRequest struct {
 	Messages []Message
 	MaxTokens int
 	Temperature float64
+	// Thinking controls DeepSeek's documented thinking mode. nil leaves the
+	// vendor default unchanged; other vendors ignore this field.
+	Thinking *bool
+	// ReasoningEffort is an optional DeepSeek reasoning-effort hint.
+	ReasoningEffort string
 }
 
 type Provider interface {
@@ -93,6 +98,23 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	} else {
 		payload["max_tokens"] = maxTokens
 	}
+	if normalizeVendor(p.config.Provider) == "deepseek" {
+		if input.Thinking != nil {
+			thinkingType := "enabled"
+			if !*input.Thinking {
+				thinkingType = "disabled"
+			}
+			payload["thinking"] = map[string]string{"type": thinkingType}
+		}
+		switch strings.ToLower(strings.TrimSpace(input.ReasoningEffort)) {
+		case "", "low", "medium", "high":
+			if input.ReasoningEffort != "" {
+				payload["reasoning_effort"] = strings.ToLower(strings.TrimSpace(input.ReasoningEffort))
+			}
+		default:
+			return "", fmt.Errorf("%w: unsupported DeepSeek reasoning effort", ErrInvalidConfig)
+		}
+	}
 	body, err := json.Marshal(payload)
 	if err != nil { return "", err }
 	endpoint := p.config.BaseURL + "/chat/completions"
@@ -110,8 +132,20 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 		// Do not include provider response bodies: they may echo sensitive data.
 		return "", fmt.Errorf("LLM provider returned HTTP %d", resp.StatusCode)
 	}
-	var result struct { Choices []struct { Message Message `json:"message"` } `json:"choices"` }
+	var result struct {
+		Choices []struct {
+			Message Message `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
 	if err := json.Unmarshal(data, &result); err != nil || len(result.Choices) == 0 || strings.TrimSpace(result.Choices[0].Message.Content) == "" {
+		return "", ErrProviderResponse
+	}
+	// Length-limited or filtered completions are not treated as successful
+	// customer-service answers. Missing finish_reason remains accepted for
+	// compatibility with older OpenAI-compatible gateways.
+	finishReason := strings.TrimSpace(result.Choices[0].FinishReason)
+	if finishReason != "" && finishReason != "stop" {
 		return "", ErrProviderResponse
 	}
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
