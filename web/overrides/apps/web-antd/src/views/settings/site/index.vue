@@ -145,7 +145,8 @@ onMounted(()=>{load();loadLLM();});
         <a-form-item v-if="llmForm.provider==='openai'" label="OpenAI Token 参数"><a-select v-model:value="llmForm.tokenLimitParameter"><a-select-option value="auto">自动（max_completion_tokens，默认）</a-select-option><a-select-option value="max_completion_tokens">max_completion_tokens（新接口）</a-select-option><a-select-option value="max_tokens">max_tokens（旧模型 / 兼容网关）</a-select-option></a-select><div class="mt-1 text-xs text-gray-500">不会根据模型名称猜测参数；请按当前模型和 API 网关要求明确选择。</div></a-form-item>
         <a-form-item label="API Key"><a-input-password v-model:value="llmKey" autocomplete="new-password" :placeholder="llmForm.apiKeyConfigured?'已加密保存，留空保持原密钥':'请输入模型 API Key'" /></a-form-item>
         <a-form-item label="请求超时（秒）"><a-input-number v-model:value="llmForm.timeoutSeconds" class="w-full" :min="1" :max="90" /></a-form-item>
-        <a-form-item label="启用 AI 模型"><a-switch v-model:checked="llmForm.enabled" /></a-form-item>\n        <a-form-item label="AI 售后客服规则 / Prompt"><a-textarea v-model:value="llmForm.supportPrompt" :rows="6" :maxlength="3000" show-count placeholder="填写商品答疑范围、表达风格、常见问题处理指引。不要要求 AI 执行退款、补发或修改订单等操作。" /><div class="mt-1 text-xs text-gray-500">最多 3000 字；该规则作为模型指令附加在系统安全规则之后，不能覆盖退款、资金和人工转接限制。</div></a-form-item>
+        <a-form-item label="启用 AI 模型"><a-switch v-model:checked="llmForm.enabled" /></a-form-item>
+        <a-form-item label="AI 售后客服规则 / Prompt"><a-textarea v-model:value="llmForm.supportPrompt" :rows="6" :maxlength="3000" show-count placeholder="填写商品答疑范围、表达风格、常见问题处理指引。不要要求 AI 执行退款、补发或修改订单等操作。" /><div class="mt-1 text-xs text-gray-500">最多 3000 字；该规则作为模型指令附加在系统安全规则之后，不能覆盖退款、资金和人工转接限制。</div></a-form-item>
        </a-form>
        <a-space wrap>
         <a-button size="small" :loading="llmLoading" @click="loadLLM">重新加载</a-button>
