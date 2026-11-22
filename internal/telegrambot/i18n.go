@@ -336,6 +336,15 @@ var botMessages = map[string]map[string]string{
 	"delivery.invite_warning": {languageChinese: "请勿转发，链接过期后无法使用。", languageEnglish: "Do not share this link. It cannot be used after it expires."},
 	"delivery.upstream_payload": {languageChinese: "上游商品交付内容：", languageEnglish: "Supplier fulfillment details:"},
 	"delivery.card_codes": {languageChinese: "配套卡密：", languageEnglish: "Your item codes:"},
+
+	"support.submit_success": {languageChinese: "售后申请已提交！", languageEnglish: "✅ Your support request has been submitted!"},
+	"support.ticket_number": {languageChinese: "工单号：", languageEnglish: "Ticket: "},
+	"support.order_number": {languageChinese: "订单号：", languageEnglish: "Order: "},
+	"support.status_pending": {languageChinese: "状态：待受理。管理员回复后会通过本机器人通知你。", languageEnglish: "Status: Pending review. You'll be notified here when an administrator replies."},
+	"support.attachment_saved": {languageChinese: "文字说明和附件已一起保存。你可以继续补充文字、图片或文件。", languageEnglish: "Your description and attachment were saved. You can add more text, images, or files."},
+	"support.added": {languageChinese: "补充内容已添加到工单。", languageEnglish: "Your message has been added to the ticket."},
+	"support.recreated": {languageChinese: " 已结单，已为你重新创建工单 #", languageEnglish: " is closed. A new ticket #"},
+	"support.continue_uploads": {languageChinese: "。你可以继续发送文字、图片或文件。", languageEnglish: ". You can continue sending text, images, or files."},
 }
 
 func botText(language, key string) string {
