@@ -652,7 +652,12 @@
     "startImport": "Start import",
     "importNotice": "Enter one code per line. Codes are encrypted and duplicates are skipped automatically.",
     "keyContent": "Card codes",
-    "keyPlaceholder": "One code per line"
+    "keyPlaceholder": "One code per line",
+    "sourceType": {
+      "upstream": "Supplier",
+      "local": "Local",
+      "hidden": "Local (hidden)"
+    }
   },
   "systemExceptions": {
     "category": {
