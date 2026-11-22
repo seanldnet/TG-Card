@@ -111,8 +111,8 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if dsn == "" { return fmt.Errorf("DATABASE_URL is not configured") }
 	u, err := url.Parse(dsn); if err != nil { return fmt.Errorf("parse database URL: %w", err) }
-	passphrase := os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE")
-	if err := backupcrypto.ValidatePassphrase(passphrase); err != nil { return err }
+	passphrase, err := resolveScheduledBackupPassphrase(settings, a.secrets.Decrypt, os.Getenv("BACKUP_ENCRYPTION_PASSPHRASE"))
+	if err != nil { return err }
 	tmp, err := os.MkdirTemp("", "tg-card-backup-*"); if err != nil { return err }
 	defer os.RemoveAll(tmp)
 	dumpPath := filepath.Join(tmp, "database.dump")
@@ -133,6 +133,17 @@ func (a *application) createAndDeliverBackup(ctx context.Context, settings siteS
 	if _, err := file.Seek(0, io.SeekStart); err != nil { return err }
 	caption := fmt.Sprintf("TG-Card 每日加密备份（age）\n日期：%s\n内容：PostgreSQL 数据库 + 应用持久化文件\nSHA-256（密文）：%s", date, checksum)
 	return a.sendOwnerDocument(ctx, settings.TelegramOwnerID, encryptedPath, caption)
+}
+
+func resolveScheduledBackupPassphrase(settings siteSettings, decrypt func(string) (string, error), environmentPassphrase string) (string, error) {
+	passphrase := environmentPassphrase
+	if settings.BackupEncryptionPassphraseCiphertext != "" {
+		var err error
+		passphrase, err = decrypt(settings.BackupEncryptionPassphraseCiphertext)
+		if err != nil { return "", fmt.Errorf("decrypt configured backup encryption key: %w", err) }
+	}
+	if err := backupcrypto.ValidatePassphrase(passphrase); err != nil { return "", err }
+	return passphrase, nil
 }
 
 func passwordFromURL(u *url.URL) string { if u.User == nil { return "" }; p, _ := u.User.Password(); return p }
