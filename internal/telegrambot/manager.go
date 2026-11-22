@@ -1120,27 +1120,68 @@ func (m *Manager) showCategoryPage(ctx context.Context,cfg Config,chatID int64,c
  _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请选择商品（显示价格与库存）：",map[string]any{"inline_keyboard":rows})
 }
 
-func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, productID string) {
- p,err:=database.GetVisibleProductByID(ctx,m.db,m.driver,productID)
- if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品不存在、已下架或暂不可购买。");return}
- keyBacked:=p.DeliveryType==""||p.DeliveryType=="card"||p.DeliveryType=="file_card"
- stockLabel:="库存：不限量交付";if keyBacked{stockLabel="库存："+strconv.Itoa(p.StockCount)}
- if p.SourceType=="upstream"{if p.UpstreamStockQuantity<0{stockLabel="上游库存：不限量"}else{stockLabel="上游库存："+strconv.FormatInt(p.UpstreamStockQuantity,10)}}
- text:=p.Name+"\n\n"+p.Description+"\n\n价格："+formatPrice(p.PriceMinor,p.Currency)+"\n"+stockLabel
- var discountTiers []struct{MinQuantity int;DiscountPercent int}
- if json.Unmarshal([]byte(p.BulkDiscountJSON),&discountTiers)==nil&&len(discountTiers)>0{text+="\n批量优惠：";for _,tier:=range discountTiers{text+="\n满 "+strconv.Itoa(tier.MinQuantity)+" 件优惠 "+strconv.Itoa(tier.DiscountPercent)+"%"}}
- buttons:=make([][]map[string]string,0)
- if p.SourceType=="upstream" {
-  if p.UpstreamStockStatus=="out_of_stock" {text+="\n\n⚠️ 上游库存不足。"} else if p.UpstreamFulfillmentType=="manual" {
-   if _,formErr:=parseManualFormFields(p.UpstreamManualFormSchemaJSON);formErr!=nil {text+="\n\n⚠️ 该商品的资料表单暂不可用，请联系管理员。"} else {buttons=append(buttons,[]map[string]string{{"text":"填写资料并购买","callback_data":"shop:manualstart:"+p.ID}})}
-  } else if p.UpstreamFulfillmentType=="auto" {buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})} else {text+="\n\n⚠️ 该上游商品履约类型暂不支持自助购买。"}
- } else if keyBacked&&p.StockCount<1{buttons=append(buttons,[]map[string]string{{"text":"🔔 到货通知我","callback_data":"stock:subscribe:"+p.ID}})}else if keyBacked{for _,quantity:=range []int{1,2,3,5,10}{if quantity<=p.StockCount{buttons=append(buttons,[]map[string]string{{"text":"购买 "+strconv.Itoa(quantity)+" 件","callback_data":"shop:buyqty:"+p.ID+":"+strconv.Itoa(quantity)}})}}}else{buttons=append(buttons,[]map[string]string{{"text":"立即购买","callback_data":"shop:buy:"+p.ID}});buttons=append(buttons,[]map[string]string{{"text":"🎟️ 使用优惠码购买","callback_data":"shop:coupon:"+p.ID+":1"}})}
- if p.SourceType=="local" && keyBacked && p.StockCount>0 {
-  buttons=append(buttons,[]map[string]string{{"text":"🛒 加入购物车","callback_data":"cart:add:"+p.ID}})
-  buttons=append(buttons,[]map[string]string{{"text":"🛒 查看购物车","callback_data":"cart:show"}})
- }
- buttons=append(buttons,[]map[string]string{{"text":"返回商品列表","callback_data":"shop:home"}})
- _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,map[string]any{"inline_keyboard":buttons})
+func (m *Manager) showProduct(ctx context.Context, cfg Config, chatID int64, user TelegramUser, productID string) {
+	language := m.languageForUser(ctx, cfg, user)
+	p, err := database.GetVisibleProductByID(ctx, m.db, m.driver, productID)
+	if err != nil {
+		_ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "product.unavailable"))
+		return
+	}
+	keyBacked := p.DeliveryType == "" || p.DeliveryType == "card" || p.DeliveryType == "file_card"
+	stockLabel := botText(language, "product.stock") + botText(language, "product.unlimited")
+	if keyBacked {
+		stockLabel = botText(language, "product.stock") + strconv.Itoa(p.StockCount)
+	}
+	if p.SourceType == "upstream" {
+		if p.UpstreamStockQuantity < 0 {
+			stockLabel = botText(language, "product.upstream_stock") + botText(language, "product.upstream_unlimited")
+		} else {
+			stockLabel = botText(language, "product.upstream_stock") + strconv.FormatInt(p.UpstreamStockQuantity, 10)
+		}
+	}
+	message := p.Name + "\n\n" + p.Description + "\n\n" + botText(language, "product.price") + formatPrice(p.PriceMinor, p.Currency) + "\n" + stockLabel
+	var discountTiers []struct { MinQuantity int; DiscountPercent int }
+	if json.Unmarshal([]byte(p.BulkDiscountJSON), &discountTiers) == nil && len(discountTiers) > 0 {
+		message += "\n" + botText(language, "product.bulk")
+		for _, tier := range discountTiers {
+			message += "\n" + botText(language, "product.bulk_min") + strconv.Itoa(tier.MinQuantity) + botText(language, "product.bulk_discount") + strconv.Itoa(tier.DiscountPercent) + botText(language, "product.bulk_percent")
+		}
+	}
+	buttons := make([][]map[string]string, 0)
+	if p.SourceType == "upstream" {
+		switch {
+		case p.UpstreamStockStatus == "out_of_stock":
+			message += "\n\n" + botText(language, "product.upstream_empty")
+		case p.UpstreamFulfillmentType == "manual":
+			if _, formErr := parseManualFormFields(p.UpstreamManualFormSchemaJSON); formErr != nil {
+				message += "\n\n" + botText(language, "product.manual_unavailable")
+			} else {
+				buttons = append(buttons, []map[string]string{{"text": botText(language, "product.manual_buy"), "callback_data": "shop:manualstart:" + p.ID}})
+			}
+		case p.UpstreamFulfillmentType == "auto":
+			buttons = append(buttons, []map[string]string{{"text": botText(language, "product.buy"), "callback_data": "shop:buy:" + p.ID}})
+			buttons = append(buttons, []map[string]string{{"text": botText(language, "product.coupon_buy"), "callback_data": "shop:coupon:" + p.ID + ":1"}})
+		default:
+			message += "\n\n" + botText(language, "product.unsupported")
+		}
+	} else if keyBacked && p.StockCount < 1 {
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "product.restock"), "callback_data": "stock:subscribe:" + p.ID}})
+	} else if keyBacked {
+		for _, quantity := range []int{1, 2, 3, 5, 10} {
+			if quantity <= p.StockCount {
+				buttons = append(buttons, []map[string]string{{"text": botText(language, "product.buy_quantity") + strconv.Itoa(quantity) + botText(language, "product.quantity_suffix"), "callback_data": "shop:buyqty:" + p.ID + ":" + strconv.Itoa(quantity)}})
+			}
+		}
+	} else {
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "product.buy"), "callback_data": "shop:buy:" + p.ID}})
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "product.coupon_buy"), "callback_data": "shop:coupon:" + p.ID + ":1"}})
+	}
+	if p.SourceType == "local" && keyBacked && p.StockCount > 0 {
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "product.cart_add"), "callback_data": "cart:add:" + p.ID}})
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "product.cart_show"), "callback_data": "cart:show"}})
+	}
+	buttons = append(buttons, []map[string]string{{"text": botText(language, "product.back"), "callback_data": "shop:home"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, message, map[string]any{"inline_keyboard": buttons})
 }
 
 func (m *Manager) createPurchaseOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, productID string, quantity int) {
@@ -1381,7 +1422,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	case query.Data == "shop:orders":
 		m.showOrders(ctx, cfg, chatID, query.From)
 	case strings.HasPrefix(query.Data, "shop:product:"):
-		m.showProduct(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:product:"))
+		m.showProduct(ctx, cfg, chatID, query.From, strings.TrimPrefix(query.Data, "shop:product:"))
 	case strings.HasPrefix(query.Data, "shop:confirm:"):
 		m.showPurchaseConfirmation(ctx, cfg, chatID, strings.TrimPrefix(query.Data, "shop:confirm:"))
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "请核对订单信息")
@@ -1668,61 +1709,67 @@ func (m *Manager) getOwnedOrder(ctx context.Context, cfg Config, user TelegramUs
 }
 
 func (m *Manager) showOrderDetail(ctx context.Context, cfg Config, chatID int64, user TelegramUser, orderID string) {
+	language := m.languageForUser(ctx, cfg, user)
 	order, err := m.getOwnedOrder(ctx, cfg, user, orderID)
 	if err != nil {
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "订单不存在或无权查看。", supportBackKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "order.unavailable"), supportBackKeyboard())
 		return
 	}
-	text := "订单详情\n订单号：" + order.OrderNo +
-		"\n商品：" + order.ProductName +
-		"\n数量：" + strconv.Itoa(order.Quantity) +
-		"\n金额：" + formatPrice(order.AmountMinor, order.Currency) +
-		"\n状态：" + orderStatusLabel(order.Status) +
-		"\n创建时间：" + order.CreatedAt
-	if lines,lineErr:=database.ListCartCheckoutItems(ctx,m.db,m.driver,order.ID);lineErr==nil && len(lines)>0 {
-		text+="\n\n商品明细："
-		for _,line:=range lines { text+="\n- "+line.ProductName+" × "+strconv.Itoa(line.Quantity)+" · "+formatPrice(line.LineTotalMinor,line.Currency) }
+	text := botText(language, "order.detail.title") +
+		"\n" + botText(language, "order.detail.number") + order.OrderNo +
+		"\n" + botText(language, "order.detail.product") + order.ProductName +
+		"\n" + botText(language, "order.detail.quantity") + strconv.Itoa(order.Quantity) +
+		"\n" + botText(language, "order.detail.amount") + formatPrice(order.AmountMinor, order.Currency) +
+		"\n" + botText(language, "order.detail.status") + orderStatusText(language, order.Status) +
+		"\n" + botText(language, "order.detail.created") + order.CreatedAt
+	if lines, lineErr := database.ListCartCheckoutItems(ctx, m.db, m.driver, order.ID); lineErr == nil && len(lines) > 0 {
+		text += "\n\n" + botText(language, "order.detail.items")
+		for _, line := range lines {
+			text += "\n- " + line.ProductName + " × " + strconv.Itoa(line.Quantity) + " · " + formatPrice(line.LineTotalMinor, line.Currency)
+		}
 	}
 	buttons := make([][]map[string]string, 0, 3)
 	switch order.Status {
 	case "pending_payment":
-		buttons = append(buttons, []map[string]string{{"text":"💳 继续付款","callback_data":"order:payment:"+order.ID}})
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "order.detail.pay"), "callback_data": "order:payment:" + order.ID}})
 	case "delivered":
 		if order.DeliveryType == "invite_link" {
-			text += "\n\n该商品使用一次性邀请链接交付。为避免重复发放入群名额，请联系客服核实后处理。"
-			buttons = append(buttons, []map[string]string{{"text":"🧾 联系客服申请核实","callback_data":"support:order:"+order.OrderNo}})
+			text += "\n\n" + botText(language, "order.detail.invite_note")
+			buttons = append(buttons, []map[string]string{{"text": botText(language, "order.detail.support_verify"), "callback_data": "support:order:" + order.OrderNo}})
 		} else if order.DeliveryType == "file_card" {
-			text += "\n\n该商品包含文件与卡密两个交付步骤。为避免重复发送文件，请联系客服核实后处理。"
-			buttons = append(buttons, []map[string]string{{"text":"🧾 联系客服申请核实","callback_data":"support:order:"+order.OrderNo}})
+			text += "\n\n" + botText(language, "order.detail.file_note")
+			buttons = append(buttons, []map[string]string{{"text": botText(language, "order.detail.support_verify"), "callback_data": "support:order:" + order.OrderNo}})
 		} else {
-			buttons = append(buttons, []map[string]string{{"text":"📥 再次获取商品","callback_data":"order:redeliver:"+order.ID}})
+			buttons = append(buttons, []map[string]string{{"text": botText(language, "order.detail.redeliver"), "callback_data": "order:redeliver:" + order.ID}})
 		}
 	case "delivery_failed":
-		text += "\n\n系统正在自动重试发货；如果长时间未收到，请申请售后。"
-		buttons = append(buttons, []map[string]string{{"text":"🧾 申请售后","callback_data":"support:order:"+order.OrderNo}})
+		text += "\n\n" + botText(language, "order.detail.retry_note")
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "order.detail.support"), "callback_data": "support:order:" + order.OrderNo}})
 	}
-	buttons = append(buttons, []map[string]string{{"text":"⬅️ 返回订单列表","callback_data":"menu:orders"}})
-	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
+	buttons = append(buttons, []map[string]string{{"text": botText(language, "order.detail.back"), "callback_data": "menu:orders"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard": buttons})
 }
 
 func (m *Manager) showOrderPayment(ctx context.Context, cfg Config, chatID int64, user TelegramUser, orderID string) {
+	language := m.languageForUser(ctx, cfg, user)
 	order, err := m.getOwnedOrder(ctx, cfg, user, orderID)
 	if err != nil || order.Status != "pending_payment" {
-		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, "该订单不存在、已付款或已关闭。", supportBackKeyboard())
+		_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "payment.unavailable"), supportBackKeyboard())
 		return
 	}
-	text := "继续支付订单\n订单号：" + order.OrderNo +
-		"\n商品：" + order.ProductName +
-		"\n应付金额：" + formatPrice(order.AmountMinor, order.Currency) +
-		"\n链上准确转账金额：" + formatUSDTAtomic(order.PaymentAmountAtomic) + " USDT" +
-		"\n支付截止：" + order.ExpiresAt
-	buttons := [][]map[string]string{{{"text":"💳 使用站内余额支付","callback_data":"shop:walletpay:"+order.ID}}}
+	text := botText(language, "payment.title") +
+		"\n" + botText(language, "payment.number") + order.OrderNo +
+		"\n" + botText(language, "payment.product") + order.ProductName +
+		"\n" + botText(language, "payment.amount") + formatPrice(order.AmountMinor, order.Currency) +
+		"\n" + botText(language, "payment.exact") + formatUSDTAtomic(order.PaymentAmountAtomic) + " USDT" +
+		"\n" + botText(language, "payment.deadline") + order.ExpiresAt
+	buttons := [][]map[string]string{{{"text": botText(language, "payment.wallet"), "callback_data": "shop:walletpay:" + order.ID}}}
 	if m.paymentEnabled || m.gmpayEnabled {
-		buttons = append(buttons, []map[string]string{{"text":"🔄 自动选择支付方式","callback_data":"shop:autopay:"+order.ID}})
+		buttons = append(buttons, []map[string]string{{"text": botText(language, "payment.auto"), "callback_data": "shop:autopay:" + order.ID}})
 	}
-	buttons = append(buttons, []map[string]string{{"text":"查看订单详情","callback_data":"order:detail:"+order.ID}})
-	buttons = append(buttons, []map[string]string{{"text":"⬅️ 返回订单列表","callback_data":"menu:orders"}})
-	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard":buttons})
+	buttons = append(buttons, []map[string]string{{"text": botText(language, "payment.view_order"), "callback_data": "order:detail:" + order.ID}})
+	buttons = append(buttons, []map[string]string{{"text": botText(language, "payment.back"), "callback_data": "menu:orders"}})
+	_ = m.sendMessageMarkup(ctx, cfg.Token, chatID, text, map[string]any{"inline_keyboard": buttons})
 }
 
 func (m *Manager) redeliverOrder(ctx context.Context, cfg Config, query CallbackQuery, chatID int64, orderID string) {
