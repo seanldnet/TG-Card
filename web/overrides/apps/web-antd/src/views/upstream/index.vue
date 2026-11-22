@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import { $t } from '#/locales';
 import { withAdminActionConfirmation } from '#/utils/admin-action-confirm';
 
 interface UpstreamSettings {
@@ -45,25 +46,25 @@ const procurements=ref<ProcurementItem[]>([]);
 const procurementLoading=ref(false),refundOrderId=ref(''),refundReason=ref(''),refundVisible=ref(false),actionLoading=ref('');
 const resolveOrderId=ref(''),resolveVisible=ref(false),resolveResolution=ref<'accepted'|'not_accepted'>('not_accepted');
 const resolveExternalOrderID=ref(''),resolveExternalOrderNo=ref(''),resolveNote=ref('');
-const procurementStatus=(value:string)=>({queued:'待采购',polling:'查单中',completed:'已完成',failed:'采购失败',uncertain:'受理状态不确定',refunded:'已退款'} as Record<string,string>)[value]||value;
+const procurementStatus=(value:string)=>{const key='tg-card.upstream.procurementStatus.'+value;const text=$t(key);return text===key?value:text};
 async function loadProcurements(){
  procurementLoading.value=true;
  try{procurements.value=await requestClient.get<ProcurementItem[]>('/upstream/procurements')||[];}
- catch(error:any){message.error(error?.response?.data?.message||'采购队列加载失败');}
+ catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.queueLoad'));}
  finally{procurementLoading.value=false;}
 }
 async function retryProcurement(item:ProcurementItem){
  actionLoading.value=item.localOrderId;
- try{const path='/api/upstream/procurements/'+item.localOrderId+'/retry';const payload={};await withAdminActionConfirmation({actionKey:'upstream.procurement.retry',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+item.localOrderId+'/retry',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('已加入采购重试队列');await loadProcurements();}
- catch(error:any){message.error(error?.response?.data?.message||'采购重试失败');}
+ try{const path='/api/upstream/procurements/'+item.localOrderId+'/retry';const payload={};await withAdminActionConfirmation({actionKey:'upstream.procurement.retry',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+item.localOrderId+'/retry',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success($t('tg-card.upstream.messages.retryQueued'));await loadProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.retry'));}
  finally{actionLoading.value='';}
 }
 function openRefund(item:ProcurementItem){refundOrderId.value=item.localOrderId;refundReason.value='';refundVisible.value=true;}
 async function submitRefund(){
- if(!refundReason.value.trim()){message.warning('请填写退款原因');return;}
+ if(!refundReason.value.trim()){message.warning($t('tg-card.upstream.messages.refundReason'));return;}
  actionLoading.value=refundOrderId.value;
- try{const path='/api/upstream/procurements/'+refundOrderId.value+'/refund';const payload={reason:refundReason.value.trim()};await withAdminActionConfirmation({actionKey:'upstream.procurement.refund',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('退款已记入买家站内余额');refundVisible.value=false;await loadProcurements();}
- catch(error:any){message.error(error?.response?.data?.message||'采购退款失败');}
+ try{const path='/api/upstream/procurements/'+refundOrderId.value+'/refund';const payload={reason:refundReason.value.trim()};await withAdminActionConfirmation({actionKey:'upstream.procurement.refund',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+refundOrderId.value+'/refund',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success($t('tg-card.upstream.messages.refundCredited'));refundVisible.value=false;await loadProcurements();}
+ catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.refund'));}
  finally{actionLoading.value='';}
 }
 function openResolve(item:ProcurementItem){
@@ -71,25 +72,25 @@ function openResolve(item:ProcurementItem){
  resolveExternalOrderID.value='';resolveExternalOrderNo.value='';resolveNote.value='';resolveVisible.value=true;
 }
 async function submitResolve(){
- if(!resolveNote.value.trim()){message.warning('请填写供应商侧核实依据');return;}
- if(resolveResolution.value==='accepted'&&!/^\d+$/.test(resolveExternalOrderID.value.trim())){message.warning('供应商已受理时必须填写有效的上游订单 ID');return;}
+ if(!resolveNote.value.trim()){message.warning($t('tg-card.upstream.messages.supplierEvidence'));return;}
+ if(resolveResolution.value==='accepted'&&!/^\d+$/.test(resolveExternalOrderID.value.trim())){message.warning($t('tg-card.upstream.messages.externalOrderId'));return;}
  actionLoading.value=resolveOrderId.value;
  try{
   const path='/api/upstream/procurements/'+resolveOrderId.value+'/resolve';
   const payload={resolution:resolveResolution.value,externalOrderId:resolveExternalOrderID.value.trim(),externalOrderNo:resolveExternalOrderNo.value.trim(),note:resolveNote.value.trim()};
   await withAdminActionConfirmation({actionKey:'upstream.procurement.resolve',method:'POST',path,payload,run:(token)=>requestClient.post('/upstream/procurements/'+resolveOrderId.value+'/resolve',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
-  message.success(resolveResolution.value==='accepted'?'已登记上游订单，系统将继续查单，不会重复创建采购单':'已确认上游未受理/失败，现在可安全重试或退款');
+  message.success(resolveResolution.value==='accepted'?$t('tg-card.upstream.messages.accepted'):$t('tg-card.upstream.messages.notAccepted'));
   resolveVisible.value=false;await loadProcurements();
- }catch(error:any){message.error(error?.response?.data?.message||'采购状态核实提交失败');}
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.resolve'));}
  finally{actionLoading.value='';}
 }
 const syncResult=ref<{categories:number;products:number;imagesFailed:number;warning:string}|null>(null);
-const testLabel=computed(()=>{const labels:Record<string,string>={success:'连接成功',failed:'连接失败',not_tested:'尚未测试'};return labels[settings.lastTestStatus]||settings.lastTestStatus;});
-const syncLabel=computed(()=>{const labels:Record<string,string>={not_started:'尚未同步',idle:'空闲',running:'同步中',cleaning:'正在清理上游数据',success:'同步成功',failed:'同步失败',cancelled:'已取消',paused:'已暂停'};return labels[settings.syncStatus]||settings.syncStatus;});
+const testLabel=computed(()=>{const key='tg-card.upstream.testStatus.'+settings.lastTestStatus;const value=$t(key);return value===key?settings.lastTestStatus:value});
+const syncLabel=computed(()=>{const key='tg-card.upstream.syncStatus.'+settings.syncStatus;const value=$t(key);return value===key?settings.syncStatus:value});
 async function load(){
  loading.value=true;
  try{const data=await requestClient.get<UpstreamSettings>('/upstream/config');Object.assign(settings,data);}
- catch(error:any){message.error(error?.response?.data?.message||'上游配置加载失败');}
+ catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.settingsLoad'));}
  finally{loading.value=false;void loadProcurements();}
 }
 async function save():Promise<boolean>{
@@ -104,30 +105,30 @@ async function save():Promise<boolean>{
   };
   const data=await withAdminActionConfirmation({actionKey:'settings.upstream.update',method:'PUT',path,payload,run:(token)=>requestClient.put<UpstreamSettings>('/upstream/config',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   Object.assign(settings,data);merchantId.value='';merchantSecret.value='';clearCredentials.value=false;testResult.value=null;
-  if(requestedEnabled&&!settings.enabled){message.info('配置已保存；站点、凭证或价格策略有变化，上游展示已保持关闭，请重新同步后再启用。');}else{message.success('上游配置已安全保存');}return true;
- }catch(error:any){message.error(error?.response?.data?.message||'上游配置保存失败');return false;}
+  if(requestedEnabled&&!settings.enabled){message.info($t('tg-card.upstream.messages.savedDisabled'));}else{message.success($t('tg-card.upstream.messages.saved'));}return true;
+ }catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.settingsSave'));return false;}
  finally{saving.value=false;}
 }
 async function syncNow(){
- if(clearCredentials.value){message.warning('请先保存配置后再同步');return;}
+ if(clearCredentials.value){message.warning($t('tg-card.upstream.messages.saveBeforeSync'));return;}
  if(merchantId.value||merchantSecret.value||!settings.merchantIdConfigured||!settings.merchantSecretConfigured){const saved=await save();if(!saved)return;}
  syncing.value=true;syncResult.value=null;syncProgress.status='queued';
  try{
   const started=await requestClient.post<any>('/upstream/sync',{});
   syncJobId.value=started.jobId;
-  if(!syncJobId.value)throw new Error('同步任务未返回任务 ID');
+  if(!syncJobId.value)throw new Error($t('tg-card.upstream.errors.taskId'));
   while(syncing.value){
    const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
    Object.assign(syncProgress,state);
    if(['success','failed','cancelled','paused'].includes(state.status)){
-    if(state.status==='success'){await load();message.success('上游商品同步完成');}
-    else if(state.status==='cancelled'){await load();message.info('同步已取消，已完成的数据批次予以保留');}
-    else{await load();message.error(state.lastError||'上游商品同步失败');}
+    if(state.status==='success'){await load();message.success($t('tg-card.upstream.messages.syncDone'));}
+    else if(state.status==='cancelled'){await load();message.info($t('tg-card.upstream.messages.syncCancelled'));}
+    else{await load();message.error(state.lastError||$t('tg-card.upstream.errors.sync'));}
     break;
    }
    await new Promise(resolve=>setTimeout(resolve,1500));
   }
- }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游商品同步启动或查询失败');}
+ }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||$t('tg-card.upstream.errors.syncStart'));}
  finally{syncing.value=false;syncJobId.value='';}
 }
 async function disableUpstream(){
@@ -136,35 +137,35 @@ async function disableUpstream(){
   const path='/api/upstream/disable';const payload={};
   const started=await withAdminActionConfirmation({actionKey:'settings.upstream.disable',method:'POST',path,payload,run:(token)=>requestClient.post<any>('/upstream/disable',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});
   syncJobId.value=started.jobId;
-  if(!syncJobId.value)throw new Error('清理任务未返回任务 ID');
+  if(!syncJobId.value)throw new Error($t('tg-card.upstream.errors.cleanupTaskId'));
   while(syncing.value){
    const state=await requestClient.get<any>('/upstream/sync/'+syncJobId.value);
    Object.assign(syncProgress,state);
    if(['success','failed','paused'].includes(state.status)){
     await load();
-    if(state.status==='success')message.success('上游数据已清空，已恢复本地商品售卖');
-    else message.error(state.lastError||'上游数据清理失败；可再次点击清理按钮重试');
+    if(state.status==='success')message.success($t('tg-card.upstream.messages.dataCleared'));
+    else message.error(state.lastError||$t('tg-card.upstream.errors.cleanup'));
     break;
    }
    await new Promise(resolve=>setTimeout(resolve,1500));
   }
- }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||'上游清理任务启动或查询失败');}
+ }catch(error:any){await load();message.error(error?.response?.data?.message||error?.message||$t('tg-card.upstream.errors.cleanupStart'));}
  finally{syncing.value=false;syncJobId.value='';}
 }
 async function cancelSync(){
  if(!syncJobId.value)return;
- try{await requestClient.post('/upstream/sync/'+syncJobId.value+'/cancel',{});message.info('已提交取消请求，正在等待当前批次安全结束');}
- catch(error:any){message.error(error?.response?.data?.message||'取消同步失败');}
+ try{await requestClient.post('/upstream/sync/'+syncJobId.value+'/cancel',{});message.info($t('tg-card.upstream.messages.cancelRequested'));}
+ catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.cancel'));}
 }
 async function testConnection(){
- if(clearCredentials.value){message.warning('请先保存配置后再测试连接，不能在清除凭证后测试');return;}
+ if(clearCredentials.value){message.warning($t('tg-card.upstream.messages.saveBeforeTest'));return;}
  if(merchantId.value||merchantSecret.value||!settings.merchantIdConfigured||!settings.merchantSecretConfigured){const saved=await save();if(!saved)return;}
  testing.value=true;testResult.value=null;
  try{
   const data=await requestClient.post<any>('/upstream/test',{});
   testResult.value={siteName:data.siteName||'',protocolVersion:data.protocolVersion||'',balance:data.balance||'',currency:data.currency||''};
-  await load();message.success('Dujiao-Next 连接测试成功');
- }catch(error:any){await load();message.error(error?.response?.data?.message||'上游连接测试失败');}
+  await load();message.success($t('tg-card.upstream.messages.testSuccess'));
+ }catch(error:any){await load();message.error(error?.response?.data?.message||$t('tg-card.upstream.errors.test'));}
  finally{testing.value=false;}
 }
 async function resumeActiveSyncJob(){
@@ -178,15 +179,15 @@ async function resumeActiveSyncJob(){
    if(['success','failed','cancelled','paused'].includes(state.status)){
     await load();
     if(state.status==='success'){
-     if(state.triggerType==='manual_disable')message.success('上游数据已清空，已恢复本地商品售卖');
-     else message.success('上游商品同步完成');
-    }else if(state.status==='cancelled')message.info('同步已取消，已完成批次予以保留');
-    else message.error(state.lastError||'上游任务执行失败');
+     if(state.triggerType==='manual_disable')message.success($t('tg-card.upstream.messages.dataCleared'));
+     else message.success($t('tg-card.upstream.messages.syncDone'));
+    }else if(state.status==='cancelled')message.info($t('tg-card.upstream.messages.syncCancelledKept'));
+    else message.error(state.lastError||$t('tg-card.upstream.messages.taskFailed'));
     break;
    }
    await new Promise(resolve=>setTimeout(resolve,1500));
   }
- }catch(error:any){message.warning(error?.response?.data?.message||'读取进行中的上游任务失败');}
+ }catch(error:any){message.warning(error?.response?.data?.message||$t('tg-card.upstream.errors.runningTask'));}
  finally{syncing.value=false;syncJobId.value='';}
 }
 
