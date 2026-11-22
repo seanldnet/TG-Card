@@ -75,7 +75,7 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 	}
 	// Persist the resolved preset URL so a blank BaseURL behaves consistently
 	// with NewVendorProvider. Custom gateways still require an explicit URL.
-	input.BaseURL = strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
+	input.BaseURL = strings.TrimRight(strings.TrimSpace(provider.config.BaseURL), "/")
 	var ciphertext string
 	if input.APIKey != "" {
 		var err error
