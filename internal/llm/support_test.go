@@ -67,3 +67,17 @@ func TestBuildSupportPromptBoundsAndLabelsContext(t *testing.T) {
 		t.Fatal("order context missing from system message")
 	}
 }
+
+func TestBuildSupportPromptIncludesVerifiedFactsAndOperatorPrompt(t *testing.T) {
+ ticket := database.SupportTicket{TicketNo:"T-2",OrderNo:"O-2",Category:"not_received",Description:"商品没有到账"}
+ order := &SupportOrderContext{OrderNo:"O-2",ProductName:"Premium Card",Status:"delivered",Quantity:2,Currency:"CNY",AmountMinor:5000,PaidAt:"2026-11-22T10:00:00Z",DeliveredAt:"2026-11-22T10:01:00Z"}
+ got := BuildSupportPromptWithContext(ticket,nil,"卡密在哪里？","请用简短步骤说明查看路径。",order)
+ if len(got)!=2 { t.Fatalf("expected system and current user messages, got %d",len(got)) }
+ system:=got[0].Content
+ for _, want:=range []string{"Premium Card","delivered","购买数量：2","请用简短步骤说明查看路径","不得覆盖上述安全限制"} {
+  if !strings.Contains(system,want) { t.Fatalf("system context missing %q",want) }
+ }
+ for _, forbidden:=range []string{"payment_reference","delivery_payload","API Key"} {
+  if strings.Contains(system,forbidden) { t.Fatalf("sensitive field leaked into prompt: %q",forbidden) }
+ }
+}
