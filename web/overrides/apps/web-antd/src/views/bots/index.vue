@@ -87,7 +87,7 @@ onUnmounted(()=>{if(runtimeTimer)clearInterval(runtimeTimer)});
     <template #emptyText><a-empty :description="$t('tg-card.bots.emptyHint')"/></template>
    </a-table>
   </a-card>
-  <a-modal v-model:open="botModalOpen" :title="editingId?$t('tg-card.bots.editTitle'):$t('tg-card.bots.addTitle')"" :width="560" :confirm-loading="saving" :ok-text="$t('tg-card.bots.save')" :cancel-text="$t('tg-card.bots.cancel')" @ok="submit">
+  <a-modal v-model:open="botModalOpen" :title="editingId?$t('tg-card.bots.editTitle'):$t('tg-card.bots.addTitle')" :width="560" :confirm-loading="saving" :ok-text="$t('tg-card.bots.save')" :cancel-text="$t('tg-card.bots.cancel')" @ok="submit">
    <div class="px-1 py-3">
     <a-alert v-if="!editingId" class="mb-4" type="info" show-icon :message="$t('tg-card.bots.tokenAlert')"/>
     <a-form ref="botFormRef" :model="botForm" :rules="botRules" layout="vertical">
