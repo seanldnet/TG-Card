@@ -380,3 +380,33 @@ func TestCompleteHonorsConfiguredHTTPTimeout(t *testing.T) {
 	if err == nil { t.Fatal("expected timeout error") }
 	if time.Since(started) > time.Second { t.Fatal("request did not respect configured timeout") }
 }
+
+
+func TestCompleteClassifiesTransportTimeoutAndCancellation(t *testing.T) {
+ t.Run("client timeout is retryable request_timeout",func(t *testing.T){
+  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){<-r.Context().Done()}))
+  defer server.Close()
+  provider,err:=NewVendorProvider(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
+  if err!=nil{t.Fatal(err)}
+  _,err=provider.Complete(context.Background(),CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+  var providerErr *ProviderError
+  if !errors.As(err,&providerErr){t.Fatalf("expected ProviderError, got %v",err)}
+  if providerErr.Code!="request_timeout"||!providerErr.Retryable||providerErr.StatusCode!=0{t.Fatalf("unexpected timeout classification: %+v",providerErr)}
+ })
+ t.Run("caller cancellation is not retryable",func(t *testing.T){
+  started:=make(chan struct{})
+  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){close(started);<-r.Context().Done()}))
+  defer server.Close()
+  provider,err:=NewVendorProvider(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
+  if err!=nil{t.Fatal(err)}
+  ctx,cancel:=context.WithCancel(context.Background())
+  done:=make(chan error,1)
+  go func(){_,callErr:=provider.Complete(ctx,CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}});done<-callErr}()
+  <-started
+  cancel()
+  err=<-done
+  var providerErr *ProviderError
+  if !errors.As(err,&providerErr){t.Fatalf("expected ProviderError, got %v",err)}
+  if providerErr.Code!="request_cancelled"||providerErr.Retryable{t.Fatalf("unexpected cancellation classification: %+v",providerErr)}
+ })
+}
