@@ -1,3 +1,14 @@
+## 2026-11-23 — Telegram 与 Admin i18n 进度校准（文档版本 2.2.98）
+
+- Telegram Bot 中英文 i18n：PR #145–#149 已合并，依次覆盖基础语言识别/偏好持久化、商品与订单详情、购物车/结账、支付执行、交付和售后通知。
+- Admin Vue i18n：PR #150–#155 已合并，覆盖核心运营页面、支付/优惠券/广播/对账、商品目录/库存/全局异常、供应商配置/采购页面、资金异常、兑换码管理及运营工作台。
+- PR #155 已通过 Admin Frontend CI 并合并至 main，合并提交 b0949dfaab0acb33cb12834cc836944e5cfbf773。
+- 后续国际化重点为核对 Admin 仪表盘、系统设置及剩余页面，并检查 Telegram Owner 工作流、广播及每 Bot 默认语言配置。
+- 本次仅校准开发状态与路线图，不改变业务逻辑、API、数据库 schema 或部署配置。PostgreSQL（pgx）仍为主数据库，SQLite 兼容。
+- 生产部署、移动端真实设备及真实 Telegram Bot 端到端验收不由代码合并自动推定。
+
+---
+
 ## 2026-11-23 — PR #143 Telegram Bot i18n 第一阶段验证与修复（进行中）
 
 - PR #143 的 Go Backend CI（全量 go test、go vet、Docker 备份恢复集成测试、Go 构建）、Admin Frontend CI 与 Security Scan 均已成功。
