@@ -80,7 +80,7 @@
 |---|---|---|
 | 1 | P1-1 AI 售后客服基础架构与安全兜底 | PR #140 已合并；通用 LLM 请求层、加密配置、受保护管理 API、敏感意图转人工、事实型订单上下文、运营 Prompt、AI 独立状态及后台标记/筛选已进入 main。真实供应商联调与更完整 Telegram 集成测试仍待完成 |
 | 2 | P1-2 OpenAI / DeepSeek / Kimi / 智谱专项适配 | PR #142 已合并第一批适配与 mock 契约测试；待完善 DeepSeek thinking 后台配置、响应/finish-reason 归一化，并由运营者提供凭据进行真实 API 联调 |
-| 3 | P1-3 Bot 中英文 i18n | PR #143 第一阶段开发中：语言识别/手动切换/偏好持久化及主要入口双语已实现，原 HEAD 的 Go/Admin/Security CI 通过；MySQL 同语言重复保存兼容修复待复验。常驻 Reply Keyboard、商品/结账/付款/通知/Owner 全流程及每 Bot 默认语言仍待完成 |
+| 3 | P1-3 Bot 中英文 i18n | PR #143 第一阶段开发中：语言识别/手动切换/偏好持久化及主要入口双语已实现，原 HEAD 的 Go/Admin/Security CI 通过；数据库驱动为 PostgreSQL（pgx）/SQLite；已移除不适用的 MySQL 专属兼容查询，修正提交待复验。常驻 Reply Keyboard、商品/结账/付款/通知/Owner 全流程及每 Bot 默认语言仍待完成 |
 | 4 | P1-4 管理后台 Vue i18n | 待开发 |
 | 5 | P1-5 Provider Adapter / Dujiao 抽象 | 待开发 |
 | 6 | P2-1 Redis 分布式限流与租约 | 待开发 |
