@@ -1919,11 +1919,12 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	createDeliveryInvite := func(target string, expires time.Time) (string, error) { if err := beginDeliveryAttempt(); err != nil { return "", err }; return m.createOneTimeInviteLink(ctx, current.config.Token, target, expires) }
 	switch mode {
 	case "card":
-		message := "订单：" + item.Order.OrderNo + "\n" + cardDeliveryText + "\n请妥善保存，不要转发给他人。"
+		language := m.deliveryLanguage(ctx, item.Order)
+		message := botText(language, "delivery.order") + item.Order.OrderNo + "\n" + cardDeliveryText + "\n" + botText(language, "delivery.keep_secret")
 		deliveryErr = sendDeliveryMessage(message)
 	case "fixed_text":
 		if strings.TrimSpace(config.Text)=="" { deliveryErr=fmt.Errorf("fixed text delivery is not configured") } else {
-			deliveryErr=sendDeliveryMessage("订单："+item.Order.OrderNo+"\n"+config.Text)
+			deliveryErr=sendDeliveryMessage(botText(m.deliveryLanguage(ctx, item.Order), "delivery.order")+item.Order.OrderNo+"\n"+config.Text)
 		}
 	case "invite_link":
 		if strings.TrimSpace(config.ChatID)=="" { deliveryErr=fmt.Errorf("invite link target chat is not configured"); break }
@@ -1942,17 +1943,19 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 			encrypted,encryptErr:=m.encrypt(string(encoded));if encryptErr!=nil{deliveryErr=encryptErr;break}
 			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,encrypted);deliveryErr!=nil { break }
 		}
-		deliveryErr=sendDeliveryMessage("订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
+		language := m.deliveryLanguage(ctx, item.Order)
+		deliveryErr=sendDeliveryMessage(botText(language, "delivery.order")+item.Order.OrderNo+"\n"+botText(language, "delivery.invite_intro")+"\n"+payload.InviteLink+"\n"+botText(language, "delivery.invite_warning"))
 	case "file":
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
-			deliveryErr=sendDeliveryDocument(config.FileID,"订单："+item.Order.OrderNo)
+			deliveryErr=sendDeliveryDocument(config.FileID,botText(m.deliveryLanguage(ctx, item.Order), "delivery.order")+item.Order.OrderNo)
 		}
 	case "upstream":
 		if item.Order.DeliveryPayloadJSON == "" || item.Order.DeliveryPayloadJSON == "{}" { deliveryErr = fmt.Errorf("upstream fulfillment payload is missing"); break }
 		if m.decrypt == nil { deliveryErr = fmt.Errorf("upstream fulfillment decryptor is not configured"); break }
 		payload, decryptErr := m.decrypt(item.Order.DeliveryPayloadJSON)
 		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
-		deliveryErr = sendDeliveryMessage("订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
+		language := m.deliveryLanguage(ctx, item.Order)
+		deliveryErr = sendDeliveryMessage(botText(language, "delivery.order")+item.Order.OrderNo+"\n"+botText(language, "delivery.upstream_payload")+"\n"+payload)
 	case "file_card":
 		if strings.TrimSpace(config.FileID)=="" {
 			deliveryErr=fmt.Errorf("Telegram file_id is not configured")
@@ -1985,11 +1988,11 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 			return nil
 		}
 		deliveryErr=processStep("file",1,func()(string,bool,error){
-			return m.sendDeliveryDocumentWithID(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+			return m.sendDeliveryDocumentWithID(ctx,current.config.Token,chatID,config.FileID,botText(m.deliveryLanguage(ctx, item.Order), "delivery.order")+item.Order.OrderNo)
 		})
 		if deliveryErr==nil {
 			deliveryErr=processStep("card_message",2,func()(string,bool,error){
-				return m.sendDeliveryMessageWithID(ctx,current.config.Token,chatID,"配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+				return m.sendDeliveryMessageWithID(ctx,current.config.Token,chatID,botText(m.deliveryLanguage(ctx, item.Order), "delivery.card_codes")+"\n"+cardDeliveryText+"\n"+botText(m.deliveryLanguage(ctx, item.Order), "delivery.keep_secret"))
 			})
 		}
 	default:
@@ -2639,6 +2642,15 @@ func (m *Manager) languageForUser(ctx context.Context, cfg Config, user Telegram
 func (m *Manager) languageForChat(ctx context.Context, cfg Config, chatID int64) string {
 	if m.db != nil {
 		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, strconv.FormatInt(chatID, 10)); err == nil && saved != "" {
+			return saved
+		}
+	}
+	return languageChinese
+}
+
+func (m *Manager) deliveryLanguage(ctx context.Context, order database.Order) string {
+	if m.db != nil && strings.TrimSpace(order.TelegramUserID) != "" {
+		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, order.TelegramUserID); err == nil && saved != "" {
 			return saved
 		}
 	}
