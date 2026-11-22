@@ -329,6 +329,26 @@ var botMessages = map[string]map[string]string{
 	"payment.open_checkout": {languageChinese:"🌐 打开收银台",languageEnglish:"🌐 Open checkout"},
 	"payment.open_gmpay": {languageChinese:"🌐 打开 GMPay 收银台",languageEnglish:"🌐 Open GMPay checkout"},
 	"payment.refresh_status": {languageChinese:"🔄 我已付款，刷新状态",languageEnglish:"🔄 I've paid — refresh status"},
+
+	"delivery.order": {languageChinese: "订单：", languageEnglish: "Order: "},
+	"delivery.keep_secret": {languageChinese: "请妥善保存，不要转发给他人。", languageEnglish: "Keep these details safe and do not share them with anyone."},
+	"delivery.invite_intro": {languageChinese: "你的专属入群邀请链接（仅限 1 人使用）：", languageEnglish: "Your personal group invite link (one use only):"},
+	"delivery.invite_warning": {languageChinese: "请勿转发，链接过期后无法使用。", languageEnglish: "Do not share this link. It cannot be used after it expires."},
+	"delivery.upstream_payload": {languageChinese: "上游商品交付内容：", languageEnglish: "Supplier fulfillment details:"},
+	"delivery.card_codes": {languageChinese: "配套卡密：", languageEnglish: "Your item codes:"},
+
+	"support.submit_success": {languageChinese: "售后申请已提交！", languageEnglish: "✅ Your support request has been submitted!"},
+	"support.ticket_number": {languageChinese: "工单号：", languageEnglish: "Ticket: "},
+	"support.order_number": {languageChinese: "订单号：", languageEnglish: "Order: "},
+	"support.status_pending": {languageChinese: "状态：待受理。管理员回复后会通过本机器人通知你。", languageEnglish: "Status: Pending review. You'll be notified here when an administrator replies."},
+	"support.attachment_saved": {languageChinese: "文字说明和附件已一起保存。你可以继续补充文字、图片或文件。", languageEnglish: "Your description and attachment were saved. You can add more text, images, or files."},
+	"support.added": {languageChinese: "补充内容已添加到工单。", languageEnglish: "Your message has been added to the ticket."},
+	"support.recreated": {languageChinese: " 已结单，已为你重新创建工单 #", languageEnglish: " is closed. A new ticket #"},
+	"support.continue_uploads": {languageChinese: "。你可以继续发送文字、图片或文件。", languageEnglish: ". You can continue sending text, images, or files."},
+
+	"support.update_title": {languageChinese: "售后工单更新", languageEnglish: "Support ticket update"},
+	"support.current_status": {languageChinese: "当前状态：", languageEnglish: "Status: "},
+	"support.admin_reply": {languageChinese: "管理员回复：", languageEnglish: "Support team reply:"},
 }
 
 func botText(language, key string) string {
@@ -345,6 +365,20 @@ func botText(language, key string) string {
 		}
 	}
 	return key
+}
+
+
+func supportStatusText(language, status string) string {
+	if normalizeLanguage(language) != languageEnglish { return status }
+	switch status {
+	case "open": return "Open"
+	case "in_progress": return "In progress"
+	case "waiting_user": return "Waiting for your reply"
+	case "resolved": return "Resolved"
+	case "closed": return "Closed"
+	case "rejected": return "Rejected"
+	default: return status
+	}
 }
 
 func orderStatusText(language, status string) string {

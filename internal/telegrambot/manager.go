@@ -588,7 +588,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			description:=strings.TrimSpace(msg.Caption);if description==""{description="用户提交了图片/文件作为售后凭证"}
 			ticket,err:=database.CreateSupportTicket(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(msg.From.ID,10),strconv.FormatInt(msg.Chat.ID,10),orderNo,"other",description)
 			if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单创建失败："+err.Error(),supportBackKeyboard());m.setPendingAction(cfg.ID,msg.Chat.ID,pendingMedia);return}
-			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,fileID,fileName);err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单已创建，但附件保存失败，请重新发送附件。")}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后工单已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n文字说明和附件已一起保存。你可以继续补充文字、图片或文件。",supportBackKeyboard())}
+			if _,err:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,fileID,fileName);err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"工单已创建，但附件保存失败，请重新发送附件。")}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.submit_success")+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.ticket_number")+ticket.TicketNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.order_number")+ticket.OrderNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.attachment_saved"),supportBackKeyboard())}
 			m.notifyOwnerSupportTicket(ctx,cfg,ticket.ID)
 			m.Notify("support_created","新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
 			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID);return
@@ -693,7 +693,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 				return
 			}
 			if _, timelineErr := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,"",""); timelineErr != nil { log.Printf("append initial support message failed: ticket_id=%s error=%v",ticket.ID,timelineErr) }
-			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
+			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.submit_success")+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.ticket_number")+ticket.TicketNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.order_number")+ticket.OrderNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.status_pending"), supportBackKeyboard())
 			// Give the first plain-text description the same guarded AI triage
 			// path as later replies; attachments remain human-reviewed.
 			m.tryAIHandleSupportFollowup(ctx,cfg,msg,ticket,description)
@@ -861,7 +861,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		ticket, err := database.CreateSupportTicket(ctx, m.db, m.driver, cfg.ID, strconv.FormatInt(msg.From.ID,10), strconv.FormatInt(msg.Chat.ID,10), command[1], "other", strings.Join(command[2:], " "))
 		if err != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"售后申请未能提交："+err.Error()); return }
 		if _,timelineErr:=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),strings.Join(command[2:]," "),"","");timelineErr!=nil{log.Printf("append support command timeline failed: ticket_id=%s error=%v",ticket.ID,timelineErr)}
-		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。",supportBackKeyboard())
+		_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.submit_success")+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.ticket_number")+ticket.TicketNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.order_number")+ticket.OrderNo+"\n"+botText(m.languageForTelegramID(ctx,strconv.FormatInt(msg.From.ID,10)),"support.status_pending"),supportBackKeyboard())
 		m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID, 10))
 	}
 }
@@ -1919,11 +1919,12 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 	createDeliveryInvite := func(target string, expires time.Time) (string, error) { if err := beginDeliveryAttempt(); err != nil { return "", err }; return m.createOneTimeInviteLink(ctx, current.config.Token, target, expires) }
 	switch mode {
 	case "card":
-		message := "订单：" + item.Order.OrderNo + "\n" + cardDeliveryText + "\n请妥善保存，不要转发给他人。"
+		language := m.deliveryLanguage(ctx, item.Order)
+		message := botText(language, "delivery.order") + item.Order.OrderNo + "\n" + cardDeliveryText + "\n" + botText(language, "delivery.keep_secret")
 		deliveryErr = sendDeliveryMessage(message)
 	case "fixed_text":
 		if strings.TrimSpace(config.Text)=="" { deliveryErr=fmt.Errorf("fixed text delivery is not configured") } else {
-			deliveryErr=sendDeliveryMessage("订单："+item.Order.OrderNo+"\n"+config.Text)
+			deliveryErr=sendDeliveryMessage(botText(m.deliveryLanguage(ctx, item.Order), "delivery.order")+item.Order.OrderNo+"\n"+config.Text)
 		}
 	case "invite_link":
 		if strings.TrimSpace(config.ChatID)=="" { deliveryErr=fmt.Errorf("invite link target chat is not configured"); break }
@@ -1942,17 +1943,19 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 			encrypted,encryptErr:=m.encrypt(string(encoded));if encryptErr!=nil{deliveryErr=encryptErr;break}
 			if deliveryErr=database.SaveOrderDeliveryPayload(ctx,m.db,m.driver,item.Order.ID,encrypted);deliveryErr!=nil { break }
 		}
-		deliveryErr=sendDeliveryMessage("订单："+item.Order.OrderNo+"\n你的专属入群邀请链接（仅限 1 人使用）：\n"+payload.InviteLink+"\n请勿转发，链接过期后无法使用。")
+		language := m.deliveryLanguage(ctx, item.Order)
+		deliveryErr=sendDeliveryMessage(botText(language, "delivery.order")+item.Order.OrderNo+"\n"+botText(language, "delivery.invite_intro")+"\n"+payload.InviteLink+"\n"+botText(language, "delivery.invite_warning"))
 	case "file":
 		if strings.TrimSpace(config.FileID)=="" { deliveryErr=fmt.Errorf("Telegram file_id is not configured") } else {
-			deliveryErr=sendDeliveryDocument(config.FileID,"订单："+item.Order.OrderNo)
+			deliveryErr=sendDeliveryDocument(config.FileID,botText(m.deliveryLanguage(ctx, item.Order), "delivery.order")+item.Order.OrderNo)
 		}
 	case "upstream":
 		if item.Order.DeliveryPayloadJSON == "" || item.Order.DeliveryPayloadJSON == "{}" { deliveryErr = fmt.Errorf("upstream fulfillment payload is missing"); break }
 		if m.decrypt == nil { deliveryErr = fmt.Errorf("upstream fulfillment decryptor is not configured"); break }
 		payload, decryptErr := m.decrypt(item.Order.DeliveryPayloadJSON)
 		if decryptErr != nil { deliveryErr = fmt.Errorf("decrypt upstream fulfillment: %w", decryptErr); break }
-		deliveryErr = sendDeliveryMessage("订单："+item.Order.OrderNo+"\n上游商品交付内容：\n"+payload)
+		language := m.deliveryLanguage(ctx, item.Order)
+		deliveryErr = sendDeliveryMessage(botText(language, "delivery.order")+item.Order.OrderNo+"\n"+botText(language, "delivery.upstream_payload")+"\n"+payload)
 	case "file_card":
 		if strings.TrimSpace(config.FileID)=="" {
 			deliveryErr=fmt.Errorf("Telegram file_id is not configured")
@@ -1985,11 +1988,11 @@ func (m *Manager) deliverPaidOrder(ctx context.Context, item database.OrderDeliv
 			return nil
 		}
 		deliveryErr=processStep("file",1,func()(string,bool,error){
-			return m.sendDeliveryDocumentWithID(ctx,current.config.Token,chatID,config.FileID,"订单："+item.Order.OrderNo)
+			return m.sendDeliveryDocumentWithID(ctx,current.config.Token,chatID,config.FileID,botText(m.deliveryLanguage(ctx, item.Order), "delivery.order")+item.Order.OrderNo)
 		})
 		if deliveryErr==nil {
 			deliveryErr=processStep("card_message",2,func()(string,bool,error){
-				return m.sendDeliveryMessageWithID(ctx,current.config.Token,chatID,"配套卡密：\n"+cardDeliveryText+"\n请妥善保存，不要转发给他人。")
+				return m.sendDeliveryMessageWithID(ctx,current.config.Token,chatID,botText(m.deliveryLanguage(ctx, item.Order), "delivery.card_codes")+"\n"+cardDeliveryText+"\n"+botText(m.deliveryLanguage(ctx, item.Order), "delivery.keep_secret"))
 			})
 		}
 	default:
@@ -2244,7 +2247,7 @@ func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg M
   }
   handled := m.tryAIHandleSupportFollowup(ctx,cfg,msg,ticket,text)
   if !handled {
-   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"补充内容已添加到工单。")
+   _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(m.languageForTelegramID(ctx,userID),"support.added"))
   }
   m.notifyOwnerSupportMessage(ctx,cfg,ticket.ID,text,fileID,fileName)
   m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
@@ -2268,7 +2271,7 @@ func (m *Manager) handleUserSupportFollowup(ctx context.Context,cfg Config,msg M
  m.notifyOwnerSupportTicket(ctx,cfg,next.ID)
  m.Notify("support_created","用户在已结单工单后重新联系，已创建新工单："+next.TicketNo+"\n原工单："+ticket.TicketNo+"\n订单号："+next.OrderNo+"\n问题："+description,strconv.FormatInt(msg.Chat.ID,10))
  m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+next.ID)
- _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"原工单 "+ticket.TicketNo+" 已结单，已为你重新创建工单 #"+next.TicketNo+"。你可以继续发送文字、图片或文件。")
+ _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,ticket.TicketNo+botText(m.languageForTelegramID(ctx,userID),"support.recreated")+next.TicketNo+botText(m.languageForTelegramID(ctx,userID),"support.continue_uploads"))
 }
 
 
@@ -2622,8 +2625,9 @@ func (m *Manager) SendSupportReply(ctx context.Context, ticket database.SupportT
 	m.mu.Unlock()
 	if !ok { return fmt.Errorf("Telegram bot for this support ticket is not running") }
 	chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64);if err!=nil{return fmt.Errorf("invalid support ticket chat ID: %w",err)}
-	text:="售后工单更新\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n当前状态："+ticket.Status
-	if ticket.AdminReply!="" { text+="\n管理员回复：\n"+ticket.AdminReply }
+	language := m.languageForTelegramID(ctx, ticket.TelegramUserID)
+	text := botText(language, "support.update_title") + "\n" + botText(language, "support.ticket_number") + ticket.TicketNo + "\n" + botText(language, "support.order_number") + ticket.OrderNo + "\n" + botText(language, "support.current_status") + supportStatusText(language, ticket.Status)
+	if ticket.AdminReply != "" { text += "\n" + botText(language, "support.admin_reply") + "\n" + ticket.AdminReply }
 	return m.sendMessage(ctx,cfg.Token,chatID,text)
 }
 
@@ -2643,6 +2647,19 @@ func (m *Manager) languageForChat(ctx context.Context, cfg Config, chatID int64)
 		}
 	}
 	return languageChinese
+}
+
+func (m *Manager) languageForTelegramID(ctx context.Context, userID string) string {
+	if m.db != nil && strings.TrimSpace(userID) != "" {
+		if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, userID); err == nil && saved != "" {
+			return saved
+		}
+	}
+	return languageChinese
+}
+
+func (m *Manager) deliveryLanguage(ctx context.Context, order database.Order) string {
+	return m.languageForTelegramID(ctx, order.TelegramUserID)
 }
 
 func (m *Manager) ensureTelegramLanguage(ctx context.Context, user TelegramUser) {

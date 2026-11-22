@@ -78,6 +78,14 @@ func TestCommerceScreenTranslations(t *testing.T) {
 	for _, key := range []string{"payment.wallet_success","payment.wallet_delivered","payment.gateway_paid","payment.gateway_pending","payment.trc20_assigned","payment.hosted_instructions","payment.refresh_status"} {
 		if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("payment translation %q is not localized",key) }
 	}
+	for _, key := range []string{"delivery.order","delivery.keep_secret","delivery.invite_intro","delivery.invite_warning","delivery.upstream_payload","delivery.card_codes"} {
+		if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("delivery translation %q is not localized",key) }
+	}
+
+	for _, key := range []string{"support.submit_success","support.status_pending","support.added","support.recreated","support.update_title","support.current_status","support.admin_reply"} {
+		if botText(languageEnglish,key)==botText(languageChinese,key) { t.Errorf("support translation %q is not localized",key) }
+	}
+	if got:=supportStatusText(languageEnglish,"waiting_user");got!="Waiting for your reply"{t.Errorf("English support status = %q",got)}
 	if got := orderStatusText(languageEnglish, "pending_payment"); got != "Awaiting payment" {
 		t.Errorf("English order status = %q", got)
 	}
