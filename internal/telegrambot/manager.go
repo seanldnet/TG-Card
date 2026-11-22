@@ -1609,7 +1609,7 @@ func (m *Manager) showOrders(ctx context.Context, cfg Config, chatID int64, user
 			for _,line:=range lines { b.WriteString("\n· "+line.ProductName+" × "+strconv.Itoa(line.Quantity)) }
 		}
 		b.WriteString("\n" + botText(language, "orders.amount") + formatPrice(order.AmountMinor, order.Currency))
-		b.WriteString("\n" + botText(language, "orders.status") + orderStatusLabel(order.Status))
+		b.WriteString("\n" + botText(language, "orders.status") + orderStatusText(language, order.Status))
 		buttons := []map[string]string{{"text":botText(language, "orders.detail"),"callback_data":"order:detail:"+order.ID}}
 		if order.Status == "delivered" && (order.DeliveryType == "invite_link" || order.DeliveryType == "file_card") {
 			buttons = append(buttons, map[string]string{"text":"联系客服核实","callback_data":"support:order:"+order.OrderNo})
