@@ -1370,7 +1370,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		productID:=strings.TrimPrefix(query.Data,"cart:add:")
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.adding"))
 		err:=database.AddCartItem(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),productID,1)
-		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.add_error")++err.Error());return }
+		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.add_error")+err.Error());return }
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case strings.HasPrefix(query.Data,"cart:inc:") || strings.HasPrefix(query.Data,"cart:dec:") || strings.HasPrefix(query.Data,"cart:remove:"):
 		parts:=strings.SplitN(query.Data,":",3)
@@ -1383,11 +1383,11 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		case "dec": err=database.AdjustCartItemQuantity(ctx,m.db,m.driver,cfg.ID,userID,parts[2],-1)
 		case "remove": err=database.RemoveCartItem(ctx,m.db,m.driver,cfg.ID,userID,parts[2])
 		}
-		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.update_error")++err.Error());return }
+		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.update_error")+err.Error());return }
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "cart:clear":
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.clearing"))
-		if err:=database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.clear_error")++err.Error());return }
+		if err:=database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.clear_error")+err.Error());return }
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "cart:checkout":
 		m.createCartCheckout(ctx,cfg,query,chatID)
