@@ -989,7 +989,9 @@
     "verificationRecord": "Verification notes",
     "verificationPlaceholder": "Record the supplier portal lookup, timestamp, and evidence",
     "supplierOrderIdPlaceholder": "Enter supplier order ID",
-    "supplierOrderNoPlaceholder": "Enter supplier order number"
+    "supplierOrderNoPlaceholder": "Enter supplier order number",
+    "occurred": "Detected at",
+    "reason": "Failure reason"
   },
   "redemptionCodes": {
     "loadFailed": "Failed to load redemption codes",
@@ -1096,6 +1098,8 @@
     "enabledStatus": "Enabled",
     "disabledStatus": "Disabled",
     "saveOne": "Save redemption code",
-    "explain": "Redemption codes are managed separately from coupons. Redemption records retain the customer, reward type, and redemption time. Deleting a code does not revoke entitlements already issued."
+    "explain": "Redemption codes are managed separately from coupons. Redemption records retain the customer, reward type, and redemption time. Deleting a code does not revoke entitlements already issued.",
+    "leaveImmediate": "Leave blank for immediate activation",
+    "leaveNoExpiry": "Leave blank for no expiry"
   }
 }
