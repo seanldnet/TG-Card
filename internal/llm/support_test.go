@@ -37,7 +37,8 @@ func TestBuildSupportPromptBoundsAndLabelsContext(t *testing.T) {
 	messages := []database.SupportTicketMessage{
 		{SenderType:"user", Message:"之前的问题"},
 		{SenderType:"admin", Message:"请提供订单号"},
-		{SenderType:"system", Message:"内部系统记录不应进入对话"},
+		{SenderType:"system", SenderName:"internal", Message:"内部系统记录不应进入对话"},
+		{SenderType:"system", SenderName:"ai-assistant", Message:"AI 售后预处理：你可以在订单详情中查看卡密"},
 		{SenderType:"user", Message:strings.Repeat("长", 2500)},
 	}
 	got := BuildSupportPrompt(ticket, messages, "当前补充问题")
@@ -46,8 +47,18 @@ func TestBuildSupportPromptBoundsAndLabelsContext(t *testing.T) {
 	}
 	for _, item := range got {
 		if strings.Contains(item.Content, "内部系统记录") {
-			t.Fatal("system timeline events must not be passed to the model")
+			t.Fatal("internal system timeline events must not be passed to the model")
 		}
+	}
+	foundPreviousAI := false
+	for _, item := range got {
+		if item.Role == "assistant" && item.Content == "你可以在订单详情中查看卡密" {
+			foundPreviousAI = true
+		}
+	}
+	if !foundPreviousAI {
+		t.Fatal("previous AI reply should be included as an assistant turn")
+	}
 		if len([]rune(item.Content)) > 2100 {
 			t.Fatalf("context item exceeded bound: %d runes", len([]rune(item.Content)))
 		}
