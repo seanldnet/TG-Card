@@ -688,6 +688,9 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 			}
 			if _, timelineErr := database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"user",strconv.FormatInt(msg.From.ID,10),description,"",""); timelineErr != nil { log.Printf("append initial support message failed: ticket_id=%s error=%v",ticket.ID,timelineErr) }
 			_ = m.sendMessageMarkup(ctx, cfg.Token, msg.Chat.ID, "售后申请已提交！\n工单号："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n状态：待受理。管理员回复后会通过本机器人通知你。", supportBackKeyboard())
+			// Give the first plain-text description the same guarded AI triage
+			// path as later replies; attachments remain human-reviewed.
+			m.tryAIHandleSupportFollowup(ctx,cfg,msg,ticket,description)
 			m.notifyOwnerSupportTicket(ctx,cfg,ticket.ID)
 			m.Notify("support_created", "新售后工单："+ticket.TicketNo+"\n订单号："+ticket.OrderNo+"\n问题："+ticket.Description, strconv.FormatInt(msg.Chat.ID,10))
 			m.setPendingAction(cfg.ID,msg.Chat.ID,"support_followup:"+ticket.ID)
