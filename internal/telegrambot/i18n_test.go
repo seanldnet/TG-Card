@@ -56,3 +56,23 @@ func TestMainReplyKeyboardUsesSelectedLanguageAndCanonicalizesLabels(t *testing.
 		t.Fatalf("Chinese reply keyboard label should remain unchanged: %q", got)
 	}
 }
+
+func TestCommerceScreenTranslations(t *testing.T) {
+	for _, tc := range []struct{ language, key, want string }{
+		{languageChinese, "product.price", "价格："},
+		{languageEnglish, "product.price", "Price: "},
+		{languageChinese, "product.cart_add", "🛒 加入购物车"},
+		{languageEnglish, "product.cart_add", "🛒 Add to cart"},
+		{languageChinese, "order.detail.title", "订单详情"},
+		{languageEnglish, "order.detail.title", "Order details"},
+		{languageChinese, "payment.title", "继续支付订单"},
+		{languageEnglish, "payment.title", "Continue payment"},
+	} {
+		if got := botText(tc.language, tc.key); got != tc.want {
+			t.Errorf("botText(%q, %q) = %q, want %q", tc.language, tc.key, got, tc.want)
+		}
+	}
+	if got := orderStatusText(languageEnglish, "pending_payment"); got != "Awaiting payment" {
+		t.Errorf("English order status = %q", got)
+	}
+}
