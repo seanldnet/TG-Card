@@ -92,7 +92,7 @@ onUnmounted(()=>{if(runtimeTimer)clearInterval(runtimeTimer)});
     <a-alert v-if="!editingId" class="mb-4" type="info" show-icon :message="$t('tg-card.bots.tokenAlert')"/>
     <a-form ref="botFormRef" :model="botForm" :rules="botRules" layout="vertical">
      <a-form-item :label="$t('tg-card.bots.tableName')" name="name"><a-input v-model:value="botForm.name" size="large" :maxlength="100" :placeholder="$t('tg-card.bots.namePlaceholder')"/></a-form-item>
-     <a-form-item label="Bot Token" name="token" :extra="editingId?'留空表示不修改现有 Token。':'从 Telegram 的 @BotFather 获取。'"><a-input-password v-model:value="botForm.token" size="large" autocomplete="new-password" :placeholder="$t('tg-card.bots.tokenPlaceholder')"/></a-form-item>
+     <a-form-item label="Bot Token" name="token" :extra="editingId?$t('tg-card.bots.tokenEditHint'):$t('tg-card.bots.tokenSource')"><a-input-password v-model:value="botForm.token" size="large" autocomplete="new-password" :placeholder="$t('tg-card.bots.tokenPlaceholder')"/></a-form-item>
      <a-form-item :label="$t('tg-card.bots.description')"><a-textarea v-model:value="botForm.description" :rows="3" :maxlength="512" show-count :placeholder="$t('tg-card.bots.descriptionPlaceholder')"/></a-form-item>
      <a-divider class="my-2">{{$t('tg-card.bots.welcomeContent')}}</a-divider>
      <a-form-item :label="$t('tg-card.bots.welcomeMessage')"><a-textarea v-model:value="botForm.welcomeMessage" :rows="3" :maxlength="2000" show-count :placeholder="$t('tg-card.bots.welcomePlaceholder')"/></a-form-item>
