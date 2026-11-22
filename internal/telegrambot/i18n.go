@@ -275,6 +275,15 @@ var botMessages = map[string]map[string]string{
 	"cart.notify_created": {languageChinese:"购物车统一订单：",languageEnglish:"Combined cart order: "},
 	"cart.overflow": {languageChinese:"购物车金额超出可计算范围，请联系管理员。",languageEnglish:"The cart total exceeds the supported calculation range. Please contact support."},
 	"cart.item_kinds": {languageChinese:"商品种类：",languageEnglish:"Product types: "},
+
+	"cart.opening": {languageChinese:"正在打开购物车",languageEnglish:"Opening your cart"},
+	"cart.adding": {languageChinese:"正在加入购物车",languageEnglish:"Adding to cart"},
+	"cart.add_error": {languageChinese:"加入购物车失败：",languageEnglish:"Could not add item to cart: "},
+	"cart.invalid_action": {languageChinese:"购物车操作无效",languageEnglish:"Invalid cart action"},
+	"cart.updating": {languageChinese:"正在更新购物车",languageEnglish:"Updating cart"},
+	"cart.update_error": {languageChinese:"购物车更新失败：",languageEnglish:"Could not update cart: "},
+	"cart.clearing": {languageChinese:"正在清空购物车",languageEnglish:"Clearing cart"},
+	"cart.clear_error": {languageChinese:"清空购物车失败：",languageEnglish:"Could not clear cart: "},
 }
 
 func botText(language, key string) string {
