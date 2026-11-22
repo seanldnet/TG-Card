@@ -2,13 +2,13 @@ package llm
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"time"
 	"testing"
+	"time"
 )
 
 func TestSupportedVendorAdaptersUseExpectedTokenParameter(t *testing.T) {
