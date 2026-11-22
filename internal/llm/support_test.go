@@ -37,8 +37,8 @@ func TestBuildSupportPromptBoundsAndLabelsContext(t *testing.T) {
 	messages := []database.SupportTicketMessage{
 		{SenderType: "user", Message: "之前的问题"},
 		{SenderType: "admin", Message: "请提供订单号"},
-		{SenderType: "system", SenderName: "internal", Message: "内部系统记录不应进入对话"},
-		{SenderType: "system", SenderName: "ai-assistant", Message: "AI 售后预处理：你可以在订单详情中查看卡密"},
+		{SenderType: "system", SenderID: "internal", Message: "内部系统记录不应进入对话"},
+		{SenderType: "system", SenderID: "ai-assistant", Message: "AI 售后预处理：你可以在订单详情中查看卡密"},
 		{SenderType: "user", Message: strings.Repeat("长", 2500)},
 	}
 	got := BuildSupportPrompt(ticket, messages, "当前补充问题")
