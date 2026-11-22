@@ -30,6 +30,9 @@ func TestSupportedVendorAdaptersUseExpectedTokenParameter(t *testing.T) {
 				if r.URL.Path != "/v1/chat/completions" {
 					t.Errorf("unexpected endpoint path: %s", r.URL.Path)
 				}
+				if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
+					t.Errorf("unexpected bearer authorization header: %q", got)
+				}
 				var payload map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 					t.Errorf("decode request: %v", err)
@@ -136,6 +139,23 @@ func TestDeepSeekThinkingControlsAreExplicitAndVendorScoped(t *testing.T) {
 	})
 	if err != nil { t.Fatal(err) }
 	if got != "answer" { t.Fatalf("reasoning content must not be returned; got %q",got) }
+}
+
+
+func TestDeepSeekThinkingCanBeExplicitlyDisabled(t *testing.T) {
+ disabled := false
+ server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  var payload map[string]any
+  if err := json.NewDecoder(r.Body).Decode(&payload); err != nil { t.Errorf("decode request: %v",err) }
+  thinking, ok := payload["thinking"].(map[string]any)
+  if !ok || thinking["type"] != "disabled" { t.Errorf("expected thinking.type=disabled, got %#v",payload["thinking"]) }
+  w.Header().Set("Content-Type","application/json")
+  _, _ = w.Write([]byte(`{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}]}`))
+ }))
+ defer server.Close()
+ provider, err := NewVendorProvider(Config{Provider:"deepseek",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"deepseek-chat"})
+ if err != nil { t.Fatal(err) }
+ if _, err := provider.Complete(context.Background(),CompletionRequest{Messages:[]Message{{Role:"user",Content:"question"}},Thinking:&disabled}); err != nil { t.Fatal(err) }
 }
 
 func TestDeepSeekRejectsUnsupportedReasoningEffort(t *testing.T) {
