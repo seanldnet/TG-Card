@@ -125,3 +125,29 @@ func TestSupportPromptStorageAndBounds(t *testing.T) {
  if err!=nil || got!=want {t.Fatalf("prompt round trip failed: got=%q err=%v",got,err)}
  if err:=SaveSupportPrompt(context.Background(),db,"sqlite",strings.Repeat("规",3001));err==nil{t.Fatal("expected oversized prompt to be rejected")}
 }
+
+
+func TestStoredConfigResolvesDefaultVendorBaseURL(t *testing.T) {
+ db := configTestDB(t)
+ manager, err := secret.New(t.TempDir())
+ if err != nil { t.Fatal(err) }
+ input := Config{Provider:"deepseek", Model:"deepseek-chat", APIKey:"sk-default-endpoint"}
+ if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 30, true, manager.Encrypt); err != nil {
+  t.Fatal(err)
+ }
+ loaded, enabled, err := LoadStoredConfig(context.Background(), db, "sqlite", manager.Decrypt)
+ if err != nil { t.Fatal(err) }
+ if !enabled || loaded.BaseURL != "https://api.deepseek.com" {
+  t.Fatalf("resolved endpoint = %q, enabled=%v; want documented DeepSeek default", loaded.BaseURL, enabled)
+ }
+}
+
+func TestStoredConfigRequiresExplicitCustomBaseURL(t *testing.T) {
+ db := configTestDB(t)
+ manager, err := secret.New(t.TempDir())
+ if err != nil { t.Fatal(err) }
+ input := Config{Provider:"custom", Model:"compatible-model", APIKey:"sk-custom"}
+ if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 30, true, manager.Encrypt); err == nil {
+  t.Fatal("expected custom gateway without BaseURL to be rejected")
+ }
+}
