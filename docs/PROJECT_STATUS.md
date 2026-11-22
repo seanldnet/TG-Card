@@ -1,12 +1,19 @@
-## 2026-11-23 — P1-2 合并及 P1-3 Telegram 中英文国际化开发（文档版本 2.2.96）
+## 2026-11-23 — P1-3 Telegram Bot i18n 状态更新
 
-- PR #140（AI 售后基础）已合并至 main；PR #142（LLM 多供应商适配）已 Squash Merge，main 合并提交：`44fb370850c97c0c85dc1bddd2326fd38ae28a55`。
-- PR #142 合并前 Go Backend CI、Admin Frontend CI、Security Scan 均成功；Go 全量测试、`go vet ./...`、Docker 备份恢复集成测试及 `CGO_ENABLED=0 go build` 均成功。合并代码和 CI 不代表已生产部署或真实供应商 API 联调。
-- P1-3 独立分支：`feat/telegram-bot-i18n-20261123`。新增 Telegram `language_code` 自动识别（支持中文/英文，其他语言回退中文）、用户显式语言选择（`/language`、`/lang` 与菜单入口）及 `telegram_users.preferred_language` 持久化（迁移 0063）。
-- 已接入双语的主要入口：欢迎卡片、主菜单、商城分类页、订单列表字段与状态、余额页、帮助、商品搜索提示、售后订单选择入口；新增语言识别/规范化、语言文案和偏好持久化测试。
-- P1-3 当前仍是进行中：结账/付款、商品详情、交付通知、售后消息与回调、广播、Owner 管理等长尾文案尚未全部国际化；每个 Bot 可配置的默认语言也尚未接入管理后台。该分支尚未通过 CI、尚未建立 PR、未合并及发布。
-- 本轮项目仍保持单站点、单运营者；未引入多租户、多用户或复杂 RBAC。
-## 2026-11-23 — PR #140 AI 售后基础批次状态校准（文档版本 2.2.95）
+- PR #143 第一阶段实现 Telegram 语言识别、/language 与 /lang 切换、语言偏好持久化，以及欢迎页、主菜单、商城分类、订单列表、余额、帮助、搜索提示和售后订单选择入口的双语文案。
+- PR #143 当前 HEAD 的 Go Backend CI、Admin Frontend CI、安全扫描均通过；随后发现并修复重复保存相同语言时的 MySQL RowsAffected 兼容问题，修复提交待 CI 复验。
+- 仍待完成：常驻 Reply Keyboard 和部分入口文案、商品详情、购物车/结账/付款、交付/售后通知、Owner 工作流、每 Bot 默认语言设置。
+- PR #143 尚未合并；代码合并与生产部署、真实 Telegram 端到端验收分别记录。
+
+## 2026-11-23 — PR #142 多模型适配合并与开发状态校准（文档版本 2.2.96）
+
+- PR #140 AI 售后基础架构已合并至 main；其范围包括通用 Chat Completions 调用层、加密配置、受保护管理 API、敏感意图转人工、订单归属校验后的事实型上下文、运营 Prompt、AI 独立状态及后台筛选。
+- PR #142 已合并第一批 Vendor Adapter：OpenAI、DeepSeek、Moonshot Kimi 国际版（.ai）/中国大陆版（.cn）、智谱 GLM；自定义 OpenAI-compatible endpoint 继续支持。包含 provider registry、token-limit 参数选择、错误分类和 mock 契约测试。
+- PR #142 合并后的 main commit：`44fb370850c97c0c85dc1bddd2326fd38ae28a55`。代码合并不等于真实供应商 API 联调、生产配置或生产部署验收。
+- P1-3 Telegram Bot 中英文 i18n 由 PR #143 推进中；该 PR 当前为 Open，覆盖欢迎页、主菜单、分类入口、订单列表、余额、帮助、搜索提示及售后订单选择入口。商品详情、购物车/支付、发货/售后通知、Owner 工作流和每 Bot 默认语言仍属后续范围。
+- 文档版本 2.2.96；本条校准 PR #140/#142 合并事实与 P1-3 当前范围，不改变单站点、单运营者边界。
+
+## 2026-11-23 — PR #140/#142 AI 售后与模型适配状态校准（文档版本 2.2.96）
 
 - PR #140 已建立通用 OpenAI-compatible Chat Completions 调用层，包含 HTTPS/loopback 测试限制、超时、响应体大小、消息角色/长度/token 上限及供应商错误响应脱敏。
 - 新增 AI 模型配置持久化：供应商、Base URL、模型、超时与启用状态存入现有 settings 表；API Key 使用现有 AES-GCM Secret Manager 加密后保存，读取 API 仅返回 API Key 是否已配置，不返回明文或密文。
@@ -17,9 +24,9 @@
 - 新增 `support_ticket_ai_states` 独立状态表，不改变工单业务生命周期；记录未使用 AI、AI 已答复、已转人工及内部原因码，并通过工单列表/详情 API 返回。
 - Telegram AI 路径在敏感意图、人工接管及模型/上下文/发送异常时持久化转人工状态；成功答复后记录 AI 已答复。后台工单列表新增 AI 状态标记与筛选。
 - 新增数据库迁移与状态持久化测试；图片、文件和其他附件仍由人工处理。真实供应商联调及更完整的 Telegram 集成测试仍待完成。
-- PR head `4d1586cd90368c2069ed060cf6939615f1075678` 的 Go Backend CI（run 45051388701）、Admin Frontend CI（run 45051388699）、Security Scan（run 45051388725）均已成功。PR #140 仍未合并，未发布镜像；不代表生产已上线。
+- PR #140 已合并；AI 售后基础架构已进入 main。合并不代表真实供应商联调、完整 Telegram 集成验收或生产部署完成。
 - 项目保持单站点、单运营者模式；无多用户/多租户改动。
-- 文档校准：ROADMAP 中 P1-1 已实现范围更新；P1-2 改为供应商专项适配/契约测试，不重复建设通用请求层。文档版本 2.2.95。
+- PR #142 已合并通用 Vendor Adapter 注册与第一批供应商适配：OpenAI、DeepSeek、Kimi 国际/中国大陆端点、智谱 GLM；包含显式 token 字段选择、供应商选择路由及 mock 契约测试。仍有 DeepSeek thinking 后台配置、响应/finish-reason 归一化完善和真实 API 联调待办。文档版本 2.2.96。
 ## 2026-11-22 — P1/P2 产品路线图确认（文档版本 2.2.88）
 
 - 项目所有者确认将 P1 智能化运营与 P2 基础设施演进纳入正式开发规划，详见 `docs/ROADMAP.md`。
