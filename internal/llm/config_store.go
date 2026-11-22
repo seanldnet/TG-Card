@@ -19,6 +19,7 @@ type StoredConfig struct {
 	Model string `json:"model"`
 	APIKeyCiphertext string `json:"apiKeyCiphertext"`
 	TimeoutSeconds int `json:"timeoutSeconds"`
+	TokenLimitParameter string `json:"tokenLimitParameter,omitempty"`
 	Enabled bool `json:"enabled"`
 }
 
@@ -28,6 +29,7 @@ type ConfigView struct {
 	BaseURL string `json:"baseUrl"`
 	Model string `json:"model"`
 	TimeoutSeconds int `json:"timeoutSeconds"`
+	TokenLimitParameter string `json:"tokenLimitParameter"`
 	Enabled bool `json:"enabled"`
 	APIKeyConfigured bool `json:"apiKeyConfigured"`
 }
@@ -48,6 +50,9 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 	input.Provider = strings.TrimSpace(input.Provider)
 	input.BaseURL = strings.TrimRight(strings.TrimSpace(input.BaseURL), "/")
 	input.Model = strings.TrimSpace(input.Model)
+	input.TokenLimitParameter = strings.ToLower(strings.TrimSpace(input.TokenLimitParameter))
+	if input.TokenLimitParameter == "" { input.TokenLimitParameter = "auto" }
+	if input.TokenLimitParameter != "auto" && input.TokenLimitParameter != "max_completion_tokens" && input.TokenLimitParameter != "max_tokens" { return ErrInvalidConfig }
 	input.APIKey = strings.TrimSpace(input.APIKey)
 	if input.Provider == "" || input.BaseURL == "" || input.Model == "" {
 		return ErrInvalidConfig
@@ -67,10 +72,10 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 		ciphertext = current.APIKeyCiphertext
 		if ciphertext == "" { return ErrNotConfigured }
 	}
-	if _, err := NewOpenAICompatible(Config{Provider:input.Provider, BaseURL:input.BaseURL, APIKey:"validation-only", Model:input.Model, Timeout:time.Duration(timeoutSeconds)*time.Second}); err != nil {
+	if _, err := NewOpenAICompatible(Config{Provider:input.Provider, BaseURL:input.BaseURL, APIKey:"validation-only", Model:input.Model, Timeout:time.Duration(timeoutSeconds)*time.Second, TokenLimitParameter:input.TokenLimitParameter}); err != nil {
 		return err
 	}
-	value, err := json.Marshal(StoredConfig{Provider:input.Provider, BaseURL:input.BaseURL, Model:input.Model, APIKeyCiphertext:ciphertext, TimeoutSeconds:timeoutSeconds, Enabled:enabled})
+	value, err := json.Marshal(StoredConfig{Provider:input.Provider, BaseURL:input.BaseURL, Model:input.Model, APIKeyCiphertext:ciphertext, TimeoutSeconds:timeoutSeconds, TokenLimitParameter:input.TokenLimitParameter, Enabled:enabled})
 	if err != nil { return err }
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	query := "INSERT INTO settings(key,value,updated_at) VALUES ("+settingPlaceholder(driver,1)+","+settingPlaceholder(driver,2)+","+settingPlaceholder(driver,3)+") ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at"
@@ -89,7 +94,7 @@ func LoadStoredConfig(ctx context.Context, db *sql.DB, driver string, decrypt Se
 	if stored.APIKeyCiphertext == "" { return Config{}, false, ErrNotConfigured }
 	key, err := decrypt(stored.APIKeyCiphertext)
 	if err != nil { return Config{}, false, fmt.Errorf("decrypt saved LLM API key: %w", err) }
-	return Config{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, APIKey:key, Timeout:time.Duration(stored.TimeoutSeconds)*time.Second}, stored.Enabled, nil
+	return Config{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, APIKey:key, Timeout:time.Duration(stored.TimeoutSeconds)*time.Second, TokenLimitParameter:stored.TokenLimitParameter}, stored.Enabled, nil
 }
 
 func LoadConfigView(ctx context.Context, db *sql.DB, driver string) (ConfigView, error) {
@@ -100,7 +105,7 @@ func LoadConfigView(ctx context.Context, db *sql.DB, driver string) (ConfigView,
 	if err != nil { return ConfigView{}, err }
 	var stored StoredConfig
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil { return ConfigView{}, fmt.Errorf("decode saved LLM config: %w", err) }
-	return ConfigView{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, TimeoutSeconds:stored.TimeoutSeconds, Enabled:stored.Enabled, APIKeyConfigured:stored.APIKeyCiphertext != ""}, nil
+	return ConfigView{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, TimeoutSeconds:stored.TimeoutSeconds, TokenLimitParameter:stored.TokenLimitParameter, Enabled:stored.Enabled, APIKeyConfigured:stored.APIKeyCiphertext != ""}, nil
 }
 
 
