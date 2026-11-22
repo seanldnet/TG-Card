@@ -158,7 +158,7 @@ watch(
         :avatar="avatar"
         :menus="menus"
         :text="userStore.userInfo?.realName || userStore.userInfo?.username"
-        description="账户管理"
+        :description="$t('tg-card.navigation.accountManagement')"
         @clear-preferences-and-logout="handleLogout"
         @logout="handleLogout"
       />
