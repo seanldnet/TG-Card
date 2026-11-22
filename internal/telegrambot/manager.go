@@ -1497,7 +1497,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			}}
 			_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(language,"payment.trc20_assigned"))
 			if sendErr := m.sendPhotoMarkup(ctx,cfg.Token,chatID,paymentText,address,markup); sendErr != nil {
-				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,paymentText+"\n二维码无法显示，请复制地址付款。",markup)
+				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,paymentText+"\n"+botText(language,"payment.qr_fallback"),markup)
 			}
 			return
 		}
@@ -1533,7 +1533,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			{{"text":botText(language,"payment.back_store"),"callback_data":"shop:home"}},
 		}}
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"payment.info_shown"))
-		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n二维码无法显示，请复制地址付款。",markup) }
+		if err:=m.sendPhotoMarkup(ctx,cfg.Token,chatID,text,address,markup);err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text+"\n"+botText(language,"payment.qr_fallback"),markup) }
 	case strings.HasPrefix(query.Data,"shop:gmpay:"):
 		orderID:=strings.TrimPrefix(query.Data,"shop:gmpay:")
 		order,orderErr:=database.GetOrderByID(ctx,m.db,m.driver,orderID)
