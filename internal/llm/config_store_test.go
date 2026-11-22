@@ -151,3 +151,24 @@ func TestStoredConfigRequiresExplicitCustomBaseURL(t *testing.T) {
   t.Fatal("expected custom gateway without BaseURL to be rejected")
  }
 }
+
+
+func TestStoredConfigPersistsEveryBuiltInVendorDefault(t *testing.T) {
+ tests := []struct{ provider, endpoint string }{
+  {"openai","https://api.openai.com/v1"},
+  {"deepseek","https://api.deepseek.com"},
+  {"moonshot","https://api.moonshot.ai/v1"},
+  {"moonshot-cn","https://api.moonshot.cn/v1"},
+  {"zhipu","https://open.bigmodel.cn/api/paas/v4"},
+ }
+ for _, tt := range tests { t.Run(tt.provider,func(t *testing.T){
+  db:=configTestDB(t)
+  manager,err:=secret.New(t.TempDir())
+  if err!=nil{t.Fatal(err)}
+  input:=Config{Provider:tt.provider,Model:"test-model",APIKey:"test-api-key"}
+  if err:=SaveStoredConfig(context.Background(),db,"sqlite",input,30,true,manager.Encrypt);err!=nil{t.Fatal(err)}
+  loaded,enabled,err:=LoadStoredConfig(context.Background(),db,"sqlite",manager.Decrypt)
+  if err!=nil{t.Fatal(err)}
+  if !enabled||loaded.BaseURL!=tt.endpoint{t.Fatalf("persisted endpoint=%q enabled=%v; want %q and enabled",loaded.BaseURL,enabled,tt.endpoint)}
+ })}
+}
