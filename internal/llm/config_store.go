@@ -23,6 +23,7 @@ type StoredConfig struct {
 }
 
 type ConfigView struct {
+\tSupportPrompt string `json:"supportPrompt"`
 	Provider string `json:"provider"`
 	BaseURL string `json:"baseUrl"`
 	Model string `json:"model"`
