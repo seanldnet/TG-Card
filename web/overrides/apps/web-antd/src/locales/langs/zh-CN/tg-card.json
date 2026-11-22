@@ -989,7 +989,9 @@
     "verificationRecord": "核实记录",
     "verificationPlaceholder": "记录在供应商后台的查询结果、时间和依据",
     "supplierOrderIdPlaceholder": "填写供应商订单 ID",
-    "supplierOrderNoPlaceholder": "填写供应商订单号"
+    "supplierOrderNoPlaceholder": "填写供应商订单号",
+    "occurred": "发现时间",
+    "reason": "异常原因"
   },
   "redemptionCodes": {
     "loadFailed": "兑换码加载失败",
@@ -1096,6 +1098,8 @@
     "enabledStatus": "启用",
     "disabledStatus": "停用",
     "saveOne": "保存兑换码",
-    "explain": "兑换码与优惠券分开管理。兑换记录会保留用户、奖励类型和兑换时间；删除兑换码不会撤销已发放权益。"
+    "explain": "兑换码与优惠券分开管理。兑换记录会保留用户、奖励类型和兑换时间；删除兑换码不会撤销已发放权益。",
+    "leaveImmediate": "留空立即生效",
+    "leaveNoExpiry": "留空长期有效"
   }
 }
