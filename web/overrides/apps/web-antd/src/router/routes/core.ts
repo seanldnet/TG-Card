@@ -33,7 +33,7 @@ const coreRoutes: RouteRecordRaw[] = [
         name: 'Profile',
         path: 'profile',
         component: () => import('#/views/_core/profile/index.vue'),
-        meta: { hideInBreadcrumb: true, hideInMenu: true, title: '个人中心' },
+        meta: { hideInBreadcrumb: true, hideInMenu: true, title: $t('tg-card.navigation.profile') },
       },
     ],
   },
@@ -45,7 +45,7 @@ const coreRoutes: RouteRecordRaw[] = [
       hideInBreadcrumb: true,
       hideInMenu: true,
       hideInTab: true,
-      title: 'TG-Card 产品介绍',
+      title: $t('tg-card.navigation.intro'),
     },
   },
   {

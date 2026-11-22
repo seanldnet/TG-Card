@@ -99,7 +99,7 @@ async function loadCapConfig() {
     // Fail closed: the backend may still require a token even when the
     // public configuration or widget cannot be loaded.
     capEnabled.value = true;
-    capError.value = `人机验证初始化失败：${error instanceof Error ? error.message : String(error)}。请检查浏览器能否访问 cdn.jsdelivr.net，以及 Cap 服务地址和 Site Key 是否正确。`;
+    capError.value = $t('tg-card.login.capInitFailed', { reason: error instanceof Error ? error.message : String(error) });
     message.error(capError.value);
   } finally {
     capConfigLoaded.value = true;
@@ -108,11 +108,11 @@ async function loadCapConfig() {
 
 async function handleLogin(data: Record<string, any>) {
   if (!capConfigLoaded.value) {
-    message.warning('人机验证配置仍在加载，请稍后重试');
+    message.warning($t('tg-card.login.capLoading'));
     return;
   }
   if (capEnabled.value && !capToken.value) {
-    message.warning(capError.value || '请先完成人机验证');
+    message.warning(capError.value || $t('tg-card.login.capRequired'));
     return;
   }
 
@@ -133,7 +133,7 @@ async function handleLogin(data: Record<string, any>) {
 
   const secondFactor = recoveryMode.value ? data.totpRecoveryCode : data.totpCode;
   if (requirement.enabled && !String(secondFactor || '').trim()) {
-    message.info('已开启双重验证，请输入 6 位动态验证码');
+    message.info($t('tg-card.login.totpEnabled'));
     return;
   }
 
@@ -175,11 +175,11 @@ const formSchema = computed((): VbenFormSchema[] => [
         component: 'VbenInput',
         componentProps: {
           placeholder: recoveryMode.value
-            ? '请输入未使用的一次性恢复码'
-            : '已开启双重验证，请输入 6 位动态验证码',
+            ? $t('tg-card.login.recoveryPrompt')
+            : $t('tg-card.login.totpPrompt'),
         },
         fieldName: recoveryMode.value ? 'totpRecoveryCode' : 'totpCode',
-        label: recoveryMode.value ? '一次性恢复码' : '动态验证码',
+        label: recoveryMode.value ? $t('tg-card.login.recoveryLabel') : $t('tg-card.login.totpLabel'),
         rules: z.string().optional(),
       }]
     : []),
@@ -201,7 +201,7 @@ const formSchema = computed((): VbenFormSchema[] => [
           },
         },
         fieldName: 'capVerification',
-        label: '安全验证',
+        label: $t('tg-card.login.securityLabel'),
         rules: z.boolean().optional().default(false),
       }]
     : []),
@@ -224,7 +224,7 @@ const formSchema = computed((): VbenFormSchema[] => [
         class="text-sm text-primary hover:underline"
         @click="recoveryMode = !recoveryMode"
       >
-        {{ recoveryMode ? '返回输入动态验证码' : '无法使用验证器？使用一次性恢复码' }}
+        {{ recoveryMode ? $t('tg-card.login.backToTotp') : $t('tg-card.login.useRecovery') }}
       </button>
     </div>
   </div>

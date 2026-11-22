@@ -16,6 +16,7 @@ import { preferences, updatePreferences, usePreferences } from '@vben/preference
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { useWindowSize } from '@vueuse/core';
 
+import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 import { requestClient } from '#/api/request';
 import LoginForm from '#/views/_core/authentication/login.vue';
@@ -55,7 +56,7 @@ watch(
         ? {
             sidebarToggle: true,
             globalSearch: false,
-            languageToggle: false,
+            languageToggle: true,
             timezone: false,
             fullscreen: false,
             refresh: false,
@@ -84,7 +85,7 @@ const menus = computed(() => [
   {
     handler: () => router.push({ name: 'Profile' }),
     icon: 'lucide:user-round',
-    text: '个人中心',
+    text: $t('tg-card.navigation.profile'),
   },
 ]);
 
@@ -157,7 +158,7 @@ watch(
         :avatar="avatar"
         :menus="menus"
         :text="userStore.userInfo?.realName || userStore.userInfo?.username"
-        description="账户管理"
+        :description="$t('tg-card.navigation.accountManagement')"
         @clear-preferences-and-logout="handleLogout"
         @logout="handleLogout"
       />
