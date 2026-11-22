@@ -13,10 +13,10 @@ interface SiteSettings {
 }
 const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(false),passwordConfigured=ref(false),capSecretConfigured=ref(false),backupEncryptionKeyConfigured=ref(false),backupEncryptionKeySaving=ref(false),activeTab=ref('basic');
 const backupEncryptionPassphrase=ref('');
-type LLMSettings={provider:string;baseUrl:string;model:string;timeoutSeconds:number;enabled:boolean;apiKeyConfigured:boolean};
+type LLMSettings={provider:string;baseUrl:string;model:string;timeoutSeconds:number;enabled:boolean;apiKeyConfigured:boolean;supportPrompt:string};
 const llmLoading=ref(false),llmSaving=ref(false),llmKey=ref('');
-const llmForm=reactive({provider:'openai',baseUrl:'https://api.openai.com/v1',model:'gpt-4o-mini',timeoutSeconds:30,enabled:false});
-async function loadLLM(){llmLoading.value=true;try{const data=await requestClient.get<LLMSettings>('/settings/ai/llm');Object.assign(llmForm,{provider:data.provider||'openai',baseUrl:data.baseUrl||'https://api.openai.com/v1',model:data.model||'gpt-4o-mini',timeoutSeconds:data.timeoutSeconds||30,enabled:!!data.enabled});llmKey.value='';}catch{message.error('AI 模型配置加载失败');}finally{llmLoading.value=false;}}
+const llmForm=reactive({provider:'openai',baseUrl:'https://api.openai.com/v1',model:'gpt-4o-mini',timeoutSeconds:30,enabled:false,supportPrompt:''});
+async function loadLLM(){llmLoading.value=true;try{const data=await requestClient.get<LLMSettings>('/settings/ai/llm');Object.assign(llmForm,{provider:data.provider||'openai',baseUrl:data.baseUrl||'https://api.openai.com/v1',model:data.model||'gpt-4o-mini',timeoutSeconds:data.timeoutSeconds||30,enabled:!!data.enabled,supportPrompt:data.supportPrompt||''});llmKey.value='';}catch{message.error('AI 模型配置加载失败');}finally{llmLoading.value=false;}}
 async function saveLLM(){if(!llmForm.provider.trim()||!llmForm.baseUrl.trim()||!llmForm.model.trim()){message.warning('请填写供应商、API Base URL 和模型名称');return;}llmSaving.value=true;const payload={...llmForm,apiKey:llmKey.value};try{await withAdminActionConfirmation({actionKey:'settings.ai.llm.update',method:'PUT',path:'/api/settings/ai/llm',payload,run:(token)=>requestClient.put<LLMSettings>('/settings/ai/llm',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});llmKey.value='';await loadLLM();message.success('AI 模型配置已安全保存');}catch(error:any){message.error(error?.response?.data?.message||'保存 AI 模型配置失败');}finally{llmSaving.value=false;}}
 const {width}=useWindowSize();
 const isMobile=computed(()=>width.value<768);
@@ -142,7 +142,7 @@ onMounted(()=>{load();loadLLM();});
         <a-form-item label="模型名称"><a-input v-model:value="llmForm.model" placeholder="例如 gpt-4o-mini / deepseek-chat" /></a-form-item>
         <a-form-item label="API Key"><a-input-password v-model:value="llmKey" autocomplete="new-password" :placeholder="llmForm.apiKeyConfigured?'已加密保存，留空保持原密钥':'请输入模型 API Key'" /></a-form-item>
         <a-form-item label="请求超时（秒）"><a-input-number v-model:value="llmForm.timeoutSeconds" class="w-full" :min="1" :max="90" /></a-form-item>
-        <a-form-item label="启用 AI 模型"><a-switch v-model:checked="llmForm.enabled" /></a-form-item>
+        <a-form-item label="启用 AI 模型"><a-switch v-model:checked="llmForm.enabled" /></a-form-item>\n        <a-form-item label="AI 售后客服规则 / Prompt"><a-textarea v-model:value="llmForm.supportPrompt" :rows="6" :maxlength="3000" show-count placeholder="填写商品答疑范围、表达风格、常见问题处理指引。不要要求 AI 执行退款、补发或修改订单等操作。" /><div class="mt-1 text-xs text-gray-500">最多 3000 字；该规则作为模型指令附加在系统安全规则之后，不能覆盖退款、资金和人工转接限制。</div></a-form-item>
        </a-form>
        <a-space wrap>
         <a-button size="small" :loading="llmLoading" @click="loadLLM">重新加载</a-button>
@@ -151,7 +151,7 @@ onMounted(()=>{load();loadLLM();});
         <a-tag v-else color="warning">API Key 未配置</a-tag>
        </a-space>
       </a-spin>
-      <a-alert class="mt-4" type="warning" show-icon message="当前版本已完成模型配置与安全存储基础，但 AI 尚未接入买家售后对话，不会自动回复用户。请勿将启用开关理解为 AI 客服已上线。" />
+      <a-alert class="mt-4" type="warning" show-icon message="AI 已接入新建工单首条文字及后续纯文字消息。图片、文件仍由人工处理；退款、支付争议、人工请求、上下文读取失败或模型异常会转交人工。请先配置模型、验证 API Key 和客服规则，再启用。" />
      </div>
     </a-tab-pane>
     <a-tab-pane key="backup">
