@@ -121,7 +121,7 @@ onMounted(loadDashboard);
         <div class="text-xs text-gray-500">{{$t('tg-card.analytics.upstreamCatalogSync')}}</div>
         <div class="mt-1 text-lg font-semibold">{{ syncStatusText(metrics.upstreamSync.job?.status || metrics.upstreamSync.status) }}</div>
         <a-progress v-if="metrics.upstreamSync.job" class="mt-2" :percent="Math.round(metrics.upstreamSync.job.progressPercent)" :show-info="false"/>
-        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} {{$t('tg-card.analytics.syncProgressUnit')}} · {{$t('tg-card.analytics.syncPage')}} {{ metrics.upstreamSync.job.currentPage }} 页</div>
+        <div v-if="metrics.upstreamSync.job" class="mt-1 text-xs text-gray-500">{{ metrics.upstreamSync.job.processedItems }} / {{ metrics.upstreamSync.job.totalItems }} {{$t('tg-card.analytics.syncProgressUnit')}} · {{$t('tg-card.analytics.syncPage')}} {{ metrics.upstreamSync.job.currentPage }}</div>
         <div v-else class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.noActiveSync')}}</div>
       </a-card></a-col>
     </a-row>
@@ -145,7 +145,7 @@ onMounted(loadDashboard);
     <a-row :gutter="[12,12]">
       <a-col v-for="metric in [
         { title: $t('tg-card.analytics.bots'), value: bots.length, hint: $t('tg-card.analytics.runningBots', { count: activeBots }), path: '/bots', icon: 'mdi:robot-outline', tone: 'text-blue-600 bg-transparent' },
-        { title: '{{$t('tg-card.analytics.product')}}与库存', value: products.length, hint: `上架 ${activeProducts} 件 · 库存 ${stockCount}`, path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-blue-600 bg-transparent' },
+        { title: $t('tg-card.analytics.productsInventory'), value: products.length, hint: $t('tg-card.analytics.listedProducts', { count: activeProducts, stock: stockCount }), path: '/catalog', icon: 'mdi:package-variant-closed', tone: 'text-blue-600 bg-transparent' },
         { title: $t('tg-card.analytics.orders'), value: orders.length, hint: $t('tg-card.analytics.pendingOrders', { count: pendingOrders }), path: '/orders', icon: 'mdi:receipt-text-outline', tone: 'text-blue-600 bg-transparent' },
         { title: $t('tg-card.analytics.pendingSupport'), value: openTickets, hint: $t('tg-card.analytics.deliveryIssues', { count: deliveryIssues }), path: '/support', icon: 'mdi:headset', tone: 'text-blue-600 bg-transparent' },
       ]" :key="metric.path" :xs="12" :sm="12" :xl="6">
@@ -163,8 +163,8 @@ onMounted(loadDashboard);
       <a-row :gutter="[12,12]">
         <a-col v-for="item in [
           { title:$t('tg-card.analytics.botManagement'), desc:$t('tg-card.analytics.botDescription'), path:'/bots' },
-          { title:'{{$t('tg-card.analytics.product')}}与卡密', desc:'{{$t('tg-card.analytics.product')}}分类、售价、库存导入', path:'/catalog' },
-          { title:$t('tg-card.analytics.orderManagement'), desc:'订单{{$t('tg-card.analytics.status')}}与发货重试', path:'/orders' },
+          { title:$t('tg-card.analytics.catalog'), desc:$t('tg-card.analytics.catalogDescription'), path:'/catalog' },
+          { title:$t('tg-card.analytics.orderManagement'), desc:$t('tg-card.analytics.orderDescription'), path:'/orders' },
           { title:$t('tg-card.analytics.paymentTransactions'), desc:$t('tg-card.analytics.paymentDescription'), path:'/payments/transactions' },
           { title:$t('tg-card.analytics.supportTickets'), desc:$t('tg-card.analytics.supportDescription'), path:'/support' },
           { title:$t('tg-card.analytics.paymentSettings'), desc:$t('tg-card.analytics.paymentSettingsDescription'), path:'/settings/payment' },
