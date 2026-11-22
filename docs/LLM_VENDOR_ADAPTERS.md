@@ -33,7 +33,7 @@ Baseline: PR #140 AI support foundation branch. Keep the generic OpenAI-compatib
 - Context cancellation and timeout are respected.
 - Unknown provider IDs and invalid URLs are rejected.
 - Kimi .ai and .cn presets remain independent and are not auto-switched.
-- DeepSeek thinking on/off and effort serialization are tested.
+- DeepSeek thinking on/off and effort serialization are tested for explicit request configuration.
 - OpenAI max_completion_tokens capability selection is tested without sending deprecated max_tokens to reasoning models.
 
 ## Source references checked 2026-11-23
@@ -58,9 +58,9 @@ Initial code implementation is now present on the PR #141 branch:
 
 Still incomplete and not claimed as production-ready:
 
-- DeepSeek thinking-mode controls/effort and model-specific parameter compatibility.
+- DeepSeek thinking-mode enable/disable and reasoning-effort request fields are implemented; exact availability remains model/API-version dependent and must be verified against the selected model.
 - Model capability metadata for OpenAI token-limit selection; the current OpenAI behavior uses the modern field uniformly.
-- Vendor-specific response/finish-reason normalization and reasoning-content exclusion tests.
+- Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
 - Full timeout, cancellation, malformed/oversized response, and error mapping contract matrix per vendor.
 - Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
 
