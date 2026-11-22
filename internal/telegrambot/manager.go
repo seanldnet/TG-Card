@@ -1364,30 +1364,30 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已订阅到货通知")
 		_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"🔔 已为你开启该商品的到货通知。商品补货后，我会第一时间私聊提醒你。",map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"返回商城","callback_data":"shop:home"}}}})
 	case query.Data == "cart:show":
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在打开购物车")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.opening"))
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case strings.HasPrefix(query.Data,"cart:add:"):
 		productID:=strings.TrimPrefix(query.Data,"cart:add:")
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在加入购物车")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.adding"))
 		err:=database.AddCartItem(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10),productID,1)
-		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"加入购物车失败："+err.Error());return }
+		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.add_error")++err.Error());return }
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case strings.HasPrefix(query.Data,"cart:inc:") || strings.HasPrefix(query.Data,"cart:dec:") || strings.HasPrefix(query.Data,"cart:remove:"):
 		parts:=strings.SplitN(query.Data,":",3)
-		if len(parts)!=3 { _ = m.answerCallback(ctx,cfg.Token,query.ID,"购物车操作无效");return }
+		if len(parts)!=3 { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.invalid_action"));return }
 		userID:=strconv.FormatInt(query.From.ID,10)
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在更新购物车")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.updating"))
 		var err error
 		switch parts[1] {
 		case "inc": err=database.AdjustCartItemQuantity(ctx,m.db,m.driver,cfg.ID,userID,parts[2],1)
 		case "dec": err=database.AdjustCartItemQuantity(ctx,m.db,m.driver,cfg.ID,userID,parts[2],-1)
 		case "remove": err=database.RemoveCartItem(ctx,m.db,m.driver,cfg.ID,userID,parts[2])
 		}
-		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"购物车更新失败："+err.Error());return }
+		if err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.update_error")++err.Error());return }
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "cart:clear":
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在清空购物车")
-		if err:=database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"清空购物车失败："+err.Error());return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(m.languageForUser(ctx,cfg,query.From),"cart.clearing"))
+		if err:=database.ClearCart(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(query.From.ID,10));err!=nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(m.languageForUser(ctx,cfg,query.From),"cart.clear_error")++err.Error());return }
 		m.showCart(ctx,cfg,chatID,query.From.ID)
 	case query.Data == "cart:checkout":
 		m.createCartCheckout(ctx,cfg,query,chatID)
