@@ -61,6 +61,7 @@ Still incomplete and not claimed as production-ready:
 - DeepSeek thinking-mode enable/disable and reasoning-effort request fields are implemented; exact availability remains model/API-version dependent and must be verified against the selected model.
 - Model capability metadata for OpenAI token-limit selection; the current OpenAI behavior uses the modern field uniformly.
 - Vendor-specific response/finish-reason normalization remains partial; non-stop finish reasons now fail closed, and tests verify reasoning_content is not returned as customer-facing text.
+- HTTP failures now expose a stable `ProviderError` classification (`auth_failed`, `rate_limited`, `invalid_request`, `upstream_error`, `unexpected_status`) plus a retryable flag. The raw vendor error body is never included in the returned error. `ProviderError` remains compatible with `errors.Is(err, ErrProviderResponse)`.
 - Full timeout, cancellation, malformed/oversized response, and error mapping contract matrix per vendor.
 - Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
 
