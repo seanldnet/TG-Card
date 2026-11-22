@@ -92,7 +92,7 @@ onMounted(loadTickets);
      <div class="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-gray-100 p-3">
       <div v-if="timeline.length===0" class="py-4 text-center text-xs text-gray-400">暂无历史沟通记录</div>
       <div v-for="entry in timeline" :key="entry.id" class="rounded-md bg-gray-50 p-3 text-sm">
-       <div class="mb-1 flex justify-between gap-2 text-xs text-gray-500"><span>{{entry.senderType==='admin'?'管理员':entry.senderType==='system'?'系统':'用户'}} · {{entry.senderId}}</span><span>{{formatTime(entry.createdAt)}}</span></div>
+       <div class="mb-1 flex justify-between gap-2 text-xs text-gray-500"><span>{{entry.senderType==='system'&&entry.senderId==='ai-assistant'?'AI 客服':entry.senderType==='admin'?'管理员':entry.senderType==='system'?'系统':'用户'}} · {{entry.senderId}}</span><span>{{formatTime(entry.createdAt)}}</span></div>
        <div v-if="entry.message" class="whitespace-pre-wrap break-words">{{entry.message}}</div>
        <div v-if="entry.attachmentFileId" class="mt-2 text-xs text-gray-500">{{entry.attachmentName?.toLowerCase().includes('图片')?'[图片]':'[文件]'}} 附件请通过机器人查看</div>
       </div>
