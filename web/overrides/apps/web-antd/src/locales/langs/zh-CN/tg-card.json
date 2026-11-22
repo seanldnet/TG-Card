@@ -1101,5 +1101,26 @@
     "explain": "兑换码与优惠券分开管理。兑换记录会保留用户、奖励类型和兑换时间；删除兑换码不会撤销已发放权益。",
     "leaveImmediate": "留空立即生效",
     "leaveNoExpiry": "留空长期有效"
+  },
+  "dashboard": {
+    "workspaceTitle": "运营工作台",
+    "workspaceSubtitle": "集中查看需要处理的业务事项，点击卡片直接进入对应页面",
+    "refreshTasks": "刷新待办",
+    "taskDelivery": "待处理发货",
+    "taskDeliveryDesc": "付款完成或发货失败，需要检查并处理",
+    "taskSupport": "待处理售后",
+    "taskSupportDesc": "用户提交的售后请求，及时回复可减少纠纷",
+    "taskPayment": "待付款订单",
+    "taskPaymentDesc": "正在等待用户完成付款的订单",
+    "taskStock": "缺货商品",
+    "taskStockDesc": "已上架但没有可售卡密的商品",
+    "openTask": "前往处理",
+    "commonActions": "常用操作",
+    "botManagement": "机器人管理",
+    "catalogStock": "商品与库存",
+    "paymentTransactions": "支付流水",
+    "websiteSettings": "网站设置",
+    "loadFailed": "运营数据加载失败，请检查登录状态",
+    "partialLoad": "部分数据暂时无法读取"
   }
 }
