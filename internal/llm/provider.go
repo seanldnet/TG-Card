@@ -19,6 +19,40 @@ var (
 	ErrProviderResponse = errors.New("invalid LLM provider response")
 )
 
+type ProviderError struct {
+	StatusCode int
+	Code string
+	Retryable bool
+}
+
+func (e *ProviderError) Error() string {
+	return fmt.Sprintf("LLM provider request failed: %s (HTTP %d)", e.Code, e.StatusCode)
+}
+
+func (e *ProviderError) Unwrap() error { return ErrProviderResponse }
+
+func classifyProviderStatus(status int) *ProviderError {
+	e := &ProviderError{StatusCode: status, Code: "unexpected_status"}
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		e.Code = "auth_failed"
+	case http.StatusTooManyRequests:
+		e.Code, e.Retryable = "rate_limited", true
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		e.Code = "invalid_request"
+	case http.StatusRequestTimeout, http.StatusTooEarly:
+		e.Retryable = true
+	default:
+		if status >= 500 && status <= 599 {
+			e.Code, e.Retryable = "upstream_error", true
+		}
+	}
+	return e
+}
+
+var (
+)
+
 type Config struct {
 	Provider string
 	BaseURL string
@@ -130,7 +164,7 @@ func (p *OpenAICompatibleProvider) Complete(ctx context.Context, input Completio
 	if int64(len(data)) > p.config.MaxResponseBytes { return "", fmt.Errorf("%w: response too large", ErrProviderResponse) }
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Do not include provider response bodies: they may echo sensitive data.
-		return "", fmt.Errorf("LLM provider returned HTTP %d", resp.StatusCode)
+		return "", classifyProviderStatus(resp.StatusCode)
 	}
 	var result struct {
 		Choices []struct {
