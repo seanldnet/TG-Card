@@ -1632,7 +1632,8 @@ func (m *Manager) SendWalletRechargeNotice(ctx context.Context,item database.Wal
 	return m.sendMessage(ctx,current.config.Token,chatID,text)
 }
 
-func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatID,userID int64,amountAtomic int64) {\n\tlanguage:=m.languageForUser(ctx,cfg,TelegramUser{ID:userID})
+func (m *Manager) sendWalletRechargeInvoice(ctx context.Context,cfg Config,chatID,userID int64,amountAtomic int64) {
+	language:=m.languageForUser(ctx,cfg,TelegramUser{ID:userID})
 	address,enabled:=m.paymentConfig()
 	if !enabled || address=="" { _ = m.sendMessage(ctx,cfg.Token,chatID,"充值功能暂未启用，请联系管理员。");return }
 	item,err:=database.CreateWalletRecharge(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(userID,10),strconv.FormatInt(chatID,10),amountAtomic,30*time.Minute)
