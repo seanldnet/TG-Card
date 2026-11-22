@@ -1,7 +1,8 @@
 {
   "navigation": {
     "profile": "Profile",
-    "intro": "TG-Card overview"
+    "intro": "TG-Card overview",
+    "accountManagement": "Account management"
   },
   "login": {
     "capInitFailed": "Human verification failed to initialize: {reason}. Check access to cdn.jsdelivr.net and verify the Cap service URL and Site Key.",
@@ -113,7 +114,9 @@
     "payerAddress": "Payer address",
     "platformAddress": "Platform receiving address",
     "txHash": "On-chain transaction hash",
-    "viewTronscan": "View on Tronscan"
+    "viewTronscan": "View on Tronscan",
+    "manualVerifyTooltip": "The one-time invite result is uncertain. Do not recreate it automatically; verify and handle it manually.",
+    "uncertainStepTooltip": "This delivery includes an external step that may have succeeded. Full-order retry is blocked; verify and handle it manually."
   },
   "support": {
     "ai": {
@@ -203,7 +206,8 @@
     "notSet": "Not set",
     "statusField": "Ticket status",
     "replyLabel": "Reply to customer",
-    "replyPlaceholder": "The reply is saved to the timeline and sent to the customer via the original Telegram bot"
+    "replyPlaceholder": "The reply is saved to the timeline and sent to the customer via the original Telegram bot",
+    "resendShort": "Resend"
   },
   "users": {
     "loadFailed": "Failed to load users",
