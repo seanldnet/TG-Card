@@ -99,3 +99,18 @@ func TestOwnerMenuTranslations(t *testing.T) {
 	if !ok || len(rows) != 6 { t.Fatalf("unexpected English owner menu: %#v", markup) }
 	if got := rows[0][0]["text"]; got != "📊 Business overview" { t.Fatalf("English owner menu first label = %q", got) }
 }
+
+func TestDetectLanguageUsesPerBotDefault(t *testing.T) {
+	for _, tc := range []struct{ telegram, fallback, want string }{
+		{"en-US", "zh", languageEnglish},
+		{"zh-CN", "en", languageChinese},
+		{"fr-FR", "en", languageEnglish},
+		{"fr-FR", "zh", languageChinese},
+		{"", "en", languageEnglish},
+		{"fr-FR", "", languageChinese},
+	} {
+		if got := detectLanguageWithDefault(tc.telegram, tc.fallback); got != tc.want {
+			t.Errorf("detectLanguageWithDefault(%q, %q) = %q, want %q", tc.telegram, tc.fallback, got, tc.want)
+		}
+	}
+}
