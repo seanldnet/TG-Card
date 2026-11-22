@@ -607,7 +607,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		if msg.Document != nil { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到文件："+msg.Document.FileName+"\nTelegram file_id：\n"+msg.Document.FileID) } else { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"已收到图片，可在 Telegram file_id 中查看凭证。\n"+msg.Photo[len(msg.Photo)-1].FileID) }
 		return
 	}
-	text := strings.TrimSpace(msg.Text)
+	text := canonicalReplyKeyboardText(strings.TrimSpace(msg.Text))
 	if text == "" { return }
 	if text == "/language" || text == "/lang" || text == "🌐 语言 / Language" {
 		language := m.languageForUser(ctx, cfg, *msg.From)
@@ -947,12 +947,40 @@ func ownerMenuKeyboard() map[string]any { return map[string]any{"inline_keyboard
 	{{"text":"⛔ 关闭待付款订单","callback_data":"owner:closeorder"}},
 	{{"text":"⬅️ 返回个人首页","callback_data":"owner:back"}},
 }}}
-func mainReplyKeyboard(isOwner bool) map[string]any { rows:=[][]map[string]string{
-	{{"text":"🛍️ 商品中心"},{"text":"🔎 搜索商品"}},
-	{{"text":"📦 我的订单"},{"text":"💳 我的余额"}},
-	{{"text":"💰 余额充值"},{"text":"🧾 申请售后"}},
-	{{"text":"❓ 使用帮助"},{"text":"🏠 主菜单"}},
-};if isOwner { rows=append(rows,[]map[string]string{{"text":"🛠️ 主人管理"},{"text":"🧾 待处理工单"}}) };return map[string]any{"keyboard":rows,"resize_keyboard":true,"is_persistent":true,"input_field_placeholder":"选择菜单功能"} }
+func mainReplyKeyboard(isOwner bool) map[string]any {
+	return mainReplyKeyboardForLanguage(isOwner, languageChinese)
+}
+
+func mainReplyKeyboardForLanguage(isOwner bool, language string) map[string]any {
+	rows := [][]map[string]string{
+		{{"text": botText(language, "menu.shop")}, {"text": botText(language, "menu.search")}},
+		{{"text": botText(language, "menu.orders")}, {"text": botText(language, "menu.balance")}},
+		{{"text": botText(language, "menu.recharge")}, {"text": botText(language, "menu.support")}},
+		{{"text": botText(language, "menu.help")}, {"text": botText(language, "menu.home")}},
+	}
+	if isOwner {
+		rows = append(rows, []map[string]string{{"text": "🛠️ 主人管理"}, {"text": "🧾 待处理工单"}})
+	}
+	placeholder := "选择菜单功能"
+	if normalizeLanguage(language) == languageEnglish {
+		placeholder = "Choose a menu action"
+	}
+	return map[string]any{"keyboard": rows, "resize_keyboard": true, "is_persistent": true, "input_field_placeholder": placeholder}
+}
+
+func canonicalReplyKeyboardText(value string) string {
+	switch strings.TrimSpace(value) {
+	case "🛍️ Store": return "🛍️ 商品中心"
+	case "🔎 Search products": return "🔎 搜索商品"
+	case "📦 My orders": return "📦 我的订单"
+	case "💳 My balance": return "💳 我的余额"
+	case "💰 Top up": return "💰 余额充值"
+	case "🧾 Support": return "🧾 申请售后"
+	case "❓ Help": return "❓ 使用帮助"
+	case "🏠 Main menu": return "🏠 主菜单"
+	default: return value
+	}
+}
 func shopBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"⬅️ 返回商城","callback_data":"shop:home"}}}} }
 func supportBackKeyboard() map[string]any { return map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"📦 我的订单","callback_data":"menu:orders"}},{{"text":"返回商城","callback_data":"shop:home"}}}} }
 func mainMenuKeyboard() map[string]any { return mainMenuKeyboardForLanguage(languageChinese) }
@@ -1001,7 +1029,7 @@ func (m *Manager) showStartHome(ctx context.Context, cfg Config, chatID int64, u
 		log.Printf("send Telegram welcome card with inline menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
 		return
 	}
-	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "home.persistent_menu"), mainReplyKeyboard(isOwner)); err != nil {
+	if err := m.sendMessageMarkup(ctx, cfg.Token, chatID, botText(language, "home.persistent_menu"), mainReplyKeyboardForLanguage(isOwner, language)); err != nil {
 		log.Printf("send Telegram persistent reply menu failed: bot_id=%s chat_id=%d error=%v", cfg.ID, chatID, err)
 	}
 }
