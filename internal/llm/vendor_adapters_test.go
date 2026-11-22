@@ -194,7 +194,8 @@ func TestProviderHTTPFailuresAreClassifiedWithoutLeakingBody(t *testing.T) {
 		{http.StatusTooManyRequests, "rate_limited", true},
 		{http.StatusBadRequest, "invalid_request", false},
 		{http.StatusUnprocessableEntity, "invalid_request", false},
-		{http.StatusRequestTimeout, "unexpected_status", true},
+		{http.StatusRequestTimeout, "request_timeout", true},
+		{http.StatusTooEarly, "upstream_busy", true},
 		{http.StatusBadGateway, "upstream_error", true},
 		{http.StatusServiceUnavailable, "upstream_error", true},
 		{http.StatusNotFound, "unexpected_status", false},
@@ -260,6 +261,53 @@ func TestOpenAIRejectsUnknownTokenLimitParameter(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	_, err = provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
 	if !errors.Is(err, ErrInvalidConfig) { t.Fatalf("expected invalid config, got %v", err) }
+}
+
+
+func TestCompleteRejectsMalformedAndEmptyProviderResponses(t *testing.T) {
+ tests := []struct { name, body string }{
+  {"empty body", ""},
+  {"malformed JSON", "{not-json"},
+  {"missing choices", `{"id":"x"}`},
+  {"empty choices", `{"choices":[]}`},
+  {"missing message", `{"choices":[{}]}`},
+  {"empty content", `{"choices":[{"message":{"content":"  "}}]}`},
+ }
+ for _, tt := range tests { t.Run(tt.name, func(t *testing.T) {
+  server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+   w.Header().Set("Content-Type", "application/json")
+   _, _ = w.Write([]byte(tt.body))
+  }))
+  defer server.Close()
+  provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
+  if err != nil { t.Fatal(err) }
+  if answer, err := provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}}); err == nil || answer != "" {
+   t.Fatalf("expected fail-closed response, got answer=%q err=%v",answer,err)
+  }
+ }) }
+}
+
+func TestCompleteRejectsOversizedProviderResponse(t *testing.T) {
+ server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  w.Header().Set("Content-Type", "application/json")
+  _, _ = w.Write([]byte(`{"choices":[{"message":{"content":"`+strings.Repeat("x",4096)+`"}}]}`))
+ }))
+ defer server.Close()
+ provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",MaxResponseBytes:256})
+ if err != nil { t.Fatal(err) }
+ _, err = provider.Complete(context.Background(),CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+ if !errors.Is(err,ErrProviderResponse) { t.Fatalf("expected oversized response to fail with ErrProviderResponse, got %v",err) }
+}
+
+func TestCompleteRejectsUnexpectedHTTPStatusWithoutParsingBody(t *testing.T) {
+ server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  w.WriteHeader(http.StatusNoContent)
+ }))
+ defer server.Close()
+ provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model"})
+ if err != nil { t.Fatal(err) }
+ _, err = provider.Complete(context.Background(),CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
+ if !errors.Is(err,ErrProviderResponse) { t.Fatalf("expected empty 204 response to fail, got %v",err) }
 }
 
 func TestCompleteHonorsContextCancellation(t *testing.T) {
