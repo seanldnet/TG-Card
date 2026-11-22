@@ -99,7 +99,7 @@ onMounted(load);
   </a-card>
   <a-modal v-model:open="modalOpen" :title="$t('tg-card.systemExceptions.modalTitle')" :confirm-loading="saving" @ok="save">
    <template v-if="selected">
-    <div class="mb-3 rounded-lg bg-gray-50 p-3"><div class="font-medium">{{selected.title}}</div><div class="mt-2 whitespace-pre-wrap break-words text-xs text-gray-600">{{selected.detail}}</div><div class="mt-2 text-xs text-gray-400">来源：{{sourceLabel(selected.sourceKey)}} · 发生时间：{{selected.createdAt}}</div></div>
+    <div class="mb-3 rounded-lg bg-gray-50 p-3"><div class="font-medium">{{selected.title}}</div><div class="mt-2 whitespace-pre-wrap break-words text-xs text-gray-600">{{selected.detail}}</div><div class="mt-2 text-xs text-gray-400">{{$t('tg-card.systemExceptions.source')}}{{sourceLabel(selected.sourceKey)}} · {{$t('tg-card.systemExceptions.occurred')}}{{selected.createdAt}}</div></div>
     <a-form-item :label="$t('tg-card.systemExceptions.processingStatus')"><a-select v-model:value="nextStatus"><a-select-option value="processing">{{$t('tg-card.systemExceptions.processingButton')}}</a-select-option><a-select-option value="resolved">{{$t('tg-card.systemExceptions.status.resolved')}}</a-select-option><a-select-option value="ignored">{{$t('tg-card.systemExceptions.ignore')}}</a-select-option></a-select></a-form-item>
     <a-form-item :label="$t('tg-card.systemExceptions.note')"><a-textarea v-model:value="note" :rows="4" :maxlength="2000" show-count :placeholder="$t('tg-card.systemExceptions.notePlaceholder')"/></a-form-item>
    </template>
