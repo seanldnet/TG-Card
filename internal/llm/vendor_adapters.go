@@ -42,6 +42,14 @@ func normalizeVendor(value string) string {
 // A blank BaseURL uses the documented default for that vendor.
 func NewVendorProvider(config Config) (*OpenAICompatibleProvider, error) {
 	id := normalizeVendor(config.Provider)
+	if id == "custom" {
+		// Custom OpenAI-compatible gateways require an explicit HTTPS BaseURL.
+		config.Provider = id
+		if strings.TrimSpace(config.BaseURL) == "" {
+			return nil, ErrInvalidConfig
+		}
+		return NewOpenAICompatible(config)
+	}
 	for _, vendor := range SupportedVendors() {
 		if vendor.ID == id {
 			config.Provider = id
