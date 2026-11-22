@@ -46,6 +46,22 @@ Baseline: PR #140 AI support foundation branch. Keep the generic OpenAI-compatib
 - Zhipu GLM API examples: https://docs.bigmodel.cn/cn/best-practice/case/ai-search-engine
 - Zhipu Assistant API reference (legacy/deprecated; not to be used for this integration): https://docs.bigmodel.cn/api-reference/助手-api/助手对话
 
-## Delivery status
+## Delivery status (updated 2026-11-23)
 
-This document defines the vendor adapter contract only. Code adapters, automated tests, live vendor credentials/integration, CI, and production release remain pending until separately implemented and verified.
+Initial code implementation is now present on the PR #141 branch:
+
+- Added a vendor registry for OpenAI, DeepSeek, Moonshot Kimi international (`.ai`) and mainland China (`.cn`), and Zhipu GLM.
+- Added provider selection through `NewVendorProvider`; unsupported vendor IDs fail closed.
+- Added explicit token-limit serialization: OpenAI uses `max_completion_tokens`; DeepSeek, Kimi and Zhipu use `max_tokens`.
+- Routed the Telegram AI support path through the vendor registry.
+- Added mock contract tests for vendor token fields, aliases, regional Kimi presets and unknown-vendor rejection.
+
+Still incomplete and not claimed as production-ready:
+
+- DeepSeek thinking-mode controls/effort and model-specific parameter compatibility.
+- Model capability metadata for OpenAI token-limit selection; the current OpenAI behavior uses the modern field uniformly.
+- Vendor-specific response/finish-reason normalization and reasoning-content exclusion tests.
+- Full timeout, cancellation, malformed/oversized response, and error mapping contract matrix per vendor.
+- Real API integration with operator-provided credentials, CI verification, merge, release and production deployment.
+
+This is a partial implementation, not four fully completed vendor adapters. Existing generic HTTPS, timeout, response-size and secret-redaction safeguards remain in the shared transport.
