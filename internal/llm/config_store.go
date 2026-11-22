@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-const configSettingKey = "ai_support_llm_config"\nconst supportPromptSettingKey = "ai_support_operator_prompt"
+const configSettingKey = "ai_support_llm_config"
+const supportPromptSettingKey = "ai_support_operator_prompt"
 
 type StoredConfig struct {
 	Provider string `json:"provider"`
@@ -101,7 +102,8 @@ func LoadConfigView(ctx context.Context, db *sql.DB, driver string) (ConfigView,
 	return ConfigView{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, TimeoutSeconds:stored.TimeoutSeconds, Enabled:stored.Enabled, APIKeyConfigured:stored.APIKeyCiphertext != ""}, nil
 }
 
-\n// SaveSupportPrompt stores the operator-authored AI support guidance separately from provider credentials.
+
+// SaveSupportPrompt stores the operator-authored AI support guidance separately from provider credentials.
 func SaveSupportPrompt(ctx context.Context, db *sql.DB, driver, prompt string) error {
  if db == nil { return errors.New("LLM config storage is unavailable") }
  prompt = strings.TrimSpace(prompt)
