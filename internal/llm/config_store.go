@@ -37,6 +37,17 @@ type ConfigView struct {
 type SecretEncrypt func(string) (string, error)
 type SecretDecrypt func(string) (string, error)
 
+func normalizeTokenLimitParameter(value string) (string, error) {
+ value = strings.ToLower(strings.TrimSpace(value))
+ if value == "" { return "auto", nil }
+ switch value {
+ case "auto", "max_completion_tokens", "max_tokens":
+  return value, nil
+ default:
+  return "", ErrInvalidConfig
+ }
+}
+
 func settingPlaceholder(driver string, index int) string {
 	if driver == "postgres" { return fmt.Sprintf("$%d", index) }
 	return "?"
@@ -50,9 +61,9 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 	input.Provider = strings.TrimSpace(input.Provider)
 	input.BaseURL = strings.TrimRight(strings.TrimSpace(input.BaseURL), "/")
 	input.Model = strings.TrimSpace(input.Model)
-	input.TokenLimitParameter = strings.ToLower(strings.TrimSpace(input.TokenLimitParameter))
-	if input.TokenLimitParameter == "" { input.TokenLimitParameter = "auto" }
-	if input.TokenLimitParameter != "auto" && input.TokenLimitParameter != "max_completion_tokens" && input.TokenLimitParameter != "max_tokens" { return ErrInvalidConfig }
+	var tokenParameterErr error
+	input.TokenLimitParameter, tokenParameterErr = normalizeTokenLimitParameter(input.TokenLimitParameter)
+	if tokenParameterErr != nil { return tokenParameterErr }
 	input.APIKey = strings.TrimSpace(input.APIKey)
 	if input.Provider == "" || input.BaseURL == "" || input.Model == "" {
 		return ErrInvalidConfig
@@ -92,9 +103,11 @@ func LoadStoredConfig(ctx context.Context, db *sql.DB, driver string, decrypt Se
 	var stored StoredConfig
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil { return Config{}, false, fmt.Errorf("decode saved LLM config: %w", err) }
 	if stored.APIKeyCiphertext == "" { return Config{}, false, ErrNotConfigured }
+	tokenParameter, err := normalizeTokenLimitParameter(stored.TokenLimitParameter)
+	if err != nil { return Config{}, false, fmt.Errorf("decode saved LLM token-limit parameter: %w", err) }
 	key, err := decrypt(stored.APIKeyCiphertext)
 	if err != nil { return Config{}, false, fmt.Errorf("decrypt saved LLM API key: %w", err) }
-	return Config{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, APIKey:key, Timeout:time.Duration(stored.TimeoutSeconds)*time.Second, TokenLimitParameter:stored.TokenLimitParameter}, stored.Enabled, nil
+	return Config{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, APIKey:key, Timeout:time.Duration(stored.TimeoutSeconds)*time.Second, TokenLimitParameter:tokenParameter}, stored.Enabled, nil
 }
 
 func LoadConfigView(ctx context.Context, db *sql.DB, driver string) (ConfigView, error) {
@@ -105,7 +118,9 @@ func LoadConfigView(ctx context.Context, db *sql.DB, driver string) (ConfigView,
 	if err != nil { return ConfigView{}, err }
 	var stored StoredConfig
 	if err := json.Unmarshal([]byte(raw), &stored); err != nil { return ConfigView{}, fmt.Errorf("decode saved LLM config: %w", err) }
-	return ConfigView{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, TimeoutSeconds:stored.TimeoutSeconds, TokenLimitParameter:stored.TokenLimitParameter, Enabled:stored.Enabled, APIKeyConfigured:stored.APIKeyCiphertext != ""}, nil
+	tokenParameter, err := normalizeTokenLimitParameter(stored.TokenLimitParameter)
+	if err != nil { return ConfigView{}, fmt.Errorf("decode saved LLM token-limit parameter: %w", err) }
+	return ConfigView{Provider:stored.Provider, BaseURL:stored.BaseURL, Model:stored.Model, TimeoutSeconds:stored.TimeoutSeconds, TokenLimitParameter:tokenParameter, Enabled:stored.Enabled, APIKeyConfigured:stored.APIKeyCiphertext != ""}, nil
 }
 
 
