@@ -202,35 +202,35 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
    <a-form layout="vertical">
     <a-form-item :label="$t('tg-card.upstream.supplierType')">
      <a-select v-model:value="settings.provider" disabled>
-      <a-select-option value="dujiao_next">Dujiao-Next（官方 Open API）</a-select-option>
+      <a-select-option value="dujiao_next">{{$t('tg-card.upstream.supplierType')}}</a-select-option>
      </a-select>
     </a-form-item>
     <a-form-item :label="$t('tg-card.upstream.siteAddress')" :extra="$t('tg-card.upstream.siteAddressExtra')">
      <a-input v-model:value="settings.baseUrl" placeholder="https://supplier.example.com" autocomplete="url"/>
     </a-form-item>
-    <a-form-item :label="$t('tg-card.upstream.merchantKey')" :extra="settings.merchantIdConfigured?'已保存凭证：'+settings.merchantIdMasked+'；留空表示保持原值。':'对应 Dujiao-Next API Key。'">
+    <a-form-item :label="$t('tg-card.upstream.merchantKey')" :extra="settings.merchantIdConfigured?$t('tg-card.upstream.merchantKeySaved',{masked:settings.merchantIdMasked}):$t('tg-card.upstream.merchantKeyExtra')">
      <a-input v-model:value="merchantId" autocomplete="off" :placeholder="$t('tg-card.upstream.merchantKeyPlaceholder')"/>
     </a-form-item>
-    <a-form-item :label="$t('tg-card.upstream.merchantSecret')" :extra="settings.merchantSecretConfigured?'密钥已加密保存且不会回显；留空表示保持原密钥。':'对应 Dujiao-Next API Secret，将使用 AES-256-GCM 加密保存。'">
+    <a-form-item :label="$t('tg-card.upstream.merchantSecret')" :extra="settings.merchantSecretConfigured?$t('tg-card.upstream.secretSaved'):$t('tg-card.upstream.secretExtra')">
      <a-input-password v-model:value="merchantSecret" autocomplete="new-password" :placeholder="$t('tg-card.upstream.secretPlaceholder')"/>
     </a-form-item>
     <a-form-item v-if="settings.merchantIdConfigured||settings.merchantSecretConfigured" :label="$t('tg-card.upstream.credentials')">
-     <a-checkbox v-model:checked="clearCredentials">清除已保存的 API Key 和 API Secret</a-checkbox>
+     <a-checkbox v-model:checked="clearCredentials">{{$t('tg-card.upstream.clearCredentials')}}</a-checkbox>
     </a-form-item>
     <a-divider/>
     <a-form-item :label="$t('tg-card.upstream.markup')">
      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <div><div class="mb-1 text-xs text-gray-500">百分比加价</div><a-input-number v-model:value="settings.markupPercent" class="w-full" :min="0" :max="1000" :step="1" addon-after="%"/></div>
-      <div><div class="mb-1 text-xs text-gray-500">固定加价（USDT 分）</div><a-input-number v-model:value="settings.markupFixedMinor" class="w-full" :min="0" :max="9000000000000" :step="1"/></div>
+      <div><div class="mb-1 text-xs text-gray-500">{{$t('tg-card.upstream.markupPercent')}}</div><a-input-number v-model:value="settings.markupPercent" class="w-full" :min="0" :max="1000" :step="1" addon-after="%"/></div>
+      <div><div class="mb-1 text-xs text-gray-500">{{$t('tg-card.upstream.markupFixed')}}</div><a-input-number v-model:value="settings.markupFixedMinor" class="w-full" :min="0" :max="9000000000000" :step="1"/></div>
      </div>
-     <div class="mt-2 text-xs text-gray-500">最终售价 = 上游 SKU 原价 × 汇率转 USDT ×（1 + 百分比）+ 固定加价。固定加价以 0.01 USDT 为单位；价格按分四舍五入。</div>
+     <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.upstream.pricingFormula')}}</div>
     </a-form-item>
     <a-form-item :label="$t('tg-card.upstream.exchangeRate')" extra="填写 1 单位上游币种可兑换多少 USDT。例如上游为 CNY 时可填 7.20；上游币种为 USDT 时自动按 1 计算。非 USDT 币种未配置汇率将拒绝同步，避免错误定价。">
      <a-input-number v-model:value="settings.exchangeRateToUSDT" class="w-full" :min="0" :max="1000000" :step="0.01" :placeholder="$t('tg-card.upstream.exchangeRatePlaceholder')"/>
     </a-form-item>
     <a-form-item :label="$t('tg-card.upstream.syncInterval')">
      <a-select v-model:value="settings.syncIntervalMinutes" class="w-full">
-      <a-select-option :value="5">每 5 分钟</a-select-option><a-select-option :value="15">每 15 分钟</a-select-option><a-select-option :value="30">每 30 分钟</a-select-option><a-select-option :value="60">每小时</a-select-option><a-select-option :value="360">每 6 小时</a-select-option><a-select-option :value="1440">每天</a-select-option>
+      <a-select-option :value="5">{{$t('tg-card.upstream.minutes5')}}</a-select-option><a-select-option :value="15">{{$t('tg-card.upstream.minutes15')}}</a-select-option><a-select-option :value="30">{{$t('tg-card.upstream.minutes30')}}</a-select-option><a-select-option :value="60">{{$t('tg-card.upstream.hour1')}}</a-select-option><a-select-option :value="360">{{$t('tg-card.upstream.hours6')}}</a-select-option><a-select-option :value="1440">{{$t('tg-card.upstream.daily')}}</a-select-option>
      </a-select>
     </a-form-item>
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -240,7 +240,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
     <a-form-item :label="$t('tg-card.upstream.enableSelling')">
      <div class="flex flex-wrap items-center gap-3">
       <a-switch v-model:checked="settings.enabled"  :disabled="settings.enabled||settings.catalogStale||settings.syncStatus!=='success'"/>
-      <span class="text-sm text-gray-500">先保存凭证并成功同步一次后才能启用；上游售卖启用期间不能直接修改站点、凭证或价格策略；请先停用并清除上游目录，再修改配置、重新同步后启用。启用后 Bot 只展示上游目录；停用操作会先切回本地商品，再清除上游目录和图片，历史订单与资金流水保留。</span>
+      <span class="text-sm text-gray-500">{{$t('tg-card.upstream.enableRules')}}</span>
      </div>
     </a-form-item>
     <a-divider />
@@ -252,72 +252,72 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
     <a-form-item :label="$t('tg-card.upstream.lowBalance')" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" :placeholder="$t('tg-card.upstream.lowBalancePlaceholder')"/></a-form-item>
     
     <div class="flex flex-wrap items-center gap-3">
-     <a-button type="primary" :loading="saving" @click="save">保存配置</a-button>
-     <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">测试连接</a-button>
-     <a-button :loading="syncing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="syncNow">立即同步商品</a-button>
-     <a-button v-if="syncing&&syncProgress.status!=='cleaning'" danger :disabled="!syncJobId" @click="cancelSync">取消同步</a-button>
-     <a-popconfirm title="停用后将删除全部上游分类、商品、SKU 和不再被本地商品引用的上游图片；历史订单及资金流水保留。此操作不可恢复，是否继续？" ok-text="确认清除" cancel-text="取消" @confirm="disableUpstream"><a-button danger :disabled="!settings.enabled||syncing">停用并清除上游数据</a-button></a-popconfirm>
-     <a-button :disabled="saving||testing||syncing" @click="load">重新加载</a-button>
+     <a-button type="primary" :loading="saving" @click="save">{{$t('tg-card.upstream.save')}}</a-button>
+     <a-button :loading="testing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="testConnection">{{$t('tg-card.upstream.testConnection')}}</a-button>
+     <a-button :loading="syncing" :disabled="saving||testing||syncing||clearCredentials||(!settings.merchantIdConfigured&&!merchantId)||(!settings.merchantSecretConfigured&&!merchantSecret)" @click="syncNow">{{$t('tg-card.upstream.syncNow')}}</a-button>
+     <a-button v-if="syncing&&syncProgress.status!=='cleaning'" danger :disabled="!syncJobId" @click="cancelSync">{{$t('tg-card.upstream.cancelSync')}}</a-button>
+     <a-popconfirm :title="$t('tg-card.upstream.disableConfirm')" :ok-text="$t('tg-card.upstream.confirmClear')" :cancel-text="$t('tg-card.upstream.cancel')" @confirm="disableUpstream"><a-button danger :disabled="!settings.enabled||syncing">{{$t('tg-card.upstream.disableTitle')}}</a-button></a-popconfirm>
+     <a-button :disabled="saving||testing||syncing" @click="load">{{$t('tg-card.upstream.reload')}}</a-button>
     </div>
    </a-form>
   </a-card>
   <a-card :bordered="false" :title="$t('tg-card.upstream.procurementQueue')">
-   <template #extra><a-button size="small" :loading="procurementLoading" @click="loadProcurements">刷新队列</a-button></template>
+   <template #extra><a-button size="small" :loading="procurementLoading" @click="loadProcurements">{{$t('tg-card.upstream.refreshQueue')}}</a-button></template>
    <a-table :data-source="procurements" :loading="procurementLoading" :pagination="{pageSize:8}" row-key="localOrderId" :scroll="{x:760}">
-    <a-table-column title="本地订单号" data-index="localOrderNo" :width="190"/>
-    <a-table-column title="上游订单号" data-index="externalOrderNo" :width="170"/>
-    <a-table-column title="状态" :width="130"><template #default="{record}"><a-tag :color="record.status==='failed'||record.status==='uncertain'?'error':record.status==='completed'?'success':'processing'">{{procurementStatus(record.status)}}</a-tag></template></a-table-column>
-    <a-table-column title="重试次数" data-index="requestAttempts" :width="90"/>
-    <a-table-column title="异常原因" data-index="lastError" :ellipsis="true" :width="260"/>
-    <a-table-column title="操作" :fixed="'right'" :width="170"><template #default="{record}">
+    <a-table-column :title="$t('tg-card.upstream.localOrderNo')" data-index="localOrderNo" :width="190"/>
+    <a-table-column :title="$t('tg-card.upstream.externalOrderNo')" data-index="externalOrderNo" :width="170"/>
+    <a-table-column :title="$t('tg-card.upstream.status')" :width="130"><template #default="{record}"><a-tag :color="record.status==='failed'||record.status==='uncertain'?'error':record.status==='completed'?'success':'processing'">{{procurementStatus(record.status)}}</a-tag></template></a-table-column>
+    <a-table-column :title="$t('tg-card.upstream.retryCount')" data-index="requestAttempts" :width="90"/>
+    <a-table-column :title="$t('tg-card.upstream.reason')" data-index="lastError" :ellipsis="true" :width="260"/>
+    <a-table-column :title="$t('tg-card.upstream.actions')" :fixed="'right'" :width="170"><template #default="{record}">
      <div v-if="record.status==='uncertain'">
-      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="openResolve(record)">核实受理状态</a-button>
+      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="openResolve(record)">{{$t('tg-card.upstream.verifyAcceptance')}}</a-button>
      </div>
      <div class="flex gap-2" v-else-if="record.status==='failed'">
-      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">{{record.externalOrderNo ? "查单恢复" : "手动重试采购"}}</a-button>
-      <a-button size="small" danger :disabled="!!actionLoading" @click="openRefund(record)">退款</a-button>
+      <a-button size="small" type="primary" :loading="actionLoading===record.localOrderId" @click="retryProcurement(record)">{{record.externalOrderNo?$t('tg-card.upstream.queryRecovery'):$t('tg-card.upstream.manualRetry')}}</a-button>
+      <a-button size="small" danger :disabled="!!actionLoading" @click="openRefund(record)">{{$t('tg-card.upstream.refund')}}</a-button>
      </div><span v-else class="text-xs text-gray-400">—</span>
     </template></a-table-column>
    </a-table>
    
   </a-card>
-  <a-modal v-model:open="resolveVisible" title="核实上游采购受理状态" :confirm-loading="actionLoading===resolveOrderId" @ok="submitResolve">
-   <a-alert class="mb-4" type="warning" show-icon message="请先在供应商后台按本地订单号核实。不要仅凭本地超时判断供应商未受理；本操作会决定订单后续是恢复查单，还是开放重试/退款。" />
-   <a-form-item label="供应商核实结果">
+  <a-modal v-model:open="resolveVisible" :title="$t('tg-card.upstream.resolveTitle')" :confirm-loading="actionLoading===resolveOrderId" @ok="submitResolve">
+   <a-alert class="mb-4" type="warning" show-icon :message="$t('tg-card.upstream.resolveNotice')" />
+   <a-form-item :label="$t('tg-card.upstream.supplierResult')">
     <a-radio-group v-model:value="resolveResolution">
-     <a-radio value="not_accepted">供应商确认未受理 / 明确失败</a-radio>
-     <a-radio value="accepted">供应商确认已受理</a-radio>
+     <a-radio value="not_accepted">{{$t('tg-card.upstream.notAccepted')}}</a-radio>
+     <a-radio value="accepted">{{$t('tg-card.upstream.accepted')}}</a-radio>
     </a-radio-group>
    </a-form-item>
    <template v-if="resolveResolution==='accepted'">
-    <a-form-item label="上游订单 ID"><a-input v-model:value="resolveExternalOrderID" :placeholder="$t('tg-card.upstream.externalIdPlaceholder')"/></a-form-item>
-    <a-form-item label="上游订单号"><a-input v-model:value="resolveExternalOrderNo" :placeholder="$t('tg-card.upstream.externalNoPlaceholder')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.upstream.externalId')"><a-input v-model:value="resolveExternalOrderID" :placeholder="$t('tg-card.upstream.externalIdPlaceholder')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.upstream.externalNo')"><a-input v-model:value="resolveExternalOrderNo" :placeholder="$t('tg-card.upstream.externalNoPlaceholder')"/></a-form-item>
    </template>
-   <a-form-item label="核实依据 / 处理说明"><a-textarea v-model:value="resolveNote" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.upstream.evidencePlaceholder')"/></a-form-item>
+   <a-form-item :label="$t('tg-card.upstream.evidence')"><a-textarea v-model:value="resolveNote" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.upstream.evidencePlaceholder')"/></a-form-item>
   </a-modal>
-  <a-modal v-model:open="refundVisible" title="确认上游采购失败退款" :confirm-loading="!!actionLoading" @ok="submitRefund">
-   <a-alert type="warning" show-icon message="退款将按本地订单金额记入买家站内余额，并生成独立退款账本和管理员审计记录。" />
-   <a-form-item class="mt-4" label="退款原因"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.upstream.refundReasonPlaceholder')"/></a-form-item>
+  <a-modal v-model:open="refundVisible" :title="$t('tg-card.upstream.refundTitle')" :confirm-loading="!!actionLoading" @ok="submitRefund">
+   <a-alert type="warning" show-icon :message="$t('tg-card.upstream.refundNotice')" />
+   <a-form-item class="mt-4" :label="$t('tg-card.upstream.refundReason')"><a-textarea v-model:value="refundReason" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.upstream.refundReasonPlaceholder')"/></a-form-item>
   </a-modal>
   <a-card :bordered="false" :title="$t('tg-card.upstream.connectionStatus')">
    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <div class="rounded-lg border border-gray-200 p-4">
-     <div class="mb-2 text-sm text-gray-500">连接测试</div>
+     <div class="mb-2 text-sm text-gray-500">{{$t('tg-card.upstream.connectionTest')}}</div>
      <a-tag :color="settings.lastTestStatus==='success'?'success':settings.lastTestStatus==='failed'?'error':'default'">{{testLabel}}</a-tag>
-     <div v-if="settings.lastTestAt" class="mt-2 text-xs text-gray-500">测试时间：{{settings.lastTestAt}}</div>
+     <div v-if="settings.lastTestAt" class="mt-2 text-xs text-gray-500">{{$t('tg-card.upstream.testTime')}}{{settings.lastTestAt}}</div>
      <a-alert v-if="settings.lastError" class="mt-3" type="error" show-icon :message="settings.lastError"/>
-     <div v-if="testResult" class="mt-3 text-sm">站点：{{testResult.siteName}} · 协议：{{testResult.protocolVersion}} · 余额：{{testResult.balance}} {{testResult.currency}}</div>
+     <div v-if="testResult" class="mt-3 text-sm">{{$t('tg-card.upstream.site')}}{{testResult.siteName}} · {{$t('tg-card.upstream.protocol')}}{{testResult.protocolVersion}} · {{$t('tg-card.upstream.balance')}}{{testResult.balance}} {{testResult.currency}}</div>
     </div>
     <div class="rounded-lg border border-gray-200 p-4">
-     <div class="mb-2 text-sm text-gray-500">商品同步</div>
+     <div class="mb-2 text-sm text-gray-500">{{$t('tg-card.upstream.productSync')}}</div>
      <a-tag color="default">{{syncLabel}}</a-tag>
-     <div v-if="settings.syncAt" class="mt-2 text-xs text-gray-500">最近成功同步：{{settings.syncAt}}</div>
-     <div v-if="settings.syncAttemptAt" class="mt-1 text-xs text-gray-500">最近尝试：{{settings.syncAttemptAt}}</div>
-     <div v-if="syncing" class="mt-2 text-xs text-gray-600">任务状态：{{syncProgress.status}} · 已处理 {{syncProgress.processedItems}} / {{syncProgress.totalItems}} · 当前页 {{syncProgress.currentPage}} · 错误 {{syncProgress.errorCount}}</div>
+     <div v-if="settings.syncAt" class="mt-2 text-xs text-gray-500">{{$t('tg-card.upstream.lastSync')}}{{settings.syncAt}}</div>
+     <div v-if="settings.syncAttemptAt" class="mt-1 text-xs text-gray-500">{{$t('tg-card.upstream.lastAttempt')}}{{settings.syncAttemptAt}}</div>
+     <div v-if="syncing" class="mt-2 text-xs text-gray-600">{{$t('tg-card.upstream.taskStatus')}}{{syncProgress.status}} · {{$t('tg-card.upstream.processed')}} {{syncProgress.processedItems}} / {{syncProgress.totalItems}} · {{$t('tg-card.upstream.currentPage')}} {{syncProgress.currentPage}} · {{$t('tg-card.upstream.errorsCount')}} {{syncProgress.errorCount}}</div>
      <a-alert v-if="syncProgress.lastError" class="mt-2" type="warning" show-icon :message="syncProgress.lastError"/>
      <a-alert v-if="settings.syncError" class="mt-3" type="warning" show-icon :message="settings.syncError"/>
-     <div v-else class="mt-2 text-xs text-gray-500">自动同步按上方间隔运行；同步失败会保留上一次成功的数据。</div>
-     <div v-if="syncResult" class="mt-3 text-sm">本次同步：{{syncResult.categories}} 个分类 · {{syncResult.products}} 个 SKU 商品 · 图片失败 {{syncResult.imagesFailed}} 张</div>
+     <div v-else class="mt-2 text-xs text-gray-500">{{$t('tg-card.upstream.autoSync')}}</div>
+     <div v-if="syncResult" class="mt-3 text-sm">{{$t('tg-card.upstream.syncResult')}}{{syncResult.categories}}{{$t('tg-card.upstream.categories')}} · {{syncResult.products}}{{$t('tg-card.upstream.products')}} · {{$t('tg-card.upstream.imageFailures',{count:syncResult.imagesFailed})}}</div>
      <a-alert v-if="syncResult?.warning" class="mt-3" type="warning" show-icon :message="syncResult.warning"/>
     </div>
    </div>
