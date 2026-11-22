@@ -83,7 +83,7 @@ func SaveStoredConfig(ctx context.Context, db *sql.DB, driver string, input Conf
 		ciphertext = current.APIKeyCiphertext
 		if ciphertext == "" { return ErrNotConfigured }
 	}
-	if _, err := NewOpenAICompatible(Config{Provider:input.Provider, BaseURL:input.BaseURL, APIKey:"validation-only", Model:input.Model, Timeout:time.Duration(timeoutSeconds)*time.Second, TokenLimitParameter:input.TokenLimitParameter}); err != nil {
+	if _, err := NewVendorProvider(Config{Provider:input.Provider, BaseURL:input.BaseURL, APIKey:"validation-only", Model:input.Model, Timeout:time.Duration(timeoutSeconds)*time.Second, TokenLimitParameter:input.TokenLimitParameter}); err != nil {
 		return err
 	}
 	value, err := json.Marshal(StoredConfig{Provider:input.Provider, BaseURL:input.BaseURL, Model:input.Model, APIKeyCiphertext:ciphertext, TimeoutSeconds:timeoutSeconds, TokenLimitParameter:input.TokenLimitParameter, Enabled:enabled})
