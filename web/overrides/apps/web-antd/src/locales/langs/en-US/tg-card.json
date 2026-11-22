@@ -441,7 +441,8 @@
     "save": "Save",
     "enabledStatus": "Enabled",
     "disabledStatus": "Disabled",
-    "hint": "A coupon reserves a slot when an order is created, counts as used after payment, and releases the slot when the order expires. Discounts cannot reduce an order to zero."
+    "hint": "A coupon reserves a slot when an order is created, counts as used after payment, and releases the slot when the order expires. Discounts cannot reduce an order to zero.",
+    "periodTo": " to "
   },
   "broadcasts": {
     "status": {
