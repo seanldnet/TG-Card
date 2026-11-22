@@ -2185,7 +2185,18 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
  if timeout <= 0 || timeout > 90*time.Second { timeout = 30*time.Second }
  requestCtx, cancel := context.WithTimeout(ctx,timeout)
  defer cancel()
- prompt := llm.BuildSupportPrompt(ticket,messages,currentText)
+ order, orderErr := database.GetOrderByID(ctx,m.db,m.driver,ticket.OrderID)
+ if orderErr != nil || order.ID == "" || order.BotID != ticket.BotID || order.TelegramUserID != ticket.TelegramUserID || order.OrderNo != ticket.OrderNo {
+  log.Printf("AI support order context rejected: ticket_id=%s order_id=%s",ticket.ID,ticket.OrderID)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"order_context_unavailable")
+ }
+ operatorPrompt, promptErr := llm.LoadSupportPrompt(ctx,m.db,m.driver)
+ if promptErr != nil {
+  log.Printf("AI support operator prompt load failed: ticket_id=%s error=%v",ticket.ID,promptErr)
+  return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"prompt_unavailable")
+ }
+ orderContext := &llm.SupportOrderContext{OrderNo:order.OrderNo,ProductName:order.ProductName,Status:order.Status,Quantity:order.Quantity,Currency:order.Currency,AmountMinor:order.AmountMinor,PaidAt:order.PaidAt,DeliveredAt:order.DeliveredAt}
+ prompt := llm.BuildSupportPromptWithContext(ticket,messages,currentText,operatorPrompt,orderContext)
  answer, err := provider.Complete(requestCtx,llm.CompletionRequest{Messages:prompt,MaxTokens:512,Temperature:0.2})
  if err != nil {
   log.Printf("AI support completion failed: ticket_id=%s error=%v",ticket.ID,err)
