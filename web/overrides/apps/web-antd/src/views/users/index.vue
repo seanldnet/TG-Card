@@ -52,7 +52,7 @@ onMounted(load);
    <a-table :data-source="filtered" :loading="loading" row-key="id" :scroll="{x:1000}" :pagination="{pageSize:20,showSizeChanger:true}">
     <a-table-column :title="$t('tg-card.users.user')" key="user" :width="220"><template #default="{record}"><div class="min-w-0"><div class="font-medium">{{displayName(record)}}</div><div v-if="record.username" class="text-xs text-gray-500">@{{record.username}}</div><div class="text-xs text-gray-400">ID: {{record.telegramUserId}}</div></div></template></a-table-column>
     <a-table-column :title="$t('tg-card.users.userLink')" key="link" :width="150"><template #default="{record}"><a v-if="record.username" :href="profileLink(record)" target="_blank" rel="noreferrer">{{$t('tg-card.users.openTelegram')}}</a><a-button v-else type="link" size="small" @click="copy(profileLink(record))">{{$t('tg-card.users.copyLink')}}</a-button></template></a-table-column>
-    <a-table-column title="站内余额" key="balance" :width="150"><template #default="{record}">{{usdt(record.balanceAtomic)}}</template></a-table-column>
+    <a-table-column :title="$t('tg-card.users.balance')" key="balance" :width="150"><template #default="{record}">{{usdt(record.balanceAtomic)}}</template></a-table-column>
     <a-table-column :title="$t('tg-card.users.spent')" key="spent" :width="150"><template #default="{record}">{{usdt(record.totalSpentAtomic)}}</template></a-table-column>
     <a-table-column :title="$t('tg-card.users.orders')" data-index="orderCount" key="orders" :width="90"/>
     <a-table-column :title="$t('tg-card.users.recentActivity')" key="updated" :width="190"><template #default="{record}">{{formatTime(record.updatedAt)}}</template></a-table-column>
@@ -62,16 +62,16 @@ onMounted(load);
   </a-card>
   <a-modal v-model:open="ledgerOpen" :title="$t('tg-card.users.ledgerTitle')" :footer="null" width="min(720px, 94vw)">
    <a-spin :spinning="ledgerLoading"><a-table :data-source="ledger" row-key="createdAt" size="small" :pagination="{pageSize:10}">
-    <a-table-column :title="$t('tg-card.users.type')" key="direction" :width="90"><template #default="{record}"><a-tag :color="record.direction==='credit'?'success':'warning'">{{record.direction==='credit'?'入账':'支出'}}</a-tag></template></a-table-column>
+    <a-table-column :title="$t('tg-card.users.type')" key="direction" :width="90"><template #default="{record}"><a-tag :color="record.direction==='credit'?'success':'warning'">{{record.direction==='credit'?$t('tg-card.users.income'):$t('tg-card.users.expense')}}</a-tag></template></a-table-column>
     <a-table-column :title="$t('tg-card.users.amount')" key="amount" :width="150"><template #default="{record}">{{usdt(record.amountAtomic)}}</template></a-table-column>
     <a-table-column :title="$t('tg-card.users.balanceAfter')" key="balance" :width="150"><template #default="{record}">{{usdt(record.balanceAfterAtomic)}}</template></a-table-column>
     <a-table-column :title="$t('tg-card.users.note')" data-index="note" key="note"/>
     <a-table-column :title="$t('tg-card.users.time')" key="createdAt" :width="180"><template #default="{record}">{{formatTime(record.createdAt)}}</template></a-table-column>
    </a-table><a-empty v-if="!ledgerLoading&&ledger.length===0" :description="$t('tg-card.users.noLedger')"/></a-spin>
   </a-modal>
-  <a-modal v-model:open="modalOpen" :title="direction==='credit'?'增加用户余额':'扣减用户余额'" :confirm-loading="saving" @ok="submitBalance">
+  <a-modal v-model:open="modalOpen" :title="direction==='credit'?$t('tg-card.users.creditTitle'):$t('tg-card.users.debitTitle')" :confirm-loading="saving" @ok="submitBalance">
    <template v-if="selected">
-    <div class="mb-3 rounded-lg bg-gray-50 p-3 text-sm"><div>{{displayName(selected)}} <span v-if="selected.username" class="text-gray-500">@{{selected.username}}</span></div><div class="mt-1 text-gray-500">当前余额：{{usdt(selected.balanceAtomic)}}</div></div>
+    <div class="mb-3 rounded-lg bg-gray-50 p-3 text-sm"><div>{{displayName(selected)}} <span v-if="selected.username" class="text-gray-500">@{{selected.username}}</span></div><div class="mt-1 text-gray-500">{{$t('tg-card.users.currentBalance')}}{{usdt(selected.balanceAtomic)}}</div></div>
     <a-form layout="vertical"><a-form-item :label="$t('tg-card.users.amountLabel')"><a-input v-model:value="amount" inputmode="decimal" :placeholder="$t('tg-card.users.amountPlaceholder')"/></a-form-item><a-form-item :label="$t('tg-card.users.note')"><a-textarea v-model:value="note" :rows="3" maxlength="500" :placeholder="$t('tg-card.users.notePlaceholder')"/></a-form-item></a-form>
     <div class="text-xs text-gray-500">{{$t('tg-card.users.adjustmentHint')}}</div>
    </template>
