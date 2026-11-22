@@ -225,7 +225,7 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
      </div>
      <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.upstream.pricingFormula')}}</div>
     </a-form-item>
-    <a-form-item :label="$t('tg-card.upstream.exchangeRate')" extra="填写 1 单位上游币种可兑换多少 USDT。例如上游为 CNY 时可填 7.20；上游币种为 USDT 时自动按 1 计算。非 USDT 币种未配置汇率将拒绝同步，避免错误定价。">
+    <a-form-item :label="$t('tg-card.upstream.exchangeRate')" :extra="$t('tg-card.upstream.exchangeRateExtra')">
      <a-input-number v-model:value="settings.exchangeRateToUSDT" class="w-full" :min="0" :max="1000000" :step="0.01" :placeholder="$t('tg-card.upstream.exchangeRatePlaceholder')"/>
     </a-form-item>
     <a-form-item :label="$t('tg-card.upstream.syncInterval')">
@@ -234,8 +234,8 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
      </a-select>
     </a-form-item>
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-     <a-form-item :label="$t('tg-card.upstream.batchSize')" extra="每页处理 20–50 个上游商品；默认 25。"><a-input-number v-model:value="settings.syncBatchSize" class="w-full" :min="20" :max="50" :step="5"/></a-form-item>
-     <a-form-item :label="$t('tg-card.upstream.batchDelay')" extra="每批提交后暂停 250–10000 毫秒；默认 1000。"><a-input-number v-model:value="settings.syncBatchDelayMs" class="w-full" :min="250" :max="10000" :step="250"/></a-form-item>
+     <a-form-item :label="$t('tg-card.upstream.batchSize')" :extra="$t('tg-card.upstream.batchSizeExtra')"><a-input-number v-model:value="settings.syncBatchSize" class="w-full" :min="20" :max="50" :step="5"/></a-form-item>
+     <a-form-item :label="$t('tg-card.upstream.batchDelay')" :extra="$t('tg-card.upstream.batchDelayExtra')"><a-input-number v-model:value="settings.syncBatchDelayMs" class="w-full" :min="250" :max="10000" :step="250"/></a-form-item>
     </div>
     <a-form-item :label="$t('tg-card.upstream.enableSelling')">
      <div class="flex flex-wrap items-center gap-3">
@@ -244,12 +244,12 @@ onMounted(()=>{void load();void resumeActiveSyncJob();});
      </div>
     </a-form-item>
     <a-divider />
-    <a-form-item :label="$t('tg-card.upstream.callback')" extra="请填写本站公网 HTTPS 地址，路径固定为 /api/v1/upstream/callback。配置后上游交付完成会主动回调；轮询仍作为兜底。">
+    <a-form-item :label="$t('tg-card.upstream.callback')" :extra="$t('tg-card.upstream.callbackExtra')">
      <a-input v-model:value="settings.callbackUrl" :placeholder="$t('tg-card.upstream.callbackPlaceholder')" autocomplete="url"/>
     </a-form-item>
     <a-form-item :label="$t('tg-card.upstream.pollInterval')"><a-input-number v-model:value="settings.procurementPollIntervalSeconds" class="w-full" :min="5" :max="3600" :step="5"/></a-form-item>
     <a-form-item :label="$t('tg-card.upstream.timeout')"><a-input-number v-model:value="settings.procurementTimeoutMinutes" class="w-full" :min="1" :max="1440" :step="1"/></a-form-item>
-    <a-form-item :label="$t('tg-card.upstream.lowBalance')" extra="按上游账户自身币种填写，0 表示关闭低余额阈值告警。"><a-input v-model:value="settings.supplierLowBalanceThreshold" :placeholder="$t('tg-card.upstream.lowBalancePlaceholder')"/></a-form-item>
+    <a-form-item :label="$t('tg-card.upstream.lowBalance')" :extra="$t('tg-card.upstream.lowBalanceExtra')"><a-input v-model:value="settings.supplierLowBalanceThreshold" :placeholder="$t('tg-card.upstream.lowBalancePlaceholder')"/></a-form-item>
     
     <div class="flex flex-wrap items-center gap-3">
      <a-button type="primary" :loading="saving" @click="save">{{$t('tg-card.upstream.save')}}</a-button>
