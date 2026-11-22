@@ -63,7 +63,7 @@ onMounted(load);
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div><h1 class="m-0 text-xl font-semibold">资金异常中心</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一查看采购失败、悬空订单、供应商余额差异和退款账本异常。所有检查只读，不会自动修改余额或流水。</p></div>
-   <div class="flex items-center gap-2"><a-badge :count="openBadge" :overflow-count="999"><a-tag color="error">待处理异常</a-tag></a-badge><a-button :loading="checking" @click="runRefundCheck">执行退款账本检查</a-button><a-button :loading="loading" @click="load">刷新</a-button></div>
+   <div class="flex items-center gap-2"><a-badge :count="openBadge" :overflow-count="999"><a-tag color="error">待处理异常</a-tag></a-badge><a-button size="small" :loading="checking" @click="runRefundCheck">执行退款账本检查</a-button><a-button size="small" :loading="loading" @click="load">刷新</a-button></div>
   </div>
   <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
    <a-card :bordered="false"><div class="text-xs text-gray-500">待处理/处理中</div><div class="mt-2 text-2xl font-semibold">{{openCount}}</div></a-card>

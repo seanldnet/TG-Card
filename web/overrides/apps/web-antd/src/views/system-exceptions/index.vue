@@ -71,17 +71,17 @@ onMounted(load);
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
    <div><h1 class="m-0 text-xl font-semibold">全局异常中心</h1><p class="mb-0 mt-1 text-xs text-gray-500">统一查看交付不确定、退款冲突、上游同步、Cap 验证及资金异常；处理动作写入管理员审计日志。</p></div>
-   <div class="flex items-center gap-2"><a-badge :count="openCount" :overflow-count="999"><a-tag color="error">待处理异常</a-tag></a-badge><a-button :loading="loading" @click="load">刷新</a-button></div>
+   <div class="flex items-center gap-2"><a-badge :count="openCount" :overflow-count="999"><a-tag color="error">待处理异常</a-tag></a-badge><a-button size="small" :loading="loading" @click="load">刷新</a-button></div>
   </div>
   <a-card :bordered="false">
-   <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
+   <a-form layout="vertical"><div class="grid grid-cols-1 gap-3 md:grid-cols-5">
     <a-form-item label="状态" class="mb-0"><a-select v-model:value="status"><a-select-option value="">全部</a-select-option><a-select-option value="open">待处理</a-select-option><a-select-option value="processing">处理中</a-select-option><a-select-option value="resolved">已解决</a-select-option><a-select-option value="ignored">已忽略</a-select-option></a-select></a-form-item>
     <a-form-item label="异常类型" class="mb-0"><a-select v-model:value="category" allow-clear placeholder="全部类型"><a-select-option v-for="option in categoryOptions" :key="option.value" :value="option.value">{{option.label}}</a-select-option></a-select></a-form-item>
     <a-form-item label="严重程度" class="mb-0"><a-select v-model:value="severity" allow-clear placeholder="全部级别"><a-select-option value="critical">严重</a-select-option><a-select-option value="error">错误</a-select-option><a-select-option value="warning">警告</a-select-option><a-select-option value="info">提示</a-select-option></a-select></a-form-item>
     <a-form-item label="开始日期" class="mb-0"><a-date-picker v-model:value="fromDate" value-format="YYYY-MM-DD" class="w-full" /></a-form-item>
     <a-form-item label="结束日期" class="mb-0"><a-date-picker v-model:value="toDate" value-format="YYYY-MM-DD" class="w-full" /></a-form-item>
-   </div>
-   <div class="mt-2 flex justify-end gap-2"><a-button @click="resetFilters">重置</a-button><a-button type="primary" :loading="loading" @click="load">筛选</a-button></div>
+   </div></a-form>
+   <div class="mt-3 flex flex-wrap justify-end gap-2"><a-button size="small" @click="resetFilters">重置</a-button><a-button size="small" type="primary" :loading="loading" @click="load">筛选</a-button></div>
   </a-card>
   <a-card :bordered="false" title="异常记录" :loading="loading">
    <a-table :data-source="items" row-key="id" :pagination="{pageSize:15,showSizeChanger:true}" :scroll="{x:1200}">

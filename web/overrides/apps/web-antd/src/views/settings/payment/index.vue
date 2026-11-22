@@ -140,21 +140,8 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
 
 <template>
   <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
-    <a-card :bordered="false" title="支付方式">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-1">
-        <div class="flex items-center justify-between rounded-lg border border-gray-200 p-4">
-          <div><div class="font-medium">内置 USDT（TRC20）</div><div class="text-xs text-gray-500">链上收款</div></div>
-          <a-switch v-model:checked="settings.enabled" />
-        </div>
-      </div>
-      <div class="mt-4 flex justify-end"><a-button type="primary" :loading="saving" @click="saveSettings">保存 TRC20 配置</a-button></div>
-    </a-card>
     <a-card :bordered="false" :loading="loading" title="USDT - TRC20 收款配置">
-      <template #extra>
-        <a-tag :color="settings.enabled ? 'success' : 'default'">
-          {{ settings.enabled ? '收款已启用' : '收款未启用' }}
-        </a-tag>
-      </template>
+      <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.enabled ? 'success' : 'default'">{{ settings.enabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.enabled" /></div></template>
       
       <a-form layout="vertical">
         <a-form-item label="TronGrid API Key">
@@ -183,13 +170,14 @@ onMounted(()=>{void loadSettings();void loadBonusRule()});
         <a-divider />
 
         <a-alert
-          class="mb-4"
+          class="mt-4"
           type="warning"
           show-icon
           message="安全提醒"
           description="请只填写商户自己的收款地址。系统仅监听到账，不需要钱包私钥；少付、多付、过期转账仍需人工对账。"
         />
       </a-form>
+      <div class="mt-4 flex justify-end"><a-button size="small" type="primary" :loading="saving" @click="saveSettings">保存 TRC20 配置</a-button></div>
     </a-card>
     <a-card :bordered="false" :loading="loading" title="Epusdt 网关">
       <template #extra><div class="flex items-center gap-2"><a-tag :color="settings.epusdtEnabled ? 'success' : 'default'">{{ settings.epusdtEnabled ? '已启用' : '未启用' }}</a-tag><a-switch v-model:checked="settings.epusdtEnabled" /></div></template>
