@@ -90,3 +90,12 @@ func TestCommerceScreenTranslations(t *testing.T) {
 		t.Errorf("English order status = %q", got)
 	}
 }
+
+func TestOwnerMenuTranslations(t *testing.T) {
+	if got := botText(languageEnglish, "owner.menu"); got != "🛠️ Owner console" { t.Fatalf("English owner menu = %q", got) }
+	if got := botText(languageEnglish, "owner.menu.stats"); got != "📊 Business overview" { t.Fatalf("English owner stats label = %q", got) }
+	markup := ownerMenuKeyboardForLanguage(languageEnglish)
+	rows, ok := markup["inline_keyboard"].([][]map[string]string)
+	if !ok || len(rows) != 6 { t.Fatalf("unexpected English owner menu: %#v", markup) }
+	if got := rows[0][0]["text"]; got != "📊 Business overview" { t.Fatalf("English owner menu first label = %q", got) }
+}
