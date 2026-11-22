@@ -1167,7 +1167,7 @@
     "deliveryUncertain": "交付不确定",
     "upstreamCatalogSync": "上游目录同步",
     "syncProgressUnit": "项",
-    "syncPage": "第",
+    "syncPage": "第 {page} 页",
     "noActiveSync": "当前没有运行中的同步任务",
     "capSuccessRate": "Cap 验证成功率",
     "noSample": "暂无样本",
