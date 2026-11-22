@@ -96,6 +96,17 @@ func TestLegacyStoredConfigWithoutTokenParameterLoadsAsAuto(t *testing.T) {
  if view.TokenLimitParameter != "auto" { t.Fatalf("legacy view parameter = %q, want auto",view.TokenLimitParameter) }
 }
 
+
+func TestStoredConfigRejectsUnknownProvider(t *testing.T) {
+ db:=configTestDB(t)
+ manager,err:=secret.New(t.TempDir())
+ if err!=nil{t.Fatal(err)}
+ input:=Config{Provider:"not-a-vendor",BaseURL:"https://api.example.com/v1",Model:"model",APIKey:"sk-invalid"}
+ if err:=SaveStoredConfig(context.Background(),db,"sqlite",input,30,true,manager.Encrypt);err==nil{
+  t.Fatal("expected unknown provider to be rejected before persistence")
+ }
+}
+
 func TestStoredConfigRejectsUnknownTokenLimitParameter(t *testing.T) {
  db := configTestDB(t)
  manager, err := secret.New(t.TempDir())
