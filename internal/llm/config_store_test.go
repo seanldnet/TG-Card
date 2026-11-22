@@ -28,7 +28,7 @@ func TestStoredConfigEncryptsKeyAndViewDoesNotExposeIt(t *testing.T) {
 	if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 25, true, manager.Encrypt); err != nil { t.Fatal(err) }
 	var raw string
 	if err := db.QueryRow("SELECT value FROM settings WHERE key = ?", configSettingKey).Scan(&raw); err != nil { t.Fatal(err) }
-	if contains(raw, input.APIKey) { t.Fatal("plaintext API key was persisted") }
+	if strings.Contains(raw, input.APIKey) { t.Fatal("plaintext API key was persisted") }
 	view, err := LoadConfigView(context.Background(), db, "sqlite")
 	if err != nil { t.Fatal(err) }
 	if !view.APIKeyConfigured || view.Provider != input.Provider || view.Model != input.Model { t.Fatalf("unexpected config view: %+v", view) }
@@ -104,12 +104,6 @@ func TestStoredConfigRejectsUnknownTokenLimitParameter(t *testing.T) {
  if err := SaveStoredConfig(context.Background(), db, "sqlite", input, 30, true, manager.Encrypt); err == nil {
   t.Fatal("expected invalid token-limit parameter to be rejected")
  }
-}
-
-func contains(s, sub string) bool {
-	if len(sub) == 0 { return true }
-	for i:=0; i+len(sub)<=len(s); i++ { if s[i:i+len(sub)] == sub { return true } }
-	return false
 }
 
 func TestSupportPromptStorageAndBounds(t *testing.T) {
