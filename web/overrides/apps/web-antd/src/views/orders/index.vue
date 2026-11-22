@@ -91,7 +91,7 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
      <div v-if="item.deliveryError" class="mt-3 rounded-md bg-red-50 p-3 text-xs text-red-700 break-words">{{item.deliveryError}}</div>
      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
       <a-button size="small" @click="openOrderDetail(item)">{{$t('tg-card.orders.details')}}</a-button>
-      <a-tag :color="item.stockReserved?'processing':'default'">{{item.stockReserved?'已预留库存':'未预留库存'}}</a-tag>
+      <a-tag :color="item.stockReserved?'processing':'default'">{{item.stockReserved?$t('tg-card.orders.reservedStock'):$t('tg-card.orders.notReservedStock')}}</a-tag>
       <a-button v-if="item.status==='paid'||item.status==='delivery_failed'||(item.status==='delivery_uncertain'&&item.deliveryType!=='invite_link')" type="primary" size="small" :loading="retryingId===item.id" @click="retryDelivery(item)">{{$t('tg-card.orders.retryDelivery')}}</a-button>
       <a-tooltip v-else-if="item.status==='delivery_uncertain'&&item.deliveryType==='invite_link'" title="一次性邀请链接的结果不确定，禁止自动重新创建；请人工核实并处理。"><span class="text-xs text-orange-600">{{$t('tg-card.orders.manualVerify')}}</span></a-tooltip>
      </div>
@@ -120,9 +120,9 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
   </a-card>
   <a-modal v-model:open="cleanupOpen" :title="$t('tg-card.orders.cleanupTitle')" :confirm-loading="cleanupLoading" :ok-text="$t('tg-card.orders.cleanupConfirm')" ok-type="danger" :cancel-text="$t('tg-card.orders.cancel')" @ok="clearAllOrderData" @cancel="cleanupPhrase=''">
    <a-alert class="mb-4" type="error" show-icon :message="$t('tg-card.orders.irreversible')" :description="$t('tg-card.orders.cleanupDescription')"/>
-   <div class="mb-2 text-sm">{{$t('tg-card.orders.cleanupInput')}}</div><a-input v-model:value="cleanupPhrase" placeholder="清空全部订单数据"/>
+   <div class="mb-2 text-sm">{{$t('tg-card.orders.cleanupInput')}}</div><a-input v-model:value="cleanupPhrase" :placeholder="$t('tg-card.orders.cleanupPhrase')"/>
   </a-modal>
-  <a-modal v-model:open="detailOpen" title="订单详情" :footer="null" width="min(720px, 94vw)">
+  <a-modal v-model:open="detailOpen" :title="$t('tg-card.orders.detailTitle')" :footer="null" width="min(720px, 94vw)">
    <a-spin :spinning="detailLoading">
     <template v-if="selectedDetail">
      <div v-if="selectedDetail.deliverySteps?.length" class="mb-4 rounded-lg border border-gray-100 p-3 sm:col-span-2">
@@ -133,10 +133,10 @@ onMounted(async()=>{await loadOrders();const orderNo=String(route.query.orderNo|
          <a-tag :color="deliveryStepStatusColor(step.status)">{{deliveryStepStatusLabel(step.status)}}</a-tag>
         </div>
         <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
-         <div>尝试次数：{{step.attempts}}</div>
+         <div>{{$t('tg-card.orders.attemptsLabel')}}{{step.attempts}}</div>
          <div>Telegram message_id：{{step.telegramMessageId||'-'}}</div>
-         <div class="col-span-2 break-words" v-if="step.lastError">最近错误：{{step.lastError}}</div>
-         <div class="col-span-2">最近开始：{{formatTime(step.startedAt||'')}}</div>
+         <div class="col-span-2 break-words" v-if="step.lastError">{{$t('tg-card.orders.recentError')}}{{step.lastError}}</div>
+         <div class="col-span-2">{{$t('tg-card.orders.lastStarted')}}{{formatTime(step.startedAt||'')}}</div>
         </div>
         <div v-if="step.status==='uncertain' && selectedDetail.order.status==='delivery_uncertain'" class="mt-3 flex flex-wrap gap-2">
          <a-button size="small" type="primary" @click="resolveDeliveryStep(step,'succeeded')">{{$t('tg-card.orders.markSucceeded')}}</a-button>
