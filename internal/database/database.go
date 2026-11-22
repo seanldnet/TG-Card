@@ -376,6 +376,16 @@ func UpdateBot(ctx context.Context, db *sql.DB, driver, id, name, welcome string
 	if err != nil { return err }
 	count, err := result.RowsAffected()
 	if err != nil { return err }
+	if count == 0 {
+		// MySQL reports changed rows by default, so selecting the already-active
+		// language may legitimately affect zero rows. Distinguish that no-op from
+		// a missing Telegram user before returning an error.
+		var saved string
+		lookupErr := db.QueryRowContext(ctx, "SELECT preferred_language FROM telegram_users WHERE telegram_user_id="+placeholder(driver,1), telegramUserID).Scan(&saved)
+		if lookupErr != nil { return lookupErr }
+		if strings.EqualFold(strings.TrimSpace(saved), language) { return nil }
+		return sql.ErrNoRows
+	}
 	if count != 1 { return sql.ErrNoRows }
 	return nil
 }
