@@ -70,7 +70,7 @@ func (m *Manager) createCartCheckout(ctx context.Context,cfg Config,query Callba
 	order,items,err:=database.CreateCartCheckout(ctx,m.db,m.driver,cfg.ID,userID,strconv.FormatInt(chatID,10),20*time.Minute)
 	if err!=nil {
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(language,"cart.checkout_error_short"))
-		_ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"cart.checkout_error")+err.Error()+"\n"+botText(language,"cart.retry")+"")
+		_ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"cart.checkout_error")+err.Error()+"\n"+botText(language,"cart.retry"))
 		return
 	}
 	lines:=make([]string,0,len(items))
