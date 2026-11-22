@@ -128,12 +128,12 @@ onMounted(loadDashboard);
     <a-row v-if="metrics" :gutter="[12,12]">
       <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
         <div class="text-xs text-gray-500">{{$t('tg-card.analytics.capSuccessRate')}}</div>
-        <div class="mt-1 text-2xl font-semibold">{{ metrics.cap.total ? metrics.cap.successRatePercent.toFixed(1) + '%' : '{{$t('tg-card.analytics.noSample')}}' }}</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.cap.total ? metrics.cap.successRatePercent.toFixed(1) + '%' : $t('tg-card.analytics.noSample') }}</div>
         <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.success')}} {{ metrics.cap.success }} · {{$t('tg-card.analytics.failed')}} {{ metrics.cap.failure }}（{{$t('tg-card.analytics.processLifetime')}}）</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
         <div class="text-xs text-gray-500">{{$t('tg-card.analytics.apiP95')}}</div>
-        <div class="mt-1 text-2xl font-semibold">{{ metrics.api.sampleCount ? metrics.api.p95Milliseconds.toFixed(1) + ' ms' : '{{$t('tg-card.analytics.noSample')}}' }}</div>
+        <div class="mt-1 text-2xl font-semibold">{{ metrics.api.sampleCount ? metrics.api.p95Milliseconds.toFixed(1) + ' ms' : $t('tg-card.analytics.noSample') }}</div>
         <div class="mt-2 text-xs text-gray-500">{{$t('tg-card.analytics.recentApiRequests')}}: {{ metrics.api.sampleCount }}</div>
       </a-card></a-col>
       <a-col :xs="12" :xl="8"><a-card :bordered="false" class="h-full">
@@ -215,6 +215,6 @@ onMounted(loadDashboard);
         <template #emptyText><a-empty description="{{$t('tg-card.analytics.emptyOrders')}}" /></template>
       </a-table>
     </a-card>
-    <div class="mt-3 text-right text-xs text-gray-400">{{$t('tg-card.analytics.updatedAt')}}：{{ loadedAt || '{{$t('tg-card.analytics.loading')}}' }}</div>
+    <div class="mt-3 text-right text-xs text-gray-400">{{$t('tg-card.analytics.updatedAt')}}：{{ loadedAt || $t('tg-card.analytics.loading') }}</div>
   </div>
 </template>
