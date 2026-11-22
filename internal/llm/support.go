@@ -52,10 +52,25 @@ func BuildSupportPrompt(ticket database.SupportTicket, messages []database.Suppo
 	start := len(messages) - maxContextMessages
 	if start < 0 { start = 0 }
 	for _, item := range messages[start:] {
-		if item.SenderType != "user" && item.SenderType != "admin" { continue }
-		role := "user"
-		if item.SenderType == "admin" { role = "assistant" }
-		content := limitSupportText(item.Message, maxMessageRunes)
+		role := ""
+		switch item.SenderType {
+		case "user":
+			role = "user"
+		case "admin":
+			role = "assistant"
+		case "system":
+			// AI replies are stored as system timeline events to distinguish them
+			// from operator messages, but remain assistant turns in model context.
+			if item.SenderName == "ai-assistant" {
+				role = "assistant"
+			}
+		}
+		if role == "" { continue }
+		content := strings.TrimSpace(item.Message)
+		if item.SenderType == "system" {
+			content = strings.TrimPrefix(content, "AI 售后预处理：")
+		}
+		content = limitSupportText(content, maxMessageRunes)
 		if content == "" { continue }
 		items = append(items, Message{Role: role, Content: content})
 	}
