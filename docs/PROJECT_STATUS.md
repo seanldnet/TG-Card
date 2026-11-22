@@ -1,3 +1,11 @@
+## 2026-11-23 — P1-2 合并及 P1-3 Telegram 中英文国际化开发（文档版本 2.2.96）
+
+- PR #140（AI 售后基础）已合并至 main；PR #142（LLM 多供应商适配）已 Squash Merge，main 合并提交：`44fb370850c97c0c85dc1bddd2326fd38ae28a55`。
+- PR #142 合并前 Go Backend CI、Admin Frontend CI、Security Scan 均成功；Go 全量测试、`go vet ./...`、Docker 备份恢复集成测试及 `CGO_ENABLED=0 go build` 均成功。合并代码和 CI 不代表已生产部署或真实供应商 API 联调。
+- P1-3 独立分支：`feat/telegram-bot-i18n-20261123`。新增 Telegram `language_code` 自动识别（支持中文/英文，其他语言回退中文）、用户显式语言选择（`/language`、`/lang` 与菜单入口）及 `telegram_users.preferred_language` 持久化（迁移 0063）。
+- 已接入双语的主要入口：欢迎卡片、主菜单、商城分类页、订单列表字段与状态、余额页、帮助、商品搜索提示、售后订单选择入口；新增语言识别/规范化、语言文案和偏好持久化测试。
+- P1-3 当前仍是进行中：结账/付款、商品详情、交付通知、售后消息与回调、广播、Owner 管理等长尾文案尚未全部国际化；每个 Bot 可配置的默认语言也尚未接入管理后台。该分支尚未通过 CI、尚未建立 PR、未合并及发布。
+- 本轮项目仍保持单站点、单运营者；未引入多租户、多用户或复杂 RBAC。
 ## 2026-11-23 — PR #140 AI 售后基础批次状态校准（文档版本 2.2.95）
 
 - PR #140 已建立通用 OpenAI-compatible Chat Completions 调用层，包含 HTTPS/loopback 测试限制、超时、响应体大小、消息角色/长度/token 上限及供应商错误响应脱敏。
