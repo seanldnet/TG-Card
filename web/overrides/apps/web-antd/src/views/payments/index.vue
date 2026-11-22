@@ -84,7 +84,7 @@ onMounted(loadTransactions);
     <a-empty v-if="!loading&&filtered.length===0" :description="$t('tg-card.payments.empty')"/>
    </div>
    <a-table v-else :data-source="filtered" :loading="loading" row-key="id" :pagination="{pageSize:15,showSizeChanger:true}" :scroll="{x:1250}">
-    <a-table-column :title="$t('tg-card.payments.txHash')" key="transactionId" :width="240" fixed="left"><template #default="{record}"><a :href="`https://tronscan.org/#/transaction/${record.transactionId}`" target="_blank" rel="noreferrer">{{record.transactionId.slice(0,12)}}…</a><a-button type="text" size="small" @click="copy(record.transactionId)">复制</a-button></template></a-table-column>
+    <a-table-column :title="$t('tg-card.payments.txHash')" key="transactionId" :width="240" fixed="left"><template #default="{record}"><a :href="`https://tronscan.org/#/transaction/${record.transactionId}`" target="_blank" rel="noreferrer">{{record.transactionId.slice(0,12)}}…</a><a-button type="text" size="small" @click="copy(record.transactionId)">{{$t('tg-card.payments.copyHash')}}</a-button></template></a-table-column>
     <a-table-column :title="$t('tg-card.payments.amountReceived')" key="amount" :width="150"><template #default="{record}">{{formatAmount(record)}} USDT</template></a-table-column>
     <a-table-column :title="$t('tg-card.payments.from')" key="fromAddress" :width="170"><template #default="{record}">{{shortAddress(record.fromAddress)}}</template></a-table-column>
     <a-table-column :title="$t('tg-card.payments.to')" key="toAddress" :width="170"><template #default="{record}">{{shortAddress(record.toAddress)}}</template></a-table-column>
