@@ -2159,6 +2159,7 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
  if !enabled { return false }
  decision := llm.DecideSupportHandling(currentText)
  if !decision.AutoReply {
+  _ = database.UpdateSupportTicketAIStatus(ctx, m.db, m.driver, ticket.ID, "human_required", decision.Reason)
   _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 已停止自动答复并转交人工："+decision.Reason,"","")
   _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条问题需要人工客服核实，我已为你转交平台客服，请稍候。")
   return true
@@ -2173,7 +2174,10 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
  // earlier operator reply reliably disables automatic AI takeover.
  for i := len(messages)-2; i >= 0; i-- {
   if messages[i].SenderType == "system" { continue }
-  if messages[i].SenderType == "admin" { return false }
+  if messages[i].SenderType == "admin" {
+   _ = database.UpdateSupportTicketAIStatus(ctx, m.db, m.driver, ticket.ID, "human_required", "admin_takeover")
+   return false
+  }
   if messages[i].SenderType == "user" { break }
  }
  provider, err := llm.NewOpenAICompatible(aiConfig)
@@ -2214,10 +2218,14 @@ func (m *Manager) tryAIHandleSupportFollowup(ctx context.Context, cfg Config, ms
   log.Printf("AI support Telegram delivery failed: ticket_id=%s error=%v",ticket.ID,err)
   return m.escalateAISupportFailure(ctx,cfg,msg,ticket,"telegram_delivery_failed")
  }
+ if err := database.UpdateSupportTicketAIStatus(ctx, m.db, m.driver, ticket.ID, "ai_replied", ""); err != nil {
+  log.Printf("AI support state persistence failed: ticket_id=%s error=%v", ticket.ID, err)
+ }
  return true
 }
 
 func (m *Manager) escalateAISupportFailure(ctx context.Context,cfg Config,msg Message,ticket database.SupportTicket,reason string) bool {
+ _ = database.UpdateSupportTicketAIStatus(ctx, m.db, m.driver, ticket.ID, "human_required", reason)
  _, _ = database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","ai-guardrail","AI 暂不可用，已转交人工客服："+reason,"","")
  _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"AI 客服暂时无法可靠处理这条消息，已为你转交人工客服，请稍候。")
  return true
