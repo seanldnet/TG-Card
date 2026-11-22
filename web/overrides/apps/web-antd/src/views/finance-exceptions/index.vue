@@ -93,7 +93,7 @@ onMounted(load);
     <a-table-column :title="$t('tg-card.financeExceptions.externalOrderId')" data-index="externalOrderId" :width="130"/>
     <a-table-column :title="$t('tg-card.financeExceptions.ageing')" key="age" :width="130"><template #default="{record}">{{ageing(record.ageingSeconds)}}</template></a-table-column>
     <a-table-column :title="$t('tg-card.financeExceptions.reason')" data-index="lastError" :width="320"/>
-    <a-table-column title="操作" :fixed="'right'" :width="210"><template #default="{record}"><div class="flex gap-1"><a-button size="small" type="primary" @click="openUncertain(record,'accepted')">{{$t('tg-card.financeExceptions.supplierAccepted')}}</a-button><a-button size="small" danger @click="openUncertain(record,'not_accepted')">{{$t('tg-card.financeExceptions.supplierNotAccepted')}}</a-button></div></template></a-table-column>
+    <a-table-column :title="$t('tg-card.financeExceptions.actions')" :fixed="'right'" :width="210"><template #default="{record}"><div class="flex gap-1"><a-button size="small" type="primary" @click="openUncertain(record,'accepted')">{{$t('tg-card.financeExceptions.supplierAccepted')}}</a-button><a-button size="small" danger @click="openUncertain(record,'not_accepted')">{{$t('tg-card.financeExceptions.supplierNotAccepted')}}</a-button></div></template></a-table-column>
    </a-table>
    <a-empty v-if="!loading&&!uncertain.length" :description="$t('tg-card.financeExceptions.empty')"/>
   </a-card>
@@ -114,11 +114,11 @@ onMounted(load);
   </a-card>
   <a-modal v-model:open="modalOpen" :title="$t('tg-card.financeExceptions.modalTitle')" :confirm-loading="saving" @ok="saveException">
    <div v-if="selected" class="mb-3"><div class="font-medium">{{selected.title}}</div><div class="mt-1 text-xs text-gray-500">{{selected.detail}}</div></div>
-   <a-form-item :label="$t('tg-card.financeExceptions.statusField')"><a-select v-model:value="actionStatus"><a-select-option value="processing">{{$t('tg-card.financeExceptions.processing')}}</a-select-option><a-select-option value="resolved">已解决</a-select-option><a-select-option value="ignored">忽略</a-select-option></a-select></a-form-item>
+   <a-form-item :label="$t('tg-card.financeExceptions.statusField')"><a-select v-model:value="actionStatus"><a-select-option value="processing">{{$t('tg-card.financeExceptions.processing')}}</a-select-option><a-select-option value="resolved">{{$t('tg-card.financeExceptions.status.resolved')}}</a-select-option><a-select-option value="ignored">{{$t('tg-card.financeExceptions.status.ignored')}}</a-select-option></a-select></a-form-item>
    <a-form-item :label="$t('tg-card.financeExceptions.note')"><a-textarea v-model:value="note" :rows="3" :maxlength="500" show-count :placeholder="$t('tg-card.financeExceptions.notePlaceholder')"/></a-form-item>
   </a-modal>
   <a-modal v-model:open="resolutionOpen" :title="$t('tg-card.financeExceptions.resolutionModalTitle')" :confirm-loading="resolving" @ok="resolveUncertain">
-   <div v-if="uncertainSelected" class="mb-3 text-sm">本地订单：{{uncertainSelected.localOrderNo}} · 等待 {{ageing(uncertainSelected.ageingSeconds)}}</div>
+   <div v-if="uncertainSelected" class="mb-3 text-sm">{{$t('tg-card.financeExceptions.localOrderLabel')}}{{uncertainSelected.localOrderNo}} · {{$t('tg-card.financeExceptions.waiting')}}{{ageing(uncertainSelected.ageingSeconds)}}</div>
    <a-form-item :label="$t('tg-card.financeExceptions.verificationResult')"><a-radio-group v-model:value="resolution"><a-radio value="accepted">{{$t('tg-card.financeExceptions.supplierAccepted')}}</a-radio><a-radio value="not_accepted">{{$t('tg-card.financeExceptions.supplierNotAccepted')}}</a-radio></a-radio-group></a-form-item>
    <a-form-item v-if="resolution==='accepted'" :label="$t('tg-card.financeExceptions.externalOrderId')"><a-input v-model:value="externalOrderId" :placeholder="$t('tg-card.financeExceptions.supplierOrderIdPlaceholder')"/></a-form-item>
    <a-form-item v-if="resolution==='accepted'" :label="$t('tg-card.financeExceptions.supplierOrderNo')"><a-input v-model:value="externalOrderNo" :placeholder="$t('tg-card.financeExceptions.supplierOrderNoPlaceholder')"/></a-form-item>
