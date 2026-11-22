@@ -205,6 +205,22 @@ func botText(language, key string) string {
 	return key
 }
 
+func orderStatusText(language, status string) string {
+	if normalizeLanguage(language) != languageEnglish {
+		return orderStatusLabel(status)
+	}
+	switch status {
+	case "pending_payment": return "Awaiting payment"
+	case "paid", "delivering", "procurement_pending": return "Processing (procurement/delivery)"
+	case "procurement_failed": return "Procurement failed; manual handling required"
+	case "delivery_failed": return "Delivery issue; retrying"
+	case "delivered": return "Delivered"
+	case "expired": return "Closed"
+	case "refunded": return "Refunded"
+	default: return status
+	}
+}
+
 func languageKeyboard(language string) map[string]any {
 	return map[string]any{"inline_keyboard": [][]map[string]string{
 		{{"text": botText(language, "language.button.zh"), "callback_data": "language:set:zh"}},
