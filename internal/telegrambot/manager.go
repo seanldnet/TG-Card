@@ -567,7 +567,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 	}
 	if msg.From == nil { return }
 	if m.db != nil {
-		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) }
+		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) } else { m.ensureTelegramLanguage(ctx, *msg.From) }
 		if !m.isOwner(cfg,msg.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",msg.From.ID,banErr);return };if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"你的账号当前无法使用此机器人服务。如有疑问，请联系平台客服。");return } }
 	}
 	if m.isOwner(cfg,msg.From.ID) && m.handleActiveOwnerSupportMessage(ctx,cfg,msg) { return }
@@ -1186,7 +1186,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 	if strings.HasPrefix(query.Data,"menu:") || query.Data=="shop:home" { m.takePendingAction(cfg.ID,chatID); if m.db!=nil { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(chatID,10),strconv.FormatInt(query.From.ID,10)) } }
 	if m.db != nil {
 		if !strings.HasPrefix(query.Data,"shop:manualstart:") { _ = database.DeleteUpstreamManualFormSession(ctx,m.db,m.driver,cfg.ID,strconv.FormatInt(chatID,10),strconv.FormatInt(query.From.ID,10)) }
-		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) }
+		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10),query.From.Username,query.From.FirstName,query.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",query.From.ID,err) } else { m.ensureTelegramLanguage(ctx, query.From) }
 		if !m.isOwner(cfg,query.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(query.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",query.From.ID,banErr);_ = m.answerCallback(ctx,cfg.Token,query.ID,"暂时无法验证账号状态");return };if banned { _ = m.answerCallback(ctx,cfg.Token,query.ID,"账号已被限制使用");return } }
 	}
 	switch {
@@ -2560,3 +2560,15 @@ func (m *Manager) languageForChat(ctx context.Context, cfg Config, chatID int64)
 	}
 	return languageChinese
 }
+
+func (m *Manager) ensureTelegramLanguage(ctx context.Context, user TelegramUser) {
+	if m.db == nil || user.ID == 0 { return }
+	userID := strconv.FormatInt(user.ID, 10)
+	if saved, err := database.GetTelegramUserLanguage(ctx, m.db, m.driver, userID); err == nil && saved != "" {
+		return
+	}
+	if err := database.SetTelegramUserLanguage(ctx, m.db, m.driver, userID, detectLanguage(user.LanguageCode)); err != nil {
+		log.Printf("persist detected Telegram language failed: user_id=%d error=%v", user.ID, err)
+	}
+}
+
