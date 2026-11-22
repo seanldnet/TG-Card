@@ -329,6 +329,13 @@ var botMessages = map[string]map[string]string{
 	"payment.open_checkout": {languageChinese:"🌐 打开收银台",languageEnglish:"🌐 Open checkout"},
 	"payment.open_gmpay": {languageChinese:"🌐 打开 GMPay 收银台",languageEnglish:"🌐 Open GMPay checkout"},
 	"payment.refresh_status": {languageChinese:"🔄 我已付款，刷新状态",languageEnglish:"🔄 I've paid — refresh status"},
+
+	"delivery.order": {languageChinese: "订单：", languageEnglish: "Order: "},
+	"delivery.keep_secret": {languageChinese: "请妥善保存，不要转发给他人。", languageEnglish: "Keep these details safe and do not share them with anyone."},
+	"delivery.invite_intro": {languageChinese: "你的专属入群邀请链接（仅限 1 人使用）：", languageEnglish: "Your personal group invite link (one use only):"},
+	"delivery.invite_warning": {languageChinese: "请勿转发，链接过期后无法使用。", languageEnglish: "Do not share this link. It cannot be used after it expires."},
+	"delivery.upstream_payload": {languageChinese: "上游商品交付内容：", languageEnglish: "Supplier fulfillment details:"},
+	"delivery.card_codes": {languageChinese: "配套卡密：", languageEnglish: "Your item codes:"},
 }
 
 func botText(language, key string) string {
