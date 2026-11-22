@@ -304,7 +304,8 @@ func truncateButtonText(value string, limit int) string {
 func (m *Manager) isOwner(cfg Config,telegramUserID int64) bool { return cfg.OwnerID!="" && strconv.FormatInt(telegramUserID,10)==cfg.OwnerID }
 
 func (m *Manager) sendOwnerOverview(ctx context.Context, cfg Config, chatID int64) {
-	if m.db == nil { _ = m.sendMessage(ctx,cfg.Token,chatID,"数据库暂不可用。"); return }
+	language := m.languageForChat(ctx, cfg, chatID)
+	if m.db == nil { _ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.overview.db_unavailable")); return }
 	var users, products, pending, paid, tickets int64
 	queries := []struct{ query string; target *int64 }{
 		{"SELECT COUNT(1) FROM telegram_users",&users},
@@ -313,9 +314,9 @@ func (m *Manager) sendOwnerOverview(ctx context.Context, cfg Config, chatID int6
 		{"SELECT COUNT(1) FROM orders WHERE status IN ('paid','delivering','delivery_failed','delivered')",&paid},
 		{"SELECT COUNT(1) FROM support_tickets WHERE status IN ('open','in_progress','waiting_user')",&tickets},
 	}
-	for _, item := range queries { if err:=m.db.QueryRowContext(ctx,item.query).Scan(item.target); err!=nil { log.Printf("owner overview query failed: %v",err); _ = m.sendMessage(ctx,cfg.Token,chatID,"经营数据暂时无法读取，请稍后重试。"); return } }
-text := "🛠️ Bot 管理指挥台\n\n👥 累计用户："+strconv.FormatInt(users,10)+"\n🛍️ 在售商品："+strconv.FormatInt(products,10)+"\n⏳ 待付款订单："+strconv.FormatInt(pending,10)+"\n✅ 已付款/交付订单："+strconv.FormatInt(paid,10)+"\n🧾 待处理售后："+strconv.FormatInt(tickets,10)+"\n\n请选择下方管理功能，按提示完成操作："
-	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,ownerMenuKeyboard())
+	for _, item := range queries { if err:=m.db.QueryRowContext(ctx,item.query).Scan(item.target); err!=nil { log.Printf("owner overview query failed: %v",err); _ = m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.overview.query_failed")); return } }
+text := botText(language,"owner.overview.title")+"\n\n"+botText(language,"owner.overview.users")+strconv.FormatInt(users,10)+"\n"+botText(language,"owner.overview.products")+strconv.FormatInt(products,10)+"\n"+botText(language,"owner.overview.pending_orders")+strconv.FormatInt(pending,10)+"\n"+botText(language,"owner.overview.paid_orders")+strconv.FormatInt(paid,10)+"\n"+botText(language,"owner.overview.tickets")+strconv.FormatInt(tickets,10)+"\n\n"+botText(language,"owner.overview.instructions")
+	_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,text,ownerMenuKeyboardForLanguage(language))
 }
 
 func (m *Manager) SetPaymentConfig(address string, enabled bool) {
@@ -789,11 +790,11 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	switch {
-	case text == "🛠️ 主人管理" && m.isOwner(cfg,msg.From.ID):
+	case text == botText(m.languageForUser(ctx,cfg,*msg.From),"owner.menu") && m.isOwner(cfg,msg.From.ID):
 		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
-	case text == "🧾 待处理工单" && m.isOwner(cfg,msg.From.ID):
+	case text == botText(m.languageForUser(ctx,cfg,*msg.From),"owner.support_menu") && m.isOwner(cfg,msg.From.ID):
 		m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0)
-	case text == "返回" && m.isOwner(cfg,msg.From.ID):
+	case text == botText(m.languageForUser(ctx,cfg,*msg.From),"owner.back") && m.isOwner(cfg,msg.From.ID):
 		m.sendOwnerOverview(ctx,cfg,msg.Chat.ID)
 	case text == "🛍️ 商品中心":
 		m.showShop(ctx,cfg,msg.Chat.ID)
@@ -965,7 +966,7 @@ func mainReplyKeyboardForLanguage(isOwner bool, language string) map[string]any 
 		{{"text": botText(language, "menu.help")}, {"text": botText(language, "menu.home")}},
 	}
 	if isOwner {
-		rows = append(rows, []map[string]string{{"text": "🛠️ 主人管理"}, {"text": "🧾 待处理工单"}})
+		rows = append(rows, []map[string]string{{"text": botText(language,"owner.menu")}, {"text": botText(language,"owner.support_menu")}})
 	}
 	placeholder := "选择菜单功能"
 	if normalizeLanguage(language) == languageEnglish {
@@ -1004,7 +1005,7 @@ func welcomeKeyboardForLanguage(cfg Config, isOwner bool, language string) map[s
  rows:=mainMenuKeyboardForLanguage(language)["inline_keyboard"].([][]map[string]string)
  if cfg.CustomerServiceURL!=""{rows=append([][]map[string]string{{{"text":"👩‍💻 联系客服","url":cfg.CustomerServiceURL}}},rows...)}
  if cfg.BusinessGroupURL!=""{rows=append([][]map[string]string{{{"text":"📢 业务通知群","url":cfg.BusinessGroupURL}}},rows...)}
- if isOwner { rows=append(rows, []map[string]string{{"text":"🛠️ 主人管理","callback_data":"owner:home"}}) }
+ if isOwner { rows=append(rows, []map[string]string{{"text":botText(language,"owner.menu"),"callback_data":"owner:home"}}) }
  return map[string]any{"inline_keyboard":rows}
 }
 
@@ -2491,15 +2492,17 @@ func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q Ca
  }
 }
 
-func ownerSupportReplyKeyboard() map[string]any { return map[string]any{"keyboard":[][]map[string]string{{{"text":"🧾 待处理工单"},{"text":"返回"}}},"resize_keyboard":true,"is_persistent":true} }
+func ownerSupportReplyKeyboard() map[string]any { return ownerSupportReplyKeyboardForLanguage(languageChinese) }
+func ownerSupportReplyKeyboardForLanguage(language string) map[string]any { return map[string]any{"keyboard":[][]map[string]string{{{"text":botText(language,"owner.support_menu")},{"text":botText(language,"owner.back")}}},"resize_keyboard":true,"is_persistent":true} }
 
 func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config,msg Message) bool {
  if m.db==nil{return false}
  ownerID:=strconv.FormatInt(msg.From.ID,10)
  session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10))
  if err!=nil{return false}
- if strings.TrimSpace(msg.Text)=="🧾 待处理工单" { m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0);return true }
- if strings.TrimSpace(msg.Text)=="返回" { m.sendOwnerOverview(ctx,cfg,msg.Chat.ID);return true }
+ language := m.languageForUser(ctx,cfg,*msg.From)
+ if strings.TrimSpace(msg.Text)==botText(language,"owner.support_menu") { m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0);return true }
+ if strings.TrimSpace(msg.Text)==botText(language,"owner.back") { m.sendOwnerOverview(ctx,cfg,msg.Chat.ID);return true }
  ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,session.TicketID)
  if err!=nil||ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected" {
   _=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
