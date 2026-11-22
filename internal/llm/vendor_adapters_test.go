@@ -379,9 +379,16 @@ func TestCompleteHonorsContextCancellation(t *testing.T) {
 }
 
 func TestCompleteHonorsConfiguredHTTPTimeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
 	defer server.Close()
-	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
+	defer close(release)
+	provider, err := NewOpenAICompatible(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"gpt-test",Timeout:20*time.Millisecond})(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
 	if err != nil { t.Fatal(err) }
 	started := time.Now()
 	_, err = provider.Complete(context.Background(), CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
@@ -392,8 +399,12 @@ func TestCompleteHonorsConfiguredHTTPTimeout(t *testing.T) {
 
 func TestCompleteClassifiesTransportTimeoutAndCancellation(t *testing.T) {
  t.Run("client timeout is retryable request_timeout",func(t *testing.T){
-  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){<-r.Context().Done()}))
+  release:=make(chan struct{})
+  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+   select { case <-r.Context().Done(): case <-release: }
+  }))
   defer server.Close()
+  defer close(release)
   provider,err:=NewVendorProvider(Config{Provider:"openai",BaseURL:server.URL+"/v1",APIKey:"test-key",Model:"test-model",Timeout:20*time.Millisecond})
   if err!=nil{t.Fatal(err)}
   _,err=provider.Complete(context.Background(),CompletionRequest{Messages:[]Message{{Role:"user",Content:"hello"}}})
