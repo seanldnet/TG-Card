@@ -1,3 +1,15 @@
+## 2026-11-23 — Telegram Bot 与 Admin 中英文国际化交付（文档版本 2.2.99）
+
+- Telegram 用户端 PR #145–#149 已合并，覆盖语言识别/偏好持久化、欢迎页/菜单、商品与订单详情、购物车/结账、支付执行、交付与售后通知。
+- PR #164 增加每 Bot 默认语言设置（简体中文/英文），存入现有 Bot menu_config JSON，无数据库迁移；语言优先级为用户已保存偏好、Telegram 支持语言、Bot 默认语言；旧 Bot 默认简体中文。
+- PR #164 本地化 Owner 菜单与经营概览；PR #166 本地化 Owner 售后工单列表、详情、回复、结单和通知；PR #169 本地化 Owner 订单、库存、用户、群发、封禁/解封和待付款订单管理操作。
+- Admin Vue i18n PR #150–#155、#160 已合并，覆盖核心运营页面、经营分析、支付设置、管理员 TOTP、网站/备份/邮件/Telegram 通知设置及个人资料/密码。
+- 当前 main commit：edb2287aeb8429435b9a3474c32212a746906e6a。PR #169 合并后的 Go Backend CI、Admin Frontend CI、安全扫描及 Docker Publish 均成功；GHCR 已推送 `latest` 与 commit tag，OCI manifest digest：`sha256:38d0a4feddb11c55a301db8d4c22a64878f5f5952e189a75375cc78597b937d7`。
+- 本轮不改变支付、订单、库存或权限业务逻辑；无数据库 schema 迁移。PostgreSQL（pgx）仍为主数据库，SQLite 兼容。
+- 生产部署及真实 Telegram Bot 端到端验收不由代码合并自动推定。
+
+---
+
 ## 2026-11-23 — Telegram 与 Admin i18n 进度校准（文档版本 2.2.98）
 
 - Telegram Bot 中英文 i18n：PR #145–#149 已合并，依次覆盖基础语言识别/偏好持久化、商品与订单详情、购物车/结账、支付执行、交付和售后通知。
