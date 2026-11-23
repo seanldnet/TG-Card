@@ -131,3 +131,15 @@ func TestOwnerSupportTranslations(t *testing.T) {
 		t.Fatalf("English owner support keyboard label = %q", got)
 	}
 }
+
+func TestOwnerActionTranslations(t *testing.T) {
+	if got := botText(languageEnglish, "owner.action.order_title"); got != "Order details" {
+		t.Fatalf("English owner order title = %q", got)
+	}
+	if got := botText(languageEnglish, "owner.action.broadcast_prompt"); got != "Send the broadcast message. It will be queued after submission." {
+		t.Fatalf("English owner broadcast prompt = %q", got)
+	}
+	if got := botText(languageEnglish, "owner.action.stock_prompt"); got != "Send the codes to import, one per line or comma-separated (up to 200)." {
+		t.Fatalf("English owner stock prompt = %q", got)
+	}
+}
