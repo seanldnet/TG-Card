@@ -1249,7 +1249,8 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
-	ownerLanguage := m.languageForUser(ctx, cfg, query.From)
+	ownerLanguage := ""
+	if strings.HasPrefix(query.Data, "owner:") || strings.HasPrefix(query.Data, "support:owner:") { ownerLanguage = m.languageForUser(ctx, cfg, query.From) }
 	if strings.HasPrefix(query.Data, "language:set:") {
 		language := normalizeLanguage(strings.TrimPrefix(query.Data, "language:set:"))
 		if language == "" || m.db == nil {
