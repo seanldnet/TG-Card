@@ -713,7 +713,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 
 	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
 	if err != nil || admin.Status != 1 || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.Password)) != nil {
-		if err:=a.recordLoginFailure(r.Context(),ip);err!=nil{log.Printf("record administrator login failure: %v",err)}
+		if err:=a.recordLoginFailure(r.Context(),ip);err!=nil{log.Printf("record administrator login failure: %v",err);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return}
 		database.RecordLoginAudit(r.Context(), a.db, a.driver, "", input.Username, ip, r.UserAgent(), false)
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
@@ -782,9 +782,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 
 func (a *application) allowLoginAttempt(ctx context.Context, ip string) (bool,error) {
 	if a.redisLimiter != nil {
-		count,err:=a.redisLimiter.Count(ctx,"admin-login:"+ip)
-		if err!=nil{return false,err}
-		return count<10,nil
+		return a.redisLimiter.AllowAndIncrement(ctx,"admin-login:"+ip,10,15*time.Minute)
 	}
 	now:=time.Now();a.loginMu.Lock();defer a.loginMu.Unlock()
 	if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)}
@@ -794,7 +792,7 @@ func (a *application) allowLoginAttempt(ctx context.Context, ip string) (bool,er
 	return len(kept)<10,nil
 }
 func (a *application) recordLoginFailure(ctx context.Context, ip string) error {
-	if a.redisLimiter != nil { _,err:=a.redisLimiter.Increment(ctx,"admin-login:"+ip,15*time.Minute);return err }
+	if a.redisLimiter != nil { return nil }
 	a.loginMu.Lock();defer a.loginMu.Unlock()
 	if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)}
 	a.loginFailures[ip]=append(a.loginFailures[ip],time.Now())
