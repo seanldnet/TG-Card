@@ -19,6 +19,12 @@ func normalizeLanguage(value string) string {
 	}
 }
 
+func detectLanguageWithDefault(languageCode, defaultLanguage string) string {
+	if language := normalizeLanguage(languageCode); language != "" { return language }
+	if language := normalizeLanguage(defaultLanguage); language != "" { return language }
+	return languageChinese
+}
+
 func detectLanguage(languageCode string) string {
 	if language := normalizeLanguage(languageCode); language != "" {
 		return language
@@ -349,6 +355,55 @@ var botMessages = map[string]map[string]string{
 	"support.update_title": {languageChinese: "售后工单更新", languageEnglish: "Support ticket update"},
 	"support.current_status": {languageChinese: "当前状态：", languageEnglish: "Status: "},
 	"support.admin_reply": {languageChinese: "管理员回复：", languageEnglish: "Support team reply:"},
+
+	"owner.menu": {languageChinese: "🛠️ 主人管理", languageEnglish: "🛠️ Owner console"},
+	"owner.support_menu": {languageChinese: "🧾 待处理工单", languageEnglish: "🧾 Pending tickets"},
+	"owner.back": {languageChinese: "返回", languageEnglish: "Back"},
+	"owner.overview.db_unavailable": {languageChinese: "数据库暂不可用。", languageEnglish: "The database is temporarily unavailable."},
+	"owner.overview.query_failed": {languageChinese: "经营数据暂时无法读取，请稍后重试。", languageEnglish: "Business metrics are temporarily unavailable. Please try again later."},
+	"owner.overview.title": {languageChinese: "🛠️ Bot 管理指挥台", languageEnglish: "🛠️ Bot owner console"},
+	"owner.overview.users": {languageChinese: "👥 累计用户：", languageEnglish: "👥 Total users: "},
+	"owner.overview.products": {languageChinese: "🛍️ 在售商品：", languageEnglish: "🛍️ Active products: "},
+	"owner.overview.pending_orders": {languageChinese: "⏳ 待付款订单：", languageEnglish: "⏳ Pending orders: "},
+	"owner.overview.paid_orders": {languageChinese: "✅ 已付款/交付订单：", languageEnglish: "✅ Paid / delivered orders: "},
+	"owner.overview.tickets": {languageChinese: "🧾 待处理售后：", languageEnglish: "🧾 Open support tickets: "},
+	"owner.overview.instructions": {languageChinese: "请选择下方管理功能，按提示完成操作：", languageEnglish: "Choose an action below and follow the prompts:"},
+	"owner.menu.stats": {languageChinese: "📊 经营数据总览", languageEnglish: "📊 Business overview"},
+	"owner.menu.users": {languageChinese: "👥 用户查询", languageEnglish: "👥 User lookup"},
+	"owner.menu.orders": {languageChinese: "🧾 最新订单", languageEnglish: "🧾 Recent orders"},
+	"owner.menu.stock": {languageChinese: "📦 商品库存", languageEnglish: "📦 Product inventory"},
+	"owner.menu.add_stock": {languageChinese: "➕ 添加库存", languageEnglish: "➕ Add inventory"},
+	"owner.menu.broadcast": {languageChinese: "📣 群发通知", languageEnglish: "📣 Broadcast"},
+	"owner.menu.ban": {languageChinese: "🔒 封禁用户", languageEnglish: "🔒 Ban user"},
+	"owner.menu.unban": {languageChinese: "🔓 解封用户", languageEnglish: "🔓 Unban user"},
+	"owner.menu.close_order": {languageChinese: "⛔ 关闭待付款订单", languageEnglish: "⛔ Close pending order"},
+	"owner.menu.back_home": {languageChinese: "⬅️ 返回个人首页", languageEnglish: "⬅️ Back to home"},
+	"owner.support.list_error": {languageChinese: "待处理工单暂时无法读取。", languageEnglish: "Pending support tickets are temporarily unavailable."},
+	"owner.support.list_empty": {languageChinese: "目前没有待处理或处理中的工单。", languageEnglish: "There are no pending or in-progress tickets."},
+	"owner.support.list_title": {languageChinese: "待处理/处理中工单（", languageEnglish: "Pending / in-progress tickets ("},
+	"owner.support.count_suffix": {languageChinese: " 条，第 ", languageEnglish: " tickets, page "},
+	"owner.support.page_separator": {languageChinese: "/", languageEnglish: "/"},
+	"owner.support.page_suffix": {languageChinese: " 页）：", languageEnglish: "):"},
+	"owner.support.previous": {languageChinese: "上一页", languageEnglish: "Previous"},
+	"owner.support.next": {languageChinese: "下一页", languageEnglish: "Next"},
+	"owner.support.back": {languageChinese: "返回", languageEnglish: "Back"},
+	"owner.support.not_found": {languageChinese: "工单不存在或不属于当前机器人。", languageEnglish: "Ticket not found or it does not belong to this Bot."},
+	"owner.support.history_error": {languageChinese: "工单记录读取失败。", languageEnglish: "Failed to load ticket history."},
+	"owner.support.customer": {languageChinese: "用户", languageEnglish: "Customer"},
+	"owner.support.agent": {languageChinese: "客服", languageEnglish: "Support"},
+	"owner.support.ticket_number": {languageChinese: "工单号：", languageEnglish: "Ticket: "},
+	"owner.support.user": {languageChinese: "用户：", languageEnglish: "Customer: "},
+	"owner.support.bot": {languageChinese: "Bot：", languageEnglish: "Bot: "},
+	"owner.support.order": {languageChinese: "关联订单：", languageEnglish: "Order: "},
+	"owner.support.status": {languageChinese: "状态：", languageEnglish: "Status: "},
+	"owner.support.attachments": {languageChinese: "[图片 %d 张 / 文件 %d 个，已在上面转发]\n", languageEnglish: "[%d image(s) / %d file(s), forwarded above]\n"},
+	"owner.support.history": {languageChinese: "\n沟通记录：\n", languageEnglish: "\nConversation history:\n"},
+	"owner.support.start_reply": {languageChinese: "开始回复", languageEnglish: "Reply"},
+	"owner.support.resolve": {languageChinese: "结单", languageEnglish: "Resolve"},
+	"owner.support.back_list": {languageChinese: "返回列表", languageEnglish: "Back to list"},
+	"owner.support.reply_prompt": {languageChinese: "请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单：", languageEnglish: "Send your reply to the customer (text, image, or file). Current ticket: "},
+	"owner.support.closed": {languageChinese: "该工单已结单。", languageEnglish: "This ticket is already closed."},
+	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"},
 }
 
 func botText(language, key string) string {
