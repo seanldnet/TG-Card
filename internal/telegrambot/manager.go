@@ -2541,6 +2541,7 @@ func ownerSupportReplyKeyboardForLanguage(language string) map[string]any { retu
 func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config,msg Message) bool {
  if m.db==nil{return false}
  ownerID:=strconv.FormatInt(msg.From.ID,10)
+ language:=m.languageForUser(ctx,cfg,*msg.From)
  session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10))
  if err!=nil{return false}
  language := m.languageForUser(ctx,cfg,*msg.From)
@@ -2549,7 +2550,7 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,session.TicketID)
  if err!=nil||ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected" {
   _=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"该工单已结单或不存在，请重新选择待处理工单。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.ticket_closed_or_missing"))
   return true
  }
  text:=strings.TrimSpace(msg.Text)
@@ -2560,32 +2561,32 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  if text==""&&fileID==""{return true}
  updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
  exists,lookupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,updateKey)
- if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法确认消息是否已处理，请稍后重试。");return true}
- if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已处理，请继续发送下一条内容。");return true}
+ if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.message_check_failed"));return true}
+ if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.message_already_processed"));return true}
  userChat,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil{
   _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败：用户会话地址无效","","")
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用户会话地址无效，工单保持处理中。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.chat_invalid"))
   return true
  }
- outgoing:="客服回复："
+ outgoing:=botText(language,"owner.support.reply_prefix")
  if text!=""{outgoing+="\n"+text}
  if fileID!=""{err=m.sendSupportMedia(ctx,cfg.Token,userChat,fileID,fileName,outgoing)}else{err=m.sendMessage(ctx,cfg.Token,userChat,outgoing)}
  if err!=nil{
   _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败："+err.Error(),"","")
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"发送给用户失败："+err.Error()+"\n工单保持处理中，可重新发送新的回复。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.send_failed")+err.Error()+botText(language,"owner.support.send_failed_suffix"))
   log.Printf("support owner reply failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err)
   return true
  }
  // Persist the customer-visible reply only after Telegram confirms delivery.
  if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,text,fileID,fileName,updateKey);err!=nil{
   log.Printf("support owner reply delivered but timeline append failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err)
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"消息已发送给用户，但沟通记录保存失败，请检查数据库后再继续操作。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.timeline_save_failed"))
   return true
  }
  _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10),ticket.ID,"confirm",30*time.Minute)
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"是，结单","callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":"否，继续沟通","callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
- _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已发送给用户。是否结单？",keyboard)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.confirm_yes"),"callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":botText(language,"owner.support.confirm_no"),"callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
+ _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.confirm_prompt"),keyboard)
  return true
 }
 
