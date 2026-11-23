@@ -114,3 +114,20 @@ func TestDetectLanguageUsesPerBotDefault(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnerSupportTranslations(t *testing.T) {
+	if got := botText(languageEnglish, "owner.support.start_reply"); got != "Reply" {
+		t.Fatalf("English owner support reply label = %q", got)
+	}
+	if got := botText(languageEnglish, "owner.support.confirm_prompt"); got != "Reply sent. Resolve this ticket?" {
+		t.Fatalf("English owner support confirmation = %q", got)
+	}
+	markup := ownerSupportReplyKeyboardForLanguage(languageEnglish)
+	rows, ok := markup["keyboard"].([][]map[string]string)
+	if !ok || len(rows) != 1 || len(rows[0]) != 2 {
+		t.Fatalf("unexpected English owner support keyboard: %#v", markup)
+	}
+	if got := rows[0][0]["text"]; got != "🧾 Pending tickets" {
+		t.Fatalf("English owner support keyboard label = %q", got)
+	}
+}
