@@ -1,12 +1,10 @@
-## 2026-11-23 — Redis 共享限流与 Bot 轮询租约（开发中）
+## 2026-11-23 — P2-1 Redis 已合并；P2-2 S3/R2 开始梳理
 
-- 新增依赖零引入的 Redis RESP 客户端，支持 redis/rediss、TLS 1.2+、密码/ACL 认证与 SELECT 数据库。
-- 新增原子 fixed-window 共享限流；管理员敏感操作限流和登录失败计数在多实例间共享。Redis 已配置但不可用时敏感请求 fail closed；未配置时沿用本地内存策略。
-- Telegram Bot polling worker 使用 Bot ID 级 Redis lease（随机 ownership token、SET NX PX、token 校验续租/释放），持有租约实例负责 getUpdates；其他实例 standby，租约续租失败则取消轮询并重试。
-- 订单交付继续沿用数据库持久化租约与既有幂等流程，不用 Redis 替换资金/履约安全基线。
-- 增加 detailed health Redis 状态、Compose opt-in Redis profile 与环境变量说明；无数据库迁移。
-- 验证：新增 Redis 客户端/协议/租约脚本单测；Go/Admin/Security CI 待 PR 执行，多实例和真实 Telegram 行为待部署验收。
-- 状态：开发分支 `feat/redis-shared-rate-limiting`，尚未合并或发布。
+- PR #171 已合并至 main，commit `2147e179a4010d9ea782e73df42ea6fdc8a880aa`；增加可选 Redis 共享敏感操作限流、管理员登录失败计数及按 Bot ID 的 polling token lease。
+- Redis 使用部署环境变量 `REDIS_URL` 配置；不设置时保留原有单机实现。Redis 是基础设施连接，不通过普通后台表单动态修改连接凭据；详细健康状态可由运维接口查看。
+- 订单交付继续使用数据库持久化租约和幂等流程，不由 Redis 替代。Go、Admin、安全扫描及 Docker Publish 已通过，GHCR 镜像已推送；生产多实例和真实 Bot 行为仍需目标环境验收。
+- P2-2 当前只完成存储路径调查：管理员头像/站点 Logo 与上游商品图片走本地 `/uploads/...` 静态文件；售后附件由 Telegram Bot API 按工单权限即时获取并私有返回。
+- 对象存储实施将保留本地后端和旧 URL 兼容，私有售后附件不公开化；当前尚无 S3/R2 代码、PR、数据库迁移或镜像发布。
 
 ---
 
