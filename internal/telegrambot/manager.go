@@ -565,6 +565,7 @@ func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
 	for {
 		if ctx.Err() != nil { return }
 		updates, err := m.getUpdates(ctx, cfg.Token, offset)
+		if ctx.Err()!=nil { return }
 		if err != nil {
 			if ctx.Err() != nil { return }
 			consecutiveErrors++
@@ -592,6 +593,7 @@ func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
 		if len(updates) > 0 { status.LastUpdateAt = status.LastPollAt }
 		m.setWorkerRuntimeStatus(cfg.ID, current, status)
 		for _, update := range updates {
+			if ctx.Err()!=nil { return }
 			if int64(update.UpdateID) >= offset { offset = int64(update.UpdateID) + 1 }
 			if update.Message != nil { m.handleMessage(ctx, cfg, *update.Message) }
 			if update.CallbackQuery != nil { m.handleCallback(ctx, cfg, *update.CallbackQuery) }
