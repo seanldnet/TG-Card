@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -28,7 +30,9 @@ func (a *application) adminLoginTOTPRequirement(w http.ResponseWriter, r *http.R
 	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	ip := a.clientIP(r)
-	if !a.allowLoginAttempt(ip) {
+	allowed,limitErr:=a.allowLoginAttempt(r.Context(),ip)
+	if limitErr!=nil { log.Printf("check administrator TOTP login rate limit: %v",limitErr);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return }
+	if !allowed {
 		writeError(w, http.StatusTooManyRequests, "登录尝试过于频繁，请 15 分钟后再试")
 		return
 	}
@@ -44,11 +48,11 @@ func (a *application) adminLoginTOTPRequirement(w http.ResponseWriter, r *http.R
 	}
 	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
 	if err != nil || admin.Status != 1 || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.Password)) != nil {
-		a.recordLoginFailure(ip)
+		if err:=a.recordLoginFailure(r.Context(),ip);err!=nil{log.Printf("record administrator TOTP login failure: %v",err);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return}
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
-	a.clearLoginFailures(ip)
+	if err:=a.clearLoginFailures(r.Context(),ip);err!=nil{log.Printf("clear administrator TOTP login failures: %v",err)}
 	writeSuccess(w, http.StatusOK, map[string]bool{"enabled": admin.TOTPEnabled})
 }
 
