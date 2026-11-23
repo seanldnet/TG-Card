@@ -2496,7 +2496,9 @@ func (m *Manager) showOwnerSupportTicket(ctx context.Context, cfg Config, chatID
   if strings.TrimSpace(item.Message) != "" {
    who := botText(language, "owner.support.customer")
    if item.SenderType == "admin" { who = botText(language, "owner.support.agent") }
-   lines = append(lines, who + "： " + item.Message)
+   separator := ": "
+   if language == languageChinese { separator = "：" }
+   lines = append(lines, who + separator + item.Message)
   }
  }
  body := botText(language, "owner.support.ticket_number") + ticket.TicketNo + "\n" +
@@ -2548,7 +2550,6 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  language:=m.languageForUser(ctx,cfg,*msg.From)
  session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10))
  if err!=nil{return false}
- language := m.languageForUser(ctx,cfg,*msg.From)
  if strings.TrimSpace(msg.Text)==botText(language,"owner.support_menu") { m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0);return true }
  if strings.TrimSpace(msg.Text)==botText(language,"owner.back") { m.sendOwnerOverview(ctx,cfg,msg.Chat.ID);return true }
  ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,session.TicketID)
