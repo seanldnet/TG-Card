@@ -227,6 +227,21 @@ func main() {
 	}
 	paymentsEnabled := paymentSettings.TronEnabled && apiKey != "" && paymentSettings.TronReceiveAddress != ""
 	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
+if redisLimiter != nil {
+		botManager.SetPollingLease(func(leaseCtx context.Context,botID string)(func(context.Context)error,func(context.Context)error,bool,error){
+			leaseKey:="telegram-bot-poll:"+botID
+			token,acquired,leaseErr:=redisLimiter.AcquireLease(leaseCtx,leaseKey,75*time.Second)
+			if leaseErr!=nil||!acquired{return nil,nil,acquired,leaseErr}
+			renew:=func(renewCtx context.Context)error{
+				renewed,err:=redisLimiter.RenewLease(renewCtx,leaseKey,token,75*time.Second)
+				if err!=nil{return err}
+				if !renewed{return errors.New("polling lease ownership lost")}
+				return nil
+			}
+			release:=func(releaseCtx context.Context)error{return redisLimiter.ReleaseLease(releaseCtx,leaseKey,token)}
+			return renew,release,true,nil
+		})
+	}
 	botManager.SetEncryptor(secrets.Encrypt)
 	if rawSite, siteErr := database.GetSiteSettings(ctx, db); siteErr == nil {
 		var initialSite siteSettings
