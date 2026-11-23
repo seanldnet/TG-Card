@@ -30,6 +30,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/config"
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/payment"
+	"github.com/seanldnet/TG-Card/internal/ratelimit"
 	"github.com/seanldnet/TG-Card/internal/secret"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
 	"github.com/seanldnet/TG-Card/internal/tron"
@@ -46,6 +47,7 @@ type application struct {
 	paymentManager *payment.Manager
 	dataDir string
 	loginMu sync.Mutex
+	redisLimiter *ratelimit.Redis
 	upstreamSyncMu sync.Mutex
 	upstreamJobMu sync.Mutex
 	upstreamJobCancel context.CancelFunc
@@ -171,6 +173,16 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
 	if err != nil { log.Fatalf("invalid TRUSTED_PROXY_CIDRS: %v", err) }
+	var redisLimiter *ratelimit.Redis
+	if cfg.RedisURL != "" {
+		redisLimiter, err = ratelimit.NewRedis(cfg.RedisURL)
+		if err != nil { log.Fatalf("configure Redis: %v", err) }
+		redisCtx, redisCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		redisErr := redisLimiter.Ping(redisCtx)
+		redisCancel()
+		if redisErr != nil { log.Fatalf("REDIS_URL is configured but Redis is unavailable: %v", redisErr) }
+		log.Printf("Redis shared rate limiting enabled")
+	}
 
 	ctx := context.Background()
 	db, err := database.Open(ctx, cfg)
@@ -242,7 +254,7 @@ func main() {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, redisLimiter: redisLimiter, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
