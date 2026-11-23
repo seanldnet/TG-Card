@@ -1,3 +1,17 @@
+## 2026-11-23 — Redis 共享限流与 Bot 轮询租约（开发中）
+
+- 开发分支：`feat/redis-shared-rate-limiting`；基于 main commit `64396c2f7e315d64715544ea9b4b689f49fb0ea1`。
+- 新增可选 `REDIS_URL`，支持 `redis://`、`rediss://`、ACL/密码认证及数据库编号；未配置时维持既有单实例内存限流。
+- 敏感后台操作限流与管理员登录失败计数改为 Redis 原子共享计数；Redis 配置启用但连接失败时 fail closed，不回退为各实例独立限流。
+- Telegram Bot 长轮询新增按 Bot ID 的 Redis token lease，使用 SET NX PX 获取、token 校验续租/释放；75 秒 TTL、20 秒续租，失去租约后取消当前 polling context 并重试获取，未持有租约的实例进入 standby。
+- 订单交付继续使用现有数据库持久化租约/幂等路径，不以 Redis 锁替换资金与履约安全机制；PostgreSQL 共享数据库本身提供跨实例协调。
+- `/api/health/detailed` 增加 Redis 配置/连接状态；Compose 增加 opt-in Redis profile，默认部署不启动 Redis。
+- 无数据库 schema 迁移；PostgreSQL（pgx）仍为主数据库，SQLite 兼容。
+- 验证状态：新增 Redis RESP、配置解析、原子限流及租约脚本测试；PR CI 尚待执行。多实例并发、Redis 故障恢复及 Telegram 真实轮询仍需部署环境验证。
+- 当前状态：开发中，尚未合并、发布镜像或生产验收。
+
+---
+
 ## 2026-11-23 — Telegram Bot 与 Admin 国际化交付校准（文档版本 2.2.99）
 
 本节为当前开发状态基线，覆盖 PR #145–#169 的已合并工作。
