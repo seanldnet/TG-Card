@@ -750,7 +750,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !consumed {
-				a.recordLoginFailure(ip)
+				if err:=a.recordLoginFailure(r.Context(),ip);err!=nil{log.Printf("record administrator TOTP failure: %v",err);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return}
 				database.RecordLoginAudit(r.Context(),a.db,a.driver,admin.ID,admin.Username,ip,r.UserAgent(),false)
 				writeError(w,http.StatusUnauthorized,"动态验证码或一次性恢复码错误/已使用")
 				return
