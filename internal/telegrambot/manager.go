@@ -2445,15 +2445,27 @@ func (m *Manager) notifyOwnerSupportMessage(ctx context.Context,cfg Config,ticke
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil{log.Printf("support owner follow-up notification failed: ticket_id=%s error=%v",ticketID,err)}
 }
 
-func (m *Manager) showOwnerSupportList(ctx context.Context,cfg Config,chatID int64,page int) {
- items,err:=database.ListPendingSupportTickets(ctx,m.db,m.driver,cfg.ID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"待处理工单暂时无法读取。");return}
- const size=8;pages:=(len(items)+size-1)/size;if pages==0{_=m.sendMessage(ctx,cfg.Token,chatID,"目前没有待处理或处理中的工单。");return}
- if page<0{page=0};if page>=pages{page=pages-1};start:=page*size;end:=start+size;if end>len(items){end=len(items)}
- rows:=make([][]map[string]string,0,size+2)
- for _,t:=range items[start:end]{label:="#"+t.TicketNo+" · "+t.TelegramUserID+" · "+truncateButtonText(t.Description,18);rows=append(rows,[]map[string]string{{"text":truncateButtonText(label,60),"callback_data":"support:owner:view:"+t.ID}})}
- nav:=[]map[string]string{};if page>0{nav=append(nav,map[string]string{"text":"上一页","callback_data":"support:owner:list:"+strconv.Itoa(page-1)})};if page+1<pages{nav=append(nav,map[string]string{"text":"下一页","callback_data":"support:owner:list:"+strconv.Itoa(page+1)})};if len(nav)>0{rows=append(rows,nav)}
- rows=append(rows,[]map[string]string{{"text":"返回","callback_data":"support:owner:home"}})
- _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"待处理/处理中工单（"+strconv.Itoa(len(items))+" 条，第 "+strconv.Itoa(page+1)+"/"+strconv.Itoa(pages)+" 页）：",map[string]any{"inline_keyboard":rows})
+func (m *Manager) showOwnerSupportList(ctx context.Context, cfg Config, chatID int64, page int) {
+ language := m.languageForChat(ctx, cfg, chatID)
+ items, err := database.ListPendingSupportTickets(ctx, m.db, m.driver, cfg.ID)
+ if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.list_error")); return }
+ const size = 8
+ pages := (len(items) + size - 1) / size
+ if pages == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.list_empty")); return }
+ if page < 0 { page = 0 }; if page >= pages { page = pages - 1 }
+ start := page * size; end := start + size; if end > len(items) { end = len(items) }
+ rows := make([][]map[string]string, 0, size+2)
+ for _, ticket := range items[start:end] {
+  label := "#" + ticket.TicketNo + " · " + ticket.TelegramUserID + " · " + truncateButtonText(ticket.Description, 18)
+  rows = append(rows, []map[string]string{{"text": truncateButtonText(label, 60), "callback_data": "support:owner:view:" + ticket.ID}})
+ }
+ nav := []map[string]string{}
+ if page > 0 { nav = append(nav, map[string]string{"text": botText(language, "owner.support.previous"), "callback_data": "support:owner:list:" + strconv.Itoa(page-1)}) }
+ if page+1 < pages { nav = append(nav, map[string]string{"text": botText(language, "owner.support.next"), "callback_data": "support:owner:list:" + strconv.Itoa(page+1)}) }
+ if len(nav) > 0 { rows = append(rows, nav) }
+ rows = append(rows, []map[string]string{{"text": botText(language, "owner.support.back"), "callback_data": "support:owner:home"}})
+ title := botText(language, "owner.support.list_title") + strconv.Itoa(len(items)) + botText(language, "owner.support.count_suffix") + strconv.Itoa(page+1) + botText(language, "owner.support.page_separator") + strconv.Itoa(pages) + botText(language, "owner.support.page_suffix")
+ _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, title, map[string]any{"inline_keyboard": rows})
 }
 
 func (m *Manager) getOwnerSupportTicketForBot(ctx context.Context, cfg Config, ticketID string) (database.SupportTicket, error) {
@@ -2467,16 +2479,34 @@ func (m *Manager) getOwnerSupportTicketForBot(ctx context.Context, cfg Config, t
  return ticket, nil
 }
 
-func (m *Manager) showOwnerSupportTicket(ctx context.Context,cfg Config,chatID int64,ticketID string) {
- t,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
- messages,err:=database.ListSupportTicketMessages(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单记录读取失败。");return}
- photos,files:=0,0;lines:=[]string{}
- for _,item:=range messages{if item.AttachmentFileID!=""{if strings.Contains(strings.ToLower(item.AttachmentName),"图片"){photos++}else{files++}};if strings.TrimSpace(item.Message)!=""{who:="用户";if item.SenderType=="admin"{who="客服"};lines=append(lines,who+"："+item.Message)}}
- body:="工单号："+t.TicketNo+"\n用户："+t.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+t.OrderNo+"\n状态："+t.Status+"\n"
- if photos+files>0{body+=fmt.Sprintf("[图片 %d 张 / 文件 %d 个，已在上面转发]\n",photos,files)}
- if len(lines)>0{body+="\n沟通记录：\n"+strings.Join(lines,"\n")}
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"开始回复","callback_data":"support:owner:reply:"+t.ID},{"text":"结单","callback_data":"support:owner:resolve:"+t.ID}},{{"text":"返回列表","callback_data":"support:owner:list:0"}}}}
- _=m.sendMessageMarkup(ctx,cfg.Token,chatID,body,keyboard)
+func (m *Manager) showOwnerSupportTicket(ctx context.Context, cfg Config, chatID int64, ticketID string) {
+ language := m.languageForChat(ctx, cfg, chatID)
+ ticket, err := m.getOwnerSupportTicketForBot(ctx, cfg, ticketID)
+ if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.not_found")); return }
+ messages, err := database.ListSupportTicketMessages(ctx, m.db, m.driver, ticketID)
+ if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.history_error")); return }
+ photos, files := 0, 0
+ lines := []string{}
+ for _, item := range messages {
+  if item.AttachmentFileID != "" { if strings.Contains(strings.ToLower(item.AttachmentName), "图片") { photos++ } else { files++ } }
+  if strings.TrimSpace(item.Message) != "" {
+   who := botText(language, "owner.support.customer")
+   if item.SenderType == "admin" { who = botText(language, "owner.support.agent") }
+   lines = append(lines, who + "： " + item.Message)
+  }
+ }
+ body := botText(language, "owner.support.ticket_number") + ticket.TicketNo + "\n" +
+  botText(language, "owner.support.user") + ticket.TelegramUserID + "\n" +
+  botText(language, "owner.support.bot") + cfg.Name + "\n" +
+  botText(language, "owner.support.order") + ticket.OrderNo + "\n" +
+  botText(language, "owner.support.status") + supportStatusText(language, ticket.Status) + "\n"
+ if photos+files > 0 { body += fmt.Sprintf(botText(language, "owner.support.attachments"), photos, files) }
+ if len(lines) > 0 { body += botText(language, "owner.support.history") + strings.Join(lines, "\n") }
+ keyboard := map[string]any{"inline_keyboard": [][]map[string]string{
+  {{"text": botText(language, "owner.support.start_reply"), "callback_data": "support:owner:reply:" + ticket.ID}, {"text": botText(language, "owner.support.resolve"), "callback_data": "support:owner:resolve:" + ticket.ID}},
+  {{"text": botText(language, "owner.support.back_list"), "callback_data": "support:owner:list:0"}},
+ }}
+ _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, body, keyboard)
 }
 
 func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q CallbackQuery) {
