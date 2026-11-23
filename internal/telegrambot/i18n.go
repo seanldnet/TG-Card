@@ -403,6 +403,28 @@ var botMessages = map[string]map[string]string{
 	"owner.support.back_list": {languageChinese: "返回列表", languageEnglish: "Back to list"},
 	"owner.support.reply_prompt": {languageChinese: "请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单：", languageEnglish: "Send your reply to the customer (text, image, or file). Current ticket: "},
 	"owner.support.closed": {languageChinese: "该工单已结单。", languageEnglish: "This ticket is already closed."},
+
+	"owner.support.session_update_failed": {languageChinese: "无法开启回复会话：工单状态更新失败，请稍后重试。", languageEnglish: "Unable to start the reply session because the ticket status could not be updated. Try again later."},
+	"owner.support.session_open_failed": {languageChinese: "工单已进入处理中，但回复会话未能开启，请重新点击开始回复。", languageEnglish: "The ticket is now in progress, but the reply session could not be opened. Select Reply again."},
+	"owner.support.resolve_failed": {languageChinese: "结单失败：", languageEnglish: "Failed to resolve ticket: "},
+	"owner.support.confirm_invalid": {languageChinese: "确认操作无效，请重新打开工单。", languageEnglish: "Invalid confirmation. Reopen the ticket and try again."},
+	"owner.support.confirm_expired": {languageChinese: "这条确认操作已过期或当前已切换其他工单，请重新打开工单后操作。", languageEnglish: "This confirmation expired or another ticket is active. Reopen the ticket and try again."},
+	"owner.support.ticket_missing": {languageChinese: "工单不存在。", languageEnglish: "Ticket not found."},
+	"owner.support.continue_reply": {languageChinese: "继续回复即可。", languageEnglish: "You can continue replying."},
+	"owner.support.ticket_closed_or_missing": {languageChinese: "该工单已结单或不存在，请重新选择待处理工单。", languageEnglish: "This ticket is closed or no longer exists. Select another pending ticket."},
+	"owner.support.message_check_failed": {languageChinese: "暂时无法确认消息是否已处理，请稍后重试。", languageEnglish: "Unable to verify whether this message was processed. Try again later."},
+	"owner.support.message_already_processed": {languageChinese: "这条消息已处理，请继续发送下一条内容。", languageEnglish: "This message has already been processed. Send the next message when ready."},
+	"owner.support.chat_invalid": {languageChinese: "用户会话地址无效，工单保持处理中。", languageEnglish: "The customer's chat address is invalid. The ticket remains in progress."},
+	"owner.support.reply_prefix": {languageChinese: "客服回复：", languageEnglish: "Support reply:"},
+	"owner.support.send_failed": {languageChinese: "发送给用户失败：", languageEnglish: "Failed to send the reply: "},
+	"owner.support.send_failed_suffix": {languageChinese: "\n工单保持处理中，可重新发送新的回复。", languageEnglish: "\nThe ticket remains in progress. You can send a new reply."},
+	"owner.support.timeline_save_failed": {languageChinese: "消息已发送给用户，但沟通记录保存失败，请检查数据库后再继续操作。", languageEnglish: "The message was delivered, but the conversation history could not be saved. Check the database before continuing."},
+	"owner.support.confirm_prompt": {languageChinese: "已发送给用户。是否结单？", languageEnglish: "Reply sent. Resolve this ticket?"},
+	"owner.support.confirm_yes": {languageChinese: "是，结单", languageEnglish: "Yes, resolve"},
+	"owner.support.confirm_no": {languageChinese: "否，继续沟通", languageEnglish: "No, continue"},
+	"owner.support.forwarded_user": {languageChinese: "用户补充：\n", languageEnglish: "Customer follow-up:\n"},
+	"owner.support.forwarded_ticket": {languageChinese: "🧾 工单补充消息：", languageEnglish: "🧾 Ticket follow-up: "},
+	"owner.support.question": {languageChinese: "问题：", languageEnglish: "Issue: "}
 	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"},
 }
 
