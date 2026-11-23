@@ -434,10 +434,10 @@ var botMessages = map[string]map[string]string{
 	"support.resolved.result": {languageChinese: "处理结果：", languageEnglish: "Resolution: "},
 	"support.resolved.prompt": {languageChinese: "如仍有问题可直接回复本消息继续沟通。", languageEnglish: "If you still need help, reply to this message to continue the conversation."},
 	"support.resolved.solved": {languageChinese: "问题已解决", languageEnglish: "Resolved"},
-	"support.resolved.reopen": {languageChinese: "仍有问题，继续沟通", languageEnglish: "Still need help"}
+	"support.resolved.reopen": {languageChinese: "仍有问题，继续沟通", languageEnglish: "Still need help"},
 	"owner.support.forwarded_user": {languageChinese: "用户补充：\n", languageEnglish: "Customer follow-up:\n"},
 	"owner.support.forwarded_ticket": {languageChinese: "🧾 工单补充消息：", languageEnglish: "🧾 Ticket follow-up: "},
-	"owner.support.question": {languageChinese: "问题：", languageEnglish: "Issue: "}
+	"owner.support.question": {languageChinese: "问题：", languageEnglish: "Issue: "},
 	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"},
 }
 
