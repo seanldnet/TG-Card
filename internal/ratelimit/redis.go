@@ -62,7 +62,7 @@ func NewRedis(rawURL string) (*Redis, error) {
 	}
 	if strings.TrimPrefix(u.Path, "/") != "" {
 		db := strings.TrimPrefix(u.Path, "/")
-		if _, err := strconv.Atoi(db); err != nil { return nil, errors.New("REDIS_URL database path must be a non-negative integer") }
+		if index, err := strconv.Atoi(db); err != nil || index < 0 { return nil, errors.New("REDIS_URL database path must be a non-negative integer") }
 		r.database = db
 	}
 	if u.Scheme == "rediss" {
@@ -94,12 +94,6 @@ func (r *Redis) dial(ctx context.Context) (net.Conn, *bufio.Reader, error) {
 }
 
 
-const incrementScript = `
-local count = redis.call("INCR", KEYS[1])
-if count == 1 then redis.call("PEXPIRE", KEYS[1], ARGV[1]) end
-return count
-`
-
 const allowAndIncrementScript = `
 local count = tonumber(redis.call("GET", KEYS[1]) or "0")
 if count >= tonumber(ARGV[1]) then return 0 end
@@ -111,42 +105,6 @@ return 1
 func hashedKey(prefix, key string) string {
  digest := sha256.Sum256([]byte(key))
  return prefix + hex.EncodeToString(digest[:])
-}
-
-// Count reads a counter without changing its expiry.
-func (r *Redis) Count(ctx context.Context, key string) (int64, error) {
- conn, reader, err := r.dial(ctx)
- if err != nil { return 0, err }
- defer conn.Close()
- result, err := redisCommandResult(conn, reader, "GET", hashedKey("tg-card:counter:", key))
- if err != nil { return 0, err }
- if result == nil { return 0, nil }
- value, ok := result.(string)
- if !ok { return 0, fmt.Errorf("unexpected Redis GET response %T", result) }
- return strconv.ParseInt(value, 10, 64)
-}
-
-// AllowAndIncrement atomically reserves one attempt only while below the limit.
-func (r *Redis) AllowAndIncrement(ctx context.Context, key string, limit int, window time.Duration) (bool,error) {
- if limit < 1 || window <= 0 { return false, errors.New("rate limit and window must be positive") }
- conn,reader,err:=r.dial(ctx);if err!=nil{return false,err};defer conn.Close()
- result,err:=redisCommandResult(conn,reader,"EVAL",allowAndIncrementScript,"1",hashedKey("tg-card:counter:",key),strconv.Itoa(limit),strconv.FormatInt(max(int64(window/time.Millisecond),1),10))
- if err!=nil{return false,err}
- count,ok:=result.(int64);if !ok{return false,fmt.Errorf("unexpected Redis login limiter response %T",result)}
- return count==1,nil
-}
-
-// Increment atomically records a failure and sets its TTL on the first failure.
-func (r *Redis) Increment(ctx context.Context, key string, window time.Duration) (int64, error) {
- if window <= 0 { return 0, errors.New("counter window must be positive") }
- conn, reader, err := r.dial(ctx)
- if err != nil { return 0, err }
- defer conn.Close()
- result, err := redisCommandResult(conn, reader, "EVAL", incrementScript, "1", hashedKey("tg-card:counter:", key), strconv.FormatInt(max(int64(window/time.Millisecond), 1), 10))
- if err != nil { return 0, err }
- count, ok := result.(int64)
- if !ok { return 0, fmt.Errorf("unexpected Redis INCR response %T", result) }
- return count, nil
 }
 
 // Delete clears a counter after a successful authentication.
