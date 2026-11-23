@@ -107,6 +107,16 @@ func hashedKey(prefix, key string) string {
  return prefix + hex.EncodeToString(digest[:])
 }
 
+// AllowAndIncrement atomically reserves one login attempt while below the limit.
+func (r *Redis) AllowAndIncrement(ctx context.Context,key string,limit int,window time.Duration)(bool,error){
+ if limit<1||window<=0{return false,errors.New("rate limit and window must be positive")}
+ conn,reader,err:=r.dial(ctx);if err!=nil{return false,err};defer conn.Close()
+ result,err:=redisCommandResult(conn,reader,"EVAL",allowAndIncrementScript,"1",hashedKey("tg-card:counter:",key),strconv.Itoa(limit),strconv.FormatInt(max(int64(window/time.Millisecond),1),10))
+ if err!=nil{return false,err}
+ value,ok:=result.(int64);if !ok{return false,fmt.Errorf("unexpected Redis login limiter response %T",result)}
+ return value==1,nil
+}
+
 // Delete clears a counter after a successful authentication.
 func (r *Redis) Delete(ctx context.Context, key string) error {
  conn, reader, err := r.dial(ctx)
