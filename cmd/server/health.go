@@ -54,7 +54,7 @@ func (a *application) monitorBotHealth(ctx context.Context) {
    if bot.Status!=1{continue}
    status,ok:=statuses[bot.ID]
    problem:=""
-   if !ok {problem="worker_missing"} else if !status.Running {problem="worker_stopped"} else if status.State=="conflict" {problem="polling_conflict"} else if status.ConsecutiveErrors>=3 {problem="polling_errors"}
+   if !ok {problem="worker_missing"} else if status.State=="standby" {problem=""} else if status.State=="lease_unavailable" {problem="polling_lease_unavailable"} else if !status.Running {problem="worker_stopped"} else if status.State=="conflict" {problem="polling_conflict"} else if status.ConsecutiveErrors>=3 {problem="polling_errors"}
    a.botAlertMu.Lock()
    previous:=a.botAlertState[bot.ID]
    if problem=="" {delete(a.botAlertState,bot.ID);a.botAlertMu.Unlock();continue}
