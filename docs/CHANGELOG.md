@@ -1,3 +1,15 @@
+## 2026-11-23 — Redis 共享限流与 Bot 轮询租约（开发中）
+
+- 新增依赖零引入的 Redis RESP 客户端，支持 redis/rediss、TLS 1.2+、密码/ACL 认证与 SELECT 数据库。
+- 新增原子 fixed-window 共享限流；管理员敏感操作限流和登录失败计数在多实例间共享。Redis 已配置但不可用时敏感请求 fail closed；未配置时沿用本地内存策略。
+- Telegram Bot polling worker 使用 Bot ID 级 Redis lease（随机 ownership token、SET NX PX、token 校验续租/释放），持有租约实例负责 getUpdates；其他实例 standby，租约续租失败则取消轮询并重试。
+- 订单交付继续沿用数据库持久化租约与既有幂等流程，不用 Redis 替换资金/履约安全基线。
+- 增加 detailed health Redis 状态、Compose opt-in Redis profile 与环境变量说明；无数据库迁移。
+- 验证：新增 Redis 客户端/协议/租约脚本单测；Go/Admin/Security CI 待 PR 执行，多实例和真实 Telegram 行为待部署验收。
+- 状态：开发分支 `feat/redis-shared-rate-limiting`，尚未合并或发布。
+
+---
+
 ## 2026-11-23 — Telegram Bot 与 Admin 中英文国际化交付（文档版本 2.2.99）
 
 - Telegram 用户端 PR #145–#149 已合并，覆盖语言识别/偏好持久化、欢迎页/菜单、商品与订单详情、购物车/结账、支付执行、交付与售后通知。
