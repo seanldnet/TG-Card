@@ -28,9 +28,15 @@ func (a *application) detailedHealth(w http.ResponseWriter,r *http.Request) {
  if settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver);err==nil{
   upstreamStatus=map[string]any{"enabled":settings.Enabled,"catalogStale":settings.CatalogStale,"syncStatus":settings.SyncStatus,"lastSyncAt":settings.SyncAt,"lastAttemptAt":settings.SyncAttemptAt,"syncErrorPresent":settings.SyncError!=""}
  }else if err!=sql.ErrNoRows{upstreamStatus["error"]="unable to read upstream status"}
+ redisStatus:=map[string]any{"configured":a.redisLimiter!=nil}
+ if a.redisLimiter!=nil {
+  if err:=a.redisLimiter.Ping(ctx);err!=nil {redisStatus["connected"]=false;redisStatus["error"]="redis ping failed"} else {redisStatus["connected"]=true}
+ } else {redisStatus["connected"]=nil}
+ healthy:=dbStatus["connected"]==true && (a.redisLimiter==nil || redisStatus["connected"]==true)
  writeSuccess(w,http.StatusOK,map[string]any{
-  "status":map[bool]string{true:"ok",false:"degraded"}[dbStatus["connected"]==true],
+  "status":map[bool]string{true:"ok",false:"degraded"}[healthy],
   "database":dbStatus,
+  "redis":redisStatus,
   "bots":map[string]any{"configured":configuredCount,"runtime":bots},
   "paymentWatcher":a.paymentManager.Status(),
   "upstream":upstreamStatus,
@@ -48,7 +54,7 @@ func (a *application) monitorBotHealth(ctx context.Context) {
    if bot.Status!=1{continue}
    status,ok:=statuses[bot.ID]
    problem:=""
-   if !ok {problem="worker_missing"} else if !status.Running {problem="worker_stopped"} else if status.State=="conflict" {problem="polling_conflict"} else if status.ConsecutiveErrors>=3 {problem="polling_errors"}
+   if !ok {problem="worker_missing"} else if status.State=="standby" {problem=""} else if status.State=="lease_unavailable" {problem="polling_lease_unavailable"} else if !status.Running {problem="worker_stopped"} else if status.State=="conflict" {problem="polling_conflict"} else if status.ConsecutiveErrors>=3 {problem="polling_errors"}
    a.botAlertMu.Lock()
    previous:=a.botAlertState[bot.ID]
    if problem=="" {delete(a.botAlertState,bot.ID);a.botAlertMu.Unlock();continue}

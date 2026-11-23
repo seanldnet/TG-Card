@@ -1,8 +1,10 @@
 package main
 
 import (
+ "context"
  "net"
  "net/http"
+ "log"
  "strconv"
  "strings"
  "time"
@@ -80,8 +82,26 @@ func (a *application) allowSensitiveRequest(key string,limit int,window time.Dur
 func (a *application) sensitiveRateLimit(name string,limit int,window time.Duration,next http.HandlerFunc) http.HandlerFunc {
  return func(w http.ResponseWriter,r *http.Request) {
   key:=a.clientIP(r)+"|"+name
-  if !a.allowSensitiveRequest(key,limit,window) {
-   w.Header().Set("Retry-After",strconv.Itoa(int(window.Seconds())))
+  allowed:=false
+  if a.redisLimiter != nil {
+   ctx,cancel:=context.WithTimeout(r.Context(),1500*time.Millisecond)
+   var err error
+   allowed,err=a.redisLimiter.Allow(ctx,key,limit,window)
+   cancel()
+   if err!=nil {
+    // Never silently fall back to per-process limits in a multi-instance
+    // deployment: doing so would weaken the configured shared policy.
+    log.Printf("Redis rate limiter unavailable: route=%s error=%v",name,err)
+    writeError(w,http.StatusServiceUnavailable,"安全限流服务暂不可用，请稍后重试")
+    return
+   }
+  } else {
+   allowed=a.allowSensitiveRequest(key,limit,window)
+  }
+  if !allowed {
+   retryAfter:=int(window.Seconds())
+   if retryAfter<1 {retryAfter=1}
+   w.Header().Set("Retry-After",strconv.Itoa(retryAfter))
    writeError(w,http.StatusTooManyRequests,"操作过于频繁，请稍后重试")
    return
   }

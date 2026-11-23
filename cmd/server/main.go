@@ -30,6 +30,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/config"
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/payment"
+	"github.com/seanldnet/TG-Card/internal/ratelimit"
 	"github.com/seanldnet/TG-Card/internal/secret"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
 	"github.com/seanldnet/TG-Card/internal/tron"
@@ -46,6 +47,7 @@ type application struct {
 	paymentManager *payment.Manager
 	dataDir string
 	loginMu sync.Mutex
+	redisLimiter *ratelimit.Redis
 	upstreamSyncMu sync.Mutex
 	upstreamJobMu sync.Mutex
 	upstreamJobCancel context.CancelFunc
@@ -171,6 +173,16 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	trustedProxyCIDRs, err := parseTrustedProxyCIDRs(cfg.TrustedProxyCIDRs)
 	if err != nil { log.Fatalf("invalid TRUSTED_PROXY_CIDRS: %v", err) }
+	var redisLimiter *ratelimit.Redis
+	if cfg.RedisURL != "" {
+		redisLimiter, err = ratelimit.NewRedis(cfg.RedisURL)
+		if err != nil { log.Fatalf("configure Redis: %v", err) }
+		redisCtx, redisCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		redisErr := redisLimiter.Ping(redisCtx)
+		redisCancel()
+		if redisErr != nil { log.Fatalf("REDIS_URL is configured but Redis is unavailable: %v", redisErr) }
+		log.Printf("Redis shared rate limiting enabled")
+	}
 
 	ctx := context.Background()
 	db, err := database.Open(ctx, cfg)
@@ -215,6 +227,21 @@ func main() {
 	}
 	paymentsEnabled := paymentSettings.TronEnabled && apiKey != "" && paymentSettings.TronReceiveAddress != ""
 	botManager := telegrambot.NewManager(db, cfg.DBDriver, secrets.Decrypt, paymentSettings.TronReceiveAddress, paymentsEnabled)
+if redisLimiter != nil {
+		botManager.SetPollingLease(func(leaseCtx context.Context,botID string)(func(context.Context)error,func(context.Context)error,bool,error){
+			leaseKey:="telegram-bot-poll:"+botID
+			token,acquired,leaseErr:=redisLimiter.AcquireLease(leaseCtx,leaseKey,75*time.Second)
+			if leaseErr!=nil||!acquired{return nil,nil,acquired,leaseErr}
+			renew:=func(renewCtx context.Context)error{
+				renewed,err:=redisLimiter.RenewLease(renewCtx,leaseKey,token,75*time.Second)
+				if err!=nil{return err}
+				if !renewed{return errors.New("polling lease ownership lost")}
+				return nil
+			}
+			release:=func(releaseCtx context.Context)error{return redisLimiter.ReleaseLease(releaseCtx,leaseKey,token)}
+			return renew,release,true,nil
+		})
+	}
 	botManager.SetEncryptor(secrets.Encrypt)
 	if rawSite, siteErr := database.GetSiteSettings(ctx, db); siteErr == nil {
 		var initialSite siteSettings
@@ -242,7 +269,7 @@ func main() {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, redisLimiter: redisLimiter, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
@@ -652,7 +679,9 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control","no-store, max-age=0")
 	w.Header().Set("Pragma","no-cache")
 	ip := a.clientIP(r)
-	if !a.allowLoginAttempt(ip) { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
+	allowed,limitErr:=a.allowLoginAttempt(r.Context(),ip)
+	if limitErr!=nil { log.Printf("check administrator login rate limit: %v",limitErr);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return }
+	if !allowed { writeError(w,http.StatusTooManyRequests,"登录尝试过于频繁，请 15 分钟后再试"); return }
 	var input loginRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
@@ -699,7 +728,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 
 	admin, err := database.FindAdminByUsername(r.Context(), a.db, a.driver, input.Username)
 	if err != nil || admin.Status != 1 || bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(input.Password)) != nil {
-		a.recordLoginFailure(ip)
+		if err:=a.recordLoginFailure(r.Context(),ip);err!=nil{log.Printf("record administrator login failure: %v",err);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return}
 		database.RecordLoginAudit(r.Context(), a.db, a.driver, "", input.Username, ip, r.UserAgent(), false)
 		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
 		return
@@ -721,7 +750,7 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if !consumed {
-				a.recordLoginFailure(ip)
+				if err:=a.recordLoginFailure(r.Context(),ip);err!=nil{log.Printf("record administrator TOTP failure: %v",err);writeError(w,http.StatusServiceUnavailable,"登录安全限流暂不可用，请稍后重试");return}
 				database.RecordLoginAudit(r.Context(),a.db,a.driver,admin.ID,admin.Username,ip,r.UserAgent(),false)
 				writeError(w,http.StatusUnauthorized,"动态验证码或一次性恢复码错误/已使用")
 				return
@@ -760,22 +789,35 @@ func (a *application) login(w http.ResponseWriter, r *http.Request) {
 	if err := database.UpdateLastLogin(r.Context(), a.db, a.driver, admin.ID); err != nil {
 		log.Printf("update administrator last login: %v", err)
 	}
-	a.clearLoginFailures(ip)
+	if err:=a.clearLoginFailures(r.Context(),ip);err!=nil{log.Printf("clear administrator login failures: %v",err)}
 	database.RecordLoginAudit(r.Context(), a.db, a.driver, admin.ID, admin.Username, ip, r.UserAgent(), true)
 	writeSuccess(w, http.StatusOK, map[string]string{"accessToken": token})
 }
 
 
-func (a *application) allowLoginAttempt(ip string) bool {
+func (a *application) allowLoginAttempt(ctx context.Context, ip string) (bool,error) {
+	if a.redisLimiter != nil {
+		return a.redisLimiter.AllowAndIncrement(ctx,"admin-login:"+ip,10,15*time.Minute)
+	}
 	now:=time.Now();a.loginMu.Lock();defer a.loginMu.Unlock()
 	if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)}
 	cutoff:=now.Add(-15*time.Minute);kept:=make([]time.Time,0)
 	for _,stamp:=range a.loginFailures[ip]{if stamp.After(cutoff){kept=append(kept,stamp)}}
 	a.loginFailures[ip]=kept
-	return len(kept)<10
+	return len(kept)<10,nil
 }
-func (a *application) recordLoginFailure(ip string){a.loginMu.Lock();defer a.loginMu.Unlock();if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)};a.loginFailures[ip]=append(a.loginFailures[ip],time.Now())}
-func (a *application) clearLoginFailures(ip string){a.loginMu.Lock();delete(a.loginFailures,ip);a.loginMu.Unlock()}
+func (a *application) recordLoginFailure(ctx context.Context, ip string) error {
+	if a.redisLimiter != nil { return nil }
+	a.loginMu.Lock();defer a.loginMu.Unlock()
+	if a.loginFailures==nil{a.loginFailures=make(map[string][]time.Time)}
+	a.loginFailures[ip]=append(a.loginFailures[ip],time.Now())
+	return nil
+}
+func (a *application) clearLoginFailures(ctx context.Context, ip string) error {
+	if a.redisLimiter != nil { return a.redisLimiter.Delete(ctx,"admin-login:"+ip) }
+	a.loginMu.Lock();delete(a.loginFailures,ip);a.loginMu.Unlock()
+	return nil
+}
 
 func (a *application) logout(w http.ResponseWriter,r *http.Request){
 	w.Header().Set("Cache-Control","no-store, max-age=0")
