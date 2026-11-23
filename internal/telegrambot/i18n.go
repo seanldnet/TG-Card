@@ -422,6 +422,19 @@ var botMessages = map[string]map[string]string{
 	"owner.support.confirm_prompt": {languageChinese: "已发送给用户。是否结单？", languageEnglish: "Reply sent. Resolve this ticket?"},
 	"owner.support.confirm_yes": {languageChinese: "是，结单", languageEnglish: "Yes, resolve"},
 	"owner.support.confirm_no": {languageChinese: "否，继续沟通", languageEnglish: "No, continue"},
+
+	"owner.support.open_ticket": {languageChinese: "进入工单 ", languageEnglish: "Open ticket "},
+	"owner.support.pending_list": {languageChinese: "待处理列表", languageEnglish: "Pending tickets"},
+	"owner.support.new_ticket": {languageChinese: "🧾 新售后工单：", languageEnglish: "🧾 New support ticket: "},
+	"owner.support.media_forwarded": {languageChinese: "媒体凭证已在上方转发。", languageEnglish: "Attachments were forwarded above."},
+	"owner.support.reopened": {languageChinese: "⚠️ 用户表示问题仍未解决，工单已重新开启。", languageEnglish: "⚠️ The customer says the issue is unresolved. The ticket has been reopened."},
+	"owner.support.followup": {languageChinese: "🧾 工单补充消息：", languageEnglish: "🧾 Ticket follow-up: "},
+	"support.resolved.default_result": {languageChinese: "工单已由客服处理并结单。", languageEnglish: "The support team has resolved and closed this ticket."},
+	"support.resolved.title": {languageChinese: "售后工单已结单", languageEnglish: "Support ticket resolved"},
+	"support.resolved.result": {languageChinese: "处理结果：", languageEnglish: "Resolution: "},
+	"support.resolved.prompt": {languageChinese: "如仍有问题可直接回复本消息继续沟通。", languageEnglish: "If you still need help, reply to this message to continue the conversation."},
+	"support.resolved.solved": {languageChinese: "问题已解决", languageEnglish: "Resolved"},
+	"support.resolved.reopen": {languageChinese: "仍有问题，继续沟通", languageEnglish: "Still need help"}
 	"owner.support.forwarded_user": {languageChinese: "用户补充：\n", languageEnglish: "Customer follow-up:\n"},
 	"owner.support.forwarded_ticket": {languageChinese: "🧾 工单补充消息：", languageEnglish: "🧾 Ticket follow-up: "},
 	"owner.support.question": {languageChinese: "问题：", languageEnglish: "Issue: "}
