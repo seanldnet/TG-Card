@@ -1310,7 +1310,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
 	case strings.HasPrefix(query.Data,"owner:order:"):
 		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.no_permission")); return }
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在读取订单明细")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.loading_order"))
 		id:=strings.TrimPrefix(query.Data,"owner:order:");item,err:=database.GetOrderByID(ctx,m.db,m.driver,id)
 		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.order_missing"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))) } else {
 			detail:=botText(ownerLanguage,"owner.action.order_title")+"\n"+botText(ownerLanguage,"owner.action.order_no")+item.OrderNo+"\n"+botText(ownerLanguage,"owner.action.product")+item.ProductName+"\n"+botText(ownerLanguage,"owner.action.user")+item.TelegramUserID+"\n"+botText(ownerLanguage,"owner.action.amount")+formatPrice(item.AmountMinor,item.Currency)+"\n"+botText(ownerLanguage,"owner.action.status")+orderStatusText(ownerLanguage,item.Status)
@@ -1354,7 +1354,7 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			prompts:=map[string]string{"owner:ban":botText(ownerLanguage,"owner.action.ban_prompt"),"owner:unban":botText(ownerLanguage,"owner.action.unban_prompt"),"owner:closeorder":botText(ownerLanguage,"owner.action.closeorder_prompt")}
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,prompts[query.Data],ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 		case "owner:products":
-			products,err:=database.ListVisibleProductsPage(ctx,m.db,m.driver,50,0,"","");if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
+			products,err:=database.ListVisibleProductsPage(ctx,m.db,m.driver,50,0,"","");if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.products_load_failed"));break}
 			var lines []string
 			for _,p:=range products{stock:=strconv.Itoa(p.StockCount);if p.SourceType=="upstream"{stock=strconv.FormatInt(p.UpstreamStockQuantity,10)};lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+botText(ownerLanguage,"owner.action.stock")+" "+stock)}
 			if len(lines)==0{lines=append(lines,botText(ownerLanguage,"owner.action.no_products"))}
