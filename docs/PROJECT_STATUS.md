@@ -7,7 +7,7 @@
 - Owner 管理端：PR #164 本地化 Owner 菜单与经营概览；PR #166 本地化售后工单列表、详情、回复、结单及通知；PR #169 本地化订单查询、库存管理、用户查询、群发、封禁/解封及关闭待付款订单等菜单操作。
 - Admin Vue i18n：PR #150–#155 与 PR #160 已合并，覆盖核心运营页面、支付/优惠券/广播/对账、商品目录/库存/全局异常、供应商管理界面、财务异常、兑换码、运营工作台、经营分析仪表盘、支付设置、管理员 TOTP、网站设置、备份/邮件/Telegram 通知及个人资料/密码页面。
 - 数据库技术基线不变：PostgreSQL（pgx）为主数据库，SQLite 兼容；本轮 Bot 默认语言使用既有 JSON 配置存储，不增加迁移。
-- 当前 main commit：`edb2287aeb8429435b9a3474c32212a746906e6a`。PR #169 合并后的 Go Backend CI、Admin Frontend CI、安全扫描均通过；Docker 镜像发布状态以本节后续校准为准。
+- 当前 main commit：`edb2287aeb8429435b9a3474c32212a746906e6a`。PR #169 合并后的 Go Backend CI、Admin Frontend CI、安全扫描及 Docker Publish 均成功；GHCR 已推送 `ghcr.io/seanldnet/tg-card:latest` 与 commit tag `ghcr.io/seanldnet/tg-card:edb2287aeb8429435b9a3474c32212a746906e6a`，OCI manifest digest：`sha256:38d0a4feddb11c55a301db8d4c22a64878f5f5952e189a75375cc78597b937d7`。
 - 代码合并、CI 与镜像发布不等同于生产部署或真实 Telegram Bot 端到端验收；生产环境验收仍单独记录。
 
 ---
