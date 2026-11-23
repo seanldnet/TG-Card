@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -26,6 +27,20 @@ type Redis struct {
 	database string
 	tlsConfig *tls.Config
 }
+
+const renewLeaseScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+ return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`
+
+const releaseLeaseScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+ return redis.call("DEL", KEYS[1])
+end
+return 0
+`
 
 const allowScript = `
 local count = redis.call("INCR", KEYS[1])
@@ -147,6 +162,37 @@ func (r *Redis) Ping(ctx context.Context) error {
 	if err != nil { return err }
 	defer conn.Close()
 	return redisCommand(conn, reader, "PING")
+}
+
+// AcquireLease creates a token-owned lease. The token is required for safe
+// renewal and release so an expired owner's cleanup cannot delete a successor's lock.
+func (r *Redis) AcquireLease(ctx context.Context, key string, ttl time.Duration) (string,bool,error) {
+ if ttl <= 0 { return "",false,errors.New("lease TTL must be positive") }
+ raw:=make([]byte,24)
+ if _,err:=rand.Read(raw);err!=nil{return "",false,err}
+ token:=hex.EncodeToString(raw)
+ conn,reader,err:=r.dial(ctx);if err!=nil{return "",false,err};defer conn.Close()
+ result,err:=redisCommandResult(conn,reader,"SET",hashedKey("tg-card:lease:",key),token,"NX","PX",strconv.FormatInt(max(int64(ttl/time.Millisecond),1),10))
+ if err!=nil{return "",false,err}
+ if result==nil{return "",false,nil}
+ value,ok:=result.(string);if !ok||value!="OK"{return "",false,fmt.Errorf("unexpected Redis SET lease response %T",result)}
+ return token,true,nil
+}
+
+func (r *Redis) RenewLease(ctx context.Context,key,token string,ttl time.Duration) (bool,error) {
+ if token==""||ttl<=0{return false,errors.New("lease token and TTL are required")}
+ conn,reader,err:=r.dial(ctx);if err!=nil{return false,err};defer conn.Close()
+ result,err:=redisCommandResult(conn,reader,"EVAL",renewLeaseScript,"1",hashedKey("tg-card:lease:",key),token,strconv.FormatInt(max(int64(ttl/time.Millisecond),1),10))
+ if err!=nil{return false,err}
+ value,ok:=result.(int64);if !ok{return false,fmt.Errorf("unexpected Redis lease renewal response %T",result)}
+ return value==1,nil
+}
+
+func (r *Redis) ReleaseLease(ctx context.Context,key,token string) error {
+ if token==""{return errors.New("lease token is required")}
+ conn,reader,err:=r.dial(ctx);if err!=nil{return err};defer conn.Close()
+ _,err=redisCommandResult(conn,reader,"EVAL",releaseLeaseScript,"1",hashedKey("tg-card:lease:",key),token)
+ return err
 }
 
 // Allow increments a fixed-window counter atomically. The hashed key avoids
