@@ -78,6 +78,52 @@ func (r *Redis) dial(ctx context.Context) (net.Conn, *bufio.Reader, error) {
 	return conn, reader, nil
 }
 
+
+const incrementScript = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then redis.call("PEXPIRE", KEYS[1], ARGV[1]) end
+return count
+`
+
+func hashedKey(prefix, key string) string {
+ digest := sha256.Sum256([]byte(key))
+ return prefix + hex.EncodeToString(digest[:])
+}
+
+// Count reads a counter without changing its expiry.
+func (r *Redis) Count(ctx context.Context, key string) (int64, error) {
+ conn, reader, err := r.dial(ctx)
+ if err != nil { return 0, err }
+ defer conn.Close()
+ result, err := redisCommandResult(conn, reader, "GET", hashedKey("tg-card:counter:", key))
+ if err != nil { return 0, err }
+ if result == nil { return 0, nil }
+ value, ok := result.(string)
+ if !ok { return 0, fmt.Errorf("unexpected Redis GET response %T", result) }
+ return strconv.ParseInt(value, 10, 64)
+}
+
+// Increment atomically records a failure and sets its TTL on the first failure.
+func (r *Redis) Increment(ctx context.Context, key string, window time.Duration) (int64, error) {
+ if window <= 0 { return 0, errors.New("counter window must be positive") }
+ conn, reader, err := r.dial(ctx)
+ if err != nil { return 0, err }
+ defer conn.Close()
+ result, err := redisCommandResult(conn, reader, "EVAL", incrementScript, "1", hashedKey("tg-card:counter:", key), strconv.FormatInt(max(int64(window/time.Millisecond), 1), 10))
+ if err != nil { return 0, err }
+ count, ok := result.(int64)
+ if !ok { return 0, fmt.Errorf("unexpected Redis INCR response %T", result) }
+ return count, nil
+}
+
+// Delete clears a counter after a successful authentication.
+func (r *Redis) Delete(ctx context.Context, key string) error {
+ conn, reader, err := r.dial(ctx)
+ if err != nil { return err }
+ defer conn.Close()
+ return redisCommand(conn, reader, "DEL", hashedKey("tg-card:counter:", key))
+}
+
 func (r *Redis) Ping(ctx context.Context) error {
 	conn, reader, err := r.dial(ctx)
 	if err != nil { return err }
