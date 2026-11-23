@@ -1,16 +1,13 @@
-## 2026-11-23 — Redis 共享限流与 Bot 轮询租约（开发中）
+## 2026-11-23 — P2-1 Redis 已合并；P2-2 对象存储进入代码梳理
 
-- 开发分支：`feat/redis-shared-rate-limiting`；基于 main commit `64396c2f7e315d64715544ea9b4b689f49fb0ea1`。
-- 新增可选 `REDIS_URL`，支持 `redis://`、`rediss://`、ACL/密码认证及数据库编号；未配置时维持既有单实例内存限流。
-- 敏感后台操作限流与管理员登录失败计数改为 Redis 原子共享计数；Redis 配置启用但连接失败时 fail closed，不回退为各实例独立限流。
-- Telegram Bot 长轮询新增按 Bot ID 的 Redis token lease，使用 SET NX PX 获取、token 校验续租/释放；75 秒 TTL、20 秒续租，失去租约后取消当前 polling context 并重试获取，未持有租约的实例进入 standby。
-- 订单交付继续使用现有数据库持久化租约/幂等路径，不以 Redis 锁替换资金与履约安全机制；PostgreSQL 共享数据库本身提供跨实例协调。
-- `/api/health/detailed` 增加 Redis 配置/连接状态；Compose 增加 opt-in Redis profile，默认部署不启动 Redis。
-- 无数据库 schema 迁移；PostgreSQL（pgx）仍为主数据库，SQLite 兼容。
-- 验证状态：新增 Redis RESP、配置解析、原子限流及租约脚本测试；PR CI 尚待执行。多实例并发、Redis 故障恢复及 Telegram 真实轮询仍需部署环境验证。
-- 当前状态：开发中，尚未合并、发布镜像或生产验收。
-
----
+- P2-1 Redis 共享限流与 Bot 轮询租约已由 PR #171 合并至 main，合并 commit：`2147e179a4010d9ea782e73df42ea6fdc8a880aa`。
+- Redis 是可选基础设施依赖，通过部署环境的 `REDIS_URL` 配置；未设置时维持原有单机内存限流和本地 Bot polling 行为。Redis 不提供后台页面编辑连接地址/密码的入口，避免运行中误改跨实例协调与锁服务。
+- Redis 已配置但不可用时，共享敏感操作限流按 fail-closed 处理；Bot polling lease 丢失会停止当前轮询并重新竞争。订单交付仍使用 PostgreSQL/SQLite 共享数据库的持久化租约和幂等机制。
+- PR #171 的 Go Backend CI、Admin Frontend CI、安全扫描及 Docker Publish 均成功；GHCR 镜像已发布。多实例并发、Redis 故障恢复和 Telegram 真实轮询仍需部署环境验收。
+- P2-2 S3/R2 当前处于代码路径梳理阶段，尚未开始对象存储实现或发布。已定位两类公开图片路径：管理员头像/站点 Logo 上传，以及上游商品图片同步；现有 URL 使用 `/uploads/...`，静态文件由应用本地目录提供。
+- 另有售后附件由 Telegram Bot API 按工单权限即时读取并以 `private, no-store` 返回；不得把此类私有附件直接迁移为公开对象。
+- 下一步先建立兼容本地文件的统一 Storage 抽象，确认历史 `/uploads/...` URL、数据库字段和私有附件边界后，再接入 S3 API 兼容后端与迁移/校验流程。
+- 数据库基线不变：PostgreSQL（pgx）为主数据库，SQLite 兼容。当前没有对象存储数据库迁移、PR 或新镜像。
 
 ## 2026-11-23 — Telegram Bot 与 Admin 国际化交付校准（文档版本 2.2.99）
 
