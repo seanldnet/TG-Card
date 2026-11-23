@@ -21,6 +21,7 @@ type Config struct {
 	TronReceiveAddress string
 	TronUSDTContract string
 	TrustedProxyCIDRs string
+	RedisURL string
 }
 
 func Load() (Config, error) {
@@ -51,6 +52,7 @@ func Load() (Config, error) {
 		TronReceiveAddress: strings.TrimSpace(os.Getenv("TRON_RECEIVE_ADDRESS")),
 		TronUSDTContract: env("TRON_USDT_CONTRACT", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"),
 		TrustedProxyCIDRs: strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")),
+		RedisURL: strings.TrimSpace(os.Getenv("REDIS_URL")),
 	}, nil
 }
 
