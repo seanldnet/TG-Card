@@ -10,6 +10,7 @@ services:
       BACKUP_ENCRYPTION_PASSPHRASE: ${BACKUP_ENCRYPTION_PASSPHRASE:-}
       # Only set this when requests arrive through these trusted reverse-proxy CIDRs.
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      REDIS_URL: ${REDIS_URL:-}
       DISABLE_CAP: ${DISABLE_CAP:-false}
       PORT: "38647"
       DB_DRIVER: postgres
@@ -23,6 +24,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: tg-card-redis
+    restart: unless-stopped
+    profiles: ["redis"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   db:
     image: postgres:16-alpine
@@ -43,3 +59,4 @@ services:
 volumes:
   tg_card_data:
   postgres_data:
+  redis_data:
