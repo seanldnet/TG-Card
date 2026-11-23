@@ -568,6 +568,7 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		return
 	}
 	if msg.From == nil { return }
+	ownerLanguage := m.languageForUser(ctx, cfg, *msg.From)
 	if m.db != nil {
 		if err := database.UpsertTelegramUser(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10),msg.From.Username,msg.From.FirstName,msg.From.LastName,cfg.ID); err != nil { log.Printf("upsert Telegram buyer profile failed: user_id=%d error=%v",msg.From.ID,err) } else { m.ensureTelegramLanguage(ctx, cfg, *msg.From) }
 		if !m.isOwner(cfg,msg.From.ID) { banned,banErr:=database.IsTelegramUserBanned(ctx,m.db,m.driver,strconv.FormatInt(msg.From.ID,10));if banErr!=nil { log.Printf("Telegram moderation lookup failed: user_id=%d error=%v",msg.From.ID,banErr);return };if banned { _ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"你的账号当前无法使用此机器人服务。如有疑问，请联系平台客服。");return } }
@@ -633,19 +634,20 @@ func (m *Manager) handleMessage(ctx context.Context, cfg Config, msg Message) {
 		}
 	}
 	if pending != "" && !strings.HasPrefix(text, "/") {
+		ownerLanguage := m.languageForUser(ctx, cfg, *msg.From)
 		switch {
 		case pending=="upstream_manual_form":
 			m.handleUpstreamManualFormInput(ctx,cfg,msg,text);return
 		case strings.HasPrefix(pending,"owner_stockadd:"):
-			productID:=strings.TrimPrefix(pending,"owner_stockadd:");parts:=strings.FieldsFunc(text,func(r rune)bool{return r==','||r=='\n'||r=='\r'});if len(parts)==0||len(parts)>200{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"请提供 1 到 200 条卡密。");m.setPendingAction(cfg.ID,msg.Chat.ID,pending);return};m.mu.Lock();encrypt:=m.encrypt;m.mu.Unlock();if encrypt==nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"加密服务暂不可用。");return};secrets:=make([]database.StockSecret,0,len(parts));for _,key:=range parts{key=strings.TrimSpace(key);if key==""{continue};cipher,err:=encrypt(key);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"卡密加密失败，未导入。");return};fingerprint:=sha256.Sum256([]byte(key));secrets=append(secrets,database.StockSecret{Ciphertext:cipher,Fingerprint:hex.EncodeToString(fingerprint[:])})};inserted,err:=database.ImportProductKeys(ctx,m.db,m.driver,productID,secrets);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"库存导入失败："+err.Error());return};_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"库存导入完成：新增 "+strconv.Itoa(inserted)+" 条，重复跳过 "+strconv.Itoa(len(secrets)-inserted)+" 条。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)));return
+			productID:=strings.TrimPrefix(pending,"owner_stockadd:");parts:=strings.FieldsFunc(text,func(r rune)bool{return r==','||r=='\n'||r=='\r'});if len(parts)==0||len(parts)>200{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.stock.need_count"));m.setPendingAction(cfg.ID,msg.Chat.ID,pending);return};m.mu.Lock();encrypt:=m.encrypt;m.mu.Unlock();if encrypt==nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.stock.encryption_unavailable"));return};secrets:=make([]database.StockSecret,0,len(parts));for _,key:=range parts{key=strings.TrimSpace(key);if key==""{continue};cipher,err:=encrypt(key);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.stock.encrypt_failed"));return};fingerprint:=sha256.Sum256([]byte(key));secrets=append(secrets,database.StockSecret{Ciphertext:cipher,Fingerprint:hex.EncodeToString(fingerprint[:])})};inserted,err:=database.ImportProductKeys(ctx,m.db,m.driver,productID,secrets);if err!=nil{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.stock.import_failed")+err.Error());return};_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,fmt.Sprintf(botText(ownerLanguage,"owner.stock.imported"),inserted,len(secrets)-inserted),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)));return
 		case pending=="owner_broadcast":
-			task,err:=database.CreateBroadcastTask(ctx,m.db,m.driver,cfg.ID,"Telegram 管理员群发",text,"",strconv.FormatInt(msg.From.ID,10));if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"群发任务创建失败："+err.Error(),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"群发任务已加入队列。\n目标人数："+strconv.Itoa(task.TotalCount),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
+			task,err:=database.CreateBroadcastTask(ctx,m.db,m.driver,cfg.ID,"Telegram 管理员群发",text,"",strconv.FormatInt(msg.From.ID,10));if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.broadcast.create_failed")+err.Error(),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,fmt.Sprintf(botText(ownerLanguage,"owner.broadcast.queued"),task.TotalCount),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
 		case pending=="owner_userbalance":
-			balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,text);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"用户不存在或余额暂不可查询。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"用户："+text+"\n余额："+formatUSDTAtomic(balance)+" USDT",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
+			balance,err:=database.GetTelegramWalletBalance(ctx,m.db,m.driver,text);if err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.user.not_found"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,fmt.Sprintf(botText(ownerLanguage,"owner.user.balance"),text,formatUSDTAtomic(balance)),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
 		case pending=="ban"||pending=="unban":
-			if _,err:=strconv.ParseInt(text,10,64);err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"用户 ID 格式无效，请重新发送。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)));m.setPendingAction(cfg.ID,msg.Chat.ID,pending);return};banned:=pending=="ban";if err:=database.SetTelegramUserBanned(ctx,m.db,m.driver,text,banned);err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"操作失败："+err.Error(),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else if banned{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已封禁用户："+text,ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已解除封禁："+text,ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
+			if _,err:=strconv.ParseInt(text,10,64);err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.user.id_invalid"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)));m.setPendingAction(cfg.ID,msg.Chat.ID,pending);return};banned:=pending=="ban";if err:=database.SetTelegramUserBanned(ctx,m.db,m.driver,text,banned);err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.action.failed")+err.Error(),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else if banned{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.user.banned")+text,ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.user.unbanned")+text,ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
 		case pending=="closeorder":
-			if err:=database.ClosePendingOrder(ctx,m.db,m.driver,text);err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"关闭订单失败："+err.Error(),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"订单已关闭，库存预留已释放。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
+			if err:=database.ClosePendingOrder(ctx,m.db,m.driver,text);err!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.order.close_failed")+err.Error(),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))}else{_ = m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(ownerLanguage,"owner.order.closed"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,*msg.From)))};return
 		case strings.HasPrefix(pending,"coupon:"):
 			parts:=strings.Split(strings.TrimPrefix(pending,"coupon:"),":")
 			if len(parts)!=2{_ = m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"优惠码会话已失效，请重新选择商品。");return}
@@ -1247,6 +1249,8 @@ func (m *Manager) createPurchaseOrderWithPromotion(ctx context.Context, cfg Conf
 func (m *Manager) handleCallback(ctx context.Context, cfg Config, query CallbackQuery) {
 	if query.Message == nil || query.Message.Chat.ID == 0 { _ = m.answerCallback(ctx, cfg.Token, query.ID, "无法处理此操作"); return }
 	chatID := query.Message.Chat.ID
+	ownerLanguage := ""
+	if strings.HasPrefix(query.Data, "owner:") || strings.HasPrefix(query.Data, "support:owner:") { ownerLanguage = m.languageForUser(ctx, cfg, query.From) }
 	if strings.HasPrefix(query.Data, "language:set:") {
 		language := normalizeLanguage(strings.TrimPrefix(query.Data, "language:set:"))
 		if language == "" || m.db == nil {
@@ -1308,25 +1312,25 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 		m.handleOwnerSupportCallback(ctx,cfg,query)
 		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
 	case strings.HasPrefix(query.Data,"owner:order:"):
-		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"正在读取订单明细")
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.no_permission")); return }
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.loading_order"))
 		id:=strings.TrimPrefix(query.Data,"owner:order:");item,err:=database.GetOrderByID(ctx,m.db,m.driver,id)
-		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单不存在。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))) } else {
-			detail:="订单详情\n订单号："+item.OrderNo+"\n商品："+item.ProductName+"\n用户："+item.TelegramUserID+"\n金额："+formatPrice(item.AmountMinor,item.Currency)+"\n状态："+item.Status
+		if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.order_missing"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))) } else {
+			detail:=botText(ownerLanguage,"owner.action.order_title")+"\n"+botText(ownerLanguage,"owner.action.order_no")+item.OrderNo+"\n"+botText(ownerLanguage,"owner.action.product")+item.ProductName+"\n"+botText(ownerLanguage,"owner.action.user")+item.TelegramUserID+"\n"+botText(ownerLanguage,"owner.action.amount")+formatPrice(item.AmountMinor,item.Currency)+"\n"+botText(ownerLanguage,"owner.action.status")+orderStatusText(ownerLanguage,item.Status)
 			if lines,lineErr:=database.ListCartCheckoutItems(ctx,m.db,m.driver,item.ID);lineErr==nil&&len(lines)>0 {
-				detail+="\n商品明细："
+				detail+="\n"+botText(ownerLanguage,"owner.action.items")
 				for _,line:=range lines { detail+="\n- "+line.ProductName+" × "+strconv.Itoa(line.Quantity)+" · "+formatPrice(line.LineTotalMinor,line.Currency) }
 			}
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,detail,ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 		}
 	case strings.HasPrefix(query.Data,"owner:product:"):
-		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
-		id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break };for _,p:=range products { if p.ID==id { if p.SourceType!="local" { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"上游商品库存由供应商管理，不能手动导入本地卡密。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break }; _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品："+p.Name+"\n当前库存："+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"➕ 为此商品添加库存","callback_data":"owner:stockadd:"+p.ID}},{{"text":"⬅️ 返回商品列表","callback_data":"owner:addstock"}}}});break } }
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.no_permission")); return }
+		id:=strings.TrimPrefix(query.Data,"owner:product:");products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.product_load_failed"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break };for _,p:=range products { if p.ID==id { if p.SourceType!="local" { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"上游商品库存由供应商管理，不能手动导入本地卡密。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break }; _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.product")+p.Name+"\n"+botText(ownerLanguage,"owner.action.current_stock")+strconv.Itoa(p.StockCount),map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(ownerLanguage,"owner.action.add_stock_for_product"),"callback_data":"owner:stockadd:"+p.ID}},{{"text":botText(ownerLanguage,"owner.action.back_products"),"callback_data":"owner:addstock"}}}});break } }
 	case strings.HasPrefix(query.Data,"owner:stockadd:"):
-		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
-		id:=strings.TrimPrefix(query.Data,"owner:stockadd:");products,lookupErr:=database.ListProducts(ctx,m.db);if lookupErr!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品读取失败。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break};localProduct:=false;for _,p:=range products{if p.ID==id&&p.SourceType=="local"{localProduct=true;break}};if !localProduct{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"仅本地卡密商品支持手动导入库存。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break};m.setPendingAction(cfg.ID,chatID,"owner_stockadd:"+id);_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送要导入的卡密，每行一条或用逗号分隔（最多 200 条）。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.no_permission")); return }
+		id:=strings.TrimPrefix(query.Data,"owner:stockadd:");products,lookupErr:=database.ListProducts(ctx,m.db);if lookupErr!=nil{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.product_load_failed"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break};localProduct:=false;for _,p:=range products{if p.ID==id&&p.SourceType=="local"{localProduct=true;break}};if !localProduct{_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.local_only"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break};m.setPendingAction(cfg.ID,chatID,"owner_stockadd:"+id);_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.stock_prompt"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 	case strings.HasPrefix(query.Data,"owner:"):
-		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,"无权操作"); return }
+		if !m.isOwner(cfg,query.From.ID) { _ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.no_permission")); return }
 		switch query.Data {
 		case "owner:home", "owner:stats":
 			m.sendOwnerOverview(ctx,cfg,chatID)
@@ -1334,32 +1338,32 @@ func (m *Manager) handleCallback(ctx context.Context, cfg Config, query Callback
 			m.showStartHome(ctx, cfg, chatID, query.From)
 		case "owner:userbalance":
 			m.setPendingAction(cfg.ID,chatID,"owner_userbalance")
-			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送要查询的 Telegram 用户 ID。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.user_id_prompt"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 		case "owner:orders":
 			items,err:=database.ListOrders(ctx,m.db)
-			if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"订单读取失败。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))); break }
+			if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.orders_load_failed"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))); break }
 			rows:=make([][]map[string]string,0); limit:=10;if len(items)<limit{limit=len(items)}
 			for _,item:=range items[:limit] { rows=append(rows,[]map[string]string{{"text":truncateButtonText(item.OrderNo+" · "+item.ProductName,48),"callback_data":"owner:order:"+item.ID}}) }
-			if len(rows)==0 { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"暂无订单。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))) } else { rows=append(rows,[]map[string]string{{"text":"⬅️ 返回管理台","callback_data":"owner:home"}});_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"最近订单（点击查看详情）：",map[string]any{"inline_keyboard":rows}) }
+			if len(rows)==0 { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.no_orders"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From))) } else { rows=append(rows,[]map[string]string{{"text":botText(ownerLanguage,"owner.action.back_console"),"callback_data":"owner:home"}});_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.recent_orders"),map[string]any{"inline_keyboard":rows}) }
 		case "owner:stock", "owner:addstock":
-			products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"商品列表加载失败。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break }
-			rows:=make([][]map[string]string,0);for _,p:=range products { if p.SourceType=="local"&&p.Status==1 { rows=append(rows,[]map[string]string{{"text":truncateButtonText(p.Name+" · 库存 "+strconv.Itoa(p.StockCount),48),"callback_data":"owner:product:"+p.ID}}) } }
-			rows=append(rows,[]map[string]string{{"text":"⬅️ 返回管理台","callback_data":"owner:home"}});_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"选择商品查看库存或添加卡密：",map[string]any{"inline_keyboard":rows})
+			products,err:=database.ListProducts(ctx,m.db);if err!=nil { _ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.products_load_failed"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)));break }
+			rows:=make([][]map[string]string,0);for _,p:=range products { if p.SourceType=="local"&&p.Status==1 { rows=append(rows,[]map[string]string{{"text":truncateButtonText(p.Name+" · "+botText(ownerLanguage,"owner.action.stock")+" "+strconv.Itoa(p.StockCount),48),"callback_data":"owner:product:"+p.ID}}) } }
+			rows=append(rows,[]map[string]string{{"text":botText(ownerLanguage,"owner.action.back_console"),"callback_data":"owner:home"}});_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.choose_product"),map[string]any{"inline_keyboard":rows})
 		case "owner:broadcast":
 			m.setPendingAction(cfg.ID,chatID,"owner_broadcast")
-			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,"请发送群发通知正文。提交后将加入发送队列。",ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
+			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.broadcast_prompt"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 		case "owner:ban","owner:unban","owner:closeorder":
 			m.setPendingAction(cfg.ID,chatID,strings.TrimPrefix(query.Data,"owner:"))
-			prompts:=map[string]string{"owner:ban":"请发送要封禁的 Telegram 用户 ID。","owner:unban":"请发送要解除封禁的 Telegram 用户 ID。","owner:closeorder":"请发送需要关闭的待付款订单号。"}
+			prompts:=map[string]string{"owner:ban":botText(ownerLanguage,"owner.action.ban_prompt"),"owner:unban":botText(ownerLanguage,"owner.action.unban_prompt"),"owner:closeorder":botText(ownerLanguage,"owner.action.closeorder_prompt")}
 			_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,prompts[query.Data],ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 		case "owner:products":
-			products,err:=database.ListVisibleProductsPage(ctx,m.db,m.driver,50,0,"","");if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,"商品列表加载失败");break}
+			products,err:=database.ListVisibleProductsPage(ctx,m.db,m.driver,50,0,"","");if err!=nil{_ = m.sendMessage(ctx,cfg.Token,chatID,botText(ownerLanguage,"owner.action.products_load_failed"));break}
 			var lines []string
-			for _,p:=range products{stock:=strconv.Itoa(p.StockCount);if p.SourceType=="upstream"{stock=strconv.FormatInt(p.UpstreamStockQuantity,10)};lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · 库存 "+stock)}
-			if len(lines)==0{lines=append(lines,"暂无商品")}
+			for _,p:=range products{stock:=strconv.Itoa(p.StockCount);if p.SourceType=="upstream"{stock=strconv.FormatInt(p.UpstreamStockQuantity,10)};lines=append(lines,p.Name+" · "+formatPrice(p.PriceMinor,p.Currency)+" · "+botText(ownerLanguage,"owner.action.stock")+" "+stock)}
+			if len(lines)==0{lines=append(lines,botText(ownerLanguage,"owner.action.no_products"))}
 				_ = m.sendMessageMarkup(ctx,cfg.Token,chatID,strings.Join(lines,"\n"),ownerMenuKeyboardForLanguage(m.languageForUser(ctx,cfg,query.From)))
 		}
-		_ = m.answerCallback(ctx,cfg.Token,query.ID,"已处理")
+		_ = m.answerCallback(ctx,cfg.Token,query.ID,botText(ownerLanguage,"owner.action.done"))
 	case strings.HasPrefix(query.Data,"order:detail:"):
 		orderID := strings.TrimPrefix(query.Data, "order:detail:")
 		_ = m.answerCallback(ctx, cfg.Token, query.ID, "正在读取订单")
