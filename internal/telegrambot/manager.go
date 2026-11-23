@@ -2384,8 +2384,9 @@ func (m *Manager) escalateAISupportFailure(ctx context.Context,cfg Config,msg Me
 func (m *Manager) notifyOwnerSupportReopened(ctx context.Context,cfg Config,ticket database.SupportTicket) {
  owner,err:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  if err!=nil || owner==0 { log.Printf("support reopen owner notification skipped: bot_id=%s ticket_id=%s reason=owner_not_configured_or_invalid",cfg.ID,ticket.ID);return }
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"进入工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}}}}
- body:="⚠️ 用户表示问题仍未解决，工单已重新开启。\n用户："+ticket.TelegramUserID+"\n工单："+ticket.TicketNo+"\n订单："+ticket.OrderNo
+ language:=m.languageForChat(ctx,cfg,owner)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.open_ticket")+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}}}}
+ body:=botText(language,"owner.support.reopened")+"\n"+botText(language,"owner.support.user")+ticket.TelegramUserID+"\n"+botText(language,"owner.support.ticket_number")+ticket.TicketNo+"\n"+botText(language,"owner.support.order")+ticket.OrderNo
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil { log.Printf("support reopen owner notification failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err) }
 }
 
@@ -2407,10 +2408,11 @@ func (m *Manager) NotifySupportResolved(ctx context.Context,ticket database.Supp
  }
  chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil { return fmt.Errorf("invalid support ticket chat ID: %w",err) }
- result:="工单已由客服处理并结单。"
+ language:=m.languageForTelegramID(ctx,ticket.TelegramUserID)
+ result:=botText(language,"support.resolved.default_result")
  if strings.TrimSpace(ticket.AdminReply)!="" { result=ticket.AdminReply }
- body:="售后工单已结单\n工单号："+ticket.TicketNo+"\n处理结果："+result+"\n如仍有问题可直接回复本消息继续沟通。"
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"问题已解决","callback_data":"support:user:resolved:"+ticket.ID},{"text":"仍有问题，继续沟通","callback_data":"support:user:reopen:"+ticket.ID}}}}
+ body:=botText(language,"support.resolved.title")+"\n"+botText(language,"support.ticket_number")+ticket.TicketNo+"\n"+botText(language,"support.resolved.result")+result+"\n"+botText(language,"support.resolved.prompt")
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"support.resolved.solved"),"callback_data":"support:user:resolved:"+ticket.ID},{"text":botText(language,"support.resolved.reopen"),"callback_data":"support:user:reopen:"+ticket.ID}}}}
  return m.sendMessageMarkup(ctx,cfg.Token,chatID,body,keyboard)
 }
 
@@ -2422,8 +2424,9 @@ func (m *Manager) notifyOwnerSupportTicket(ctx context.Context,cfg Config,ticket
  for _,item:=range messages { if item.SenderType!="user"||item.AttachmentFileID==""{continue};caption:=item.Message
   if err:=m.sendSupportMedia(ctx,cfg.Token,owner,item.AttachmentFileID,item.AttachmentName,caption);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err)}
  }
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"查看工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":"待处理列表","callback_data":"support:owner:list:0"}}}}
- body:="🧾 新售后工单："+ticket.TicketNo+"\n用户："+ticket.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+ticket.OrderNo+"\n问题："+truncateButtonText(ticket.Description,700)+"\n媒体凭证已在上方转发。"
+ language:=m.languageForChat(ctx,cfg,owner)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.open_ticket")+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":botText(language,"owner.support.pending_list"),"callback_data":"support:owner:list:0"}}}}
+ body:=botText(language,"owner.support.new_ticket")+ticket.TicketNo+"\n"+botText(language,"owner.support.user")+ticket.TelegramUserID+"\n"+botText(language,"owner.support.bot")+cfg.Name+"\n"+botText(language,"owner.support.order")+ticket.OrderNo+"\n"+botText(language,"owner.support.question")+truncateButtonText(ticket.Description,700)+"\n"+botText(language,"owner.support.media_forwarded")
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil{log.Printf("support owner notification failed: bot_id=%s ticket_id=%s owner_id=%s error=%v",cfg.ID,ticketID,cfg.OwnerID,err)}
 }
 
@@ -2438,22 +2441,35 @@ func (m *Manager) notifyOwnerSupportMessage(ctx context.Context,cfg Config,ticke
  if strings.TrimSpace(cfg.OwnerID)=="" { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=owner_not_configured",cfg.ID,ticketID);return }
  owner,err:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  if err!=nil||owner==0 { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=invalid_owner_id",cfg.ID,ticketID);return }
- if fileID!="" { if err:=m.sendSupportMedia(ctx,cfg.Token,owner,fileID,fileName,text);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err);return} } else if strings.TrimSpace(text)!="" { if err:=m.sendMessage(ctx,cfg.Token,owner,"用户补充：\n"+text);err!=nil{log.Printf("support owner text forward failed: ticket_id=%s error=%v",ticketID,err);return} }
+ language:=m.languageForChat(ctx,cfg,owner)
+ if fileID!="" { if err:=m.sendSupportMedia(ctx,cfg.Token,owner,fileID,fileName,text);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err);return} } else if strings.TrimSpace(text)!="" { if err:=m.sendMessage(ctx,cfg.Token,owner,botText(language,"owner.support.forwarded_user")+text);err!=nil{log.Printf("support owner text forward failed: ticket_id=%s error=%v",ticketID,err);return} }
  ticket,err=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"查看工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":"待处理列表","callback_data":"support:owner:list:0"}}}}
- body:="🧾 工单补充消息："+ticket.TicketNo+"\n用户："+ticket.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+ticket.OrderNo+"\n问题："+truncateButtonText(ticket.Description,700)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.open_ticket")+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":botText(language,"owner.support.pending_list"),"callback_data":"support:owner:list:0"}}}}
+ body:=botText(language,"owner.support.followup")+ticket.TicketNo+"\n"+botText(language,"owner.support.user")+ticket.TelegramUserID+"\n"+botText(language,"owner.support.bot")+cfg.Name+"\n"+botText(language,"owner.support.order")+ticket.OrderNo+"\n"+botText(language,"owner.support.question")+truncateButtonText(ticket.Description,700)
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil{log.Printf("support owner follow-up notification failed: ticket_id=%s error=%v",ticketID,err)}
 }
 
-func (m *Manager) showOwnerSupportList(ctx context.Context,cfg Config,chatID int64,page int) {
- items,err:=database.ListPendingSupportTickets(ctx,m.db,m.driver,cfg.ID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"待处理工单暂时无法读取。");return}
- const size=8;pages:=(len(items)+size-1)/size;if pages==0{_=m.sendMessage(ctx,cfg.Token,chatID,"目前没有待处理或处理中的工单。");return}
- if page<0{page=0};if page>=pages{page=pages-1};start:=page*size;end:=start+size;if end>len(items){end=len(items)}
- rows:=make([][]map[string]string,0,size+2)
- for _,t:=range items[start:end]{label:="#"+t.TicketNo+" · "+t.TelegramUserID+" · "+truncateButtonText(t.Description,18);rows=append(rows,[]map[string]string{{"text":truncateButtonText(label,60),"callback_data":"support:owner:view:"+t.ID}})}
- nav:=[]map[string]string{};if page>0{nav=append(nav,map[string]string{"text":"上一页","callback_data":"support:owner:list:"+strconv.Itoa(page-1)})};if page+1<pages{nav=append(nav,map[string]string{"text":"下一页","callback_data":"support:owner:list:"+strconv.Itoa(page+1)})};if len(nav)>0{rows=append(rows,nav)}
- rows=append(rows,[]map[string]string{{"text":"返回","callback_data":"support:owner:home"}})
- _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"待处理/处理中工单（"+strconv.Itoa(len(items))+" 条，第 "+strconv.Itoa(page+1)+"/"+strconv.Itoa(pages)+" 页）：",map[string]any{"inline_keyboard":rows})
+func (m *Manager) showOwnerSupportList(ctx context.Context, cfg Config, chatID int64, page int) {
+ language := m.languageForChat(ctx, cfg, chatID)
+ items, err := database.ListPendingSupportTickets(ctx, m.db, m.driver, cfg.ID)
+ if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.list_error")); return }
+ const size = 8
+ pages := (len(items) + size - 1) / size
+ if pages == 0 { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.list_empty")); return }
+ if page < 0 { page = 0 }; if page >= pages { page = pages - 1 }
+ start := page * size; end := start + size; if end > len(items) { end = len(items) }
+ rows := make([][]map[string]string, 0, size+2)
+ for _, ticket := range items[start:end] {
+  label := "#" + ticket.TicketNo + " · " + ticket.TelegramUserID + " · " + truncateButtonText(ticket.Description, 18)
+  rows = append(rows, []map[string]string{{"text": truncateButtonText(label, 60), "callback_data": "support:owner:view:" + ticket.ID}})
+ }
+ nav := []map[string]string{}
+ if page > 0 { nav = append(nav, map[string]string{"text": botText(language, "owner.support.previous"), "callback_data": "support:owner:list:" + strconv.Itoa(page-1)}) }
+ if page+1 < pages { nav = append(nav, map[string]string{"text": botText(language, "owner.support.next"), "callback_data": "support:owner:list:" + strconv.Itoa(page+1)}) }
+ if len(nav) > 0 { rows = append(rows, nav) }
+ rows = append(rows, []map[string]string{{"text": botText(language, "owner.support.back"), "callback_data": "support:owner:home"}})
+ title := botText(language, "owner.support.list_title") + strconv.Itoa(len(items)) + botText(language, "owner.support.count_suffix") + strconv.Itoa(page+1) + botText(language, "owner.support.page_separator") + strconv.Itoa(pages) + botText(language, "owner.support.page_suffix")
+ _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, title, map[string]any{"inline_keyboard": rows})
 }
 
 func (m *Manager) getOwnerSupportTicketForBot(ctx context.Context, cfg Config, ticketID string) (database.SupportTicket, error) {
@@ -2467,41 +2483,61 @@ func (m *Manager) getOwnerSupportTicketForBot(ctx context.Context, cfg Config, t
  return ticket, nil
 }
 
-func (m *Manager) showOwnerSupportTicket(ctx context.Context,cfg Config,chatID int64,ticketID string) {
- t,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
- messages,err:=database.ListSupportTicketMessages(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单记录读取失败。");return}
- photos,files:=0,0;lines:=[]string{}
- for _,item:=range messages{if item.AttachmentFileID!=""{if strings.Contains(strings.ToLower(item.AttachmentName),"图片"){photos++}else{files++}};if strings.TrimSpace(item.Message)!=""{who:="用户";if item.SenderType=="admin"{who="客服"};lines=append(lines,who+"："+item.Message)}}
- body:="工单号："+t.TicketNo+"\n用户："+t.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+t.OrderNo+"\n状态："+t.Status+"\n"
- if photos+files>0{body+=fmt.Sprintf("[图片 %d 张 / 文件 %d 个，已在上面转发]\n",photos,files)}
- if len(lines)>0{body+="\n沟通记录：\n"+strings.Join(lines,"\n")}
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"开始回复","callback_data":"support:owner:reply:"+t.ID},{"text":"结单","callback_data":"support:owner:resolve:"+t.ID}},{{"text":"返回列表","callback_data":"support:owner:list:0"}}}}
- _=m.sendMessageMarkup(ctx,cfg.Token,chatID,body,keyboard)
+func (m *Manager) showOwnerSupportTicket(ctx context.Context, cfg Config, chatID int64, ticketID string) {
+ language := m.languageForChat(ctx, cfg, chatID)
+ ticket, err := m.getOwnerSupportTicketForBot(ctx, cfg, ticketID)
+ if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.not_found")); return }
+ messages, err := database.ListSupportTicketMessages(ctx, m.db, m.driver, ticketID)
+ if err != nil { _ = m.sendMessage(ctx, cfg.Token, chatID, botText(language, "owner.support.history_error")); return }
+ photos, files := 0, 0
+ lines := []string{}
+ for _, item := range messages {
+  if item.AttachmentFileID != "" { if strings.Contains(strings.ToLower(item.AttachmentName), "图片") { photos++ } else { files++ } }
+  if strings.TrimSpace(item.Message) != "" {
+   who := botText(language, "owner.support.customer")
+   if item.SenderType == "admin" { who = botText(language, "owner.support.agent") }
+   separator := ": "
+   if language == languageChinese { separator = "：" }
+   lines = append(lines, who + separator + item.Message)
+  }
+ }
+ body := botText(language, "owner.support.ticket_number") + ticket.TicketNo + "\n" +
+  botText(language, "owner.support.user") + ticket.TelegramUserID + "\n" +
+  botText(language, "owner.support.bot") + cfg.Name + "\n" +
+  botText(language, "owner.support.order") + ticket.OrderNo + "\n" +
+  botText(language, "owner.support.status") + supportStatusText(language, ticket.Status) + "\n"
+ if photos+files > 0 { body += fmt.Sprintf(botText(language, "owner.support.attachments"), photos, files) }
+ if len(lines) > 0 { body += botText(language, "owner.support.history") + strings.Join(lines, "\n") }
+ keyboard := map[string]any{"inline_keyboard": [][]map[string]string{
+  {{"text": botText(language, "owner.support.start_reply"), "callback_data": "support:owner:reply:" + ticket.ID}, {"text": botText(language, "owner.support.resolve"), "callback_data": "support:owner:resolve:" + ticket.ID}},
+  {{"text": botText(language, "owner.support.back_list"), "callback_data": "support:owner:list:0"}},
+ }}
+ _ = m.sendMessageMarkup(ctx, cfg.Token, chatID, body, keyboard)
 }
 
 func (m *Manager) handleOwnerSupportCallback(ctx context.Context,cfg Config,q CallbackQuery) {
- chatID:=q.Message.Chat.ID;ownerID:=strconv.FormatInt(q.From.ID,10);parts:=strings.Split(q.Data,":");if len(parts)<3{return}
+ chatID:=q.Message.Chat.ID;ownerID:=strconv.FormatInt(q.From.ID,10);language:=m.languageForUser(ctx,cfg,q.From);parts:=strings.Split(q.Data,":");if len(parts)<3{return}
  switch parts[2] {
  case "home":m.sendOwnerOverview(ctx,cfg,chatID)
  case "list":page:=0;if len(parts)>3{page,_=strconv.Atoi(parts[3])};m.showOwnerSupportList(ctx,cfg,chatID,page)
  case "view":if len(parts)>3{m.showOwnerSupportTicket(ctx,cfg,chatID,parts[3])}
  case "reply":
-  if len(parts)<4{return};ticket,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
-  if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");return}
-  if _,err:=database.UpdateSupportTicket(ctx,m.db,m.driver,ticket.ID,"in_progress",ticket.AdminReply);err!=nil{log.Printf("support owner start reply status update failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,"无法开启回复会话：工单状态更新失败，请稍后重试。");return}
-  if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticket.ID,"reply",30*time.Minute);err!=nil{log.Printf("support owner start reply session failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,"工单已进入处理中，但回复会话未能开启，请重新点击开始回复。");return}
-  _=m.sendMessageMarkup(ctx,cfg.Token,chatID,"请直接发送要回复用户的内容（文字/图片/文件均可）。当前工单："+ticket.TicketNo,ownerSupportReplyKeyboardForLanguage(m.languageForChat(ctx,cfg,chatID)))
+  if len(parts)<4{return};ticket,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.not_found"));return}
+  if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.closed"));return}
+  if _,err:=database.UpdateSupportTicket(ctx,m.db,m.driver,ticket.ID,"in_progress",ticket.AdminReply);err!=nil{log.Printf("support owner start reply status update failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.session_update_failed"));return}
+  if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticket.ID,"reply",30*time.Minute);err!=nil{log.Printf("support owner start reply session failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err);_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.session_open_failed"));return}
+  _=m.sendMessageMarkup(ctx,cfg.Token,chatID,botText(language,"owner.support.reply_prompt")+ticket.TicketNo,ownerSupportReplyKeyboardForLanguage(m.languageForChat(ctx,cfg,chatID)))
  case "resolve":
-  if len(parts)<4{return};if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return}
-  if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,parts[3]);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+  if len(parts)<4{return};if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,parts[3]);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.not_found"));return};resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,parts[3],ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.resolve_failed")+err.Error());return}
+  if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.closed"))}else{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.closed"));ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,parts[3]);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
  case "confirm":
   if len(parts)<5{return};ticketID,choice:=parts[3],parts[4]
-  if choice!="yes"&&choice!="no"{_=m.sendMessage(ctx,cfg.Token,chatID,"确认操作无效，请重新打开工单。");return}
-  if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在或不属于当前机器人。");return}
+  if choice!="yes"&&choice!="no"{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.confirm_invalid"));return}
+  if _,err:=m.getOwnerSupportTicketForBot(ctx,cfg,ticketID);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.not_found"));return}
   session,sessionErr:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10))
-  if sessionErr!=nil||session.TicketID!=ticketID||session.Phase!="confirm"{_=m.sendMessage(ctx,cfg.Token,chatID,"这条确认操作已过期或当前已切换其他工单，请重新打开工单后操作。");return}
-  if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"结单失败："+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。")}else{_=m.sendMessage(ctx,cfg.Token,chatID,"工单已结单。");ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
-  }else{ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"工单不存在。");return};if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,"该工单已结单。");_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);return};if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticketID,"reply",30*time.Minute);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,"无法继续回复，请重新打开工单。");return};_=m.sendMessage(ctx,cfg.Token,chatID,"继续回复即可。")}
+  if sessionErr!=nil||session.TicketID!=ticketID||session.Phase!="confirm"{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.confirm_expired"));return}
+  if choice=="yes"{resolved,err:=database.ResolveSupportTicketByOwner(ctx,m.db,m.driver,ticketID,ownerID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.resolve_failed")+err.Error());return};if !resolved{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.closed"))}else{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.closed"));ticket,loadErr:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if loadErr==nil{if sendErr:=m.NotifySupportResolved(ctx,ticket);sendErr!=nil{log.Printf("notify user about resolved support ticket failed: ticket_id=%s error=%v",ticket.ID,sendErr)}}};_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
+  }else{ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.ticket_missing"));return};if ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected"{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.closed"));_=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID);return};if err:=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(chatID,10),ticketID,"reply",30*time.Minute);err!=nil{_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.session_open_failed"));return};_=m.sendMessage(ctx,cfg.Token,chatID,botText(language,"owner.support.continue_reply"))}
  }
 }
 
@@ -2511,15 +2547,15 @@ func ownerSupportReplyKeyboardForLanguage(language string) map[string]any { retu
 func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config,msg Message) bool {
  if m.db==nil{return false}
  ownerID:=strconv.FormatInt(msg.From.ID,10)
+ language:=m.languageForUser(ctx,cfg,*msg.From)
  session,err:=database.GetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10))
  if err!=nil{return false}
- language := m.languageForUser(ctx,cfg,*msg.From)
  if strings.TrimSpace(msg.Text)==botText(language,"owner.support_menu") { m.showOwnerSupportList(ctx,cfg,msg.Chat.ID,0);return true }
  if strings.TrimSpace(msg.Text)==botText(language,"owner.back") { m.sendOwnerOverview(ctx,cfg,msg.Chat.ID);return true }
  ticket,err:=database.GetSupportTicket(ctx,m.db,m.driver,session.TicketID)
  if err!=nil||ticket.Status=="resolved"||ticket.Status=="closed"||ticket.Status=="rejected" {
   _=database.ClearSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID)
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"该工单已结单或不存在，请重新选择待处理工单。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.ticket_closed_or_missing"))
   return true
  }
  text:=strings.TrimSpace(msg.Text)
@@ -2530,32 +2566,32 @@ func (m *Manager) handleActiveOwnerSupportMessage(ctx context.Context,cfg Config
  if text==""&&fileID==""{return true}
  updateKey:=strconv.FormatInt(msg.Chat.ID,10)+":"+strconv.FormatInt(msg.MessageID,10)
  exists,lookupErr:=database.SupportTicketMessageUpdateExists(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,updateKey)
- if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"暂时无法确认消息是否已处理，请稍后重试。");return true}
- if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"这条消息已处理，请继续发送下一条内容。");return true}
+ if lookupErr!=nil{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.message_check_failed"));return true}
+ if exists{_=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.message_already_processed"));return true}
  userChat,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil{
   _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败：用户会话地址无效","","")
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"用户会话地址无效，工单保持处理中。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.chat_invalid"))
   return true
  }
- outgoing:="客服回复："
+ outgoing:=botText(language,"owner.support.reply_prefix")
  if text!=""{outgoing+="\n"+text}
  if fileID!=""{err=m.sendSupportMedia(ctx,cfg.Token,userChat,fileID,fileName,outgoing)}else{err=m.sendMessage(ctx,cfg.Token,userChat,outgoing)}
  if err!=nil{
   _,_=database.AppendSupportTicketMessage(ctx,m.db,m.driver,ticket.ID,"system","", "客服回复发送失败："+err.Error(),"","")
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"发送给用户失败："+err.Error()+"\n工单保持处理中，可重新发送新的回复。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.send_failed")+err.Error()+botText(language,"owner.support.send_failed_suffix"))
   log.Printf("support owner reply failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err)
   return true
  }
  // Persist the customer-visible reply only after Telegram confirms delivery.
  if _,err:=database.AppendSupportTicketMessageWithUpdateID(ctx,m.db,m.driver,ticket.ID,"admin",ownerID,text,fileID,fileName,updateKey);err!=nil{
   log.Printf("support owner reply delivered but timeline append failed: ticket_id=%s bot_id=%s error=%v",ticket.ID,cfg.ID,err)
-  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,"消息已发送给用户，但沟通记录保存失败，请检查数据库后再继续操作。")
+  _=m.sendMessage(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.timeline_save_failed"))
   return true
  }
  _=database.SetSupportOwnerSession(ctx,m.db,m.driver,cfg.ID,ownerID,strconv.FormatInt(msg.Chat.ID,10),ticket.ID,"confirm",30*time.Minute)
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"是，结单","callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":"否，继续沟通","callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
- _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,"已发送给用户。是否结单？",keyboard)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.confirm_yes"),"callback_data":"support:owner:confirm:"+ticket.ID+":yes"}},{{"text":botText(language,"owner.support.confirm_no"),"callback_data":"support:owner:confirm:"+ticket.ID+":no"}}}}
+ _=m.sendMessageMarkup(ctx,cfg.Token,msg.Chat.ID,botText(language,"owner.support.confirm_prompt"),keyboard)
  return true
 }
 
