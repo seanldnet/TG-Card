@@ -28,9 +28,15 @@ func (a *application) detailedHealth(w http.ResponseWriter,r *http.Request) {
  if settings,err:=database.GetUpstreamSettings(ctx,a.db,a.driver);err==nil{
   upstreamStatus=map[string]any{"enabled":settings.Enabled,"catalogStale":settings.CatalogStale,"syncStatus":settings.SyncStatus,"lastSyncAt":settings.SyncAt,"lastAttemptAt":settings.SyncAttemptAt,"syncErrorPresent":settings.SyncError!=""}
  }else if err!=sql.ErrNoRows{upstreamStatus["error"]="unable to read upstream status"}
+ redisStatus:=map[string]any{"configured":a.redisLimiter!=nil}
+ if a.redisLimiter!=nil {
+  if err:=a.redisLimiter.Ping(ctx);err!=nil {redisStatus["connected"]=false;redisStatus["error"]="redis ping failed"} else {redisStatus["connected"]=true}
+ } else {redisStatus["connected"]=nil}
+ healthy:=dbStatus["connected"]==true && (a.redisLimiter==nil || redisStatus["connected"]==true)
  writeSuccess(w,http.StatusOK,map[string]any{
-  "status":map[bool]string{true:"ok",false:"degraded"}[dbStatus["connected"]==true],
+  "status":map[bool]string{true:"ok",false:"degraded"}[healthy],
   "database":dbStatus,
+  "redis":redisStatus,
   "bots":map[string]any{"configured":configuredCount,"runtime":bots},
   "paymentWatcher":a.paymentManager.Status(),
   "upstream":upstreamStatus,
