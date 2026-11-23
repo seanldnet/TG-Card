@@ -483,6 +483,7 @@ var botMessages = map[string]map[string]string{
 	"owner.order.close_failed": {languageChinese: "关闭订单失败：", languageEnglish: "Failed to close order: "},
 	"owner.order.closed": {languageChinese: "订单已关闭，库存预留已释放。", languageEnglish: "Order closed and reserved inventory released."},
 	"owner.action.done": {languageChinese: "已处理", languageEnglish: "Done"},
+	"owner.action.loading_order": {languageChinese: "正在读取订单明细", languageEnglish: "Loading order details"},
 	"owner.action.no_products": {languageChinese: "暂无商品", languageEnglish: "No products available."},
 	"owner.action.stock": {languageChinese: "库存", languageEnglish: "Stock"},
 	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"},
