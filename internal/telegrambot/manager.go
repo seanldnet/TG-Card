@@ -2384,8 +2384,9 @@ func (m *Manager) escalateAISupportFailure(ctx context.Context,cfg Config,msg Me
 func (m *Manager) notifyOwnerSupportReopened(ctx context.Context,cfg Config,ticket database.SupportTicket) {
  owner,err:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  if err!=nil || owner==0 { log.Printf("support reopen owner notification skipped: bot_id=%s ticket_id=%s reason=owner_not_configured_or_invalid",cfg.ID,ticket.ID);return }
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"进入工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}}}}
- body:="⚠️ 用户表示问题仍未解决，工单已重新开启。\n用户："+ticket.TelegramUserID+"\n工单："+ticket.TicketNo+"\n订单："+ticket.OrderNo
+ language:=m.languageForChat(ctx,cfg,owner)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.open_ticket")+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}}}}
+ body:=botText(language,"owner.support.reopened")+"\n"+botText(language,"owner.support.user")+ticket.TelegramUserID+"\n"+botText(language,"owner.support.ticket_number")+ticket.TicketNo+"\n"+botText(language,"owner.support.order")+ticket.OrderNo
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil { log.Printf("support reopen owner notification failed: bot_id=%s ticket_id=%s error=%v",cfg.ID,ticket.ID,err) }
 }
 
@@ -2407,10 +2408,11 @@ func (m *Manager) NotifySupportResolved(ctx context.Context,ticket database.Supp
  }
  chatID,err:=strconv.ParseInt(ticket.TelegramChatID,10,64)
  if err!=nil { return fmt.Errorf("invalid support ticket chat ID: %w",err) }
- result:="工单已由客服处理并结单。"
+ language:=m.languageForTelegramID(ctx,ticket.TelegramUserID)
+ result:=botText(language,"support.resolved.default_result")
  if strings.TrimSpace(ticket.AdminReply)!="" { result=ticket.AdminReply }
- body:="售后工单已结单\n工单号："+ticket.TicketNo+"\n处理结果："+result+"\n如仍有问题可直接回复本消息继续沟通。"
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"问题已解决","callback_data":"support:user:resolved:"+ticket.ID},{"text":"仍有问题，继续沟通","callback_data":"support:user:reopen:"+ticket.ID}}}}
+ body:=botText(language,"support.resolved.title")+"\n"+botText(language,"support.ticket_number")+ticket.TicketNo+"\n"+botText(language,"support.resolved.result")+result+"\n"+botText(language,"support.resolved.prompt")
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"support.resolved.solved"),"callback_data":"support:user:resolved:"+ticket.ID},{"text":botText(language,"support.resolved.reopen"),"callback_data":"support:user:reopen:"+ticket.ID}}}}
  return m.sendMessageMarkup(ctx,cfg.Token,chatID,body,keyboard)
 }
 
@@ -2422,8 +2424,9 @@ func (m *Manager) notifyOwnerSupportTicket(ctx context.Context,cfg Config,ticket
  for _,item:=range messages { if item.SenderType!="user"||item.AttachmentFileID==""{continue};caption:=item.Message
   if err:=m.sendSupportMedia(ctx,cfg.Token,owner,item.AttachmentFileID,item.AttachmentName,caption);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err)}
  }
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"查看工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":"待处理列表","callback_data":"support:owner:list:0"}}}}
- body:="🧾 新售后工单："+ticket.TicketNo+"\n用户："+ticket.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+ticket.OrderNo+"\n问题："+truncateButtonText(ticket.Description,700)+"\n媒体凭证已在上方转发。"
+ language:=m.languageForChat(ctx,cfg,owner)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.open_ticket")+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":botText(language,"owner.support.pending_list"),"callback_data":"support:owner:list:0"}}}}
+ body:=botText(language,"owner.support.new_ticket")+ticket.TicketNo+"\n"+botText(language,"owner.support.user")+ticket.TelegramUserID+"\n"+botText(language,"owner.support.bot")+cfg.Name+"\n"+botText(language,"owner.support.order")+ticket.OrderNo+"\n"+botText(language,"owner.support.question")+truncateButtonText(ticket.Description,700)+"\n"+botText(language,"owner.support.media_forwarded")
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil{log.Printf("support owner notification failed: bot_id=%s ticket_id=%s owner_id=%s error=%v",cfg.ID,ticketID,cfg.OwnerID,err)}
 }
 
@@ -2438,10 +2441,11 @@ func (m *Manager) notifyOwnerSupportMessage(ctx context.Context,cfg Config,ticke
  if strings.TrimSpace(cfg.OwnerID)=="" { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=owner_not_configured",cfg.ID,ticketID);return }
  owner,err:=strconv.ParseInt(strings.TrimSpace(cfg.OwnerID),10,64)
  if err!=nil||owner==0 { log.Printf("support owner forwarding skipped: bot_id=%s ticket_id=%s reason=invalid_owner_id",cfg.ID,ticketID);return }
- if fileID!="" { if err:=m.sendSupportMedia(ctx,cfg.Token,owner,fileID,fileName,text);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err);return} } else if strings.TrimSpace(text)!="" { if err:=m.sendMessage(ctx,cfg.Token,owner,"用户补充：\n"+text);err!=nil{log.Printf("support owner text forward failed: ticket_id=%s error=%v",ticketID,err);return} }
+ language:=m.languageForChat(ctx,cfg,owner)
+ if fileID!="" { if err:=m.sendSupportMedia(ctx,cfg.Token,owner,fileID,fileName,text);err!=nil{log.Printf("support owner media forward failed: ticket_id=%s error=%v",ticketID,err);return} } else if strings.TrimSpace(text)!="" { if err:=m.sendMessage(ctx,cfg.Token,owner,botText(language,"owner.support.forwarded_user")+text);err!=nil{log.Printf("support owner text forward failed: ticket_id=%s error=%v",ticketID,err);return} }
  ticket,err=database.GetSupportTicket(ctx,m.db,m.driver,ticketID);if err!=nil{log.Printf("support owner ticket load failed: ticket_id=%s error=%v",ticketID,err);return}
- keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":"查看工单 "+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":"待处理列表","callback_data":"support:owner:list:0"}}}}
- body:="🧾 工单补充消息："+ticket.TicketNo+"\n用户："+ticket.TelegramUserID+"\nBot："+cfg.Name+"\n关联订单："+ticket.OrderNo+"\n问题："+truncateButtonText(ticket.Description,700)
+ keyboard:=map[string]any{"inline_keyboard":[][]map[string]string{{{"text":botText(language,"owner.support.open_ticket")+ticket.TicketNo,"callback_data":"support:owner:view:"+ticket.ID}},{{"text":botText(language,"owner.support.pending_list"),"callback_data":"support:owner:list:0"}}}}
+ body:=botText(language,"owner.support.followup")+ticket.TicketNo+"\n"+botText(language,"owner.support.user")+ticket.TelegramUserID+"\n"+botText(language,"owner.support.bot")+cfg.Name+"\n"+botText(language,"owner.support.order")+ticket.OrderNo+"\n"+botText(language,"owner.support.question")+truncateButtonText(ticket.Description,700)
  if err:=m.sendMessageMarkup(ctx,cfg.Token,owner,body,keyboard);err!=nil{log.Printf("support owner follow-up notification failed: ticket_id=%s error=%v",ticketID,err)}
 }
 
