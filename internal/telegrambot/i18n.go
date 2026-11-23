@@ -481,7 +481,8 @@ var botMessages = map[string]map[string]string{
 	"owner.user.banned": {languageChinese: "已封禁用户：", languageEnglish: "Banned user: "},
 	"owner.user.unbanned": {languageChinese: "已解除封禁：", languageEnglish: "Unbanned user: "},
 	"owner.order.close_failed": {languageChinese: "关闭订单失败：", languageEnglish: "Failed to close order: "},
-	"owner.order.closed": {languageChinese: "订单已关闭，库存预留已释放。", languageEnglish: "Order closed and reserved inventory released."}
+	"owner.order.closed": {languageChinese: "订单已关闭，库存预留已释放。", languageEnglish: "Order closed and reserved inventory released."},
+	"owner.action.done": {languageChinese: "已处理", languageEnglish: "Done"},
 	"owner.support.reply_keyboard_back": {languageChinese: "返回", languageEnglish: "Back"},
 }
 
