@@ -54,12 +54,12 @@ func TestAllowRejectsInvalidLimits(t *testing.T) {
 
 func TestReadRESP(t *testing.T) {
 	tests:=[]struct{input string;want any;wantErr bool}{
-		{"+OK\\r\\n","OK",false},
-		{":42\\r\\n",int64(42),false},
-		{"$3\\r\\nfoo\\r\\n","foo",false},
-		{"$-1\\r\\n",nil,false},
-		{"*2\\r\\n+OK\\r\\n:7\\r\\n",[]any{"OK",int64(7)},false},
-		{"-ERR denied\\r\\n",nil,true},
+		{"+OK\r\n","OK",false},
+		{":42\r\n",int64(42),false},
+		{"$3\r\nfoo\r\n","foo",false},
+		{"$-1\r\n",nil,false},
+		{"*2\r\n+OK\r\n:7\r\n",[]any{"OK",int64(7)},false},
+		{"-ERR denied\r\n",nil,true},
 	}
 	for _,tt:=range tests{
 		got,err:=readRESP(bufio.NewReader(strings.NewReader(tt.input)))
@@ -74,7 +74,7 @@ func TestRedisAllowUsesAtomicScript(t *testing.T) {
 		conn,err:=listener.Accept();if err!=nil{return};defer conn.Close()
 		reader:=bufio.NewReader(conn)
 		_,_=readRESP(reader) // EVAL command array
-		_,_=conn.Write([]byte(":1\\r\\n"))
+		_,_=conn.Write([]byte(":1\r\n"))
 	}()
 	client,err:=NewRedis("redis://"+listener.Addr().String()+"/0");if err!=nil{t.Fatal(err)}
 	ctx,cancel:=context.WithTimeout(context.Background(),time.Second);defer cancel()
