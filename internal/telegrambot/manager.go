@@ -53,8 +53,11 @@ type RuntimeStatus struct {
 	ConsecutiveErrors int `json:"consecutiveErrors,omitempty"`
 }
 
+type PollingLease func(context.Context,string) (func(context.Context) error,func(context.Context) error,bool,error)
+
 type Manager struct {
 	mu sync.Mutex
+	pollingLease PollingLease
 	workers map[string]*worker
 	runtime map[string]RuntimeStatus
 	client *http.Client
@@ -191,6 +194,8 @@ func (m *Manager) paymentRouterConfig() (func(context.Context,database.Order)(st
 	defer m.mu.Unlock()
 	return m.paymentProviderSelector,m.hostedCheckoutForProvider
 }
+
+func (m *Manager) SetPollingLease(lease PollingLease) { m.mu.Lock(); m.pollingLease=lease; m.mu.Unlock() }
 
 func (m *Manager) SetNotifier(notifier func(event, details, userChatID string)) {
  m.mu.Lock()
@@ -483,14 +488,78 @@ func (m *Manager) RuntimeStatuses() []RuntimeStatus {
 }
 
 func (m *Manager) run(ctx context.Context, cfg Config, current *worker) {
+	workerCtx:=ctx
 	status := RuntimeStatus{BotID: cfg.ID, Username: cfg.Username, State: "starting", Running: true}
 	consecutiveErrors := 0
+	m.mu.Lock();pollingLease:=m.pollingLease;m.mu.Unlock()
+	var leaseCancel context.CancelFunc
+	var leaseRelease func(context.Context) error
+	var leaseLost chan struct{}
 	m.setWorkerRuntimeStatus(cfg.ID, current, status)
 	defer func() {
+		if leaseCancel!=nil { leaseCancel() }
+		if leaseRelease!=nil {
+			releaseCtx,releaseCancel:=context.WithTimeout(context.Background(),2*time.Second)
+			if err:=leaseRelease(releaseCtx);err!=nil { log.Printf("release Telegram polling lease failed: bot_id=%s error=%v",cfg.ID,err) }
+			releaseCancel()
+		}
 		status.State = "stopped"
 		status.Running = false
 		m.setWorkerRuntimeStatus(cfg.ID, current, status)
+		if leaseLost!=nil {
+			select {
+			case <-leaseLost:
+				if workerCtx.Err()==nil {
+					go func(){ if wait(workerCtx,5*time.Second) { m.run(workerCtx,cfg,current) } }()
+				}
+			default:
+			}
+		}
 	}()
+	if pollingLease!=nil {
+		for {
+			if workerCtx.Err()!=nil{return}
+			leaseCtx,cancel:=context.WithCancel(workerCtx)
+			renew,release,acquired,err:=pollingLease(leaseCtx,cfg.ID)
+			if err!=nil {
+				cancel()
+				status.State="lease_unavailable";status.Running=false;status.LastError="polling lease unavailable"
+				m.setWorkerRuntimeStatus(cfg.ID,current,status)
+				if !wait(workerCtx,10*time.Second){return}
+				continue
+			}
+			if !acquired {
+				cancel()
+				status.State="standby";status.Running=false;status.LastError="another instance owns the polling lease"
+				m.setWorkerRuntimeStatus(cfg.ID,current,status)
+				if !wait(workerCtx,10*time.Second){return}
+				continue
+			}
+			if renew==nil||release==nil {
+				cancel()
+				status.State="lease_unavailable";status.Running=false;status.LastError="polling lease provider is incomplete"
+				m.setWorkerRuntimeStatus(cfg.ID,current,status)
+				if !wait(workerCtx,10*time.Second){return}
+				continue
+			}
+			ctx=leaseCtx;leaseCancel=cancel;leaseRelease=release;leaseLost=make(chan struct{})
+			go func(){
+				ticker:=time.NewTicker(20*time.Second);defer ticker.Stop()
+				for {
+					select {
+					case <-leaseCtx.Done():return
+					case <-ticker.C:
+						renewCtx,renewCancel:=context.WithTimeout(leaseCtx,3*time.Second)
+						renewErr:=renew(renewCtx);renewCancel()
+						if renewErr!=nil {
+							close(leaseLost);log.Printf("Telegram polling lease renewal failed: bot_id=%s error=%v",cfg.ID,renewErr);cancel();return
+						}
+					}
+				}
+			}()
+			break
+		}
+	}
 	m.configureMenu(ctx, cfg.Token)
 	var offset int64
 	for {
