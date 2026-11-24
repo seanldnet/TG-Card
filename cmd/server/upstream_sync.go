@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/hex"
-	"os"
 	"path/filepath"
 	"errors"
 	"fmt"
