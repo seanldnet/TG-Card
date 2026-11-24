@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -140,6 +141,13 @@ func NewS3(cfg S3Config) (*S3, error) {
 	u, err := url.Parse(strings.TrimSpace(cfg.Endpoint))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 		return nil, errors.New("S3 endpoint must be an http(s) origin URL without credentials, path, query, or fragment")
+	}
+	if u.Scheme == "http" {
+		host := strings.ToLower(u.Hostname())
+		ip := net.ParseIP(host)
+		privateEndpoint := host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || !strings.Contains(host, ".")
+		if ip != nil { privateEndpoint = ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() }
+		if !privateEndpoint { return nil, errors.New("plain HTTP is only allowed for loopback or private development endpoints; use HTTPS for remote S3 services") }
 	}
 	if strings.TrimSpace(cfg.Bucket) == "" || strings.TrimSpace(cfg.AccessKey) == "" || strings.TrimSpace(cfg.SecretKey) == "" {
 		return nil, errors.New("S3 bucket, access key, and secret key are required")
