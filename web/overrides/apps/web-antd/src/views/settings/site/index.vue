@@ -16,12 +16,13 @@ const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(
 const backupEncryptionPassphrase=ref('');
 type LLMSettings={provider:string;baseUrl:string;model:string;timeoutSeconds:number;tokenLimitParameter:string;enabled:boolean;apiKeyConfigured:boolean;supportPrompt:string};
 const llmLoading=ref(false),llmSaving=ref(false),llmKey=ref('');
-const storageLoading=ref(false),storageSaving=ref(false),storageTesting=ref(false),storageMigrating=ref(false),storageAccessConfigured=ref(false),storageSecretConfigured=ref(false);
+const storageLoading=ref(false),storageSaving=ref(false),storageTesting=ref(false),storageMigrating=ref(false),storageCurrentProvider=ref("local"),storageAccessConfigured=ref(false),storageSecretConfigured=ref(false);
 const storageForm=reactive({provider:'local',endpoint:'',region:'',bucket:'',prefix:'',accessKey:'',secretKey:'',clearCredentials:false});
-async function loadStorage(){storageLoading.value=true;try{const data=await requestClient.get<any>('/settings/storage');Object.assign(storageForm,{provider:data.provider||'local',endpoint:data.endpoint||'',region:data.region||'',bucket:data.bucket||'',prefix:data.prefix||'',accessKey:'',secretKey:'',clearCredentials:false});storageAccessConfigured.value=!!data.accessKeyConfigured;storageSecretConfigured.value=!!data.secretKeyConfigured;}catch(error:any){message.error(error?.response?.data?.message||'对象存储配置加载失败');}finally{storageLoading.value=false;}}
+async function loadStorage(){storageLoading.value=true;try{const data=await requestClient.get<any>('/settings/storage');Object.assign(storageForm,{provider:data.provider||'local',endpoint:data.endpoint||'',region:data.region||'',bucket:data.bucket||'',prefix:data.prefix||'',accessKey:'',secretKey:'',clearCredentials:false});storageCurrentProvider.value=data.provider||'local';storageAccessConfigured.value=!!data.accessKeyConfigured;storageSecretConfigured.value=!!data.secretKeyConfigured;}catch(error:any){message.error(error?.response?.data?.message||'对象存储配置加载失败');}finally{storageLoading.value=false;}}
 function storagePayload(){return {...storageForm};}
 async function testStorage(){storageTesting.value=true;try{await requestClient.post('/settings/storage/test',storagePayload());message.success('对象存储连接和 Bucket 权限检查通过');}catch(error:any){message.error(error?.response?.data?.message||'对象存储连接测试失败');}finally{storageTesting.value=false;}}
 async function migrateStorage(){storageMigrating.value=true;const payload={};try{const result=await withAdminActionConfirmation({actionKey:'settings.storage.migrate',method:'POST',path:'/api/settings/storage/migrate',payload,run:(token)=>requestClient.post<any>('/settings/storage/migrate',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('迁移完成：已校验 '+(result.copied||0)+' 个文件，'+(result.bytes||0)+' 字节；本地原文件保留');}catch(error:any){message.error(error?.response?.data?.message||'媒体文件迁移失败；本地原文件未删除');}finally{storageMigrating.value=false;}}
+async function migrateStorageToLocal(){storageMigrating.value=true;const payload={};try{const result=await withAdminActionConfirmation({actionKey:'settings.storage.migrate-local',method:'POST',path:'/api/settings/storage/migrate-local',payload,run:(token)=>requestClient.post<any>('/settings/storage/migrate-local',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});await loadStorage();message.success('已迁移并校验 '+(result.copied||0)+' 个对象；S3 原文件保留，当前后端已切换为本地');}catch(error:any){message.error(error?.response?.data?.message||'迁移回本地失败；S3 原文件保留');}finally{storageMigrating.value=false;}}
 async function saveStorage(){storageSaving.value=true;const payload=storagePayload();try{await withAdminActionConfirmation({actionKey:'settings.storage.update',method:'PUT',path:'/api/settings/storage',payload,run:(token)=>requestClient.put('/settings/storage',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});storageForm.accessKey='';storageForm.secretKey='';await loadStorage();message.success('对象存储配置已安全保存');}catch(error:any){message.error(error?.response?.data?.message||'保存对象存储配置失败');}finally{storageSaving.value=false;}}
 
 const llmForm=reactive({provider:'openai',baseUrl:'https://api.openai.com/v1',model:'gpt-4o-mini',timeoutSeconds:30,tokenLimitParameter:'auto',enabled:false,apiKeyConfigured:false,supportPrompt:''});
@@ -218,8 +219,9 @@ onMounted(()=>{load();loadLLM();loadStorage();});
         </template>
         <a-space wrap>
          <a-button size="small" :loading="storageTesting" @click="testStorage">测试连接</a-button>
-         <a-button v-if="storageForm.provider === 's3'" size="small" :loading="storageMigrating" @click="migrateStorage">迁移本地历史文件（校验后保留本地副本）</a-button>
-         <a-button size="small" type="primary" :loading="storageSaving" @click="saveStorage">保存存储配置</a-button>
+         <a-button v-if="storageCurrentProvider === 's3' && storageForm.provider === 's3'" size="small" :loading="storageMigrating" @click="migrateStorage">迁移本地历史文件（校验后保留本地副本）</a-button>
+         <a-button v-if="storageCurrentProvider === 's3' && storageForm.provider === 'local'" size="small" :loading="storageMigrating" @click="migrateStorageToLocal">迁移对象存储到本地并切换</a-button>
+         <a-button v-if="!(storageCurrentProvider === 's3' && storageForm.provider === 'local')" size="small" type="primary" :loading="storageSaving" @click="saveStorage">保存存储配置</a-button>
         </a-space>
        </a-form>
       </a-spin>
