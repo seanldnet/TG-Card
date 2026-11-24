@@ -1,3 +1,17 @@
+## 2026-11-24 — P2-2 S3/R2 对象存储第一批实现（独立分支开发中）
+
+- 开发分支：`feat/s3-compatible-object-storage`；基于 main 最新提交 `1ea4a7c548081a61665fd4ee923d67d46670badb`。
+- 新增统一媒体 Storage 接口及本地/S3-compatible 后端；S3 采用 MinIO Go SDK，兼容 AWS S3、Cloudflare R2 与兼容端点。
+- 管理后台网站设置新增对象存储配置区：Endpoint、Region、Bucket、路径前缀、Access Key、Secret Key；凭据使用现有 AES-GCM Secret Manager 加密，读取 API 仅返回已配置标志。
+- 原有 `/uploads/...` URL 保持不变；S3 对象通过应用私有 Bucket 代理读取，缺失对象回退读取本地历史文件；新头像、站点 Logo 与上游商品图片走当前 Storage 后端。
+- 增加双向历史媒体迁移 API：本地→S3 与 S3→本地均逐对象回读并 SHA-256 校验；源文件保留。直接切换 S3→本地或更换 S3 Bucket/前缀会被阻止，必须先完成反向迁移，避免旧 URL 失效。
+- 上游商品图片同步与上游图片孤儿清理已改为使用 Storage 接口；售后附件仍通过 Telegram API 按工单权限私有读取，不纳入公开对象存储。
+- 增加本地读写/删除、路径穿越、S3 参数校验与对象列举测试；新增 `docs/object-storage.md`。
+- 当前状态：PR #173 已创建；Go Backend CI（含 gofmt、go vet、go test、静态构建及备份恢复集成测试）、Admin Frontend CI、安全扫描均通过。待合并 main 并核验 Docker Publish/GHCR；真实 S3/R2 连接与生产双向迁移演练仍需目标环境凭据及部署验收。当前尚未修改 main，未发布新镜像。
+- 无数据库 schema 迁移；PostgreSQL（pgx）主库与 SQLite 兼容保持不变。
+
+---
+
 ## 2026-11-23 — P2-1 Redis 已合并；P2-2 对象存储进入代码梳理
 
 - P2-1 Redis 共享限流与 Bot 轮询租约已由 PR #171 合并至 main，合并 commit：`2147e179a4010d9ea782e73df42ea6fdc8a880aa`。

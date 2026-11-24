@@ -16,6 +16,15 @@ const loading=ref(false),saving=ref(false),testing=ref(false),logoUploading=ref(
 const backupEncryptionPassphrase=ref('');
 type LLMSettings={provider:string;baseUrl:string;model:string;timeoutSeconds:number;tokenLimitParameter:string;enabled:boolean;apiKeyConfigured:boolean;supportPrompt:string};
 const llmLoading=ref(false),llmSaving=ref(false),llmKey=ref('');
+const storageLoading=ref(false),storageSaving=ref(false),storageTesting=ref(false),storageMigrating=ref(false),storageCurrentProvider=ref("local"),storageAccessConfigured=ref(false),storageSecretConfigured=ref(false);
+const storageForm=reactive({provider:'local',endpoint:'',region:'',bucket:'',prefix:'',accessKey:'',secretKey:'',clearCredentials:false});
+async function loadStorage(){storageLoading.value=true;try{const data=await requestClient.get<any>('/settings/storage');Object.assign(storageForm,{provider:data.provider||'local',endpoint:data.endpoint||'',region:data.region||'',bucket:data.bucket||'',prefix:data.prefix||'',accessKey:'',secretKey:'',clearCredentials:false});storageCurrentProvider.value=data.provider||'local';storageAccessConfigured.value=!!data.accessKeyConfigured;storageSecretConfigured.value=!!data.secretKeyConfigured;}catch(error:any){message.error(error?.response?.data?.message||'对象存储配置加载失败');}finally{storageLoading.value=false;}}
+function storagePayload(){return {...storageForm};}
+async function testStorage(){storageTesting.value=true;try{await requestClient.post('/settings/storage/test',storagePayload());message.success('对象存储连接和 Bucket 权限检查通过');}catch(error:any){message.error(error?.response?.data?.message||'对象存储连接测试失败');}finally{storageTesting.value=false;}}
+async function migrateStorage(){storageMigrating.value=true;const payload={};try{const result=await withAdminActionConfirmation({actionKey:'settings.storage.migrate',method:'POST',path:'/api/settings/storage/migrate',payload,run:(token)=>requestClient.post<any>('/settings/storage/migrate',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});message.success('迁移完成：已校验 '+(result.copied||0)+' 个文件，'+(result.bytes||0)+' 字节；本地原文件保留');}catch(error:any){message.error(error?.response?.data?.message||'媒体文件迁移失败；本地原文件未删除');}finally{storageMigrating.value=false;}}
+async function migrateStorageToLocal(){storageMigrating.value=true;const payload={};try{const result=await withAdminActionConfirmation({actionKey:'settings.storage.migrate-local',method:'POST',path:'/api/settings/storage/migrate-local',payload,run:(token)=>requestClient.post<any>('/settings/storage/migrate-local',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});await loadStorage();message.success('已迁移并校验 '+(result.copied||0)+' 个对象；S3 原文件保留，当前后端已切换为本地');}catch(error:any){message.error(error?.response?.data?.message||'迁移回本地失败；S3 原文件保留');}finally{storageMigrating.value=false;}}
+async function saveStorage(){storageSaving.value=true;const payload=storagePayload();try{await withAdminActionConfirmation({actionKey:'settings.storage.update',method:'PUT',path:'/api/settings/storage',payload,run:(token)=>requestClient.put('/settings/storage',payload,token?{headers:{'X-Admin-Action-Confirmation':token}}:undefined)});storageForm.accessKey='';storageForm.secretKey='';await loadStorage();message.success('对象存储配置已安全保存');}catch(error:any){message.error(error?.response?.data?.message||'保存对象存储配置失败');}finally{storageSaving.value=false;}}
+
 const llmForm=reactive({provider:'openai',baseUrl:'https://api.openai.com/v1',model:'gpt-4o-mini',timeoutSeconds:30,tokenLimitParameter:'auto',enabled:false,apiKeyConfigured:false,supportPrompt:''});
 async function loadLLM(){llmLoading.value=true;try{const data=await requestClient.get<LLMSettings>('/settings/ai/llm');Object.assign(llmForm,{provider:data.provider||'openai',baseUrl:data.baseUrl||'https://api.openai.com/v1',model:data.model||'gpt-4o-mini',timeoutSeconds:data.timeoutSeconds||30,tokenLimitParameter:data.tokenLimitParameter||'auto',enabled:!!data.enabled,apiKeyConfigured:!!data.apiKeyConfigured,supportPrompt:data.supportPrompt||''});llmKey.value='';}catch{message.error('AI 模型配置加载失败');}finally{llmLoading.value=false;}}
 const llmVendorBaseURLs:Record<string,string>={openai:'https://api.openai.com/v1',deepseek:'https://api.deepseek.com',kimi:'https://api.moonshot.ai/v1','moonshot-cn':'https://api.moonshot.cn/v1',zhipu:'https://open.bigmodel.cn/api/paas/v4'};
@@ -48,7 +57,7 @@ async function saveBackupEncryptionKey(){
 }
 async function testEmail(){testing.value=true;try{await requestClient.post('/settings/site/test-email',{});message.success($t('tg-card.siteSettings.emailTestSent'));}catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.emailTestFailed'));}finally{testing.value=false;}}
 async function testTelegram(){testing.value=true;try{await requestClient.post('/settings/site/test-telegram',{});message.success($t('tg-card.siteSettings.telegramTestSent'));}catch(error:any){message.error(error?.response?.data?.message||$t('tg-card.siteSettings.telegramTestFailed'));}finally{testing.value=false;}}
-onMounted(()=>{load();loadLLM();});
+onMounted(()=>{load();loadLLM();loadStorage();});
 </script>
 <template>
  <div class="mx-auto flex w-full min-w-0 max-w-none flex-col gap-4 p-3 md:p-6">
@@ -187,6 +196,35 @@ onMounted(()=>{load();loadLLM();});
       <a-alert class="mt-4" type="warning" show-icon :message="$t('tg-card.siteSettings.backupWarning')" />
       <div class="mt-4 text-xs leading-6 text-gray-500">{{$t('tg-card.siteSettings.backupKeyHelp')}}</div>
       <div class="mt-3 text-xs leading-6 text-gray-500">{{$t('tg-card.siteSettings.backupFailureHelp')}}</div>
+     </div>
+    </a-tab-pane>
+    <a-tab-pane key="storage">
+     <template #tab><span class="inline-flex items-center gap-2"><IconifyIcon icon="mdi:cloud-upload-outline" />对象存储</span></template>
+     <div class="max-w-3xl">
+      <div class="mb-2 text-sm font-semibold">媒体文件存储后端</div>
+      <p class="mb-4 text-xs leading-5 text-gray-500">默认使用本地 DATA_DIR/uploads。可切换到兼容 S3 API 的 AWS S3、Cloudflare R2 或自建对象存储。Access Key 与 Secret Key 会在服务端加密保存，读取时不会回传明文。切换后历史本地图片仍会回退读取；新上传与上游商品图片会写入当前后端。售后工单私有附件仍由 Telegram 权限接口提供，不会公开存入对象存储。</p>
+      <a-spin :spinning="storageLoading">
+       <a-form layout="vertical">
+        <a-form-item label="存储类型"><a-select v-model:value="storageForm.provider"><a-select-option value="local">本地存储（默认）</a-select-option><a-select-option value="s3">S3 兼容对象存储</a-select-option></a-select></a-form-item>
+        <template v-if="storageForm.provider==='s3'">
+         <a-form-item label="Endpoint"><a-input v-model:value="storageForm.endpoint" placeholder="https://s3.example.com" /></a-form-item>
+         <a-row :gutter="16">
+          <a-col :xs="24" :md="12"><a-form-item label="Region"><a-input v-model:value="storageForm.region" placeholder="auto（R2 可按服务商要求填写）" /></a-form-item></a-col>
+          <a-col :xs="24" :md="12"><a-form-item label="Bucket"><a-input v-model:value="storageForm.bucket" /></a-form-item></a-col>
+         </a-row>
+         <a-form-item label="路径前缀（可选）"><a-input v-model:value="storageForm.prefix" placeholder="tg-card/media" /></a-form-item>
+         <a-form-item label="Access Key"><a-input v-model:value="storageForm.accessKey" autocomplete="new-password" :placeholder="storageAccessConfigured?'已加密保存，留空保持原凭据':'请输入 Access Key'" /></a-form-item>
+         <a-form-item label="Secret Key"><a-input-password v-model:value="storageForm.secretKey" autocomplete="new-password" :placeholder="storageSecretConfigured?'已加密保存，留空保持原凭据':'请输入 Secret Key'" /></a-form-item>
+         <a-alert class="mb-4" type="info" show-icon message="请确保 Bucket 已创建，并为凭据授予所需的对象读写、删除和列举权限。建议使用专用最小权限凭据。" />
+        </template>
+        <a-space wrap>
+         <a-button size="small" :loading="storageTesting" @click="testStorage">测试连接</a-button>
+         <a-button v-if="storageCurrentProvider === 's3' && storageForm.provider === 's3'" size="small" :loading="storageMigrating" @click="migrateStorage">迁移本地历史文件（校验后保留本地副本）</a-button>
+         <a-button v-if="storageCurrentProvider === 's3' && storageForm.provider === 'local'" size="small" :loading="storageMigrating" @click="migrateStorageToLocal">迁移对象存储到本地并切换</a-button>
+         <a-button v-if="!(storageCurrentProvider === 's3' && storageForm.provider === 'local')" size="small" type="primary" :loading="storageSaving" @click="saveStorage">保存存储配置</a-button>
+        </a-space>
+       </a-form>
+      </a-spin>
      </div>
     </a-tab-pane>
     <a-tab-pane key="cap">

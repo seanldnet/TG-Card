@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"log"
 	"math/big"
 	"net"
@@ -32,6 +33,7 @@ import (
 	"github.com/seanldnet/TG-Card/internal/payment"
 	"github.com/seanldnet/TG-Card/internal/ratelimit"
 	"github.com/seanldnet/TG-Card/internal/secret"
+	"github.com/seanldnet/TG-Card/internal/storage"
 	"github.com/seanldnet/TG-Card/internal/telegrambot"
 	"github.com/seanldnet/TG-Card/internal/tron"
 	"github.com/seanldnet/TG-Card/internal/upstream"
@@ -46,6 +48,10 @@ type application struct {
 	botManager *telegrambot.Manager
 	paymentManager *payment.Manager
 	dataDir string
+	storageMu sync.RWMutex
+	storageWriteMu sync.RWMutex
+	mediaStore storage.Store
+	localMediaStore storage.Store
 	loginMu sync.Mutex
 	redisLimiter *ratelimit.Redis
 	upstreamSyncMu sync.Mutex
@@ -269,7 +275,10 @@ if redisLimiter != nil {
 	paymentCtx, stopPayments := context.WithCancel(ctx)
 	defer stopPayments()
 	go paymentManager.Run(paymentCtx)
-	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, redisLimiter: redisLimiter, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
+	localMediaStore, err := storage.NewLocal(filepath.Join(cfg.DataDir, "uploads"))
+	if err != nil { log.Fatalf("initialize local media storage: %v", err) }
+	app := &application{db: db, driver: cfg.DBDriver, tokens: tokens, secrets: secrets, botManager: botManager, paymentManager: paymentManager, dataDir: cfg.DataDir, localMediaStore: localMediaStore, mediaStore: localMediaStore, loginFailures: make(map[string][]time.Time), trustedProxyCIDRs: trustedProxyCIDRs, redisLimiter: redisLimiter, rateLimitHits: make(map[string][]time.Time), botAlertState: make(map[string]string)}
+	if err := app.reloadMediaStore(ctx); err != nil { log.Fatalf("initialize configured media storage: %v", err) }
 	botManager.SetNotifier(func(event, details, userChatID string) { go app.notifySiteEvent(context.Background(), event, details, userChatID) })
 	if err := app.syncBots(ctx); err != nil { log.Printf("initial Telegram bot sync failed: %v", err) }
 	go app.runUpstreamSyncScheduler(ctx)
@@ -335,6 +344,11 @@ if redisLimiter != nil {
 	api.HandleFunc("POST /api/payment/transactions/{transactionId}/reconcile", app.sensitiveRateLimit("payment-manual-reconcile", 10, 5*time.Minute, app.requireAdminActionConfirmation("payment.transaction.reconcile", app.reconcilePaymentTransaction)))
 	api.HandleFunc("GET /api/settings/ai/llm", app.getLLMSettings)
 	api.HandleFunc("PUT /api/settings/ai/llm", app.sensitiveRateLimit("ai-llm-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.ai.llm.update", app.updateLLMSettings)))
+	api.HandleFunc("GET /api/settings/storage", app.getMediaStorageSettings)
+	api.HandleFunc("PUT /api/settings/storage", app.sensitiveRateLimit("media-storage-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.storage.update", app.updateMediaStorageSettings)))
+	api.HandleFunc("POST /api/settings/storage/test", app.sensitiveRateLimit("media-storage-test", 5, 5*time.Minute, app.testMediaStorageSettings))
+	api.HandleFunc("POST /api/settings/storage/migrate", app.sensitiveRateLimit("media-storage-migrate", 1, 10*time.Minute, app.requireAdminActionConfirmation("settings.storage.migrate", app.migrateLocalMediaToObjectStorage)))
+	api.HandleFunc("POST /api/settings/storage/migrate-local", app.sensitiveRateLimit("media-storage-migrate-local", 1, 10*time.Minute, app.requireAdminActionConfirmation("settings.storage.migrate-local", app.migrateObjectMediaToLocal)))
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.sensitiveRateLimit("site-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.update", app.updateSiteSettings)))
 	api.HandleFunc("PUT /api/settings/site/backup-encryption-key", app.sensitiveRateLimit("backup-encryption-key", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.backup_encryption.update", app.updateSiteBackupEncryptionKey)))
@@ -386,7 +400,7 @@ if redisLimiter != nil {
 
 	root := http.NewServeMux()
 	root.Handle("/api/", api)
-	root.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(filepath.Join(cfg.DataDir, "uploads")))))
+	root.Handle("/uploads/", http.HandlerFunc(app.uploadedMedia))
 	root.Handle("/", staticHandler(cfg.WebDistDir))
 
 	addr := ":" + cfg.Port
@@ -989,7 +1003,7 @@ func detectSupportedImageExtension(content []byte) (string, bool) {
 	}
 	return "",false
 }
-func storeUploadedImage(w http.ResponseWriter,r *http.Request,dataDir,folder,label string,maxBytes int64) (string,bool) {
+func storeUploadedImage(w http.ResponseWriter,r *http.Request, app *application, folder,label string,maxBytes int64) (string,bool) {
 	r.Body=http.MaxBytesReader(w,r.Body,maxBytes+(1<<20))
 	if err:=r.ParseMultipartForm(2<<20);err!=nil {
 		log.Printf("%s multipart upload parse failed: content_type=%q content_length=%d error=%v",label,r.Header.Get("Content-Type"),r.ContentLength,err)
@@ -1001,20 +1015,20 @@ func storeUploadedImage(w http.ResponseWriter,r *http.Request,dataDir,folder,lab
 	content,err:=io.ReadAll(io.LimitReader(file,maxBytes+1));if err!=nil||len(content)==0||int64(len(content))>maxBytes { writeError(w,http.StatusBadRequest,label+"图片读取失败或超过 20 MB");return "",false }
 	ext,ok:=detectSupportedImageExtension(content);if !ok { writeError(w,http.StatusBadRequest,"图片格式无法识别，请上传 JPG、PNG、WebP、GIF、BMP、TIFF、AVIF 或 HEIC 图片");return "",false }
 	random:=make([]byte,16);if _,err:=rand.Read(random);err!=nil { writeError(w,http.StatusInternalServerError,"无法生成图片文件名");return "",false }
-	filename:=hex.EncodeToString(random)+ext;directory:=filepath.Join(dataDir,"uploads",folder)
-	if err:=os.MkdirAll(directory,0o750);err!=nil { log.Printf("create %s directory: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
-	if err:=os.WriteFile(filepath.Join(directory,filename),content,0o640);err!=nil { log.Printf("save %s: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
-	return "/uploads/"+folder+"/"+filename,true
+	filename:=hex.EncodeToString(random)+ext
+	key:=filepath.ToSlash(filepath.Join(folder,filename))
+	if err:=app.putMedia(r.Context(),key,content,mime.TypeByExtension(ext));err!=nil { log.Printf("save %s to media storage: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
+	return "/uploads/"+key,true
 }
 func (a *application) uploadUserAvatar(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
-	avatarURL,ok:=storeUploadedImage(w,r,a.dataDir,"avatars","头像",20<<20);if !ok{return}
+	avatarURL,ok:=storeUploadedImage(w,r,a,"avatars","头像",20<<20);if !ok{return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.avatar.upload","admin:"+claims.Username,a.clientIP(r),r.UserAgent(),"avatar uploaded")
 	writeSuccess(w,http.StatusCreated,map[string]string{"avatar":avatarURL})
 }
 func (a *application) uploadSiteLogo(w http.ResponseWriter,r *http.Request) {
 	if _,ok:=a.authenticate(w,r);!ok{return}
-	logoURL,ok:=storeUploadedImage(w,r,a.dataDir,"site","网站图标",20<<20);if !ok{return}
+	logoURL,ok:=storeUploadedImage(w,r,a,"site","网站图标",20<<20);if !ok{return}
 	writeSuccess(w,http.StatusCreated,map[string]string{"siteLogo":logoURL})
 }
 
