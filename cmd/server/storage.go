@@ -125,10 +125,7 @@ func (a *application) updateMediaStorageSettings(w http.ResponseWriter, r *http.
 	if input.Provider == "s3" && (input.Endpoint == "" || input.Bucket == "" || accessKey == "" || secretKey == "") {
 		writeError(w, http.StatusBadRequest, "启用 S3 前必须填写 Endpoint、Bucket、Access Key 和 Secret Key"); return
 	}
-	if input.Provider == "local" {
-		input.Endpoint, input.Region, input.Bucket, input.Prefix, accessKey, secretKey = "", "", "", "", "", ""
-	}
-	store, err := a.buildMediaStore(r.Context(), input, accessKey, secretKey)
+		store, err := a.buildMediaStore(r.Context(), input, accessKey, secretKey)
 	if err != nil { log.Printf("validate media storage configuration: %v", err); writeError(w, http.StatusBadRequest, "对象存储连接或 Bucket 检查失败，请检查地址、权限及凭据"); return }
 	_ = store
 	accessCipher, secretCipher := "", ""
@@ -178,4 +175,55 @@ func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "inline")
 	w.WriteHeader(http.StatusOK)
 	if _, err := io.Copy(w, reader); err != nil { log.Printf("stream uploaded media %q: %v", key, err) }
+}
+
+func (a *application) migrateLocalMediaToObjectStorage(w http.ResponseWriter, r *http.Request) {
+	claims, ok := a.authenticate(w, r)
+	if !ok { return }
+	a.storageMu.RLock()
+	active, local := a.mediaStore, a.localMediaStore
+	a.storageMu.RUnlock()
+	if active == nil || local == nil || active == local {
+		writeError(w, http.StatusConflict, "当前未启用对象存储，无需迁移")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	keys, err := local.List(ctx, "")
+	if err != nil { log.Printf("list local media for migration: %v", err); writeError(w, http.StatusInternalServerError, "读取本地媒体文件失败"); return }
+	var copied, skipped int
+	var totalBytes int64
+	for _, key := range keys {
+		if !(strings.HasPrefix(key, "avatars/") || strings.HasPrefix(key, "site/") || strings.HasPrefix(key, "upstream/")) { skipped++; continue }
+		reader, contentType, err := local.Open(ctx, key)
+		if err != nil { writeError(w, http.StatusBadGateway, "读取本地文件失败，迁移已中止"); return }
+		data, readErr := io.ReadAll(io.LimitReader(reader, 20<<20+1))
+		_ = reader.Close()
+		if readErr != nil || len(data) == 0 || len(data) > 20<<20 {
+			writeError(w, http.StatusBadGateway, "本地文件读取失败或超过 20 MiB，迁移已中止")
+			return
+		}
+		if err := active.Put(ctx, key, data, contentType); err != nil {
+			log.Printf("upload local media during migration: key=%q error=%v", key, err)
+			writeError(w, http.StatusBadGateway, "对象存储写入失败，迁移已中止；本地原文件保留")
+			return
+		}
+		check, _, err := active.Open(ctx, key)
+		if err != nil { writeError(w, http.StatusBadGateway, "对象存储回读校验失败；本地原文件保留"); return }
+		verified, verifyErr := io.ReadAll(io.LimitReader(check, 20<<20+1))
+		_ = check.Close()
+		if verifyErr != nil || len(verified) != len(data) {
+			writeError(w, http.StatusBadGateway, "对象存储回读校验失败；本地原文件保留")
+			return
+		}
+		sourceHash, targetHash := sha256.Sum256(data), sha256.Sum256(verified)
+		if sourceHash != targetHash {
+			writeError(w, http.StatusBadGateway, "对象存储内容校验不一致；本地原文件保留")
+			return
+		}
+		copied++
+		totalBytes += int64(len(data))
+	}
+	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "media.storage.migrate", "media:storage", a.clientIP(r), r.UserAgent(), "copied="+strconv.Itoa(copied)+" bytes="+strconv.FormatInt(totalBytes, 10))
+	writeSuccess(w, http.StatusOK, map[string]any{"copied": copied, "skipped": skipped, "bytes": totalBytes, "localFilesRetained": true, "verified": true})
 }
