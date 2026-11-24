@@ -1,4 +1,4 @@
-## 2026-11-24 — P2-2 S3/R2 对象存储第一批实现（独立分支开发中）
+## 2026-11-24 — P2-2 S3/R2 对象存储第一批实现（PR #173 已合并）
 
 - 开发分支：`feat/s3-compatible-object-storage`；基于 main 最新提交 `1ea4a7c548081a61665fd4ee923d67d46670badb`。
 - 新增统一媒体 Storage 接口及本地/S3-compatible 后端；S3 采用 MinIO Go SDK，兼容 AWS S3、Cloudflare R2 与兼容端点。
@@ -7,7 +7,7 @@
 - 增加双向历史媒体迁移 API：本地→S3 与 S3→本地均逐对象回读并 SHA-256 校验；源文件保留。直接切换 S3→本地或更换 S3 Bucket/前缀会被阻止，必须先完成反向迁移，避免旧 URL 失效。
 - 上游商品图片同步与上游图片孤儿清理已改为使用 Storage 接口；售后附件仍通过 Telegram API 按工单权限私有读取，不纳入公开对象存储。
 - 增加本地读写/删除、路径穿越、S3 参数校验与对象列举测试；新增 `docs/object-storage.md`。
-- 当前状态：PR #173 已创建；Go Backend CI（含 gofmt、go vet、go test、静态构建及备份恢复集成测试）、Admin Frontend CI、安全扫描均通过。待合并 main 并核验 Docker Publish/GHCR；真实 S3/R2 连接与生产双向迁移演练仍需目标环境凭据及部署验收。当前尚未修改 main，未发布新镜像。
+- 当前状态：PR #173 已 Squash Merge 至 main，merge commit `5c0079f84696e120cfec332a03e93aff2a22fe5c`。Go Backend CI（备份恢复集成、gofmt、go vet、go test、静态构建）、Admin Frontend CI 与安全扫描均通过。Docker Publish/GHCR 推送结果仍待独立核验；真实 S3/R2 连接与生产双向迁移演练仍需目标环境凭据及部署验收。
 - 无数据库 schema 迁移；PostgreSQL（pgx）主库与 SQLite 兼容保持不变。
 
 ---
