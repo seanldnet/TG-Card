@@ -58,6 +58,7 @@ func (a *application) loadMediaStorageSettings(ctx context.Context) (mediaStorag
 	if provider == "" { provider = "local" }
 	cfg := mediaStorageSettingsRequest{Provider: provider, Endpoint: values[storageEndpointKey], Region: values[storageRegionKey], Bucket: values[storageBucketKey], Prefix: values[storagePrefixKey]}
 	accessKey, secretKey := "", ""
+	var err error
 	if values[storageAccessKeyCiphertextKey] != "" {
 		accessKey, err = a.secrets.Decrypt(values[storageAccessKeyCiphertextKey]); if err != nil { return cfg, "", "", err }
 	}
@@ -80,6 +81,13 @@ func (a *application) buildMediaStore(ctx context.Context, cfg mediaStorageSetti
 	default:
 		return nil, errors.New("unsupported media storage provider")
 	}
+}
+
+func (a *application) currentMediaStore() storage.Store {
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
+	if a.mediaStore != nil { return a.mediaStore }
+	return a.localMediaStore
 }
 
 func (a *application) reloadMediaStore(ctx context.Context) error {
@@ -107,7 +115,7 @@ func (a *application) updateMediaStorageSettings(w http.ResponseWriter, r *http.
 	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
 	input.Endpoint, input.Region, input.Bucket, input.Prefix = strings.TrimSpace(input.Endpoint), strings.TrimSpace(input.Region), strings.TrimSpace(input.Bucket), strings.Trim(strings.TrimSpace(input.Prefix), "/")
 	if input.Provider != "local" && input.Provider != "s3" { writeError(w, http.StatusBadRequest, "存储类型仅支持 local 或 s3"); return }
-	old, oldAccessKey, oldSecretKey, err := a.loadMediaStorageSettings(r.Context())
+	_, oldAccessKey, oldSecretKey, err := a.loadMediaStorageSettings(r.Context())
 	if err != nil { writeError(w, http.StatusInternalServerError, "无法读取现有对象存储配置"); return }
 	accessKey, secretKey := input.AccessKey, input.SecretKey
 	if input.ClearCredentials { accessKey, secretKey = "", "" } else {
@@ -133,8 +141,6 @@ func (a *application) updateMediaStorageSettings(w http.ResponseWriter, r *http.
 	}); err != nil { log.Printf("save media storage settings: %v", err); writeError(w, http.StatusInternalServerError, "保存对象存储配置失败"); return }
 	if err := a.reloadMediaStore(r.Context()); err != nil { log.Printf("activate media storage: %v", err); writeError(w, http.StatusInternalServerError, "配置已保存但存储后端启用失败，请检查服务日志"); return }
 	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "media.storage.update", "media:storage", a.clientIP(r), r.UserAgent(), "provider="+input.Provider)
-	database.RecordAdminAudit(r.Context(), a.db, a.driver, claims.AdminID, "media.storage.configuration", "media:storage", a.clientIP(r), r.UserAgent(), "storage backend configuration updated")
-	_ = old
 	writeSuccess(w, http.StatusOK, mediaStorageSettingsView{Provider: input.Provider, Endpoint: input.Endpoint, Region: input.Region, Bucket: input.Bucket, Prefix: input.Prefix, AccessKeyConfigured: accessKey != "", SecretKeyConfigured: secretKey != ""})
 }
 
