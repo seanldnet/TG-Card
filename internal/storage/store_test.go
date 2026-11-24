@@ -27,6 +27,7 @@ func TestLocalListReturnsRelativeKeys(t *testing.T) {
 	store, err := NewLocal(t.TempDir())
 	if err != nil { t.Fatal(err) }
 	if err := store.Put(context.Background(), "upstream/image.jpg", []byte("x"), "image/jpeg"); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(store.root, "upstream", ".upload-inflight"), []byte("partial"), 0o600); err != nil { t.Fatal(err) }
 	keys, err := store.List(context.Background(), "upstream")
 	if err != nil { t.Fatal(err) }
 	if len(keys) != 1 || keys[0] != "upstream/image.jpg" { t.Fatalf("unexpected keys: %#v", keys) }
