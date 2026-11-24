@@ -40,6 +40,21 @@ func TestLocalRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestLocalRejectsSymlinkedDirectories(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "linked")); err != nil { t.Skipf("symlink unavailable: %v", err) }
+	store, err := NewLocal(root)
+	if err != nil { t.Fatal(err) }
+	if err := store.Put(context.Background(), "linked/escape.txt", []byte("no"), "text/plain"); err == nil { t.Fatal("expected symlinked path to be rejected") }
+}
+
+func TestNewS3AcceptsOriginEndpoint(t *testing.T) {
+	store, err := NewS3(S3Config{Endpoint:"https://s3.example.com", Bucket:"media", AccessKey:"access", SecretKey:"secret", Prefix:"tg-card/media"})
+	if err != nil { t.Fatal(err) }
+	if store.bucket != "media" || store.prefix != "tg-card/media" { t.Fatalf("unexpected S3 config: %#v", store) }
+}
+
 func TestNewS3RejectsInvalidConfiguration(t *testing.T) {
 	for _, cfg := range []S3Config{{Endpoint:"file:///tmp",Bucket:"bucket",AccessKey:"a",SecretKey:"s"},{Endpoint:"https://example.com/path",Bucket:"bucket",AccessKey:"a",SecretKey:"s"},{Endpoint:"https://example.com",Bucket:"bucket"}} {
 		if _, err := NewS3(cfg); err == nil { t.Fatal("expected invalid S3 configuration to be rejected") }
