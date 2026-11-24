@@ -46,6 +46,7 @@ var protectedAdminActionKeys = map[string]bool{
 	"settings.site.backup_encryption.update": true,
 	"settings.storage.update": true,
 	"settings.storage.migrate": true,
+	"settings.storage.migrate-local": true,
 	"settings.ai.llm.update": true,
 	"settings.upstream.update":       true,
 	"settings.upstream.disable":      true,
