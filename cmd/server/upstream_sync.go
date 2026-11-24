@@ -328,7 +328,7 @@ func (a *application) removeUnreferencedUpstreamImages(ctx context.Context) (int
 		keys, err := store.List(ctx, "upstream")
 		if err != nil { return removed, err }
 		for _, key := range keys {
-			if unique[key] { continue }
+			if !strings.HasPrefix(key, "upstream/") || unique[key] { continue }
 			unique[key] = true
 			name := filepath.Base(key)
 			ext := filepath.Ext(name)
