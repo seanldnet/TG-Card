@@ -4,7 +4,7 @@
 
 The media storage backend is for public product/category images, administrator avatars, and the site logo. It does not store payment data, order payloads, bot tokens, or private support-ticket attachments. Support attachments continue to be fetched from Telegram through the authenticated ticket/message ownership check and returned with `private, no-store`.
 
-The application keeps serving existing `/uploads/...` URLs. When S3 storage is active, new media is written to the configured bucket and reads fall back to the local `DATA_DIR/uploads` directory when an object is not present in the bucket. This allows a gradual migration without rewriting database URLs.
+The application keeps serving existing `/uploads/...` URLs. When S3 storage is active, new media is written to the configured bucket and reads fall back to the local `DATA_DIR/uploads` directory when an object is not present in the bucket. This allows a gradual migration without rewriting database URLs. A temporary S3 outage does not prevent application startup; existing local fallback files remain readable, while new writes fail closed rather than silently splitting new objects across local and remote storage.
 
 ## Configuration
 
