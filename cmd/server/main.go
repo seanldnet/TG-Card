@@ -347,6 +347,7 @@ if redisLimiter != nil {
 	api.HandleFunc("PUT /api/settings/storage", app.sensitiveRateLimit("media-storage-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.storage.update", app.updateMediaStorageSettings)))
 	api.HandleFunc("POST /api/settings/storage/test", app.sensitiveRateLimit("media-storage-test", 5, 5*time.Minute, app.testMediaStorageSettings))
 	api.HandleFunc("POST /api/settings/storage/migrate", app.sensitiveRateLimit("media-storage-migrate", 1, 10*time.Minute, app.requireAdminActionConfirmation("settings.storage.migrate", app.migrateLocalMediaToObjectStorage)))
+	api.HandleFunc("POST /api/settings/storage/migrate-local", app.sensitiveRateLimit("media-storage-migrate-local", 1, 10*time.Minute, app.requireAdminActionConfirmation("settings.storage.migrate-local", app.migrateObjectMediaToLocal)))
 	api.HandleFunc("GET /api/settings/site", app.getSiteSettings)
 	api.HandleFunc("PUT /api/settings/site", app.sensitiveRateLimit("site-settings", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.update", app.updateSiteSettings)))
 	api.HandleFunc("PUT /api/settings/site/backup-encryption-key", app.sensitiveRateLimit("backup-encryption-key", 5, 5*time.Minute, app.requireAdminActionConfirmation("settings.site.backup_encryption.update", app.updateSiteBackupEncryptionKey)))
