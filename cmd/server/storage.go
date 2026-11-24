@@ -83,6 +83,14 @@ func (a *application) buildMediaStore(ctx context.Context, cfg mediaStorageSetti
 	}
 }
 
+func (a *application) putMedia(ctx context.Context, key string, data []byte, contentType string) error {
+	a.storageWriteMu.RLock()
+	defer a.storageWriteMu.RUnlock()
+	store := a.currentMediaStore()
+	if store == nil { return errors.New("media storage is not initialized") }
+	return store.Put(ctx, key, data, contentType)
+}
+
 func (a *application) currentMediaStore() storage.Store {
 	a.storageMu.RLock()
 	defer a.storageMu.RUnlock()
@@ -110,6 +118,8 @@ func (a *application) getMediaStorageSettings(w http.ResponseWriter, r *http.Req
 
 func (a *application) updateMediaStorageSettings(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r); if !ok { return }
+	a.storageWriteMu.Lock()
+	defer a.storageWriteMu.Unlock()
 	var input mediaStorageSettingsRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&input); err != nil { writeError(w, http.StatusBadRequest, "对象存储配置格式无效"); return }
 	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
@@ -199,6 +209,8 @@ func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
 func (a *application) migrateLocalMediaToObjectStorage(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
+	a.storageWriteMu.Lock()
+	defer a.storageWriteMu.Unlock()
 	a.storageMu.RLock()
 	active, local := a.mediaStore, a.localMediaStore
 	a.storageMu.RUnlock()
@@ -250,6 +262,8 @@ func (a *application) migrateLocalMediaToObjectStorage(w http.ResponseWriter, r 
 func (a *application) migrateObjectMediaToLocal(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
+	a.storageWriteMu.Lock()
+	defer a.storageWriteMu.Unlock()
 	a.storageMu.RLock()
 	active, local := a.mediaStore, a.localMediaStore
 	a.storageMu.RUnlock()
