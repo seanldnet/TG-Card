@@ -179,6 +179,8 @@ func (a *application) testMediaStorageSettings(w http.ResponseWriter, r *http.Re
 }
 
 func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
+	a.storageWriteMu.RLock()
+	defer a.storageWriteMu.RUnlock()
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
