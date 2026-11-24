@@ -170,7 +170,7 @@ func (a *application) testMediaStorageSettings(w http.ResponseWriter, r *http.Re
 
 func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/uploads/")
-	if key == "" || strings.Contains(key, "\\") || strings.Contains(key, "..") { http.NotFound(w, r); return }
+	if key == "" || strings.Contains(key, "\\") || strings.Contains(key, "..") || !(strings.HasPrefix(key, "avatars/") || strings.HasPrefix(key, "site/") || strings.HasPrefix(key, "upstream/")) { http.NotFound(w, r); return }
 	a.storageMu.RLock(); active, local := a.mediaStore, a.localMediaStore; a.storageMu.RUnlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second); defer cancel()
 	var reader io.ReadCloser
