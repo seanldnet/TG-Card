@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -209,5 +211,21 @@ func (s *S3) Health(ctx context.Context) error {
 	exists, err := s.client.BucketExists(ctx, s.bucket)
 	if err != nil { return err }
 	if !exists { return fmt.Errorf("S3 bucket %q does not exist or is not accessible", s.bucket) }
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil { return err }
+	probeKey := "__tg-card-healthcheck/" + hex.EncodeToString(random)
+	probeData := []byte("tg-card-storage-healthcheck")
+	if err := s.Put(ctx, probeKey, probeData, "text/plain"); err != nil { return fmt.Errorf("S3 write permission check failed: %w", err) }
+	reader, _, readErr := s.Open(ctx, probeKey)
+	if readErr != nil {
+		_ = s.Delete(context.Background(), probeKey)
+		return fmt.Errorf("S3 read permission check failed: %w", readErr)
+	}
+	verified, readErr := io.ReadAll(io.LimitReader(reader, int64(len(probeData)+1)))
+	_ = reader.Close()
+	deleteErr := s.Delete(ctx, probeKey)
+	if readErr != nil { return fmt.Errorf("S3 read permission check failed: %w", readErr) }
+	if string(verified) != string(probeData) { return errors.New("S3 read-back verification failed") }
+	if deleteErr != nil { return fmt.Errorf("S3 delete permission check failed: %w", deleteErr) }
 	return nil
 }
