@@ -1,4 +1,4 @@
-## 2026-11-24 — P2-2 S3/R2 对象存储第一批实现（独立分支，CI 待验证）
+## 2026-11-24 — P2-2 S3/R2 对象存储第一批实现（PR #173，Go/Admin/Security CI 通过，待合并发布）
 
 - 新增统一 Storage 接口、本地文件系统后端及 S3-compatible 后端。
 - 网站设置新增对象存储配置、连接测试和二次确认保存；Access Key/Secret Key 使用 AES-GCM 加密。
@@ -7,7 +7,7 @@
 - 新增本地↔对象存储双向迁移，逐对象回读并 SHA-256 校验；源文件保留，不自动删除；阻止未迁移的后端/桶切换。
 - 售后工单私有附件继续通过 Telegram API 读取，不迁移为公开对象。
 - 新增本地存储与路径安全测试及 `docs/object-storage.md`。
-- 无数据库 schema 迁移。PR、CI、镜像发布及真实 S3/R2 演练待后续验证。
+- 无数据库 schema 迁移。PR #173 的 Go Backend CI（备份恢复集成、gofmt、vet、go test、静态构建）、Admin Frontend CI 与安全扫描均通过；待合并及 GHCR 镜像发布核验。真实 S3/R2 连接和生产迁移演练仍待目标环境验收。
 
 ---
 
