@@ -1,3 +1,16 @@
+## 2026-11-24 — P2-2 S3/R2 对象存储第一批实现（独立分支，CI 待验证）
+
+- 新增统一 Storage 接口、本地文件系统后端及 S3-compatible 后端。
+- 网站设置新增对象存储配置、连接测试和二次确认保存；Access Key/Secret Key 使用 AES-GCM 加密。
+- 保留 `/uploads/...` 历史 URL；对象缺失时回退本地历史文件。
+- 头像、站点 Logo、上游商品图片写入当前存储后端；上游图片清理通过存储接口列举和删除。
+- 新增本地媒体迁移，逐对象回读并 SHA-256 校验；本地源文件保留，不自动删除。
+- 售后工单私有附件继续通过 Telegram API 读取，不迁移为公开对象。
+- 新增本地存储与路径安全测试及 `docs/object-storage.md`。
+- 无数据库 schema 迁移。PR、CI、镜像发布及真实 S3/R2 演练待后续验证。
+
+---
+
 ## 2026-11-23 — P2-1 Redis 已合并；P2-2 S3/R2 开始梳理
 
 - PR #171 已合并至 main，commit `2147e179a4010d9ea782e73df42ea6fdc8a880aa`；增加可选 Redis 共享敏感操作限流、管理员登录失败计数及按 Bot ID 的 polling token lease。
