@@ -23,6 +23,7 @@ type Store interface {
 	Put(ctx context.Context, key string, data []byte, contentType string) error
 	Open(ctx context.Context, key string) (io.ReadCloser, string, error)
 	Delete(ctx context.Context, key string) error
+	List(ctx context.Context, prefix string) ([]string, error)
 	Health(ctx context.Context) error
 }
 
@@ -84,6 +85,22 @@ func (s *Local) Delete(ctx context.Context, key string) error {
 	err = os.Remove(target)
 	if errors.Is(err, os.ErrNotExist) { return nil }
 	return err
+}
+
+func (s *Local) List(ctx context.Context, prefix string) ([]string, error) {
+	base := s.root
+	if strings.TrimSpace(prefix) != "" { var err error; base, err = s.filename(prefix); if err != nil { return nil, err } }
+	var keys []string
+	err := filepath.WalkDir(base, func(filename string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil { if errors.Is(walkErr, os.ErrNotExist) { return nil }; return walkErr }
+		if entry.IsDir() { return nil }
+		if !entry.Type().IsRegular() { return nil }
+		rel, err := filepath.Rel(s.root, filename); if err != nil { return err }
+		keys = append(keys, filepath.ToSlash(rel))
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) { return nil, nil }
+	return keys, err
 }
 
 func (s *Local) Health(ctx context.Context) error {
@@ -155,6 +172,19 @@ func (s *S3) Open(ctx context.Context, key string) (io.ReadCloser, string, error
 func (s *S3) Delete(ctx context.Context, key string) error {
 	object, err := s.objectKey(key); if err != nil { return err }
 	return s.client.RemoveObject(ctx, s.bucket, object, minio.RemoveObjectOptions{})
+}
+
+func (s *S3) List(ctx context.Context, prefix string) ([]string, error) {
+	objectPrefix := s.prefix
+	if strings.TrimSpace(prefix) != "" { clean, err := cleanKey(prefix); if err != nil { return nil, err }; if objectPrefix != "" { objectPrefix += "/" }; objectPrefix += clean }
+	var keys []string
+	for object := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: objectPrefix, Recursive: true}) {
+		if object.Err != nil { return nil, object.Err }
+		key := object.Key
+		if s.prefix != "" { key = strings.TrimPrefix(key, s.prefix+"/") }
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 func (s *S3) Health(ctx context.Context) error {
