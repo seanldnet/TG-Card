@@ -49,6 +49,7 @@ type application struct {
 	paymentManager *payment.Manager
 	dataDir string
 	storageMu sync.RWMutex
+	storageWriteMu sync.RWMutex
 	mediaStore storage.Store
 	localMediaStore storage.Store
 	loginMu sync.Mutex
@@ -1002,7 +1003,7 @@ func detectSupportedImageExtension(content []byte) (string, bool) {
 	}
 	return "",false
 }
-func storeUploadedImage(w http.ResponseWriter,r *http.Request, store storage.Store, folder,label string,maxBytes int64) (string,bool) {
+func storeUploadedImage(w http.ResponseWriter,r *http.Request, app *application, folder,label string,maxBytes int64) (string,bool) {
 	r.Body=http.MaxBytesReader(w,r.Body,maxBytes+(1<<20))
 	if err:=r.ParseMultipartForm(2<<20);err!=nil {
 		log.Printf("%s multipart upload parse failed: content_type=%q content_length=%d error=%v",label,r.Header.Get("Content-Type"),r.ContentLength,err)
@@ -1016,18 +1017,18 @@ func storeUploadedImage(w http.ResponseWriter,r *http.Request, store storage.Sto
 	random:=make([]byte,16);if _,err:=rand.Read(random);err!=nil { writeError(w,http.StatusInternalServerError,"无法生成图片文件名");return "",false }
 	filename:=hex.EncodeToString(random)+ext
 	key:=filepath.ToSlash(filepath.Join(folder,filename))
-	if err:=store.Put(r.Context(),key,content,mime.TypeByExtension(ext));err!=nil { log.Printf("save %s to media storage: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
+	if err:=app.putMedia(r.Context(),key,content,mime.TypeByExtension(ext));err!=nil { log.Printf("save %s to media storage: %v",label,err);writeError(w,http.StatusInternalServerError,"无法保存"+label+"图片");return "",false }
 	return "/uploads/"+key,true
 }
 func (a *application) uploadUserAvatar(w http.ResponseWriter,r *http.Request) {
 	claims,ok:=a.authenticate(w,r);if !ok{return}
-	avatarURL,ok:=storeUploadedImage(w,r,a.currentMediaStore(),"avatars","头像",20<<20);if !ok{return}
+	avatarURL,ok:=storeUploadedImage(w,r,a,"avatars","头像",20<<20);if !ok{return}
 	database.RecordAdminAudit(r.Context(),a.db,a.driver,claims.AdminID,"admin.avatar.upload","admin:"+claims.Username,a.clientIP(r),r.UserAgent(),"avatar uploaded")
 	writeSuccess(w,http.StatusCreated,map[string]string{"avatar":avatarURL})
 }
 func (a *application) uploadSiteLogo(w http.ResponseWriter,r *http.Request) {
 	if _,ok:=a.authenticate(w,r);!ok{return}
-	logoURL,ok:=storeUploadedImage(w,r,a.currentMediaStore(),"site","网站图标",20<<20);if !ok{return}
+	logoURL,ok:=storeUploadedImage(w,r,a,"site","网站图标",20<<20);if !ok{return}
 	writeSuccess(w,http.StatusCreated,map[string]string{"siteLogo":logoURL})
 }
 
