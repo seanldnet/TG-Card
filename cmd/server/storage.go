@@ -179,8 +179,6 @@ func (a *application) testMediaStorageSettings(w http.ResponseWriter, r *http.Re
 }
 
 func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
-	a.storageWriteMu.RLock()
-	defer a.storageWriteMu.RUnlock()
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -211,8 +209,6 @@ func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
 func (a *application) migrateLocalMediaToObjectStorage(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
-	a.storageWriteMu.Lock()
-	defer a.storageWriteMu.Unlock()
 	a.storageMu.RLock()
 	active, local := a.mediaStore, a.localMediaStore
 	a.storageMu.RUnlock()
