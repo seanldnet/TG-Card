@@ -169,6 +169,11 @@ func (a *application) testMediaStorageSettings(w http.ResponseWriter, r *http.Re
 }
 
 func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	key := strings.TrimPrefix(r.URL.Path, "/uploads/")
 	if key == "" || strings.Contains(key, "\\") || strings.Contains(key, "..") || !(strings.HasPrefix(key, "avatars/") || strings.HasPrefix(key, "site/") || strings.HasPrefix(key, "upstream/")) { http.NotFound(w, r); return }
 	a.storageMu.RLock(); active, local := a.mediaStore, a.localMediaStore; a.storageMu.RUnlock()
@@ -187,6 +192,7 @@ func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Header().Set("Content-Disposition", "inline")
 	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead { return }
 	if _, err := io.Copy(w, reader); err != nil { log.Printf("stream uploaded media %q: %v", key, err) }
 }
 
