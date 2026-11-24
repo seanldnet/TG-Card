@@ -207,7 +207,7 @@ func (a *application) migrateLocalMediaToObjectStorage(w http.ResponseWriter, r 
 	var copied, skipped int
 	var totalBytes int64
 	for _, key := range keys {
-		if !(strings.HasPrefix(key, "avatars/") || strings.HasPrefix(key, "site/") || strings.HasPrefix(key, "upstream/")) { skipped++; continue }
+		if strings.HasSuffix(key, "/") || !(strings.HasPrefix(key, "avatars/") || strings.HasPrefix(key, "site/") || strings.HasPrefix(key, "upstream/")) { skipped++; continue }
 		reader, contentType, err := local.Open(ctx, key)
 		if err != nil { writeError(w, http.StatusBadGateway, "读取本地文件失败，迁移已中止"); return }
 		data, readErr := io.ReadAll(io.LimitReader(reader, 20<<20+1))
