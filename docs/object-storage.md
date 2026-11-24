@@ -28,6 +28,8 @@ The configured identity needs bucket inspection/list permission for the connecti
 
 A failed copy or verification aborts the request and leaves all local source files intact. Re-running the migration is safe: object keys are deterministic and content is verified after each write.
 
+To switch back to local storage, select **Local** and run **Migrate Object Storage to Local and Switch**. The application copies all supported public media namespaces back to the local volume, reads each file back, verifies SHA-256, then changes the active backend. S3 source objects and credentials are retained. Directly changing an active S3 backend to Local, or changing its endpoint/bucket/prefix, is rejected until this reverse migration completes.
+
 ## Compatibility and security boundaries
 
 - Existing product/category image URLs and site-logo/avatar URLs remain unchanged.
