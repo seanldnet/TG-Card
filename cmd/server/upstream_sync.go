@@ -69,7 +69,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		iconPath := ""
 		preserveIcon := false
 		if strings.TrimSpace(category.Icon) != "" {
-			localIcon, iconErr := upstream.DownloadImage(ctx, category.Icon, a.currentMediaStore())
+			localIcon, iconErr := upstream.DownloadImage(ctx, category.Icon, a.putMedia)
 			if iconErr != nil {
 				summary.ImagesFailed++
 				preserveIcon = true
@@ -169,7 +169,7 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 			imageFailed := false
 			for index, imageURL := range product.Images {
 				if index >= 5 { break }
-				localPath, imageErr := upstream.DownloadImage(ctx, imageURL, a.currentMediaStore())
+				localPath, imageErr := upstream.DownloadImage(ctx, imageURL, a.putMedia)
 				if imageErr != nil {
 					summary.ImagesFailed++
 					imageFailed = true
@@ -315,6 +315,8 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 // removeUnreferencedUpstreamImages deletes only regular, hash-named files inside
 // DATA_DIR/uploads/upstream and preserves any path still referenced by a local row.
 func (a *application) removeUnreferencedUpstreamImages(ctx context.Context) (int,error) {
+ a.storageWriteMu.Lock()
+ defer a.storageWriteMu.Unlock()
 	a.storageMu.RLock()
 	active, local := a.mediaStore, a.localMediaStore
 	a.storageMu.RUnlock()
