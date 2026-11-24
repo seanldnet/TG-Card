@@ -399,7 +399,7 @@ if redisLimiter != nil {
 
 	root := http.NewServeMux()
 	root.Handle("/api/", api)
-	root.Handle("/uploads/", app.uploadedMedia)
+	root.Handle("/uploads/", http.HandlerFunc(app.uploadedMedia))
 	root.Handle("/", staticHandler(cfg.WebDistDir))
 
 	addr := ":" + cfg.Port
