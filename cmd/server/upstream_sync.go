@@ -17,6 +17,7 @@ import (
 
 	"github.com/seanldnet/TG-Card/internal/database"
 	"github.com/seanldnet/TG-Card/internal/upstream"
+	"github.com/seanldnet/TG-Card/internal/storage"
 )
 
 var errUpstreamSyncInProgress = errors.New("上游商品同步正在进行，请稍后重试")
@@ -69,7 +70,7 @@ func (a *application) syncUpstreamCatalog(ctx context.Context) (upstreamSyncSumm
 		iconPath := ""
 		preserveIcon := false
 		if strings.TrimSpace(category.Icon) != "" {
-			localIcon, iconErr := upstream.DownloadImage(ctx, category.Icon, a.dataDir)
+			localIcon, iconErr := upstream.DownloadImage(ctx, category.Icon, a.currentMediaStore())
 			if iconErr != nil {
 				summary.ImagesFailed++
 				preserveIcon = true
@@ -169,7 +170,7 @@ func (a *application) buildUpstreamProductRecords(ctx context.Context, products 
 			imageFailed := false
 			for index, imageURL := range product.Images {
 				if index >= 5 { break }
-				localPath, imageErr := upstream.DownloadImage(ctx, imageURL, a.dataDir)
+				localPath, imageErr := upstream.DownloadImage(ctx, imageURL, a.currentMediaStore())
 				if imageErr != nil {
 					summary.ImagesFailed++
 					imageFailed = true
@@ -315,28 +316,38 @@ func (a *application) startUpstreamSync(trigger string) (string, error) {
 // removeUnreferencedUpstreamImages deletes only regular, hash-named files inside
 // DATA_DIR/uploads/upstream and preserves any path still referenced by a local row.
 func (a *application) removeUnreferencedUpstreamImages(ctx context.Context) (int,error) {
- directory:=filepath.Join(a.dataDir,"uploads","upstream")
- info,statErr:=os.Lstat(directory)
- if os.IsNotExist(statErr){return 0,nil};if statErr!=nil{return 0,statErr}
- if info.Mode()&os.ModeSymlink!=0||!info.IsDir(){return 0,fmt.Errorf("upstream image directory is not a regular directory")}
- entries,err:=os.ReadDir(directory)
- if err!=nil{return 0,err}
- removed:=0
- for _,entry:=range entries {
-  if !entry.Type().IsRegular(){continue}
-  name:=entry.Name();ext:=filepath.Ext(name);base:=strings.TrimSuffix(name,ext)
-  if len(base)!=64 {continue}
-  if _,decodeErr:=hex.DecodeString(base);decodeErr!=nil {continue}
-  switch ext {case ".jpg",".png",".gif",".webp",".avif":default:continue}
-  path:="/uploads/upstream/"+name
-  var productRefs,categoryRefs int
-  if err:=a.db.QueryRowContext(ctx,"SELECT COUNT(1) FROM products WHERE source_type='local' AND image_paths_json LIKE "+databasePlaceholder(a.driver,1),"%"+path+"%").Scan(&productRefs);err!=nil{return removed,err}
-  if err:=a.db.QueryRowContext(ctx,"SELECT COUNT(1) FROM product_categories WHERE source_type='local' AND upstream_icon LIKE "+databasePlaceholder(a.driver,1),"%"+path+"%").Scan(&categoryRefs);err!=nil{return removed,err}
-  if productRefs+categoryRefs>0 {continue}
-  if err:=os.Remove(filepath.Join(directory,name));err!=nil&&!os.IsNotExist(err){return removed,err}
-  removed++
- }
- return removed,nil
+	a.storageMu.RLock()
+	active, local := a.mediaStore, a.localMediaStore
+	a.storageMu.RUnlock()
+	stores := []storage.Store{}
+	if active != nil { stores = append(stores, active) }
+	if local != nil && local != active { stores = append(stores, local) }
+	unique := make(map[string]bool)
+	removed := 0
+	for _, store := range stores {
+		keys, err := store.List(ctx, "upstream")
+		if err != nil { return removed, err }
+		for _, key := range keys {
+			if unique[key] { continue }
+			unique[key] = true
+			name := filepath.Base(key)
+			ext := filepath.Ext(name)
+			base := strings.TrimSuffix(name, ext)
+			if len(base) != 64 { continue }
+			if _, decodeErr := hex.DecodeString(base); decodeErr != nil { continue }
+			switch ext { case ".jpg", ".png", ".gif", ".webp", ".avif": default: continue }
+			publicPath := "/uploads/" + key
+			var productRefs, categoryRefs int
+			if err := a.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM products WHERE source_type='local' AND image_paths_json LIKE "+databasePlaceholder(a.driver,1), "%"+publicPath+"%").Scan(&productRefs); err != nil { return removed, err }
+			if err := a.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM product_categories WHERE source_type='local' AND upstream_icon LIKE "+databasePlaceholder(a.driver,1), "%"+publicPath+"%").Scan(&categoryRefs); err != nil { return removed, err }
+			if productRefs+categoryRefs > 0 { continue }
+			for _, target := range stores {
+				if err := target.Delete(ctx, key); err != nil { return removed, err }
+			}
+			removed++
+		}
+	}
+	return removed, nil
 }
 
 func databasePlaceholder(driver string,index int) string {
