@@ -7,7 +7,7 @@
 - 增加双向历史媒体迁移 API：本地→S3 与 S3→本地均逐对象回读并 SHA-256 校验；源文件保留。直接切换 S3→本地或更换 S3 Bucket/前缀会被阻止，必须先完成反向迁移，避免旧 URL 失效。
 - 上游商品图片同步与上游图片孤儿清理已改为使用 Storage 接口；售后附件仍通过 Telegram API 按工单权限私有读取，不纳入公开对象存储。
 - 增加本地读写/删除、路径穿越、S3 参数校验与对象列举测试；新增 `docs/object-storage.md`。
-- 当前状态：代码已提交到独立分支，尚未创建 PR/通过 CI/构建镜像；真实 S3/R2 连接、前端构建、完整 Go 测试与生产迁移演练待 CI 和目标环境验证。未修改 main，未发布镜像。
+- 当前状态：PR #173 已创建；Go Backend CI（含 gofmt、go vet、go test、静态构建及备份恢复集成测试）、Admin Frontend CI、安全扫描均通过。待合并 main 并核验 Docker Publish/GHCR；真实 S3/R2 连接与生产双向迁移演练仍需目标环境凭据及部署验收。当前尚未修改 main，未发布新镜像。
 - 无数据库 schema 迁移；PostgreSQL（pgx）主库与 SQLite 兼容保持不变。
 
 ---
