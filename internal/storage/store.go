@@ -54,6 +54,16 @@ func (s *Local) filename(key string) (string, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", errors.New("object key escapes storage root")
 	}
+	current := s.root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, statErr := os.Lstat(current)
+		if statErr != nil {
+			if errors.Is(statErr, os.ErrNotExist) { break }
+			return "", statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 { return "", errors.New("symbolic links are not allowed in local storage") }
+	}
 	return target, nil
 }
 
