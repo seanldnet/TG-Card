@@ -77,8 +77,6 @@ func (a *application) buildMediaStore(ctx context.Context, cfg mediaStorageSetti
 	case "s3":
 		store, err := storage.NewS3(storage.S3Config{Endpoint: cfg.Endpoint, Region: cfg.Region, Bucket: cfg.Bucket, AccessKey: accessKey, SecretKey: secretKey, Prefix: cfg.Prefix})
 		if err != nil { return nil, err }
-		healthCtx, cancel := context.WithTimeout(ctx, 8*time.Second); defer cancel()
-		if err := store.Health(healthCtx); err != nil { return nil, err }
 		return store, nil
 	default:
 		return nil, errors.New("unsupported media storage provider")
@@ -128,8 +126,11 @@ func (a *application) updateMediaStorageSettings(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "启用 S3 前必须填写 Endpoint、Bucket、Access Key 和 Secret Key"); return
 	}
 		store, err := a.buildMediaStore(r.Context(), input, accessKey, secretKey)
-	if err != nil { log.Printf("validate media storage configuration: %v", err); writeError(w, http.StatusBadRequest, "对象存储连接或 Bucket 检查失败，请检查地址、权限及凭据"); return }
-	_ = store
+	if err != nil { log.Printf("validate media storage configuration: %v", err); writeError(w, http.StatusBadRequest, "对象存储配置无效，请检查地址和参数"); return }
+	healthCtx, healthCancel := context.WithTimeout(r.Context(), 8*time.Second)
+	healthErr := store.Health(healthCtx)
+	healthCancel()
+	if healthErr != nil { log.Printf("validate media storage connection: %v", healthErr); writeError(w, http.StatusBadGateway, "对象存储连接或 Bucket 检查失败，请检查地址、权限及凭据"); return }
 	accessCipher, secretCipher := "", ""
 	if accessKey != "" { accessCipher, err = a.secrets.Encrypt(accessKey); if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 Access Key"); return } }
 	if secretKey != "" { secretCipher, err = a.secrets.Encrypt(secretKey); if err != nil { writeError(w, http.StatusInternalServerError, "无法加密 Secret Key"); return } }
@@ -153,7 +154,9 @@ func (a *application) testMediaStorageSettings(w http.ResponseWriter, r *http.Re
 	if input.SecretKey == "" { input.SecretKey = oldSecret }
 	store, err := a.buildMediaStore(r.Context(), input, input.AccessKey, input.SecretKey)
 	if err != nil { log.Printf("test media storage: %v", err); writeError(w, http.StatusBadGateway, "对象存储连接失败，请检查 Endpoint、Bucket、区域及凭据"); return }
-	if err := store.Health(r.Context()); err != nil { writeError(w, http.StatusBadGateway, "对象存储健康检查失败"); return }
+	healthCtx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	if err := store.Health(healthCtx); err != nil { writeError(w, http.StatusBadGateway, "对象存储健康检查失败"); return }
 	writeSuccess(w, http.StatusOK, map[string]any{"ok": true})
 }
 
