@@ -31,6 +31,12 @@ func TestLocalRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestNewS3RejectsInvalidConfiguration(t *testing.T) {
+	for _, cfg := range []S3Config{{Endpoint:"file:///tmp",Bucket:"bucket",AccessKey:"a",SecretKey:"s"},{Endpoint:"https://example.com/path",Bucket:"bucket",AccessKey:"a",SecretKey:"s"},{Endpoint:"https://example.com",Bucket:"bucket"}} {
+		if _, err := NewS3(cfg); err == nil { t.Fatal("expected invalid S3 configuration to be rejected") }
+	}
+}
+
 func TestCleanKey(t *testing.T) {
 	for _, key := range []string{"", ".", "..", "../x", "/x"} {
 		if _, err := cleanKey(key); err == nil { t.Fatalf("expected invalid key %q", key) }
