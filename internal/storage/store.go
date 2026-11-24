@@ -218,7 +218,7 @@ func (s *S3) Health(ctx context.Context) error {
 	if err := s.Put(ctx, probeKey, probeData, "text/plain"); err != nil { return fmt.Errorf("S3 write permission check failed: %w", err) }
 	reader, _, readErr := s.Open(ctx, probeKey)
 	if readErr != nil {
-		_ = s.Delete(context.Background(), probeKey)
+		_ = s.Delete(ctx, probeKey)
 		return fmt.Errorf("S3 read permission check failed: %w", readErr)
 	}
 	verified, readErr := io.ReadAll(io.LimitReader(reader, int64(len(probeData)+1)))
