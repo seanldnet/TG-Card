@@ -107,7 +107,7 @@ func (s *Local) List(ctx context.Context, prefix string) ([]string, error) {
 	err := filepath.WalkDir(base, func(filename string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil { if errors.Is(walkErr, os.ErrNotExist) { return nil }; return walkErr }
 		if entry.IsDir() { return nil }
-		if !entry.Type().IsRegular() { return nil }
+		if !entry.Type().IsRegular() || strings.HasPrefix(entry.Name(), ".") { return nil }
 		rel, err := filepath.Rel(s.root, filename); if err != nil { return err }
 		keys = append(keys, filepath.ToSlash(rel))
 		return nil
