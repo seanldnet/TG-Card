@@ -12,13 +12,13 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/seanldnet/TG-Card/internal/storage"
 )
 
 type DujiaoCategory struct {
@@ -216,7 +216,7 @@ func truncate(value string, limit int) string {
 	return value
 }
 
-func DownloadImage(ctx context.Context, rawURL, dataDir string) (string, error) {
+func DownloadImage(ctx context.Context, rawURL string, store storage.Store) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed == nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return "", fmt.Errorf("upstream image URL must be HTTPS")
@@ -243,20 +243,7 @@ func DownloadImage(ctx context.Context, rawURL, dataDir string) (string, error) 
 	if contentType != "image/avif" && !strings.HasPrefix(detected, contentType) { return "", fmt.Errorf("upstream image content does not match declared type") }
 	hash := sha256.Sum256(data)
 	filename := hex.EncodeToString(hash[:]) + extension
-	directory := filepath.Join(dataDir, "uploads", "upstream")
-	if err := os.MkdirAll(directory, 0o750); err != nil { return "", fmt.Errorf("create upstream image directory: %w", err) }
-	target := filepath.Join(directory, filename)
-	if _, err := os.Stat(target); err == nil { return "/uploads/upstream/"+filename, nil }
-	tmp, err := os.CreateTemp(directory, ".upstream-image-*")
-	if err != nil { return "", fmt.Errorf("create upstream image temp file: %w", err) }
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if err := tmp.Chmod(0o640); err != nil { tmp.Close(); return "", err }
-	if _, err := tmp.Write(data); err != nil { tmp.Close(); return "", err }
-	if err := tmp.Close(); err != nil { return "", err }
-	if err := os.Rename(tmpName, target); err != nil {
-		if _, statErr := os.Stat(target); statErr == nil { return "/uploads/upstream/"+filename, nil }
-		return "", fmt.Errorf("store upstream image: %w", err)
-	}
-	return "/uploads/upstream/"+filename, nil
+	key := "upstream/" + filename
+	if err := store.Put(ctx, key, data, contentType); err != nil { return "", fmt.Errorf("store upstream image: %w", err) }
+	return "/uploads/" + key, nil
 }
