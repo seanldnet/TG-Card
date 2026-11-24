@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/seanldnet/TG-Card/internal/storage"
 )
 
 type DujiaoCategory struct {
@@ -216,7 +215,7 @@ func truncate(value string, limit int) string {
 	return value
 }
 
-func DownloadImage(ctx context.Context, rawURL string, store storage.Store) (string, error) {
+func DownloadImage(ctx context.Context, rawURL string, put func(context.Context, string, []byte, string) error) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || parsed == nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return "", fmt.Errorf("upstream image URL must be HTTPS")
@@ -244,6 +243,6 @@ func DownloadImage(ctx context.Context, rawURL string, store storage.Store) (str
 	hash := sha256.Sum256(data)
 	filename := hex.EncodeToString(hash[:]) + extension
 	key := "upstream/" + filename
-	if err := store.Put(ctx, key, data, contentType); err != nil { return "", fmt.Errorf("store upstream image: %w", err) }
+	if err := put(ctx, key, data, contentType); err != nil { return "", fmt.Errorf("store upstream image: %w", err) }
 	return "/uploads/" + key, nil
 }
