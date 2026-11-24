@@ -23,6 +23,15 @@ func TestLocalPutOpenDelete(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(store.root, "avatars", "test.png")); !os.IsNotExist(err) { t.Fatalf("expected file to be removed, got %v", err) }
 }
 
+func TestLocalListReturnsRelativeKeys(t *testing.T) {
+	store, err := NewLocal(t.TempDir())
+	if err != nil { t.Fatal(err) }
+	if err := store.Put(context.Background(), "upstream/image.jpg", []byte("x"), "image/jpeg"); err != nil { t.Fatal(err) }
+	keys, err := store.List(context.Background(), "upstream")
+	if err != nil { t.Fatal(err) }
+	if len(keys) != 1 || keys[0] != "upstream/image.jpg" { t.Fatalf("unexpected keys: %#v", keys) }
+}
+
 func TestLocalRejectsTraversal(t *testing.T) {
 	store, err := NewLocal(t.TempDir())
 	if err != nil { t.Fatal(err) }
