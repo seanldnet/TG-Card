@@ -209,6 +209,8 @@ func (a *application) uploadedMedia(w http.ResponseWriter, r *http.Request) {
 func (a *application) migrateLocalMediaToObjectStorage(w http.ResponseWriter, r *http.Request) {
 	claims, ok := a.authenticate(w, r)
 	if !ok { return }
+	a.storageWriteMu.Lock()
+	defer a.storageWriteMu.Unlock()
 	a.storageMu.RLock()
 	active, local := a.mediaStore, a.localMediaStore
 	a.storageMu.RUnlock()
